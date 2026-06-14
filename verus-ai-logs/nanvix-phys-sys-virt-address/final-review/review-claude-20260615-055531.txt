@@ -335,3 +335,553 @@ description: "How to write good Verus specs. Covers spec quality principles (ant
 ────────────────────────────────────────────────────────────
 Turn 5
 ────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verifysys', 'delay': 60}
+[TOOL] bash: cd /home/ruize/verus-ai-improve4/docs/skills
+echo "===== VERUS-CONSTRAINTS ====="; sed -n '1,120p' verus-constraints/SKI
+
+[THINKING] I'm reviewing the remaining skills quickly—verus-constraints, ast-consistency, and bug-reporting—then I'll dispatch the sub-agents with the skill locations rather than having them read everything myself. The canonical path is `/home/ruize/verus-ai-improve4/docs/skills/`, and I need to verify which one is correct by checking the ast-consistency skill.
+
+I should dispatch the sub-agents now with full context so they can run the complete review independently, though I want to wait for the verify-sys baseline first. The key finding I want them to catch without bias is whether `into_raw_value` is truly unspecced and in scope—I'll mention they should verify spec coverage of all in-scope functions, then check the remaining skills and verify-sys progress.
+[RESULT ✓] read_bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+[RESULT ✓] bash: ===== VERUS-CONSTRAINTS =====
+---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Baseline confirmed: verify-sys CLEAN (0 cheating, exit 0), but coverage is **2/255** — only `new` and inherent `from_raw_value` have specs. The in-scope `Address::into_raw_value` has **no spec**. This is a key finding. Let me confirm script paths, then dispatch the two independent sub-agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+ls /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py /home/ruize/verus-
+
+[THINKING] I'm noticing the codebase consistently uses attribute-style macros like `#[verus_verify]` and `#[verus_spec]` rather than `verus! {}` blocks, which diverges from what the verus-constraints skill recommends for new code. This is a real tension between following the skill's guidance and maintaining consistency with the existing project convention.
+
+The baseline analysis shows verify-sys is clean with zero violations, but coverage is sparse — only 2 out of 255 executable functions have contracts. Critically, `VirtualAddress::into_raw_value` is in-scope with 3 external callers and a defined spec in the view design, yet it lacks any actual requires/ensures annotations in the code. This is a concrete checklist failure that should trigger a review rejection.
+
+I'm about to dispatch both sub-agents to independently conduct the full review, giving them comprehensive context including paths, skill locations, and baseline facts, but letting them verify everything themselves without bias. They'll each save their raw output to separate files with their model names appended.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+--- skills canonical (project) ---
+ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Skills at `/home/ruize/verus-ai-exp/verus-ai/docs/skills/`. Now dispatching two independent review sub-agents (one per model).
+[TOOL] report_intent: Dispatching independent review agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] I've confirmed the skills directory path and will pass it along with the skill names to the sub-agents so they can read the files themselves. Now I'm dispatching both agents in parallel to conduct the full reviews and write their raw output.
+
+I'm crafting comprehensive prompts that instruct them to review only without modifying any source, spec, or proof code, but they can run verification commands, builds, scripts, and grep searches. I'll keep both prompts essentially identical to ensure independence.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both independent review agents are running (claude-opus-4.8 and gpt-5.3-codex). I'll wait for them to complete before consolidating.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+I'll start by reading the skills, target files, and analysis docs in parallel.
+[TOOL] report_intent: Reading skills and target files
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch --show-current && echo "---SOURCE---" && cat src/libs/sys/src/sy
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===caller_analysis===" && cat verus-ai-logs/nanvix-phys-sys-virt-addr
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md && echo "===AST===" && cat /home/ruize/veru
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+---SOURCE---
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//=====================================================================...
+[RESULT ✓] bash: Output too large to read at once (31.2 KB). Saved to: /tmp/copilot-tool-output-1781474286138-fmsuwc.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[RESULT ✓] bash: Output too large to read at once (23.2 KB). Saved to: /tmp/copilot-tool-output-1781474286139-wsgufg.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+[RESULT ✓] bash: Output too large to read at once (20.1 KB). Saved to: /tmp/copilot-tool-output-1781474286141-xdp9n8.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me read the full analysis docs and skills via the saved files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+[RESULT ✓] bash: # Caller Analysis: `mm::address::virt` (`VirtualAddress`)
+
+## Script Output
+See: `verus-ai-logs/nanvix-phys-sys-virt-address/find_callers_lsp_output.md`
+(raw output of `scripts/find_callers_lsp.py`).
+
+Scope (verification-order target functions):
+`VirtualAddress::into_raw_value`, `VirtualAddress::fro...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing module proofs
+[TOOL] skill: coding-standards
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] skill: Skill "coding-standards" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Gathering review inputs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] glob: verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. # View Design: `VirtualAddress` (`src/libs/sys/src/sys/mm/address/virt.rs`)
+2. 
+3. > Phase output. Designs the abstract `View` boundary for `VirtualAddress`.
+4. > Built **only** from `caller_analysis.md` and the body-removed public API
+5. > (`body_removed_source.rs`); implementation bodies were n...
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] view: 1. # Caller Analysis: `mm::address::virt` (`VirtualAddress`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-sys-virt-address/find_callers_lsp_output.md`
+5. (raw output of `scripts/find_callers_lsp.py`).
+6. 
+7. Scope (verification-order target functions):
+8. `VirtualAddress::into_raw_valu...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Critical observation already: `Address::into_raw_value` has no `#[verus_spec]`. Let me verify with grep and run the scripts.
+[TOOL] report_intent: Running coverage and guardrail checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && F=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== verus_spec/verus_verif
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === verus_spec/verus_verify occurrences ===
+35:#[verus_verify(external_derive)]
+46:#[verus_verify]
+48:    #[verus_spec(result =>
+49:        ensures
+65:    #[verus_spec(result =>
+66:        ensures
+253:    fn into_raw_value(self) -> usize {
+=== guardrail counts in target files ===
+admit: 0
+assume: 0
+...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.proof.rs
+[TOOL] glob: verus-ai-logs/nanvix-phys-sys-virt-address/**
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-055531.jsonl
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-055531.txt
+/home/ruize/nanvix-phy-specs-bottom-up/v...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 441. | Nested containers | DeepView (recursive view unwrapping) |
+442. | Smart pointer wrapping | Transparent Wrapper (Box/Rc/Arc → inner type) |
+443. | Internal mutability | Permission Token (vstd PCell) |
+444. | Pointer/memory ops | PointsTo + Logical ID |
+445. | Concurrent data structure | Tokeni...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '150,160p;245,260p' src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scrip
+[RESULT ✓] bash: ///
+    /// Performs a checked subtraction of a [`VirtualAddress`] and a `usize`.
+    ///
+    /// # Parameters
+    ///
+    /// - `rhs`: The value to subtract.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the new [`VirtualAddress`] is returned. Upon failure (underflow), `None` is
+    /// r...
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Origi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo '## fn_coverage_help' && python3 /home/ruize/verus-ai-exp/verus-ai/scr
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ## fn_coverage_help
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Origi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "impl Address for VirtualAddress\|impl VirtualAddress\|impl View" s
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '166,170p' src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] bash: 47:impl VirtualAddress {
+74:impl VirtualAddress {
+167:impl Address for VirtualAddress {
+321:impl View for VirtualAddress {
+<shellId: 17 completed with exit code 0>
+[RESULT ✓] bash: impl Address for VirtualAddress {
+    ///
+    /// # Description
+    ///
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST, drift, and verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== ast count ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "VERUS REWRITE" src/libs/sys/src/sys/mm/address/virt.rs; echo "exit
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === ast count ===
+ERROR: Verus file not found: count
+=== ast summary ===
+ERROR: Verus file not found: summary
+<shellId: 19 completed with exit code 0>
+[RESULT ✓] bash: exit:1
+=== spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 1
+- **Contract drift (⚠ review required): 1**
+  - Ensures removed: 1
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each it...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/s
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/sys/src/sys/mm/address/virt.rs`
+- **Verus file:** `src/libs/sys/src/sys/mm/address/virt.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|----...
+[RESULT ✓] bash: ⚠️  3 mismatched (16 functions match)
+<shellId: 22 completed with exit code 1>
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 1
+- **Contract drift (⚠ review required): 1**
+  - Ensures removed: 1
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each item below is a potential sp...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short; echo "=== log ==="; git --no-pager log --oneline -8 -- 
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-055531.jsonl
+ M verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-055531.txt
+=== log ===
+d54fd253d [verus] verify PASS: sys::all (6 verified, 0 errors)
+c8bb06bbe [verus] verify FAIL: sys::al...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[RESULT ✓] bash: ## VirtualAddress::from_raw_value (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,3 @@
+-    pub fn from_raw_value(raw_addr: usize) -> Self {
+-        VirtualAddress::new(raw_addr)
++    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
++        Ok(VirtualAddress::from_raw_value(raw_a...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[TOOL] rg: admit\(|assume\(|assume_specification|#\[verifier::external_body\]|VERUS REWRITE|#\[cfg\([^\]]*verus_keep_ghost[^\]]*\)\]
+[TOOL] rg: trait\s+Address|into_raw_value\s*\(
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/mmio.rs:67:        let base_raw: u32 = u32::try_from(base.into_raw_value()).map_err(|_| {
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:253:    fn into_raw_value(self) -> usize {
+/home/ruize/nanvix-phy-sp...
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && F=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== count ==="; python3 /h
+[RESULT ✓] bash: ✅ VirtualAddress::align_up: MATCH
+---
+## VirtualAddress::align_down (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,3 @@
+-    pub fn align_down(&self, align: Alignment) -> Self {
+-        VirtualAddress::new(mm::align_down(self.0, align))
++    fn align_down(&self, align: Alignment) -> Result<...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: === count ===
+⚠️  3 mismatched (16 functions match)
+exit:0
+=== summary ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH       ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report
+[RESULT ✓] bash: ✅ VirtualAddress::is_aligned: MATCH
+<shellId: 29 completed with exit code 0>
+[RESULT ✓] bash: Output: verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/
+  full/       : 2 diffs
+  exec-only/  : 2 diffs (stripped)
+  0 missing, 0 extra
+  summary.md written
+<shellId: 30 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && F=src/libs/sys/src/sys/mm/address/virt.rs; for fn in align_up align_down is
+[RESULT ✓] bash: ===== align_up =====
+usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+ast_consistency.py: error: argument command: invalid choice: 'VirtualAddress::align_up' (choose from 'count', 'summary', 'diff', 'report')
+===== align_do...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/summary.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report
+[TOOL] glob: verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/exec-only/*.diff
+[TOOL] glob: verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/full/*.diff
+[RESULT ✓] view: exec-only
+full
+summary.md
+[RESULT ✓] view: 1. # AST Consistency Report: ast_orig_25737d_l
+2. 
+3. **Source:** `/tmp/ast_orig_25737d_l.rs`
+4. **Verus:** `src/libs/sys/src/sys/mm/address/virt.rs`
+5. 
+6. ## Summary
+7. 
+8. - Functions matched: 17/19
+9. - Functions mismatched: 2
+10. - Missing in Verus: 0
+11. - Extra in Verus: 0
+12. - **Consistent:...
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/exec-only/VirtualAddress__from_raw_value.diff
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/exec-only/VirtualAddress__align_down.diff
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/full/VirtualAddress__from_raw_value.diff
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/full/VirtualAddress__align_down.diff
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/exec-only/VirtualAddress__from_raw_value.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ast-report/exec-only/VirtualAddress__align_down.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 1. --- source:VirtualAddress::from_raw_value
+2. +++ verus:VirtualAddress::from_raw_value
+3. @@ -1,3 +1,3 @@
+4. -    pub fn from_raw_value(raw_addr: usize) -> Self {
+5. -        VirtualAddress::new(raw_addr)
+6. +    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+7. +        Ok(VirtualAdd...
+[RESULT ✓] view: 1. --- source:VirtualAddress::align_down
+2. +++ verus:VirtualAddress::align_down
+3. @@ -1,3 +1,3 @@
+4. -    pub fn align_down(&self, align: Alignment) -> Self {
+5. -        VirtualAddress::new(mm::align_down(self.0, align))
+6. +    fn align_down(&self, align: Alignment) -> Result<Self, Error> {
+7. +...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && F=src/libs/sys/src/sys/mm/address/virt.rs; python3 /home/ruize/verus-ai-exp
+[RESULT ✓] bash: usage: ast_consistency.py [source] verus diff [-h] --name NAME [--full]
+
+options:
+  -h, --help   show this help message and exit
+  --name NAME  Element to diff. Use function name (e.g. 'Bitmap::set') or
+               'struct:Name' for structs (e.g. 'struct:Bitmap').
+  --full       Include spec/proo...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] rg: impl\s+VirtualAddress|spec fn inv\(&self\)
+[TOOL] rg: VirtualAddress::new\(|VirtualAddress::from_raw_value\(|into_raw_value\(
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:47:impl VirtualAddress {
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:74:impl VirtualAddress {
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/config.rs:22:    pub const KERNEL_BASE: VirtualAddress = VirtualAddress::new(KERNEL_BASE_RAW);
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/config.rs:34:    pub const KERNEL_END: VirtualAddress = VirtualAddress::new(KERNEL_EN...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && F=src/libs/sys/src/sys/mm/address/virt.rs; for fn in align_up align_down is
+[RESULT ✓] bash: ===== align_up =====
+✅ VirtualAddress::align_up: MATCH
+===== align_down =====
+## VirtualAddress::align_down (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,3 @@
+-    pub fn align_down(&self, align: Alignment) -> Self {
+-        VirtualAddress::new(mm::align_down(self.0, align))
++    fn align_...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys
