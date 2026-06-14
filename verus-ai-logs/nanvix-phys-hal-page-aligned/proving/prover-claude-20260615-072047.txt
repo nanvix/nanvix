@@ -396,3 +396,117 @@ version.json
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verus_verify\|verus_spec\|impl.*Address for\|fn into_raw_value\|fn
+
+[THINKING] The cached result shows a clean exit code, but the cheating detection flagged some global counts across the kernel crate—external_body=11 and admit=27—though these aren't specific to just this module. I need to look at the detailed verification output for the page module specifically to understand what's actually happening here.
+
+Looking at the function coverage, only `from_address` has a contract out of the 18 executable functions. The target functions I need to handle are `into_raw_value`, `from_address`, and `PageAligned` itself. The trait method `into_raw_value` has a contract that specifies the result should equal `self@`, but the impl block for `Address for PageAligned` doesn't have `#[verus_verify]` annotation, which is why the coverage tool marks it as unverified. Adding that annotation to the whole impl would pull in other functions like `clone_address` and `from_raw_value` that aren't in scope and would require their own contracts and proofs, so I need to be careful about how I approach this.
+
+The line numbers in the plan are slightly off from the current file — `from_address` is at line 49 and `into_raw_value` is at line 64 rather than the planned lines 36 and 51. I should check how similar modules like `phys.rs` handle verifying individual methods within an impl block without verifying the entire block.
+[RESULT ✓] bash: 40:#[verus_verify(external_derive)]
+90:#[verus_verify]
+112:    #[verus_spec(result =>
+138:    #[verus_spec(result =>
+159:    #[verus_spec(result =>
+179:impl Address for PhysicalAddress {
+194:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+257:    fn is_aligned(&self, align: Alignment) -...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 179. impl Address for PhysicalAddress {
+180.     ///
+181.     /// # Description
+182.     ///
+183.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+184.     ///
+185.     /// # Parameters
+186.     ///
+187.     /// - `raw_addr`: The raw value.
+188.     ///
+189.     /// # Returns
+190.   ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -in "page" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 
+
+[THINKING] I'm noticing that the `phys.rs` implementation of `Address` doesn't have verification annotations, so I need to understand how `into_raw_value` gets verified—it might be that the `phys` module is already a verified dependency, and the trait implementation itself carries the verification status from the `Address` trait definition.
+
+In Verus, when you implement a trait marked with `#[verus_verify]`, the impl methods are automatically checked against the trait's spec without needing explicit annotations on the impl itself. So `into_raw_value` is being verified against the trait contract `result as int == self@` even though it lacks its own `#[verus_spec]` annotation.
+
+The coverage tool might be reporting `into_raw_value` as unverified simply because it's counting explicit annotations rather than recognizing trait-based verification. I should check the baseline admit and external_body counts to see if there are any cheating details specific to the page.rs module.
+[RESULT ✓] bash: 38:    - mm/virt/identity_map.rs:718 identity_map_page: admit
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] view: 1.     - mm/phys/frame.rs:136 alloc: admit
+2.     - mm/phys/frame.rs:213 alloc_contiguous: admit
+3.     - mm/phys/frame.rs:298 free: admit
+4.     - mm/phys/frame.rs:379 share: admit
+5.     - mm/phys/frame.rs:442 refcount: admit
+6.     - mm/phys/frame.rs:497 book: admit
+7.     - mm/phys/frame.rs:535 ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -
+
+[THINKING] The page module itself doesn't have any verification issues to fix since there are no admit/external_body/assume statements to remove. The verification passes, but coverage shows only `from_address` has a contract specified. The task is to prove the specifications for page.rs, and `from_address` already has its ensures clause in place.
+
+I need to verify whether `from_address` actually verifies without any admits by checking the verus log directly, since the proof file is empty and I want to confirm the verification is genuinely passing rather than relying on cached results.
+[RESULT ✓] bash: Module: hal::mem::types::address::aligned::page
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n
+[RESULT ✓] bash: Timestamp: 2026-06-15_07-22-46
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+note: verifyin...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+The result was cached. Let me force a fresh verification to see the real output.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/address/aligned/page.rs && export VERUS_
+
+[THINKING] The cached result is masking the actual verification output, so I need to force a fresh rebuild by touching the source file and re-running the verify script to see the real results—how many functions were actually verified and whether there are any errors.
