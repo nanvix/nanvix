@@ -391,3 +391,87 @@ My restored files are byte-identical to the pristine pre-task state (admits were
 [THINKING] So the spec.rs file hasn't changed from the pristine version, and the identity_map.rs diff came back empty too—meaning that file is also identical to the base commit. That's interesting because it suggests the admits were already present in that pristine state at 6a31083cd, which was marked as having cheating detected with 31 admits. The earlier proving phase must have already introduced those admits before this point.
 
 Now I need to run the full kernel verification and build to confirm everything is clean. Let me execute `make verify-kernel` for the whole kernel and `make build` as the reviewer requested, which should auto-commit the clean state.
+[RESULT ✓] bash: === Results ===
+  76 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=12 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  55/1026 exec functions have c...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+`make verify-kernel`: 76 verified, 0 errors, exit 0 (3 documented admits remain). Now `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make build 2>&1 | tail -25
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: bld completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^build:|^build-|^all:|^kernel:" Makefile | head; echo "=== try ca
+[RESULT ✓] bash: 411:all: all-nanvix
+=== try cargo build of kernel exec (erased verus) ===
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features  -p mkimage
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.08s
+cp -f --preserve /home/ruize/nanvix-phy-specs-bottom-up/target/deb...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Build succeeds (admits are cfg-gated ghost code, erased in normal build). Let me clean up temp files and write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rm -f /tmp/im_admit.bak /tmp/im_spec.bak; git --no-pager diff 6a31083cd --s
+
+[THINKING] The build completed successfully with the kernel image and benchmarks compiled. Now I'm documenting the exact errors for the guidance response.
+[RESULT ✓] bash: === admits ===
+534:    proof! { admit(); }
+632:    proof! { admit(); }
+719:    proof! { admit(); }
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_001_fixer.md with 9191 characters
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Let me do a final confirmation that the repository is in the clean passing state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== files identical to pristine pre-task (6a31083cd)? ==="; git --no-
+[RESULT ✓] bash: === files identical to pristine pre-task (6a31083cd)? ===
+(empty = identical)
+=== admits present (documented) ===
+3
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+All three module files are byte-identical to the pristine pre-task state; the repo verifies and builds cleanly.
+
+## Response summary
+
+The reviewer asked me to remove all 3 `admit()`s and prove the contracts. I **tried** all suggested approaches and captured exact errors rather than just justifying.
+
+**What I attempted (real code changes, not justification):**
+1. `use_type_invariant(pde_idx/pte_idx)` to discharge the `read` index preconditions → `error: Verus Internal Error: missing type invariant function` (TableIndex's invariant isn't usable cross-crate).
+2. Plain admit removal → `6 verified, 3 errors`: `bump_view(self).inv()` precondition (line 549), `mapped.contains` postcondition (618), read-index preconditions (534/631), `accessible` postconditions (706).
+3. **Made `identity_map_view()` concrete** (`{initialized:false, mapped:empty}`) and removed admits → still 3 errors, decisively showing the impossibility: a concrete view makes `Ok => mapped.contains` false (empty set) **and** `Err => !accessible` false (accessible always true). The result-dependent postcondition pairs over a single fixed view are **logically unprovable**.
+
+**Result: NEEDS_GUIDANCE.** The blockers are three out-of-scope dependency facts (uninterp `bump_view().inv()` over a module static; the deliberately-empty/unsound-to-strengthen `Table::write` contents postcondition in out-of-scope `table.rs`; cross-crate TableIndex invariant). `admit=0` and `Exit code: 0` are not simultaneously achievable without the cross-module proving-phase ghost-token framework or forbidden contract/signature changes.
+
+**Repo state:** restored byte-identical to pristine — `make verify-kernel` → 76 verified, 0 errors, exit 0; `make all` builds successfully. Full reproduction written to `turn_001_fixer.md` and `verification_todo.md`.
+
+
+=== Session End ===
+Session: 8479c69d-e2de-4c1e-abc2-5ca2060868ef
+Duration: 450.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue-fixer-t001-claude-20260615-031923.jsonl
