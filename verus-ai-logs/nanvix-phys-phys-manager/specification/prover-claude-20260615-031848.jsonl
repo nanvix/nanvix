@@ -2306,3 +2306,4 @@
 {"type":"session.background_tasks_changed","data":{},"id":"d114de09-bf11-47b8-9638-b472103c60d5","timestamp":"2026-06-14T19:47:12.732Z","parentId":"a2779303-caa6-4c11-b957-6edeb3fd5019","ephemeral":true}
 {"type":"session.background_tasks_changed","data":{},"id":"ee72f328-1bc8-417d-80e9-54ba25e86f88","timestamp":"2026-06-14T19:47:12.732Z","parentId":"a2779303-caa6-4c11-b957-6edeb3fd5019","ephemeral":true}
 {"type":"session.background_tasks_changed","data":{},"id":"2922a76e-2297-4664-9ea5-cdd613ee8dc8","timestamp":"2026-06-14T19:47:12.738Z","parentId":"a2779303-caa6-4c11-b957-6edeb3fd5019","ephemeral":true}
+{"type":"tool.execution_partial_result","data":{"toolCallId":"toolu_01W9mEiMe9F2hJ5b9gd4i2xt","partialOutput":"=== exit/summary lines ===\n"},"id":"e69e907b-c7c9-487a-a6ea-3e4807034969","timestamp":"2026-06-14T19:47:19.466Z","parentId":"a2779303-caa6-4c11-b957-6edeb3fd5019","ephemeral":true}
