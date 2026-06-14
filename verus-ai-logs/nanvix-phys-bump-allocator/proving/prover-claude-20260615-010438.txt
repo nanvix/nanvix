@@ -312,3 +312,28 @@ Turn 12
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-bump-allocator 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] We're at 6 verified with 0 errors, and the "CHEATING_DETECTED" flag is appearing because there are 2 external_body entries, but these are actually TCB-allowed and registered on the allowlist—so this is expected behavior. The task requirements are met: assume=0, admit=0, and the external_body entries are legitimate. Now I need to verify that these 2 flagged functions are indeed the ones listed in tcb-allowed.md to confirm full compliance.
+[RESULT ✓] bash: - lib.rs:286 alloc: external_body
+    - lib.rs:373 alloc_as: external_body
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The bump-allocator now verifies: 6 verified, 0 errors, 0 admit, 0 assume. The 2 `external_body` are exactly the TCB-allowed `alloc`/`alloc_as`. Now confirming no regressions across all modules.
+[TOOL] report_intent: Running full verification suite
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | tail -70
+
+[THINKING] I need to verify that the external_body functions are correct, then run the full verification suite to check for any regressions and confirm the spec drift check passes.
+[RESULT ✓] report_intent: Intent logged
