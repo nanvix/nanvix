@@ -1122,3 +1122,46 @@ Turn 64
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | grep -E "verify-kernel|kernel.*admit|^make|Error " | t
 
 [THINKING] I'm checking the full output from `make verify` to see the overall summary and specifically what the kernel crate shows, since all the individual modules are passing with exit code 0.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel  --log-dir verus-ai-logs/verify-kernel
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+Log written to: verus-ai-log...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+All crates pass `make verify` with exit 0 (0 errors). Manager admits reduced 7→4. Let me finalize tracking.
+[TOOL] sql: {'description': 'Finalize todos', 'query': "UPDATE todos SET status='done' WHERE
+
+[THINKING] All the target functions are verifying successfully with zero errors, and I've reduced the admits in manager.proof.rs from 7 down to 4. The remaining admits are well-documented as irreducible trust boundaries—three related to ghost-token attachment and one concerning Drop semantics.
+
+The full verification passes with exit 0, no specs were weakened, and only the two TCB-listed external_body functions were added. I've hit the sound floor for this module given the architectural constraints around the frame layer and Verus's Drop model, so attempting to push further would require either unsound axioms or out-of-scope changes. Let me finalize the summary and update the task status.
+[RESULT ✓] sql: 3 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+## Done — `make verify` passes with 0 errors
+
+**Result:** Full `make verify` (all crates) exits 0 with **0 verification errors, 0 warnings**. Manager `admit()` count reduced **7 → 4**.
+
+**Discharged (3 admits eliminated):**
+- `lemma_free_count_bounded` — removed by binding `let available = frame::free_count()` before the overflow check (usize result gives the bound for free).
+- `lemma_kernel_bulk_err_restored` — dead code (0 call sites), deleted.
+- `lemma_user_bulk_ok` — replaced with a real inductive loop-invariant proof (new helpers: `user_bulk_inv`, `lemma_user_bulk_base/step`, `lemma_user_addr_set_empty/push`, `lemma_book_all_empty/alloc_one`). This path is provable because `Upool::alloc` exposes a `&mut self` transition spec.
+
+**4 remaining admits — irreducible within module scope** (documented in `bugs.md`, classified record-only, NOT code bugs):
+1. `lemma_manager_attached` — `m@` (closed `upool@`) vs `phys_view()` (constant `uninterp`); no in-scope axiom links them (§8 ghost-token attachment lives in the out-of-scope `frame` layer).
+2. `lemma_kernel_alloc_one` / `lemma_kernel_alloc_contiguous` — `frame::alloc*` are free functions and `phys_view()` is constant, so a pre→post transition is *inexpressible* (asserting one would force `pre==post`). Needs a versioned ghost token threaded through `frame.rs` (out of scope).
+3. `lemma_user_bulk_err_restored` — relies on `frames.clear()` Drop side effects on `self@`, which Verus does not model.
+
+No specs were weakened; only the two TCB-listed `external_body` additions (`init`, `kernel_watermark`) were used. Pushing the remaining 4 lower would require unsound axioms or out-of-scope edits to `frame.rs`/`phys_view()`, both prohibited by the task constraints.
+
+[THINKING] The update executed successfully and modified the three rows as expected. Now I'll wrap up with a summary for the user.
+
+
+=== Session End ===
+Session: 86962c29-5e4d-4c99-aa95-48b430065c1f
+Duration: 1450.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/proving/prover-claude-20260615-014741.jsonl
