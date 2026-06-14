@@ -134,3 +134,9 @@ Module: arch-x86-pte
 [2026-06-15 01:17:58] ✅ proving: PASS (0/0)
 [2026-06-15 01:17:58] [GATE] Running build: make build
 [2026-06-15 01:17:58] [GATE] Running verify: make verify
+[2026-06-15 01:18:10] [GATE] ✅ Build + Verify passed after proving
+
+============================================================
+PHASE: cheating-elimination
+Module: arch-x86-pte
+============================================================
