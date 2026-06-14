@@ -11,7 +11,6 @@
     - mm/phys/frame.rs:689 init: external_body
     - mm/phys/frame.rs:751 alloc: admit
     - mm/phys/frame.rs:795 alloc_contiguous: admit
-    - mm/phys/frame.rs:824 free_count: admit
     - mm/phys/frame.rs:848 free: admit
     - mm/phys/frame.rs:893 book: admit
     - mm/phys/frame.rs:918 alloc_range: admit

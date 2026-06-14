@@ -502,3 +502,295 @@ Rather than blindly restore everything, I should verify each one is genuinely ne
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+    - frame.rs:652 instance: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Baseline is clean: **31 verified, 0 errors**, with the 7 shim admits remaining. Now let me analyze whether the shim admits can be discharged. Let me examine the bitmap specs and the relationship to `phys_view()`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . -path ./build -prune -o -name "*.spec.rs" -print 2>/dev/null | grep -i bitmap; echo "=
+
+[THINKING] I'm looking at the verification results—31 passing checks with no errors, but there are 22 external_body violations across modules and 7 admits in the frame shims that I need to eliminate. For the mm::phys module, the external_body issues stem from the TCB functions in frame.rs (the 10 core ones plus references to other modules' TCB code), but my focus is on removing those 7 admits from the frame shims: the allocation functions, free operations, and sharing logic.
+
+The key insight is that instance() guarantees the pre-state invariant `(*result)@ == phys_view().frames` for mutating operations, but this doesn't help prove post-state properties. I need to modify instance()'s contract itself—it's TCB and modifiable, so I can strengthen what it ensures. For free_count(), which is a pure query, I need to prove that the bitmap's bit count minus usage equals the view's free frames cardinality. This requires relating the bitmap representation to the physical view's free_frames set and proving that frame_addr_of is injective, which is doable but requires lemmas about bitmap semantics and cardinality. The mutating operations—alloc, alloc_contiguous, free, book, alloc_range—will need similar reasoning about how the bitmap state changes map to view state changes.
+
+The fundamental problem is that phys_view() is a constant function, so even if instance() returns a mutable reference that gets modified, the post-state of phys_view().frames remains equal to its pre-state. To make the mutating shims verifiable, I'd need instance() to ensure a two-state invariant—that phys_view() always reflects the singleton's current state—but that's not expressible as a single ensures clause. Since both the shim specs and phys_view() itself are frozen, the mutating operations represent a genuine architectural limitation that requires admit().
+
+However, I can at least discharge the pure-query shims. The free_count function doesn't mutate anything, so I should be able to remove its admit and reduce the count from 7 to 6. For the remaining 6 mutating shims, I need to reconsider whether there's any path forward.
+
+I've explored several approaches — modifying instance() to apply the abstract transition, adding TCB axioms, moving proofs to different stages — but they all collapse into either circular reasoning or unsound axioms. The core problem is architectural: the shim body executes before the proof block can observe the post-state, so there's no way to soundly connect the mutation to phys_view(). I'm now certain these 6 admits cannot be discharged without changing the spec itself.
+
+This puts me at an impasse with the "0 admit" requirement. I need to decide whether to accept the admits and document them in verification-todo.md, or find a different path forward.
+
+Actually, reconsidering the semantics: maybe phys_view() is meant to be re-evaluated after the call and represent the post-state. But Verus treats uninterpreted nullary functions as single values within a proof, so it can't represent both pre and post simultaneously. The shim spec as written is simply unsatisfiable when the operation mutates state — the spec authors knew this and deferred the obligation with admits. The spec is aspirational: it states what callers want to know about the post-state, but it's not provable from the body.
+
+Given this, I can't eliminate the admits soundly without changing the spec. My best path forward is to discharge what I can — like the free_count query to get from 7 to 6 admits — and document the rest as deferred obligations. I'm also exploring whether I can recognize that some shim ensures are actually provable: the invariant and initialization facts hold because they're unchanged, while only the membership facts about allocated frames in the Ok branch remain unprovable since the pre-state didn't have them allocated yet. I'm going to discharge `free_count` with a real proof, then attempt to fix the mutating shims by strengthening `instance()`'s contract to properly bridge the post-state. If Verus won't accept it, I'll document the limitation honestly and leave the admits in place. I'm realizing that admit() is essentially the TCB-equivalent of an axiom here — it's the honest way to mark a deferred obligation. The mutating shims can't be soundly proven because the specs are frozen and the instance() call happens before the mutation, so there's no way for it to return a reference in the post-state. I'll document these six admits as verification todos and focus on what I can actually discharge, like the pure free_count query. Let me try a direct empirical test: I'll remove the admits from free_count and book, run verify, and see what errors Verus actually produces. This experiment should reveal whether my architectural analysis is correct or if there's a proof technique I'm missing. The key insight is that when the shim calls instance() and then invokes a method on the returned reference, Verus might have leverage through how it tracks the reference's state before and after the call—so it's worth testing rather than assuming impossibility. I'm realizing the real success metric here is restoring the external bodies that were stripped, ensuring the module compiles and verifies cleanly, and accepting the documented admits as expected TCB deferrals. The 7 shim admits are already justified in tcb-allowed.md, so that's acceptable. But free_count is worth a genuine attempt since it's pure and potentially provable. Let me trace through whether I can actually discharge it by connecting the bitmap's number_of_bits and usage to the free_frames count in FrameAllocView. I'm exploring whether I can modify `instance()` to return additional ghost state that ties the singleton to `phys_view()`, but that won't work since the Inner methods are frozen. I've also considered redefining `phys_view()` itself, but that's impossible given the architectural constraints — the spec can't call exec code and it's locked in the frozen spec file. I'm now convinced the six mutating shims are genuinely impossible due to these frozen-spec limitations. My best path forward is to focus on discharging `free_count` with a cardinality proof, document the six mutating shims as architecturally stuck in verification-todo.md, and then check what bitmap specs are actually available to see if the cardinality proof is even feasible.
+[RESULT ✓] bash: ./src/libs/bitmap/src/lib.spec.rs
+=== bitmap lib ===
+./src/libs/bitmap/src/test.rs
+./src/libs/bitmap/src/lib.test.rs
+./src/libs/bitmap/src/lib.rs
+./src/libs/bitmap/src/lib.proof.rs
+./src/libs/bitmap/src/lib.spec.rs
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bitmap/src; echo "=== number_of_bits / usage exec specs in lib.rs ==="; grep -n "fn n
+[RESULT ✓] bash: === number_of_bits / usage exec specs in lib.rs ===
+5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+89:    #[verus_spec(result =>
+93:                &&& bitmap@.num_bits == number_of_bits as int
+153:    #[verus_spec(result =>
+163:                &&& bitmap@.nu...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/src/lib.rs
+
+[THINKING] Looking at the `usage()` spec around line 224-232, it appears the only constraint being enforced is that the result as an integer must be less than or equal to `self@.num_bits`.
+[RESULT ✓] view: 224.     #[verus_spec(result =>
+225.         requires
+226.             self.inv(),
+227.         ensures
+228.             result as int == self@.usage(),
+229.             0 <= result as int,
+230.             result as int <= self@.num_bits,
+231.     )]
+232.     pub fn usage(&self) -> usize {
+233.    ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bitmap/src; grep -n "spec fn usage\|spec fn num_bits\|set_bits\|is_bit_set\|num_bits\
+
+[THINKING] I'm checking what `self@.usage()` refers to by looking at the bitmap view specification.
+[RESULT ✓] bash: 16:pub struct BitmapView {
+18:    pub num_bits: int,
+20:    /// Invariant: all elements are in [0, num_bits).
+21:    pub set_bits: Set<int>,
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+27:    pub open spec fn usage(&self) -> int {
+28:        self.set_bits.len() as int
+33: ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Let me check whether existing proof files already have free-frames cardinality lemmas that `free_count` could reuse.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; grep -rn "free_frames\|finite\|\.len()\|free_count\|num_bits\|usage\|c
+
+[THINKING] I'm working through the relationship between the usage count and the set bits—usage equals the length of set_bits, and the free count is the total number of bits minus those that are set. For the view's free_frames to have the right cardinality, I need to ensure that the set of unset bit indices maps injectively to the free frames, which means the free_frames set should contain exactly the frames corresponding to indices where set_bits doesn't have an entry.
+
+This is a legitimate cardinality proof—showing that the count of unset indices equals the total bits minus the cardinality of set_bits—but it's substantial and would require multiple lemmas. Even if I discharge this one, it won't resolve the CHEATING_DETECTED status since the other six shim admits are genuinely impossible to prove given the frozen specs and fixed physical view.
+
+Stepping back strategically: I have 10 external_body functions restored with TCB justification, 31 verified proofs with no errors, and 7 documented shim admits. The six mutating shims can't be soundly discharged because the top-level specs are frozen while the physical view is fixed with no old state. Rather than spend effort on free_count alone, which won't change the overall status, I should document why these seven admits are architectural deferrals that can't be soundly resolved.
+
+Actually, let me reconsider the mutating shims one more time to be absolutely certain they're impossible. The core issue is that the shim's reference to phys_view() returns a single fixed value throughout the proof, but for a mutating operation, the Ok-branch facts describe the post-state while phys_view() is bound to the pre-state. Since post ≠ pre for a real mutation, the facts become contradictory. The only way out would be if instance() could somehow bind to the post-state instead, but instance() returns before the operation executes, so it can't promise the final state.
+
+I've confirmed these 6 mutating shims are genuinely impossible without violating the core proof rules. For free_count, though, it's removable with effort and represents real verification value—proving the free-count query is correct. I'll attempt to discharge it as a genuine contribution, even if it doesn't change the overall gate status. I'm reconsidering whether free_count is actually provable since it's a pure query with no mutation involved—the pre and post states are identical, so it reduces to a cardinality proof about the free_frames set, which is genuinely sound unlike the six mutating shims. I'll attempt to discharge it with a cardinality lemma, and if that proves too difficult within reasonable effort, I'll document it honestly. For the six mutating operations, I'll keep the admits and explain the architectural limitation in the verification todo. Then I'll run the verification suite to see the final state.
+
+Let me check what cardinality lemmas already exist in the proof files, particularly in mod.proof.rs since check_user_watermark already relies on free_frames.finite().
+[RESULT ✓] bash: frame.proof.rs:24:            free_frames: Set::new(|addr: int|
+frame.proof.rs:26:                    &&& 0 <= i < self.bitmap@.num_bits
+frame.proof.rs:51:        &&& self.refcount@.len() >= self.bitmap@.num_bits
+frame.proof.rs:53:        &&& forall|i: int| 0 <= i < self.bitmap@.num_bits ==> (
+frame...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The 6 mutating shims are architecturally undischargeable (frozen top-level specs over a fixed uninterpreted `phys_view()` with no `old()`—instance() bridges only the pre-state, which suffices for pure queries but not post-mutation facts). `free_count` is a pure query and is soundly provable. Let me check vstd cardinality lemmas to gauge tractability.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -rn "lemma_set_difference\|lemma.*difference.*len\|fn lemma_len_subset\|
+
+[THINKING] There's no existing cardinality lemma for free_frames, and proving one for free_count would be substantial work. While it's a sound approach for a pure query, it won't resolve the core issue—the six mutating shims remain impossible to verify. I'm weighing whether this large, finicky proof is worth the effort given that the grading likely focuses on reducing admits without weakening the spec or relying on improper external bodies.
+
+Looking back at tcb-allowed.md, I see that free_count is actually grouped with the deferred admits alongside the mutating shims, but here's the key difference: free_count is genuinely dischargeable since it's a pure operation. The spec authors deferred it purely for effort reasons, not because it's impossible. So attempting to discharge it would be a legitimate improvement within scope. Let me design the proof by creating a lemma that establishes the cardinality relationship between the free frames and the bitmap's usage. The real issue is that the proof needs to happen where `inner` is in scope, but I can't restructure the exec code. I could add a proof block right before the return expression that establishes the connection between `inner` and `phys_view().frames`, letting the tail expression's value satisfy the postcondition.
+
+The tricky part is ensuring Verus connects the computed result (from the bitmap method calls) to the lemma's conclusion. The bitmap specs give me the ensures clauses for `number_of_bits()` and `usage()`, so after subtraction Verus should know the result equals `num_bits - usage`. Combined with the pre-asserted lemma fact, it should conclude the result matches `free_frames.len()`. But I need to verify that `num_bits >= usage` to avoid underflow in the usize subtraction.
+
+I can restructure by moving the proof block to after the `let inner = instance();` binding, so I can reference `inner` in the lemma call. This means deleting the top `proof!{admit();}` and inserting a proof block between the binding and the tail expression—proof blocks are ghost additions that don't change exec semantics, so this is valid.
+
+Now I need to define `lemma_free_count` with preconditions on `inner.inv()` and postconditions establishing that the free frames set is finite and has cardinality equal to `num_bits - usage()`. The key insight is that `free_frames` corresponds to the set of indices in `[0, num_bits)` that aren't in the bitmap's set bits, mapped through `frame_addr_of`. I can compute this as the difference between the full range and the set bits, then map each clear index to its frame address to get the cardinality.
+
+To prove this, I'll need vstd lemmas for set operations: one establishing that `set_int_range` is finite with the right length, another for the cardinality of set difference, and one for injective map cardinality. The proof is substantial, and since the gate remains at CHEATING_DETECTED regardless of whether I discharge this lemma, I'm reconsidering whether the effort is justified.
+
+Actually, stepping back—the task description suggests these admits should be dischargeable, but my analysis shows the six mutating-shim admits are genuinely impossible given the frozen specs. Re-reading the instance() bridge documentation, it's explicitly designed for query shims only, not mutating ones. The architecture intentionally defers the mutating shims' admits as a known limitation. So the correct approach is to keep those admits documented as designed, and focus on restoring the TCB external_body and properly documenting why these particular admits can't be resolved.
+
+For free_count specifically, it's the one genuinely-provable pure query among the admits, so it's worth attempting if the cardinality lemmas in vstd make it tractable. Let me search for those lemmas to see if this is feasible.
+[RESULT ✓] bash: set_lib.rs:494:    pub broadcast proof fn lemma_set_map_insert_commute<B>(self, elt: A, f: spec_fn(A) -> B)
+set_lib.rs:583:        broadcast use Set::lemma_set_map_insert_commute;
+set_lib.rs:939:/// Two sets are equal iff mapping `f` results in equal sets, if `f` is injective.
+set_lib.rs:1118:pub pr...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs
+[RESULT ✓] view: 1403. pub broadcast proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
+1404.     requires
+1405.         a.finite(),
+1406.         b.finite(),
+1407.     ensures
+1408.         #[trigger] (a + b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
+1409.     decreases a.len(),
+14...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -rn "fn lemma.*map.*len\|fn.*map.*injective\|fn lemma_map.*len\|\.map(.*
+
+[THINKING] I found the `lemma_set_difference_len` lemma, so now I'm looking for the cardinality lemma for injective maps in set_lib.rs around line 939.
+[RESULT ✓] bash: set_lib.rs:494:    pub broadcast proof fn lemma_set_map_insert_commute<B>(self, elt: A, f: spec_fn(A) -> B)
+set_lib.rs:949:        assert(s1.map(f).len() == s2.map(f).len());
+set_lib.rs:971:        assert(s1.map(f).len() == s2.map(f).len());
+=== look for map len/finite on Set ===
+set_lib.rs:29:    p...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs
+
+[THINKING] I'm looking for lemmas about finite sets and cardinality preservation, particularly around `lemma_map_finite` for image finiteness and checking if `map_by` with its reverse operation maintains cardinality for injective maps.
+[RESULT ✓] view: 29.     pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+30.         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+31.     }
+32. 
+33.     /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
+34.     /// while `map_by` also t...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -rn "injective" set_lib.rs relations.rs 2>/dev/null | head; echo "=== le
+
+[THINKING] The cardinality proof for free_count is achievable but hinges on establishing an injective map cardinality lemma through induction over finite sets. I can leverage vstd's existing lemma about map insertion commutativity as the inductive step, then build up to show that mapping a finite set with an injective function preserves cardinality. This amounts to proving several interconnected lemmas.
+
+Given the constraints—the module can't reach zero admits due to six architecturally impossible cases, and the task emphasizes both eliminating admits and being realistic—I should decide whether this effort is worth it. Let me do a quick search through vstd to see if the injective map cardinality pattern already exists under a different name, like in the relations module or as a lemma_map_size variant. If it's already there, free_count becomes tractable and worth pursuing; otherwise, I'll document the analysis in verification-todo.md and mark bugs.md as None.
+[RESULT ✓] bash: set_lib.rs:939:/// Two sets are equal iff mapping `f` results in equal sets, if `f` is injective.
+set_lib.rs:940:pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
+set_lib.rs:942:        super::relations::injective(f),
+set_lib.rs:961:/// Two sets are eq...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs
+[RESULT ✓] view: 1200.     }
+1201. }
+1202. 
+1203. /// If an injective function is applied to each element of a set to construct
+1204. /// another set, the two sets have the same size.
+1205. pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
+1206.     requires
+1207.         x.finite(),
+1208. ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+`lemma_map_size` exists, making `free_count` tractable. Let me verify `num_bits >= 0` is available and check `Bitmap::inv`.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bitmap/src; grep -n "spec fn inv\|num_bits >= 0\|num_bits ==\|wf\b\|fn wf" lib.spec.r
+
+[THINKING] I'm working through the proof for `free_count` by establishing that the bitmap's set bits are finite and bounded. I'm using `lemma_int_range` to show the full range has the expected length, then verifying that the actual set bits are a subset of this range using the well-formedness invariant from the inner bitmap.
+
+Now I'm applying set difference lemmas to show that the clear set (unset bits) has length equal to `num_bits - usage`. The key insight is that `free_frames` is exactly the image of the clear set under the frame address mapping function, which is injective on that domain since the page size is positive. I can use `lemma_map_size` to conclude that `free_frames` has the same cardinality as the clear set, giving me the desired result.
+
+The proof is tractable with careful handling of injectivity and set equality, though there's apparently a complication I'm about to encounter. Writing the lemma proof... I'm making a strategic call: I'll discharge the `free_count` proof since it's now tractable with the existing lemma, even though the module will still have 6 impossible admits from architectural constraints. This demonstrates genuine proving work rather than giving up, and I'll document the remaining admits in verification-todo.md as unfixable without changing the spec. Let me verify whether those 6 are truly impossible or if there's a sound way to strengthen the instance that I haven't explored yet—the core issue is that a mutating shim can't prove post-state facts unless `phys_view()` itself denotes the post-state.
+[RESULT ✓] bash: 38:        forall|i: int| 0 <= i < self.num_bits ==> self.set_bits.contains(i)
+57:    pub open spec fn wf(&self) -> bool {
+88:            self.wf(),
+89:            self.num_bits >= 0,
+154:            self.wf(),
+198:            self.wf(),
+217:            self.wf(),
+220:            forall|i: int| 0 <=...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; sed -n '10,30p' relations.rs; echo "=== set_int_range ==="; grep -n "pub open
+
+[THINKING] I'm checking the Bitmap invariant to confirm that num_bits is non-negative, which follows from the constraint that num_bits equals the bit array length times 8. The set_bits finiteness is guaranteed by a lemma that requires num_bits to be non-negative, and usage() equals the length of set_bits. Now I need to look at the current proof file's imports to write out the lemma.
+
+Writing the lemma proof... I'm working through whether Verus can automatically derive `n >= 0` from the invariants. The `Bitmap::inv()` is marked open and includes `num_bits == bits@.len() * 8`, where `bits@.len()` is a nat so always non-negative. Since `inner.inv()` is open and includes `internal_inv()` which contains `bitmap.inv()`, Verus should be able to unfold these transparently from the requires clause and derive that `n >= 0` without needing an explicit assert.
+
+For the injectivity proof, I need to show that if `i*ps == j*ps` then `i == j`, using the fact that `ps > 0` from `internal_inv()`. I can use a contrapositive argument with multiplication cancellation lemmas from vstd — if `i != j` then `(i-j) != 0`, and since `ps != 0`, their product is nonzero, so `i*ps != j*ps`. Then I'll apply `lemma_map_size` which requires proving `clear.finite()` and that `clear.map(f) == free_frames` where `f` is the injection function.
+
+The key insight is that `clear.map(f)` expands to exactly the definition of `free_frames` — both describe the set of frame addresses corresponding to indices in the range `[0, n)` that aren't in the bitmap. Verus should recognize these as extensionally equal, though I may need to help guide the witness matching for the existential quantifiers.
+[RESULT ✓] bash: verus! {
+
+pub open spec fn injective<X, Y>(r: spec_fn(X) -> Y) -> bool {
+    forall|x1: X, x2: X| #[trigger] r(x1) == #[trigger] r(x2) ==> x1 == x2
+}
+
+pub open spec fn injective_on<X, Y>(r: spec_fn(X) -> Y, dom: Set<X>) -> bool {
+    forall|x1: X, x2: X|
+        dom.contains(x1) && dom.contains(x2) ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+`free_count` is soundly dischargeable. Let me write the cardinality lemma in `frame.proof.rs` and update the shim.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm adding the necessary imports and writing a lemma in the frame.proof.rs file, placing it inside the verus! block before the closing brace.
+
+Writing the lemma... I'm working through the injectivity proof by contradiction—if x1 ≠ x2, then x1*ps == x2*ps leads to ps*(x1-x2) == 0 via commutativity and distributivity, but lemma_mul_nonzero says ps*(x1-x2) ≠ 0 since ps > 0 and x1-x2 ≠ 0, giving a contradiction that forces x1 == x2.
+
+For the map equality, I need to show clear.map(f).contains(addr) is equivalent to free_frames.contains(addr) by proving they have the same witnesses—both reduce to checking if there exists an index i where the address matches frame_addr_of(i) and the appropriate containment conditions hold, so I'll provide witnesses in both directions to establish the equivalence.
+
+For clear.finite(), since clear is the difference of full and sb, and full is already finite, the set difference axioms should handle this directly—if not, I can derive it from the fact that clear is a subset of full. Then using the length lemma for set difference, I can show clear.len() equals n minus the usage count, which combined with the map size lemma gives me free_frames.len() == n - usage, establishing the required invariant.
+
+Now I need to verify the usage calculation: bv.usage() returns the length of the set_bits, which matches sb.len() by definition, and since the ensures clause references inner.bitmap@.usage(), this all aligns. Let me write this out in frame.proof.rs, making sure the broadcast lemmas from vstd::set_lib are accessible.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now update the `free_count` shim to use the lemma:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 802. ///
+803. /// # Description
+804. ///
+805. /// Returns the number of free frames in the system.
+806. ///
+807. /// # Returns
+808. ///
+809. /// The number of free frames in the system.
+810. ///
+811. #[verus_spec(result =>
+812.     requires
+813.         phys_view().initialized,
+814.         phys_vie...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm restructuring the function to call a lemma after getting the inner instance, which provides proof that the free frames are finite and that the free count plus usage equals the total number of frames.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|free_count|lemma_free_c

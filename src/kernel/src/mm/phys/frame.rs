@@ -822,10 +822,10 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
         result as int == phys_view().frames.free_frames.len(),
 )]
 pub(super) fn free_count() -> usize {
-    proof! {
-        admit();
-    }
     let inner = instance();
+    proof! {
+        lemma_free_count(inner);
+    }
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 
