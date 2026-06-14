@@ -373,3 +373,48 @@ fn_coverage.py: error: the following arguments are required: verus_exec_file
 
 **✅ No contract drift detected.**
 <shellId: 8 complet...
+[RESULT ✓] bash: - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification passed (exit 0), spec drift clean. Let me confirm upool-specific cheating counts from the detail file, and run the broader `make verify` + `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== upool entries in cheating-detail ===" && grep -i "upool" verus-ai-logs/veri
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -
+
+[THINKING] The verification passed with no spec drift, but I need to run the function coverage check with the proper arguments. Looking at the output from the kernel verification, I can see that 40 out of 45 exec functions have contracts, and the unverified ones (clear, deref, deref_mut, get_mut, test) are actually in other modules like kframe, not in upool. Let me verify that all the upool functions themselves have proper contracts, though it looks like this coverage report is actually module-wide across mm::phys.
+
+Now I'm checking the cheating metrics more carefully — the module shows admit=24, external_body=17, cfg_gate=15 across the entire mm::phys module, but I need to focus on just the upool scope. For upool specifically, it appears admit and assume are both zero, with only 2 external_body uses that are in the tcb-allowed list, and I need to verify the cfg_gate count for that logging line at 205.
+[RESULT ✓] bash: === upool entries in cheating-detail ===
+    - mm/phys/upool.rs:251 new: external_body
+    - mm/phys/upool.rs:289 alloc: external_body
+=== cfg_gate entries (all) ===
+<shellId: 10 completed with exit code 1>
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+upool-specific: external_body=2 (both TCB-listed), 0 admit/assume/cfg_gate. Now running full regression + build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -50
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make build 2>&1 | tail -30
+
+[THINKING] The upool cheating detail only shows the two external_body entries without cfg_gate, admit, or upool-specific assumptions, which is correct since cfg_gate=15 is module-wide. Now I'm verifying that all eight in-scope functions have the #[verus_spec] annotation—I've already confirmed this for UserFrame's new and address methods.
+
+All remaining functions (leak, share, refcount, drop, and Upool::new and Upool::alloc) also have verus_spec, so the full set of eight functions are covered. Now I need to run make verify for the full cross-module regression and make build, which will take some time. I'll start both in parallel.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
