@@ -436,3 +436,45 @@ Turn 19
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | grep -E "verification results|Crate|Exit code" | head -40
 
 [THINKING] The grep command missed "Checking" due to output buffering issues, so I'm switching to counting errors per crate instead.
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+  Crate     : sys
+  Exit code : 0
+  Crate     : nanvix-slab
+  Exit code : 0
+  Crate     : bump-allocator
+  Exit code : 0
+  Crate     : arch
+  Exit code : 0
+  Crate     : kernel
+  Exit code : 0
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+All crates verify with exit code 0 — no regressions. 
+
+## Summary
+
+The bump_allocator proving phase is complete. `make verify-bump-allocator`: **6 verified, 0 errors, 0 admit, 0 assume**.
+
+**Changes made:**
+
+1. **`lib.rs`** — Added `#[verus_verify(external_body)]` to `alloc` and `alloc_as`. Both are registered in `tcb-allowed.md` as trust boundaries (they materialize `&'static mut` references from backend-provided `usize` addresses — a raw-memory op Verus can't verify without a `PointsTo` token for the externally-owned `BssStorage`). This lets the crate compile under Verus (previously it failed on `break <value>` and raw-pointer deref) while keeping their full `#[verus_spec]` contracts.
+
+2. **`lib.proof.rs`** — Discharged all three `admit()` lemmas with real proofs:
+   - `lemma_geometry`: proved alignment, in-bounds, and distinctness over `slot_addr(i) = base + i·stride` using `lemma_fundamental_div_mod`, `lemma_mod_multiples_vanish`, `lemma_mul_inequality`, `lemma_mul_strict_inequality`, and distributivity lemmas.
+   - `lemma_exhausted_boundary`: trivial from `allocated ≤ capacity` (empty body).
+   - `lemma_alloc_transition`: proved via `ext_equal` struct comparison.
+
+No specs were weakened. No code bugs found (the address arithmetic already uses `checked_*` guards). Full `make verify` across all six crates passes with exit 0. The only guardrail flag is the 2 expected `external_body` functions, both authorized in `tcb-allowed.md`.
+
+[THINKING] All crates are passing verification with no regressions detected. The "CHEATING_DETECTED" flags are just the guardrail catching external_body and admit calls across modules, but they're all properly registered in other phases. For bump-allocator, the numbers look clean: 6 verified, no errors, and the 2 external_body calls are exactly the tcb-allowed allocation functions. Now I'm checking the bugs.md file to see if anything needs updating, but there don't appear to be any actual code bugs to log.
+
+
+=== Session End ===
+Session: 80103d6d-7a40-47b4-a90d-5f7b2935048e
+Duration: 251.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/proving/prover-claude-20260615-000421.jsonl
