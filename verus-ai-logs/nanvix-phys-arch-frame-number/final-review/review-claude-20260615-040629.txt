@@ -307,3 +307,118 @@ Actually, running concurrent builds could cause lock contention on the same arti
 src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
 src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
 exit...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | 
+
+[THINKING] The verification shows the number module is clean with no admits, assumes, external bodies, or cfg-gated execution code—just standard includes for spec and proof files. The three external body references are all architecture-wide and already documented in tcb-allowed.md, so I'm confirming their locations to wrap up the check.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "invlpg" verus-ai-logs/tcb-allowed.md
+
+[THINKING] I'm checking whether all three external_body references are architecture-wide—they appear in table.rs and paging/mod.rs with invlpg—and verifying that invlpg is listed in the tcb-allowed.md file before reviewing the rest of that document.
+[RESULT ✓] bash: 52:- `src/libs/arch/src/x86/mem/paging/mod.rs::invlpg` — the body is a single
+53:  `core::arch::asm!` block issuing the `invlpg` instruction, which flushes the CPU TLB
+64:  `pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);` (no
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Module is clean (admit=0, assume=0, external_body=0 in number.rs; the 3 arch external_body are all TCB-listed). Let me run `make build`, spec_drift, and fn_coverage, then launch the two review sub-agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===SPEC DRIFT===" && python3 /home/ruize/verus-ai-exp/verus-ai/script
+
+[THINKING] The number module checks out clean with no external bodies, assumptions, or unsafe code. I'm going to run the build and a quick spec drift check, then hand off the deeper analysis—spec quality, AST consistency, bug reconciliation, and caller coverage—to the two sub-agents.
+[RESULT ✓] bash: ===SPEC DRIFT===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+===FN COVERAGE===
+us...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/a
+
+[THINKING] The spec work is already committed, so there's no drift between the working tree and HEAD. The original upstream had no specs, and the current version adds them, so there's no weakening of requirements—just an improvement from the baseline.
+
+Now I need to check the fn_coverage function signature; it takes two arguments: the source file and the Verus executable file, which should both point to the same .rs file. Let me make sure I'm calling it correctly.
+[RESULT ✓] bash: |--------|------:|
+| Source exec fns | 4 |
+| Verus exec fns | 4 |
+| Verus spec fns | 0 |
+| Verus proof fns | 0 |
+| Matched | 4 |
+| Missing | 0 |
+| Extra | 0 |
+
+## MISSING (exec fns in source but not in verus)
+
+_None — all source exec fns are present in verus._
+
+## EXTRA (exec fns in verus but not in...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make build 2>&1 | tail -25
+
+[THINKING] All the in-scope functions have their specs defined, and the two unit tests are appropriately marked as out of scope. I'm reviewing the verification results now: the architecture check passes, there's no cheating detected with all external bodies accounted for in the TCB, no spec drift found, and I'm checking the function coverage metrics.
+
+All four functions are matched in coverage, there's nothing suspicious in the module files, no recorded bugs, and no AST rewrites to verify. Now I need to run the build and verification steps to ensure everything compiles and passes the full regression test. Let me start with the build first.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^[a-zA-Z_-]+:" Makefile 2>/dev/null | head -40
+
+[THINKING] The `make build` command isn't doing anything, so I need to figure out what the actual build target is. The project probably uses `./z build` based on the custom instructions, but the task specifically mentions `make verify-arch`. Let me check what build targets are available in the Makefile and see if `verus-arch` already handles compilation on its own.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Full regression `make verify` in background, then launch the two review sub-agents in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 3600 make verify 2>&1 | tail -60
+
+[THINKING] I see there's a `verify` target that runs all the crates plus kernel verification, while the standard build is actually `all` or `all-nanvix`. The `make build` command doesn't exist in this repo, but that's fine since the arch crate gets compiled during verify-arch anyway. I'll note that the build requirement is already satisfied by that successful compilation step. Now I'm going to run `make verify` to check everything.
+[RESULT ✓] bash: <command started in background with shellId: verify-all>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
