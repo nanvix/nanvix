@@ -10,6 +10,6 @@ verus! {
 // obligation discharged by each implementor (`E: TableEntry`) and re-exported as a broadcast
 // lemma for the read-after-write guarantee. No proof currently depends on it (it is never
 // `broadcast use`d anywhere in the crate), so the undischarged spec-phase placeholder — whose
-// body was `admit()` — is removed rather than left as cheating.
+// body was an unproven axiom — is removed rather than left as cheating.
 
 } // verus!
