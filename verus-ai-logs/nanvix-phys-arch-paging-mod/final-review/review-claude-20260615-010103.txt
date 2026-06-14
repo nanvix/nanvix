@@ -275,3 +275,481 @@ Let me start verification and launch the two review sub-agents in parallel.
 
 [THINKING] I'll start the verification build and spin up the two sub-agents to handle the work in parallel.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | 
+
+[THINKING] Verification passed, and I'm seeing 3 external_body and 4 cfg_gate across the entire arch crate, but for the mod.rs module specifically, only invlpg is marked as external_body and it's already in the tcb-allowed list. Let me check the cheating details to understand the full breakdown of these crate-wide occurrences.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). In `mod.rs`, the only `external_body` is `invlpg`, which is listed in `tcb-allowed.md`. Now launching the two independent review sub-agents.
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] Looking at the mod.rs file, I see that invlpg is the only external_body function and it's listed in tcb-allowed.md. The cfg_gate=4 references appear to be the spec and proof includes wrapped in conditional compilation directives, which are allowed as imports rather than executable code. I need to verify whether these cfg_gate locations are isolated to the mod.rs include statements or if they're also present in the actual exec code.
+
+Now I'm going to spin up two independent sub-agents to conduct parallel reviews of this module, and then I'll consolidate their findings.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I've launched both independent review sub-agents (claude-opus-4.8 and gpt-5.3-codex) and verification already passes (exit 0). I'm waiting for the sub-agents to complete before consolidating.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+I'll begin by investigating the in-scope files and reference material in parallel.
+[TOOL] report_intent: Investigating arch-paging-mod files
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] skill: spec-design
+[TOOL] skill: verus-constraints
+[TOOL] skill: ast-consistency
+[TOOL] skill: bug-reporting
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the reference material.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/verus-unsupported.md
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Script Output
+4. 
+5. Ran:
+6. 
+7. ```bash
+8. python /home/ruize/verus-ai-exp/verus-ai/scripts/find_callers_lsp.py \
+9.   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs \
+10.   --project-dir /home/ruize/nanvix-phy
+11. ...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Status / TL;DR
+4. 
+5. **No non-trivial `View` is needed for this module.**
+6. 
+7. The single in-scope function, `invlpg`, is a free-standing `unsafe fn` whose
+8. only effect is on the CPU's Translation Lookaside Buffer (TLB) — hardware ...
+[RESULT ✓] view: 1. # Verus-Unsupported Constructs — `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. This file records language/library constructs in the `paging` module (`mod.rs`)
+4. that Verus cannot translate or verify, together with the minimal reproduction and
+5. the trust-boundary mitigation used.
+6. 
+7. ## 1. Inli...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing invlpg verification
+[TOOL] glob: **/spec-design/**
+[TOOL] glob: **/verus-constraints/**
+[TOOL] glob: **/ast-consistency/**
+[TOOL] glob: **/bug-reporting/**
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/verus-unsupported.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Script Output
+4. 
+5. Ran:
+6. 
+7. ```bash
+8. python /home/ruize/verus-ai-exp/verus-ai/scripts/find_callers_lsp.py \
+9.   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs \
+10.   --project-dir /home/ruize/nanvix-phy
+11. ...
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Status / TL;DR
+4. 
+5. **No non-trivial `View` is needed for this module.**
+6. 
+7. The single in-scope function, `invlpg`, is a free-standing `unsafe fn` whose
+8. only effect is on the CPU's Translation Lookaside Buffer (TLB) — hardware ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] view: 1. # Verus-Unsupported Constructs — `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. This file records language/library constructs in the `paging` module (`mod.rs`)
+4. that Verus cannot translate or verify, together with the minimal reproduction and
+5. the trust-boundary mitigation used.
+6. 
+7. ## 1. Inli...
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now the TCB allowed list and bugs file.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] bash: ls -la /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/ && echo "---BUGS---" && cat /ho
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] bash: total 100
+drwxrwxr-x 1 ruize ruize   472 Jun 15 01:01 .
+drwxrwxr-x 1 ruize ruize  1788 Jun 14 12:07 ..
+-rw-rw-r-- 1 ruize ruize  2741 Jun 15 00:41 body_removed_source.rs
+drwxrwxr-x 1 ruize ruize   136 Jun 14 11:52 caller-analysis
+-rw-rw-r-- 1 ruize ruize  6533 Jun 14 11:54 caller_analysis.md
+drwxrwx...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+No bugs.md exists. Let me check the skills and the cheating-elimination/proving artifacts.
+[TOOL] bash: ls /home/ruize/nanvix-phy-specs-bottom-up/.github/skills/ 2>&1; echo "===VERUS-AI SKILLS==="; ls /home/ruize/verus-ai-ex
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+===VERUS-AI SKILLS===
+EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardr...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/ 2>&1
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+<shellId: 6 completed with ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: for s in spec-design verus-constraints ast-consistency bug-reporting review-methodology; do echo "===== $s ====="; cat /
+[RESULT ✓] bash: Output too large to read at once (30.9 KB). Saved to: /tmp/copilot-tool-output-1781456579160-xtlm6q.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '1,150p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] bash: ---
+name: bug-reporting
+description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+---
+
+# Bug Reporting
+
+Finding real code bugs is a high-value outcome ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me check the cheating-elimination artifacts and the verus-constraints skill cheating dimensions.
+[TOOL] bash: ls -la /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/ /home/ruiz
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/:
+total 1140
+drwxrwxr-x 1 ruize ruize    578 Jun 15 01:00 .
+drwxrwxr-x 1 ruize ruize    472 Jun 15 01:01 ..
+-rw-rw-r-- 1 ruize ruize 596870 Jun 15 01:00 cheating-fix-claude-20260615-005102.jsonl
+-rw...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/cheating_repor
+[RESULT ✓] bash: # Cheating Detection Report: mod.rs
+
+## Summary: external_body: 3 (3 on user fns), admit: 1
+
+### external_body_fn
+- mod.rs:Line 79
+- table.rs:Line 202
+- table.rs:Line 241
+
+### external_body
+- mod.rs:Line 79
+- table.rs:Line 202
+- table.rs:Line 241
+
+### admit
+- table.proof.rs:Line 12
+=====FIX REPORT==...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Gathering review evidence
+[TOOL] rg: \binvlpg\b
+[TOOL] rg: admit\s*!\s*\(
+[TOOL] rg: \bassume\s*!\s*\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: VERUS REWRITE
+[TOOL] rg: #\[cfg\(
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md:17:- Total exec functions in scope: 1 (`invlpg`, `pub`).
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md:18:- Reported `invlpg` → **0 external calle...
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:10:#[cfg(verus_keep_ghost)]
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:115:// `ExTable`/`ExTableIndex` external type specs, and the `assume_specification`s
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:153:// recorded in `verus-ai-logs/tcb-allowed.md`...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Now let me do my own grep-based cheating counts across the paging module subtree and check git state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/
+echo "=== Files ==="; ls -la *.rs
+echo; echo
+[RESULT ✓] bash: === Files ===
+-rw-rw-r-- 1 ruize ruize  8867 Jun 14 11:44 flags.rs
+-rw-rw-r-- 1 ruize ruize    21 Jun 14 11:52 mod.proof.rs
+-rw-rw-r-- 1 ruize ruize  2867 Jun 15 00:46 mod.rs
+-rw-rw-r-- 1 ruize ruize    21 Jun 14 11:52 mod.spec.rs
+-rw-rw-r-- 1 ruize ruize  1866 Jun 14 11:36 pde.proof.rs
+-rw-rw-r-- 1...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 scripts/ast_consistency.py --base-ref main src/libs/arch/src/x86/me
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: python3: can't open file '/home/ruize/nanvix-phy-specs-bottom-up/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 13 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/ast_consistency.py
+[TOOL] glob: **/*ast*consistency*.py
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[RESULT ✓] bash: ERROR: Cannot get original from git: fatal: invalid object name 'main'.
+<shellId: 14 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager branch -a && git --no-pager rev-parse --abbrev-ref HEAD && g
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove-bottom-up
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phy...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[RESULT ✓] bash: ✅ Consistent: 1 functions, 0 structs match.
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+invlpg                                   MATCH                                
+
+Cons...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me view table.proof.rs and run the verification.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -8 && echo "=== diff since proving start (proof-only?) ==
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // The `TableEntry` round-trip law — decoding a freshly-encoded entry yields it back
+4. // (`spec_entry_from_raw::<E>(spec_entry_raw(e)) == Some(e)`) — is a property of each concrete
+5. // codec, not a fact about the *uninterpreted* `spec_entry_raw` / `spec_entry_from_raw`. It is
+...
+[RESULT ✓] bash: 90565d666 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=4)
+b9d647568 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=36 external_body=12 cfg_gate=15)
+e1efa1456 [verus] verify PASS (cheating detecte...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running arch verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch
+[RESULT ✓] report_intent: Intent logged
