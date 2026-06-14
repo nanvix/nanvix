@@ -1025,3 +1025,31 @@ Turn 52
 Turn 53
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning:|book_physica
+[RESULT ✓] bash: error[E0252]: the name `LinkedList` is defined multiple times
+error[E0252]: the name `spec_page_size` is defined multiple times
+For more information about this error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+  0 verified
+  compilation/set...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Name collisions from `include!` sharing module scope. Let me remove the duplicate `use` statements.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I'm running into name collisions because `mod.spec.rs` gets included directly into `mod.rs` using `include!`, which means both files share the same module namespace. The issue is that `mod.rs` already imports `LinkedList` from `::alloc::collections`, and I'm trying to import it again in my new code block, plus `spec_page_size` is being imported in multiple places. I need to remove the redundant `LinkedList` import from my code since `mod.rs` already has it available. I need to clean up the duplicate imports: remove `LinkedList` from my new block since it's already imported at the module level, and remove `spec_page_size` from the PhysMemView block to avoid the collision. I'll also strip out the duplicate `vstd::map::*` glob import to keep things tidy.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning:|orphan|confl
+
+[THINKING] The `LinkedList` type is properly in scope through the module import, so both the specification reference and the generic type usage resolve correctly. Now I'm checking the `spec_page_size` reference in the PhysMemView block.

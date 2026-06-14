@@ -1,0 +1,57 @@
+Timestamp: 2026-06-15_02-05-13
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0117]: only traits defined in the current crate can be implemented for types defined outside of the crate
+  --> src/kernel/src/mm/phys/mod.spec.rs:74:1
+   |
+74 | impl<T, A: Allocator> View for LinkedList<T, A> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^----------------
+   |                                |
+   |                                `alloc::collections::LinkedList` is not defined in the current crate
+   |
+   = note: impl doesn't have any local type before any uncovered type parameters
+   = note: for more information see https://doc.rust-lang.org/reference/items/implementations.html#orphan-rules
+   = note: define and implement a trait or new type instead
+
+error[E0117]: only traits defined in the current crate can be implemented for types defined outside of the crate
+  --> src/kernel/src/mm/phys/mod.spec.rs:85:1
+   |
+85 | impl<T> View for Iter<'_, T> {
+   | ^^^^^^^^^^^^^^^^^-----------
+   |                  |
+   |                  `alloc::collections::linked_list::Iter` is not defined in the current crate
+   |
+   = note: impl doesn't have any local type before any uncovered type parameters
+   = note: for more information see https://doc.rust-lang.org/reference/items/implementations.html#orphan-rules
+   = note: define and implement a trait or new type instead
+
+error[E0117]: only traits defined in the current crate can be implemented for types defined outside of the crate
+   --> src/kernel/src/mm/phys/mod.spec.rs:119:1
+    |
+119 | impl<'a, T> ForLoopGhostIteratorNew for Iter<'a, T> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-----------
+    |                                         |
+    |                                         `alloc::collections::linked_list::Iter` is not defined in the current crate
+    |
+    = note: impl doesn't have any local type before any uncovered type parameters
+    = note: for more information see https://doc.rust-lang.org/reference/items/implementations.html#orphan-rules
+    = note: define and implement a trait or new type instead
+
+For more information about this error, try `rustc --explain E0117`.
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors

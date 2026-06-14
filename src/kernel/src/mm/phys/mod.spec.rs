@@ -61,7 +61,6 @@ impl FrameAllocView
 
 verus! {
 
-use ::alloc::collections::LinkedList;
 use ::alloc::collections::linked_list::Iter;
 use core::alloc::Allocator;
 use vstd::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
@@ -193,8 +192,6 @@ pub assume_specification<'a, T, A: Allocator>[ LinkedList::<T, A>::iter ](
 
 verus! {
 
-use crate::hal::mem::spec_page_size;
-use vstd::map::*;
 use vstd::set_lib::set_int_range;
 
 /// Abstract state of the global physical-memory subsystem managed by `mm::phys`.
