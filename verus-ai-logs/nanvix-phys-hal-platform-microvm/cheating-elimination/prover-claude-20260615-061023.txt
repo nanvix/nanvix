@@ -192,3 +192,125 @@ No diff vs base. Let me run verification for this module.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
 
 [THINKING] The files haven't changed compared to the base branch, so I'll proceed with running the verification.
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Module status is CLEAN. The cheating counts (external_body=11, admit=27, cfg_gate=14) appear to be crate-wide. Let me check what's in the microvm module itself.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit ===" && grep -rnE "admit\(\)" src/kernel/src/hal/platform/m
+
+[THINKING] These cheating counts are probably aggregated across the entire kernel crate rather than just this specific module. The verify-kernel output shows a CLEAN status with exit code 0, but I'm seeing external_body=11, admit=27, and cfg_gate=14 in the counts, so I need to clarify what these metrics actually represent for the task at hand.
+[RESULT ✓] bash: === admit ===
+=== assume ===
+=== external_body ===
+=== cfg gate ===
+src/kernel/src/hal/platform/microvm/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/platform/microvm/mod.rs:11:#[cfg(verus_keep_ghost)]
+done
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/platform/microvm/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The microvm module has zero cheating. The reported counts (external_body=11, admit=27, cfg_gate=14) are crate-wide totals from other modules. The two `#[cfg(verus_keep_ghost)]` gates here are the standard spec/proof include pattern, not cheating exec gates. Let me confirm by inspecting the log and verifying the counts aren't from this module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1) &
+
+[THINKING] The `#[cfg(verus_keep_ghost)]` gates are just the standard way this repo includes spec and proof modules, not a shortcut for executable code. The microvm module itself is clean with zero admits, assumes, or external_body declarations, so those cheating metrics in the summary must be coming from elsewhere. Let me verify the counts are actually crate-wide by checking the log output, since the status shows CLEAN for this module with zero cheating detected and full verification passing.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-10-53.log
+Module: hal::platform::microvm
+note: verifying module hal::platform::microvm
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1) &
+[RESULT ✓] bash: external_body=11
+  admit=27
+  cfg_gate=14
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1) &
+[RESULT ✓] bash: Timestamp: 2026-06-15_06-10-53
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::platform::microvm
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+note: verifying module hal::pla...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1) &
+[RESULT ✓] bash: --- Full output ---
+note: verifying module hal::platform::microvm
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "external_body=\|admit=\|cfg_gate\|Cheating patterns\|status: CLEA
+
+[THINKING] The verus verification completed successfully with no errors, though the output got truncated. I'm seeing cheating pattern counts from the script scan—external_body at 11, admit at 27, and cfg_gate at 14—but the module itself verified cleanly. The real question is whether these counts apply just to the specific module or across the entire crate.
+[RESULT ✓] bash: scripts/cleanup-nanvixd.sh:448:            time_wait_count=$(netstat -tan | grep -E ":${port}[[:space:]]+" | grep -c TIME_WAIT || echo 0)
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+script...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 540.     EXTERNAL_BODY_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('external_body',0))")"
+541.     ADMIT_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('admit',0))")"
+542.     TRUSTED_COUNT="...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The script treats module cheating as primary when MODULE is set. Let me re-run capturing the module-specific cheating section.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=hal::platform::microvm 2>&1 | grep -iE "module|ch
+
+[THINKING] The script output shows module cheating is the primary issue with specific counts for different cheating types, and the status came back as CLEAN. But I expected to see a module-specific message confirming no cheating was detected—the tail output I captured earlier only showed the global summary, not the module section. I should re-run this to get the full output and see the module-specific results.
