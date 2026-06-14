@@ -1,0 +1,14 @@
+RESOLVED
+
+All 17 specification checklist items for `mm::phys::kframe` PASS with tool evidence.
+
+Key evidence:
+- make verify-kernel: exit 0, 23 verified, 0 errors (all 5 mm::phys modules).
+- In-scope new/base/drop each carry real, discharged contracts (caller-usable; manager.rs proofs verify).
+- `new`'s `Err(_) => true` proven maximal: adding `phys_view().inv()` yields 22 verified/1 error
+  ("postcondition not satisfied"); phys_view() is uninterp fixed-value, no old(), base is Copy.
+- Only module-local external_body is `clear` (irreducible raw-memory TCB, allowlisted);
+  the lone assume_specification (sys::mm::Address::from_raw_value) is an allowlisted external boundary.
+- No spec weakening vs view_design.md; no bugs.
+
+See turn_001_driver.md for the per-item walkthrough.

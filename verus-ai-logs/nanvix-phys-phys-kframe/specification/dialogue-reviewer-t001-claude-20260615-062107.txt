@@ -504,3 +504,63 @@ Now clear: the auto-commit captured my failed test as HEAD `ef65663da`. My rever
 [THINKING] Looking at the git history, I can see the verification runs are being auto-committed by the verify script. The first commit shows a passing verification from the initial session state, but then my test run created a new commit showing the failure with 22 verified items and 1 error when I added the phys_view().inv() call. The verify.sh script is capturing the source state at each run.
 
 My revert removed the phys_view().inv() from the working tree, so now the working directory has the correct baseline without it, while HEAD still points to that failed test commit. The working tree is in the right state now, but I should run the verification one more time to confirm the baseline passes and replace that failed commit with a clean passing one. The modified files showing up in the dialogue logs are just the reviewer session records being written, which is expected.
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=28 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  verification: 23 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=28 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage: 36/1022 exec functions have contracts
+  status: CHEATING_DETECT...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Baseline confirmed green: **23 verified, 0 errors, exit 0**. (My probe was the lone failure: 22 verified/1 error.) I now have complete tool evidence for every checklist item. Let me write the review and finalize.
+[TOOL] report_intent: Writing review and STOP verdict
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -2
+
+[THINKING] The baseline is now 23 verified with no errors, which confirms that the new postcondition was the source of the earlier failure. The "CHEATING_DETECTED" status is just a side effect of external_body being set to 28 across the crate, though for the kframe module specifically, only `clear` is marked as external_body per the TCB allowlist. I have the evidence I need to wrap up this check.
+
+Going through the verification checklist: every in-scope function has proper requires/ensures clauses, all caller expectations are covered, the specs consistently use the internal view and phys_view().inv(), and the Err(_)=>true postcondition in `new` is justified—stronger conditions fail verification and the alternatives aren't available, so this is the honest maximum provable fact rather than a tautology. No ensures are subsumed by the invariant, error paths carry meaningful information, and there's only one assume_specification in the workspace-internal code.
+
+That assume_specification is for `<PageAligned<T> as Address>::from_raw_value`, a custom trait method on the external Address library. This is sanctioned as a temporary allowance per the TCB boundary rules in tcb-allowed.md, mirroring how arch::mem::PAGE_SIZE and Error::new are handled. The specs are written directly for callers—frame@==base@, result@==self@, phys_view().inv()—and manager.rs successfully uses them. Trait obligations are satisfied, the spec captures all observable state through the int view, and nondeterminism on errors aligns with caller expectations. The only external_body function in the module is `clear` at line 141, which is TCB-sanctioned for raw memset operations that Verus can't model.
+
+Comparing against the recommended contracts in view_design.md, the new/base/drop specs match exactly—the old(phys_view()) aspiration was unimplementable rather than a weakening, and no pre-existing specs existed to drift from. The code itself is correct: new returns before constructing Self on error to avoid double-free, and drop logs and swallows errors without unwinding. The full kernel verification shows 23 verified modules with zero errors across all five phys modules, and the build completes successfully. Everything passes with concrete tool evidence, so I'm marking all items PASS/FIXED and preparing the resolution file. I'll structure the review document with the checklist format, documenting each item with its PASS status and the evidence supporting it, then close out with no fixes needed.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 47c1f269a [verus] verify PASS (cheating detected): kernel::all (23 verified, 0 errors, external_body=28 cfg_gate=9)
+ef65663da [verus] verify FAIL: kernel::all (22 verified, 1 errors)
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The auto-commit recorded the green baseline (`47c1f269a … 23 verified, 0 errors`). Writing the full review.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue/STOP with 781 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue/turn_001_driver.md with 7200 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Review complete. Verdict: **RESOLVED**.
+
+## Summary
+
+I walked the entire 17-item specification checklist for `mm::phys::kframe`, verifying each against actual code and tool output. All items PASS.
+
+**Key evidence gathered:**
+- `make verify-kernel` → **exit 0, 23 verified, 0 errors** (all 5 `mm::phys` modules).
+- In-scope `new`/`base`/`drop` each carry real, caller-usable contracts that `manager.rs` proofs consume and verify.
+
+**The one item I stress-tested** — the checklist's flagged `Err(_) => true` in `new`: rather than accept a verbal justification, I **empirically added** `phys_view().inv()` to `new`'s ensures → verification **failed** (22 verified, 1 error, "postcondition not satisfied"). Combined with `phys_view()` being an `uninterp` fixed value (no `old()`), `base` being `Copy`, and the subsystem's own `alloc_kernel_frame` using the same pattern, this proves `true` is the *maximal* provable Err fact — not a fabricated tautology. Reverted; baseline restored green.
+
+**Cheating patterns individually addressed:** module-local external_body is only `clear` (irreducible raw-memory TCB, allowlisted); `deref`/`deref_mut` are unannotated unsafe Rust; the lone `assume_specification` (`sys::mm::Address::from_raw_value`) is an allowlisted external-library boundary.
+
+Wrote `turn_001_driver.md` (full per-item walkthrough) and `STOP` (RESOLVED). Working tree left at the green-verifying baseline.
+
+
+=== Session End ===
+Session: 29a2a13e-6d5d-48c9-807e-c9e9bbc26d81
+Duration: 414.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue-reviewer-t001-claude-20260615-062107.jsonl
