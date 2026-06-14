@@ -377,3 +377,18 @@ Now let me run the full-crate `make verify` to check for regressions, and re-run
 [TOOL] report_intent: Running full-crate verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch 2>&1 | tail -12
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: 47 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+47 verified, 0 errors, `admit=0`, `assume=0`. Now running full `make verify` for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | tail -40
+
+[THINKING] The verification passed with 47 verified items and no errors, so I should run the full `make verify` across the entire repository to check for regressions. Actually, looking at task step 5, it asks for this full verification, but since my only change was removing an unused lemma from the arch crate's table.proof.rs file, it shouldn't affect other crates.
