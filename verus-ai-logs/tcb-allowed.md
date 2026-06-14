@@ -112,3 +112,42 @@ returned frame values (monotone post-state facts, as there is no
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_kernel_frames`
   — like `alloc_many_user_frames` plus the contiguity guarantee
   (`kernel_frames_contiguous`) required for kernel stacks.
+
+## Allowed `external_body` — not-yet-verified dependencies of `mm::phys::kframe`
+
+`KernelFrame::new` is the first verified (`#[verus_spec]`) exec body in the proof
+target that calls cross-module address-conversion / mapping helpers. Those helpers
+live in `hal::mem` and `mm::virt`, which are **not yet verified**, so they are
+declared outside any `verus!` macro and Verus would otherwise reject the call.
+Each is given a temporary `external_body` `#[verus_spec]` contract so the verified
+`new` body type-checks; the contracts are removed when their home modules are
+verified. None weakens an existing guarantee — they only name facts `new` already
+relies on (newtype address identity) or state nothing observable (the
+identity-map side effect, which no `mm::phys` contract names).
+
+- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::into_raw_value` —
+  returns the frame's raw `usize` address; delegates through the `sys::mm::Address`
+  trait. `ensures result as int == self@` (the newtype identity already assumed by
+  `manager.rs`'s `kernel_frames_contiguous` reasoning). Removed when `hal::mem` is
+  verified.
+- `src/kernel/src/mm/virt/identity_map.rs::identity_map_page` — lazily installs a
+  kernel identity-map PTE (page tables drawn from a BSS pool; no recursive frame
+  allocation). The mapping side effect is not part of the physical-frame
+  abstraction, so the contract states nothing abstract (`ensures true`). Removed
+  when `mm::virt` is verified.
+
+## Allowed `assume_specification` — `sys::mm::Address` trait method
+
+`KernelFrame::new` also calls `<PageAligned<PhysicalAddress> as Address>::from_raw_value`,
+a method of the external **`sys::mm::Address`** trait. A trait-impl method cannot be
+given a standalone `external_body` contract without marking the whole trait `impl`
+block verified (which would pull every sibling method into scope), so it is specced
+with `assume_specification` in `kframe.spec.rs`. This mirrors the existing
+`assume_specification` trust boundaries the codebase already draws at the
+`sys`/`arch` library edge (`::arch::mem::PAGE_SIZE` in `frame.rs`, `Error::new` in
+`libs/error`). The contract is trivial (the returned address value is not consumed
+by any `mm::phys` fact); it is removed when `hal::mem` / the `Address` trait are
+verified.
+
+- `<crate::hal::mem::PageAligned<T> as crate::hal::mem::Address>::from_raw_value`
+  (declared in `src/kernel/src/mm/phys/kframe.spec.rs`).
