@@ -390,3 +390,18 @@ File reset clean. Let me re-run verification on the clean tree to restore the ba
 [THINKING] I'm realizing the confusion with my backup and diff — the backup was taken before my perl script removed the gate, so it still had the cfg line. When I restored it, the working tree should've matched HEAD, but the diff showed the cfg line as added, meaning my working tree was missing it. Let me just use `git checkout` to reset this properly.
 
 Now I need to re-run the kernel verification to restore the cache to a clean passing state, since my experiment compiled a broken version. Let me run make verify-kernel to confirm the clean tree passes and re-establish the baseline.
+[RESULT ✓] bash: === Function Coverage ===
+  56/1026 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_b...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Unexpected — a compilation error on the clean tree. Let me see the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | grep -iE "error|-->|panic|cannot|unsupported" | head -30
+
+[THINKING] That's strange—the clean tree shouldn't have compilation errors. Let me look at what the actual error is.
