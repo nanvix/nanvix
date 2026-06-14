@@ -70,3 +70,4 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: arch-paging-mod
 ============================================================
+[2026-06-15 00:41:42] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
