@@ -20,6 +20,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("identity_map.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("identity_map.proof.rs");
+
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
 use crate::hal::{
     arch::x86::{
