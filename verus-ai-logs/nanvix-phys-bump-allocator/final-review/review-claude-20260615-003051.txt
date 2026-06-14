@@ -849,3 +849,145 @@ Turn 10
 [TOOL] report_intent: Re-running verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cargo clean -p bump-allocator && make verify-bump-allocator
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Removed 15 files, 829.5KiB total
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,all...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+AST is consistent, admit=0, assume=0, external_body=2 (both in TCB). Now let me search vstd for `div_ceil`, run spec_drift, and run verification.
+[TOOL] bash: VSTD=$(find / -type d -name vstd 2>/dev/null | head -5); echo "VSTD dirs:"; echo "$VSTD"; echo "=== search div_ceil ==="
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 19 completed with ex...
+[TOOL] report_intent: Checking vstd coverage
+[TOOL] bash: find /home/ruize -maxdepth 6 -type d -name vstd 2>/dev/null | head -n 20; echo '--- div_ceil hits in likely verus source
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: VSTD dirs:
+/mnt/toolchain/verus/vstd
+/mnt/shared/verus-ai-improve4/vstd
+/mnt/shared/verus-ai-improve5-argus-exp2/vstd
+/mnt/shared/view-design-exp/kheap-worker7-clean/vstd
+/mnt/shared/verus-ai-improve5-kheap-claw/target-systems/nanvix-kheap0404/toolchain/verus/vstd
+=== search div_ceil ===
+<shellId: 2...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: /home/ruize/verus/vstd
+/home/ruize/verus-bin/vstd
+/home/ruize/toolchain/verus/vstd
+/home/ruize/verus-ai-improve/vstd
+/home/ruize/verus-ai-improve-backup/vstd
+/home/ruize/nanvix-exp/nanvix-bitmap/toolchain/verus/vstd
+/home/ruize/nanvix-exp/nanvix-slab/toolchain/verus/vstd
+/home/ruize/nanvix-exp/nanvi...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: rg -n "div_ceil" /home/ruize/toolchain/verus/vstd /home/ruize/verus/vstd /home/ruize/verus-bin/vstd 2>/dev/null | head -
+[RESULT ✓] bash: 
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] rg: assume_specification\s*\[\s*<usize>::div_ceil\s*\]|div_ceil
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/hostfs-api/src/long_msg.rs:215:    let total_parts_usize: usize = body.len().div_ceil(chunk_size);
+/home/ruize/nanvix-phy-specs-bottom-up/src/uservm/src/vmm/microvm/whp/vmem.rs:1367:        let data_offset: usize = header_and_indices_size.div_ceil(page...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rln "div_ceil\|fn div_ceil\|div_ceil_" /mnt/toolchain/verus/vstd/ 2>/dev/null; echo "---num.rs check---"; ls /mnt/
+[RESULT ✓] bash: ---num.rs check---
+alloc.rs
+atomic.rs
+bits.rs
+borrow.rs
+btree.rs
+clone.rs
+cmp.rs
+control_flow.rs
+convert.rs
+core.rs
+---grep num std_specs---
+144:            pub assume_specification[<$uN>::checked_mul](x: $uN, y: $uN) -> Option<$uN>
+370:            pub assume_specification[<$iN>::checked_mul](x: $iN...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] rg: #\[cfg_attr\(
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] rg: cfg_attr
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:83:#![cfg_attr(not(any(test, feature = "std")), no_std)]
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+[RESULT ✓] view: 1.     - lib.rs:286 alloc: external_body
+2.     - lib.rs:367 alloc_as: external_body
+3. 
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+vstd has no `div_ceil` spec — so the `assume_specification` is a legitimate external-bottom boundary. Now let me run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verify-bump-allocator" Makefile* 2>/dev/null; echo "---"; ls Makef
+[RESULT ✓] bash: ---
+Makefile
+--- check z ---
+z
+z.bat
+z.ps1
+z.py
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verify-bump-allocator\|verify-" Makefile | head -30
+[RESULT ✓] bash: 584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+624:verify-kernel: e...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] rg: checked_add|checked_mul|div_ceil|alignment == 0|size_of::<T>\(\)|align_of::<T>\(\)
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:134:    if alignment == 0 {
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs:137:    value.div_ceil(alignment).checked_mul(alignment)
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 580 make verify-bump-allocator 2>&1 | tail -60; echo "EXIT=${PIPEST
