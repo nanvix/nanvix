@@ -1,0 +1,39 @@
+Timestamp: 2026-06-15_05-36-17
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: disallowed: field expression for a non-visible datatype
+   --> src/kernel/src/mm/phys/frame.proof.rs:114:18
+    |
+114 |               <==> inner.bitmap@.set_bits.contains(addr / spec_page_size()),
+    |                    ^^^^^^^^^^^^ this field expression is disallowed because of non-visibility
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:82:1
+    |
+ 82 | / struct Inner {
+ 83 | |     /// A bitmap that keeps track of free/used frames.
+ 84 | |     bitmap: Bitmap,
+ 85 | |     /// Per-frame reference count. Indexed by frame number.
+...   |
+100 | |     refcount: &'static mut [u8],
+101 | | }
+    | |_- this datatype is only visible to `kernel::mm::phys::frame`
+    |
+    = help: note that because this is a 'ensures' clause of public function, this field expression must be well-formed everywhere, which is wider than `kernel::mm::phys::frame`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

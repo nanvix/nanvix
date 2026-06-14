@@ -164,12 +164,20 @@ pub proof fn lemma_alloc_iff_key(inner: &Inner, addr: int)
     assert(inner@.refcounts.dom() =~= inner@.allocated_frames);
 }
 
+/// The integer value of the refcount slot for index `i`. A spec-fn wrapper so the value can be
+/// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
+/// (which Verus rejects in an `ensures`); reading the field in a spec-fn body is the same context
+/// `view()`/`internal_inv()` already use.
+pub open spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
+    inner.refcount@[i] as int
+}
+
 /// The refcount-map value at an allocated address equals the underlying refcount slot.
 pub proof fn lemma_refcount_value(inner: &Inner, addr: int)
     requires
         inner@.refcounts.contains_key(addr),
     ensures
-        inner@.refcounts[addr] == inner.refcount@[addr / spec_page_size()] as int,
+        inner@.refcounts[addr] == spec_refcount_slot(inner, addr / spec_page_size()),
 {
 }
 

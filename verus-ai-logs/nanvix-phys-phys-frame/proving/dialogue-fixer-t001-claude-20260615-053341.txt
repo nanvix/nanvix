@@ -151,3 +151,94 @@ The helper lemmas look solid. Let me run verify after FIX 1 to see the actual st
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -60
 
 [THINKING] The helper lemmas are in place, so let me run the build to see which methods verify successfully after this first fix and which ones still need attention—particularly the three admits and any issues in the five methods I've already worked on.
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Still a compile error. Let me get the actual errors from the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -nE "error\
+
+[THINKING] I need to look at the actual compiler error messages to understand what's going wrong.
+[RESULT ✓] bash: === generic errors ===
+20:error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+28:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '1,40p'
+[RESULT ✓] bash: Timestamp: 2026-06-15_05-34-44
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking ker...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "struct Inner\|refcount:\|bitmap:" src/kernel/src/mm/phys/frame.rs | head; ec
+
+[THINKING] I'm looking at the error in `lemma_refcount_value` where `inner.refcount@` is being accessed on a shared reference `&Inner`. The issue is that `refcount` is a field that needs to be examined more carefully—it might be a mutable reference or a Vec, so I need to check the Inner struct definition to understand what's actually happening here.
+[RESULT ✓] bash: 30:use ::bitmap::Bitmap;
+82:struct Inner {
+84:    bitmap: Bitmap,
+100:    refcount: &'static mut [u8],
+741:pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
+761:    let refcount: &'static mut [u8] = unsafe { &mut REFCOUNT_STORAGE[..] };
+=== how other lemmas refer to refcount ===
+36:  ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The failure: `lemma_refcount_value`'s postcondition dereferences the `&'static mut [u8]` field `refcount` directly, which Verus rejects in postconditions. I'll route it through an `open spec fn` wrapper (the same context where `view()`/`internal_inv()` legally read that field).
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noticing the difference in how Verus handles mutable reference fields like `refcount: &'static mut [u8]` — when accessing `self.refcount@` inside methods like `view()` and `internal_inv()` where `self` is `&Inner`, Verus has special handling for this. But that same access pattern doesn't work the same way in a standalone lemma, which is what's causing the issue here.
+
+The real problem is that in the lemma's `ensures` clause, accessing `inner.refcount@` (a mutable reference field) requires old/final disambiguation since it's in a postcondition, but `inner` is just `&Inner`, not `&mut`, so I can't easily apply that disambiguation. The cleanest approach is to recognize that the View already defines `refcounts` as a map computed from `self.refcount@`, so the lemma is essentially just exposing that the map value at an address equals the corresponding slot value — which is already true by definition of how the map is constructed. The real issue is that the postcondition syntax can't handle the mutable reference field access directly. Since the View is closed, I need the lemma to expose the relationship, but I can work around the syntax problem by defining a spec helper function that reads the field in a non-postcondition context, then have the lemma ensure equality with that helper instead of directly referencing the mut-ref field.
+
+Defining a spec function... So I need to define an `open spec fn` wrapper called `spec_slot` that returns the refcount value as an int, then use that in the lemma's ensures clause. The caller can unfold this open function to connect it to the actual exec indexing operation, which Verus knows preserves the value relationship between the spec and exec worlds. The remaining question is whether referencing `inner.refcount@` inside an open spec function body triggers the same mut-ref issues as in ensures clauses. Defining the wrapper spec function...
+[RESULT ✓] view: 463.         if self.refcount[frame_number] == 0 {
+464.             let reason: &str = "frame is not allocated";
+465.             #[cfg(not(verus_keep_ghost))]
+466.             error!("{reason} (frame={frame:?})");
+467.             return Err(Error::new(ErrorCode::BadAddress, reason));
+468.         ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Now run verify to confirm the parse/compile is unblocked and see which methods verify (the 3 admits will be the remaining proof gap, FIX 2).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -55
