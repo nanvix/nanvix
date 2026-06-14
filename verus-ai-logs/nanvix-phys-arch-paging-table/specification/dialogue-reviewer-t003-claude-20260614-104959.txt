@@ -227,3 +227,11 @@ All tools pass. Let me run the full cross-module regression (#16) and build (#17
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | grep -iE 'verification results|error|verified' | tail -20
 
 [THINKING] The exploit can't work anymore since removing the ensures clause means callers have no information about spec_table_word to construct the contradiction. I should run a full cross-module verification to be thorough, then mark this as resolved.
+[RESULT ✓] bash: Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverifi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | grep -iE 'Exit code|status:|errors' | tail -30
