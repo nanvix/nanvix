@@ -290,3 +290,37 @@ The ensures clause of `into_raw_value` already gives me `0 <= self@ <= spec_max(
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|warning: unused|pde|frame_address|verified|admit|Exi
+[RESULT ✓] bash: verification results:: 41 verified, 0 errors
+  41 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=2 admit=1 trusted=0 no_decreases=0 cfg_gate=2
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: 41 verified, 0 er...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The proof discharges — 41 verified, 0 errors, `admit=1` (only the unrelated `table.proof.rs`). Let me confirm pde.rs has no admit, then run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== grep admit in pde.rs ===" && grep -n "admit" src/libs/arch/src/x86/mem/paging/pde
+
+[THINKING] Forty-one items verified with no errors, and I'm down to just one remaining admit issue in the unrelated table.proof.rs file. Let me check if pde.rs has any admit references I might have missed.
+[RESULT ✓] bash: === grep admit in pde.rs ===
+NO MATCHES
+=== cheating detail ===
+no pde cheats
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all-kernel 2>&1 | tail -6 ; echo "EXIT=$?"
+[RESULT ✓] bash: RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-ke...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Both pass. Let me run the full `make verify` to confirm no kernel regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -E "verified, [0-9]+ errors|status:" | tail -6
+
+[THINKING] Both the verify-arch and build checks pass. I should run the full `make verify` to be thorough and confirm there's no regression on the kernel side, even though the ensures didn't change and the reviewer only asked for those two checks.
