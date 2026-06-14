@@ -2,12 +2,13 @@
   "module_name": "bump-allocator",
   "log_name": "nanvix-phys-bump-allocator",
   "source_path": "/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -69,7 +70,8 @@
     "caller-analysis": "3b7e25cc23aac07166334c70d3847bdf17635de0",
     "view-design": "ada62e719f6f617f6219123bd5a674880946bc75",
     "specification": "2de51c9d673afecc1a5a158daeefaedc4e5d667d",
-    "proving": "f89cb681eda6b98954a9544e259bd4fd9e9b3288"
+    "proving": "f89cb681eda6b98954a9544e259bd4fd9e9b3288",
+    "cheating-elimination": "4d1dd731bf2e7f27862988feb71d18f8ae4508f0"
   },
   "phase_history": [
     {
@@ -118,6 +120,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "a95facb256bf8edb84c88b5d7d9ca9bb6dc6e2b5",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "4d1dd731bf2e7f27862988feb71d18f8ae4508f0",
       "rollback_iter": 0
     }
   ],
