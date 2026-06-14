@@ -513,3 +513,30 @@ AST consistency: **all MATCH, 0 mismatches** — exec code is identical to the b
 
 [THINKING] The AST checks out perfectly against the base branch with no discrepancies, and the executable code is identical to the original—the only changes are the verification annotations I added, which is exactly what should happen. Now I'm re-running the module verification to make sure the restored state passes cleanly, then I'll run the full crate verification and prepare the report.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - deref_mut
+    - drop
+    - get_mut
+    - test
+    - new
+    - address
+    - leak
+    - share
+    - refcount
+    - drop
+    - new
+    - alloc
+
+=== Summary ===
+  verification: 11 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=22 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  coverage:...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Module verifies: **11 verified, 0 errors**. The 6 manager `external_body` are all whitelisted; 0 admit/assume/assume_specification in scope. Now the full-crate regression check.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify 2>&1 | tail -30
+
+[THINKING] The module verification passed with 11 verified checks and no errors, though there are some cheating detections flagged globally across the kernel. For the manager module specifically, the external body references are all whitelisted in the allowed list, so there are no actual violations to address.
+
+The goal is for `make verify-kernel` to pass cleanly without disallowed cheating in my scope, which it does—the global cheating detected comes from other modules that are outside my task. Now I need to run the full crate verification to ensure there are no regressions across the entire project.
