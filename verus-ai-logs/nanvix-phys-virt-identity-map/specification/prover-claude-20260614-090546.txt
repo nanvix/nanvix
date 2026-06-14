@@ -1246,3 +1246,47 @@ Now I'll add the trusted dependency-spec block to the spec file:
 Turn 78
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
+[RESULT ✓] bash: warning: cannot use external trait arch::x86::mem::paging::table::TableEntry as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+   --> src/kernel/src/mm/virt/identity_map.spec.rs:191:1...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Progress: 1 error + 3 warnings. The flag enums need to be transparent (variants are constructed), and `TableEntry` trait needs declaration. Let me check the `external_trait_specification` syntax.
+[TOOL] bash: VSTD=/mnt/toolchain/verus/vstd; grep -rn "external_trait_specification" $VSTD/ | head -3; echo "=== example ==="; grep -
+
+[THINKING] I'm making real progress on the compilation errors—down to just one error and three warnings now. The main issue is at identity_map.rs line 560, where I'm trying to construct `PresentFlag::Present`, but since I marked `PresentFlag` as an opaque external type, the compiler won't let me call its enum variant constructor directly.
+
+The fix is to remove the `external_body` attribute from these flag enums while keeping `external_type_specification`. This way Verus can see the enum's structure and understand how to construct the variants, even though they're defined in the foreign arch crate. For simple fieldless enums like these, Verus should be able to model them as datatypes without needing to evaluate the discriminant expressions. I need to try removing the `external_body` attribute from the flag enums to make them transparent, which should let Verus read their variants and discriminants directly. I also need to add an `external_trait_specification` for the TableEntry trait to eliminate the warnings about using an external trait as a bound — I'll need to look up the exact syntax for declaring this in Verus.
+[RESULT ✓] bash: /mnt/toolchain/verus/vstd/std_specs/default.rs:6:#[verifier::external_trait_specification]
+/mnt/toolchain/verus/vstd/std_specs/clone.rs:6:#[verifier::external_trait_specification]
+/mnt/toolchain/verus/vstd/std_specs/clone.rs:13:#[verifier::external_trait_specification]
+=== example ===
+/mnt/toolchain...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+Let me add the `TableEntry` trait spec and make the flag enums transparent (their variants are constructed in verified code).
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I'm defining an external trait specification that mirrors the TableEntry trait, which requires Copy semantics. The trait needs to establish the relationship between ExTableEntry and its corresponding TableEntry implementation, and I'm considering whether ExTableEntry should also enforce Copy or if Clone would be more appropriate given how the pattern works in other parts of the codebase.
+
+Now I'm moving on to the flag enums — I need to remove the external_body annotations from the eight flag enum declarations to make them transparent so Verus can see the variant definitions directly. There's some uncertainty about whether Verus will handle the discriminant expressions like `1 << Self::SHIFT` correctly when the enums are transparent, but the derives like Clone and Copy should work fine with this approach.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/virt; python3 - <<'PY'
+import re
+f="identity_map.spec.rs"
+s=open(f).read()
+#
+[RESULT ✓] bash: done
+<shellId: 56 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|

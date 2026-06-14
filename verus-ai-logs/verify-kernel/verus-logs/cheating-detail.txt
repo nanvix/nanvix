@@ -45,18 +45,10 @@
     - mm/virt/identity_map.rs:522 ensure_pt: admit
     - mm/virt/identity_map.rs:612 ensure_pte: admit
     - mm/virt/identity_map.rs:697 identity_map_page: admit
-    - mm/virt/identity_map.spec.rs:117 ExTable (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:121 ExTableIndex (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:125 ExPageDirectoryEntry (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:129 ExPageTableEntry (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:133 ExPageDirectoryEntryFlags (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:137 ExPageTableEntryFlags (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:143 ExPresentFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:147 ExReadWriteFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:151 ExUserSupervisorFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:155 ExPageWriteThroughFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:159 ExPageCacheDisableFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:163 ExAccessedFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:167 ExDirtyFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:171 ExPageSizeFlag (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:177 ExPageTableBss (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:123 ExTable (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:127 ExTableIndex (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:131 ExPageDirectoryEntry (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:135 ExPageTableEntry (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:139 ExPageDirectoryEntryFlags (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:143 ExPageTableEntryFlags (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:175 ExPageTableBss (struct): external_type_spec

@@ -109,6 +109,12 @@ impl IdentityMapView {
 use ::arch::mem::paging::TableEntry;
 use super::page_table_allocator::PageTableBss;
 
+// The `TableEntry` trait bound must be declared before it can appear in external specs.
+#[verifier::external_trait_specification]
+pub trait ExTableEntry: Copy {
+    type ExternalTraitSpecificationFor: TableEntry;
+}
+
 // --- Page-table structure types ---
 
 #[verifier::external_type_specification]
@@ -139,35 +145,27 @@ pub struct ExPageTableEntryFlags(PageTableEntryFlags);
 // --- Flag enums ---
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPresentFlag(PresentFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExReadWriteFlag(ReadWriteFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExUserSupervisorFlag(UserSupervisorFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPageWriteThroughFlag(PageWriteThroughFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPageCacheDisableFlag(PageCacheDisableFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExAccessedFlag(AccessedFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExDirtyFlag(DirtyFlag);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPageSizeFlag(PageSizeFlag);
 
 // --- BSS page-table storage marker (kernel `page_table_allocator`) ---
