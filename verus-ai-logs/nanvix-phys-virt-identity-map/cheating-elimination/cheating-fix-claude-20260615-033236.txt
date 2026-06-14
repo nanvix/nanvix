@@ -217,3 +217,177 @@ The three admits are still a genuine blocker, but I should test removing just en
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+[RESULT ✓] bash: 16:note: verifying module mm::virt::identity_map
+18:note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+19:   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+21:533 | fn ensure_pt(pd: Table...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Confirmed: `ensure_pt` without admit yields 2 precondition failures: `index@ < PAGE_TABLE_LENGTH` (table.rs:205) and `bump_view(self).inv()` (lib.rs:350). Let me check whether the bump_allocator spec exposes any way to establish `bump_view(...).inv()` for the static.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "bump_view|fn inv|pub.*new|ensures|axiom|broadcast|lemma" src/libs
+
+[THINKING] I'm seeing two precondition violations blocking `ensure_pt` without admit: one at the page table read where the index needs to be within bounds, and another at the allocation step involving a view invariant. The frame address alignment issue hasn't surfaced yet due to how errors are reported per-function. I'm considering whether adding a precondition to `ensure_pt` itself could resolve the first one, but I'm uncertain about the approach.
+
+Adding a precondition would strengthen the caller's obligation rather than weaken it, which should be acceptable. The caller in `init` does satisfy the bound through `pd_index(...)`, but `init` itself isn't in scope for modification and I'd be creating a new verification obligation there. However, the second issue with `bump_view(self).inv()` is more fundamental—since `PAGE_TABLE_ALLOCATOR` is a static, there's no way to establish the invariant after construction. I need to check the bump allocator spec to confirm there's no axiom or lemma that could help here.
+[RESULT ✓] bash: 7:// helpers, the numeric specification of `align_up`, and the proof-lemma targets
+16:// inside the atomics"). Until then `BumpView` is referenced by the proof lemmas in
+31:    ensures
+116:    pub open spec fn inv(self) -> bool {
+169:/// to the proving phase (see `lemma_alloc_transition`, view_desig...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] view: 238.     /// The caller must ensure that only **one** `FixedSizeBumpAllocator` instance exists for a
+239.     /// given `S: BssStorage` backend at any time. Creating multiple allocators over the same
+240.     /// backend causes independent bump counters, which leads to overlapping slot reservations
+...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "assume_specification|bump_view|new|inv|PAGE_TABLE_ALLOCATOR" src/
+
+[THINKING] The `new()` constructor has no postcondition guaranteeing the invariant holds on its result, so callers can't establish the precondition that `alloc_as` requires without relying on an axiom. This creates a fundamental soundness issue in the bump allocator library.
+
+But wait — I should check if there's an `assume_specification` for `FixedSizeBumpAllocator::new` in the identity_map spec file that might provide the missing ensures clause.
+[RESULT ✓] bash: 57:    /// Implementation-consistency invariant (e.g. the abstract `mapped` set agrees with the
+60:    pub open spec fn internal_inv(self) -> bool {
+64:    /// Well-formedness invariant callers rely on.
+65:    pub open spec fn inv(self) -> bool {
+66:        &&& self.internal_inv()
+115:// `ExTable`/`...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Confirmed: `bump_view(PAGE_TABLE_ALLOCATOR).inv()` is unestablishable — `new()` provides no `inv()` postcondition and no broadcast axiom exposes it (a bump_allocator library gap, out of scope). All 3 admits are genuinely blocked. Let me restore the admit and finalize.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/idmap_backup.rs src/kernel/src/mm/virt/identity_map.rs && grep -c "
+
+[THINKING] I'm stuck on how to establish the invariant for `PAGE_TABLE_ALLOCATOR` since it's a global static. The bump allocator's `new()` method doesn't provide any guarantees about the invariant, and there's no exported proof lemma I can call. I'd need to either add an axiom or broadcast lemma in the bump_allocator module, or create a new proof lemma in identity_map.proof.rs that makes assumptions about the allocator's initial state.
+
+But adding a broadcast axiom would be unsound—it would essentially be asserting an invariant without any real basis, which is forbidden. So `bump_view(self).inv()` is genuinely unestablishable from identity_map's scope. This is a library-level gap: the precondition for `alloc_as` can't be met because `new()` doesn't ensure the invariant, and fixing that is outside my scope.
+
+This means all three admits are genuinely blocked by either missing preconditions or logical contradictions in the parameterless view. I've exhausted what I can do here, so I need to restore the admit and mark this as an honest blocker, then finalize the code.
+[RESULT ✓] bash: 3
+✅ Consistent: 14 functions, 1 structs match.
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Admits restored (3), AST consistent. Now let me update the reports.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/ && ech
+
+[THINKING] The admits are restored and the AST is consistent, so now I'm updating the documentation. I need to revise fix_report.md to show that external_body was eliminated while the three admits remain unchanged, then write up the response.
+[RESULT ✓] bash: cheating-fix-claude-20260615-033236.jsonl
+cheating-fix-claude-20260615-033236.txt
+cheating_report_1.md
+dialogue
+dialogue-fixer-t001-claude-20260615-031923.jsonl
+dialogue-fixer-t001-claude-20260615-031923.txt
+dialogue-reviewer-t001-claude-20260615-031702.jsonl
+dialogue-reviewer-t001-claude-20260615-0...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== STOP ===" && cat verus-ai-logs/nanvix-phys-virt-identity-map/chea
+
+[THINKING] I need to check the turn_002_driver.md file to see what the current request is, and also look at the STOP file to understand any constraints.
+[RESULT ✓] bash: === STOP ===
+BLOCKED
+
+Item "Zero admit() remaining" cannot be satisfied within the scope of the
+mm::virt::identity_map module. Independently verified (reproduced admit removal:
+6 verified, 3 errors, exit 101; read dependency contracts; confirmed postcondition
+impossibility structurally):
+
+- ensure_p...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+A STOP/BLOCKED verdict already exists — the reviewer independently reproduced and confirmed the 3 admits are genuinely impossible within scope. I've eliminated the `external_body` (the one newly-fixable item). Let me update the standing reports to reflect the external_body elimination.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+
+[THINKING] The reviewer has already marked this as STOP/BLOCKED, confirming that the three admits genuinely can't be resolved without cross-module work that's outside the current scope. My task was to address the external body and admit issues, and I've been working through eliminating them.
+
+Now I need to update the standing reports—fix_report.md to document the external_body fix that's been committed, and verification_todo.md to capture the three blocked admits. Let me check what's currently in fix_report.md so I can add the proper documentation.
+[RESULT ✓] view: 1. # Cheating Elimination Report: virt-identity-map
+2. 
+3. ## Scope
+4. 
+5. In-scope functions (the only functions for this module):
+6. `identity_map_page`, `ensure_pt`, `ensure_pte` — all in
+7. `src/kernel/src/mm/virt/identity_map.rs`.
+8. 
+9. Module-scoped gate: `make verify-kernel MODULE=mm::virt::...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+I've eliminated the `external_body` that the stricter gate flagged. Let me update the report to reflect this.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+
+[THINKING] I need to update the fix_report.md to reflect that the stricter gate caught the external_body reference in spec.rs, which I've now removed. I'll update the counts table to show external_body was eliminated and add a note explaining this change in the "Out-of-scan spec items" section.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Now let me write a concise response for this turn documenting the external_body fix and the confirmed-blocked admits.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_002_fixer.md with 3833 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me confirm the final repository state is clean and consistent.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git status ===" && git status --short && echo "=== admits in rs =
+
+[THINKING] Let me verify the working tree is clean and confirm that the spec.rs changes are committed, then do a final check that identity_map.rs has the three admits matching the expected state.
+[RESULT ✓] bash: === git status ===
+ M src/kernel/src/mm/virt/identity_map.rs
+ M verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating-fix-claude-20260615-033236.jsonl
+ M verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating-fix-claude-20260615-033236.txt
+ M verus-ai-logs/nanv...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== external_body occurrences in spec.rs ===" && grep -n "external_bo
+
+[THINKING] I need to figure out what's actually changed in identity_map.rs — the file shows as modified in git status, but I restored it from the backup that was saved during the verify run. The issue is that verify.sh auto-commits, so I need to check what the actual diff is between the current state and HEAD to understand what got changed.
+
+For the external_body count in spec.rs, I'm seeing 1 match but line 142 doesn't have it — I need to search through the file to find where external_body actually appears.
+[RESULT ✓] bash: === external_body occurrences in spec.rs ===
+151:// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB flush),
+=== diff of identity_map.rs vs HEAD ===
+diff --git a/src/kernel/src/mm/virt/identity_map.rs b/src/kernel/src/mm/virt/identity_map.rs
+index 2205dc266..66fd2a843 100644...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The remaining `external_body` at line 151 is just a word in a comment — zero real attributes in spec.rs. The working tree correctly has 3 admits, but HEAD (from a module-verify auto-commit) has the broken 2-admit state. Let me run a final `make verify-kernel` to verify and auto-commit the clean 3-admit baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE -i "verified, 0 errors|erro
+
+[THINKING] So `external_body` in spec.rs is just a comment artifact, not an actual attribute, meaning there are zero real external_body attributes to worry about. And in identity_map.rs, the diff shows I've restored the missing admit line for ensure_pt that was removed in the HEAD version, bringing the total back to three admits as it should be.
+
+Now I need to run `make verify-kernel` to finalize this restored state. The working tree currently has the correct 3 admits (verifying state), while HEAD is stuck at 2 admits (broken state). Running the verify harness will auto-commit the working tree's correct state, ensuring the repo ends in the proper baseline with the external_body fix persisted.

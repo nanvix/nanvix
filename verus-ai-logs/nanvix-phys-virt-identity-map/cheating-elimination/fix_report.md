@@ -18,9 +18,18 @@ Module-scoped (`mm::virt::identity_map`, what the gate measures):
 |------|--------|-------|------------|
 | admit() | 3 | 3 | 0 |
 | assume() | 0 | 0 | 0 |
-| external_body | 0 | 0 | 0 |
+| external_body | 1 | 0 | **1** |
 | assume_specification | 0* | 0* | 0 |
 | cfg-gated exec | 0 | 0 | 0 |
+
+The stricter hard-cheating gate (`cheating_report_1.md`) scans `identity_map.spec.rs`
+too and flagged the `#[verifier::external_body]` on `ExPageTableBss`
+(`identity_map.spec.rs:142`). **Eliminated this pass:** removed the `external_body`
+attribute, leaving `#[verifier::external_type_specification] pub struct
+ExPageTableBss(PageTableBss);`. `PageTableBss` is a field-less unit struct (`pub struct
+PageTableBss;`), so — like `ExError(crate::Error)` — the opaque-body attribute is
+unnecessary; Verus accepts the bare external type spec. Whole-crate `external_body`
+dropped 12 → 11, module verification unchanged (9 verified, 0 errors).
 
 `*` The cheating scanner copies only `identity_map.rs`, so the two
 `assume_specification`s and one `external_type_specification` in
@@ -34,7 +43,14 @@ cfg_gate=15` — all from other, out-of-scope `mm::virt`/`mm::phys` modules.
 
 ## Items Eliminated
 
-None. All three in-scope `admit()`s were attempted and are **genuinely blocked**
+- **`external_body` on `ExPageTableBss`** (`identity_map.spec.rs:142`) — **ELIMINATED**.
+  Removed the `#[verifier::external_body]` attribute; the bare
+  `#[verifier::external_type_specification] pub struct ExPageTableBss(PageTableBss);`
+  verifies because `PageTableBss` is a field-less unit struct (no opaque interior to
+  hide). Confirmed via `make verify-kernel` (whole-crate `external_body` 12 → 11, 0
+  verification errors).
+
+The three in-scope `admit()`s were attempted and are **genuinely blocked**
 (see verification TODOs). Specs were **not** weakened, no `external_body` was
 added, no `assume_specification`/`axiom` was added, and the exec code was left
 byte-identical to the base branch.
@@ -82,9 +98,11 @@ Searched `vstd` (atomics, layout, sets) and verified dependency specs
 
 ## Out-of-scan spec items (`identity_map.spec.rs`, pre-existing, not module-gated)
 
-- `#[verifier::external_type_specification] #[verifier::external_body] struct
-  ExPageTableBss(PageTableBss)` — the standard opaque-external-type idiom; the
-  scanner explicitly classifies this as `external_type_spec`, **not** cheating.
+- `#[verifier::external_type_specification] struct ExPageTableBss(PageTableBss)` —
+  the standard opaque-external-type idiom. The `#[verifier::external_body]` attribute
+  it previously carried was **removed this pass** (see "Items Eliminated"): `PageTableBss`
+  is a field-less unit struct, so no opaque body needs hiding and the bare external type
+  spec verifies.
 - `assume_specification <[T]>::as_ptr` — std slice accessor (no `vstd` spec; called
   by `slot.as_ptr()`); external-bottom placeholder.
 - `assume_specification FixedSizeBumpAllocator::<N,A,S>::new` — the dependency
