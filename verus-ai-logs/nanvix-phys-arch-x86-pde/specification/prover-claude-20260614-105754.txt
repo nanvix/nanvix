@@ -594,3 +594,169 @@ Turn 32
 Turn 33
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -45
+[RESULT ✓] bash: |         --------------------
+...
+107 |             present,
+    |             -------
+...
+132 |         matches!(self.present, PresentFlag::Present)
+    |         --------------------------------------------
+...
+234 |             present: PresentFlag::from_raw_value(value),
+    |                  ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+The flag enums aren't modeled by Verus. Let me see the full error list to understand scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-arch/verus-logs/verus_*.log | head -1 | xargs grep -n "error\[" 
+
+[THINKING] The flag enums need `external_type_specification` because they're not registered with Verus in the arch crate. Now that I've marked the impls with `#[verus_verify]`, Verus is processing the methods that reference these flags and their field types, but it can't find the datatype models it needs to verify them.
+
+The real issue is that adding `#[verus_verify]` to the entire impl block pulls all methods into verification, not just the two `new` functions I actually want to verify. This is why the error count jumped to 27 — Verus is now trying to process out-of-scope code that references undefined types. Instead of annotating the whole impl, I should try adding `#[verus_verify]` to just those two `new` functions individually.
+
+But there's a deeper problem: even if I verify only `new`, those functions reference the flag enum types in their signatures and bodies, and my spec also uses these enums. So Verus needs to model `PresentFlag` and the other flag enums somehow. The cleanest approach is to register these enums with Verus using `external_type_specification` in my spec file, which tells Verus to treat them as opaque types without trying to verify their implementations.
+
+However, the kernel crate already has its own `ExPresentFlag` definitions as placeholders. If I add the real ones in the arch crate, there could be a conflict when the kernel builds and depends on arch — Verus might see duplicate registrations for the same underlying type. Alternatively, I could mark the flag enums themselves with `#[verus_verify]` in flags.rs so Verus models them as native datatypes, which would sidestep the external type issue entirely.
+
+The real question is whether I even need Verus to deeply model these flag enums. The original problem surfaced because the `new` associated functions failed, and then adding `#[verus_verify]` to the impls caused all methods to be verified, which exposed the unmodeled flag enums. Maybe I should revert the impl-level verification and tackle the `new` issue through a different approach instead.
+
+Let me investigate why `new` specifically fails with "cannot find function new" while `is_present` works. I suspect `#[verus_spec]` on an associated function without a receiver in a non-verified impl might be causing the macro to emit a recursive call. Looking at the codebase, I don't see any examples of `#[verus_spec]` on associated functions outside of `#[verus_verify]` impls — the established pattern seems to require the impl-level annotation. But that's the core problem: verifying the impl pulls in all methods, and they all reference the unmodeled flag enums.
+
+The real constraint is that Verus needs to model the flag enums regardless of my approach, since even verifying just `new` requires understanding the PresentFlag parameters in its signature. So I have to find a way to make Verus model these types without breaking the kernel's build.
+
+The kernel's external_type_specification declarations for these flags are transparent (no `#[verifier::external_body]`), which works currently because arch doesn't register them. But if I register them in arch as native Verus datatypes, the kernel would see duplicate definitions when it compiles against arch. The documented solution from table.rs is that placeholders get removed when the dependency is verified — so I'd need to also remove the kernel's redundant external_type_specification declarations, which means modifying kernel code outside my module scope.
+
+Alternatively, using external_type_specification in pde.spec.rs creates the same conflict: both arch and kernel would have proxies for the same type, which Verus likely rejects. The clean approach following the established methodology is to register the flags natively in arch and remove the kernel's placeholders, but that touches code outside the five pde.rs functions I'm supposed to modify.
+
+Let me step back and ask whether I can actually spec these five functions without modeling the flag enums as Verus datatypes at all. Looking at each function: `frame_address` is pure arithmetic with no flags involved, so that's straightforward. But `is_present` on both the entry and flags objects needs to reason about the present flag state, and `new` takes eight flag enums as parameters, so both require some way to represent flags in the spec. The question is whether I can do that without full enum modeling.
+
+The real constraint is that four of the five functions transitively depend on the flag enums being modeled. So I need to add `#[verus_verify]` to the flag enums in the arch crate. For fieldless enums with discriminants computed from associated constants, Verus should handle this fine — it models the variants abstractly and doesn't need to evaluate the discriminant expressions for simple pattern matching like `is Present`. The concern is whether Verus will accept the const expression in the discriminant definition, but it's worth trying.
+
+Now the question becomes whether adding `#[verus_verify]` to these enums in arch will conflict with the kernel's use of them. Actually, I need to look at those 27 errors more carefully to figure out what's really being verified — whether it's just the flag enum signatures or if method bodies are getting checked too.
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-arch/verus-logs/verus_*.log | head -1 | xargs grep -n "^error\|c
+[RESULT ✓] bash: 24:error: cannot use type `arch::x86::mem::paging::flags::ReadWriteFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+75:error: cannot use type `arch::x86::mem::paging::flags::UserSupervisorFlag` which is ignored because it is either declared...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Now I understand the full picture. `#[verus_verify]` on impls verifies ALL methods (out of scope). I need per-item annotations: model the types, annotate only the 5 functions. Let me revert impl-level annotations.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The issue is that `#[verus_verify]` on impl blocks verifies all methods within them, including those that should be out-of-scope like `from_raw_value` and `into_raw_value`. These methods reference flag enums and constants that aren't meant to be verified, so I need to selectively verify only the methods that should be in scope rather than applying the attribute to the entire impl block.
+
+I also notice that `PageDirectoryEntry` and `PageDirectoryEntryFlags` types themselves lack `#[verus_verify]` annotations on their struct definitions, which means they're being treated as external/ignored types. Since these are my own types, they need the annotation to be properly modeled. Similarly, `FRAME_SHIFT` is missing `#[verus_verify]` even though it's used in verified code, whereas `FRAME_SIZE` already has it.
+
+The real solution is to test whether I can apply `#[verus_verify]` directly to individual associated functions rather than the entire impl — that way only the specific methods I want verified (like `new`) get processed, while the rest remain unverified. I'm settling on a strategy: annotate the five target functions individually with `#[verus_verify]` and `#[verus_spec]` while leaving their impl blocks unannotated, and model the struct and enum types with `#[verus_verify]` to avoid verifying their methods. The real blocker is whether modeling the flag enums natively in arch will conflict with the kernel's existing external type specifications for those same enums. I'm realizing the cleanest approach is to model the flag enums natively in arch alongside the PDE structs, which means removing the kernel's redundant external type specifications for those same types—following the precedent set by how Table types were handled. I'll keep the kernel's external specifications for types arch hasn't verified yet, like PageTableEntry and PageTableEntryFlags. For the `is_present` function, the body pattern-matches on `PresentFlag`, so I need to model the flag enums natively — there's no way around it. The key question is whether adding `#[verus_verify]` to the enum types (not their methods) counts as modeling necessary infrastructure, and whether native enums in Verus are transparent enough that downstream crates like the kernel can still pattern-match them. Let me test this hypothesis by actually running both `verify-arch` and `verify` to see if the kernel's pattern-matching still works when arch models the enums natively. is to keep the flag enums in the arch crate itself with `#[verus_verify]` and accept that the kernel might need to adjust its identity_map if there are conflicts. Let me just start with the minimal structural change: revert the impl-level annotation, add per-item annotations to the structs and key functions, then tackle the flag enums pragmatically by trying `#[verus_verify]` first and seeing what breaks.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now I'll model the types. Let me add `#[verus_verify]` to the flag enums, the two structs, the FRAME_SHIFT const, and the 5 target functions. First, the flag enums:
+[TOOL] bash: cd /home/ruize/nanvix-phy && for E in PresentFlag ReadWriteFlag UserSupervisorFlag PageWriteThroughFlag PageCacheDisable
+
+[THINKING] I need to add the `#[verus_verify]` attribute to the two structs and five target functions, then model the flag enums and the FRAME_SHIFT constant. The tricky part is that frame_address uses FRAME_SHIFT in its executable code, but the spec uses FRAME_SIZE instead, so I'll need to make sure FRAME_SHIFT is properly modeled for Verus to verify it.
+
+For the flag enums, I'm concerned about potential conflicts with the kernel's identity_map.spec.rs external type specifications, so I should test by adding `#[verus_verify]` to the flag enums and running verify-arch first to see if there are issues before running the full kernel verification. Looking at how Table types were handled in the kernel—where placeholders were removed—I should follow a similar pattern to avoid conflicts when arch natively models these types.
+
+The kernel currently has external type specifications for the flag enums while arch doesn't model them, so there's no conflict yet. Once I add `#[verus_verify]` to arch's flag enums, I'll need to remove the kernel's external type specifications to prevent duplication. Since Verus propagates datatype specs across crates through metadata (like it does with vstd types), the kernel should be able to use the native enums from arch without issues.
+
+Let me proceed with adding `#[verus_verify]` to the eight flag enums...
+[RESULT ✓] bash: 19:#[verus_verify]
+21:pub enum PresentFlag {
+33:#[verus_verify]
+35:pub enum ReadWriteFlag {
+47:#[verus_verify]
+49:pub enum UserSupervisorFlag {
+61:#[verus_verify]
+63:pub enum PageWriteThroughFlag {
+75:#[verus_verify]
+77:pub enum PageCacheDisableFlag {
+89:#[verus_verify]
+91:pub enum AccessedFlag {
+10...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+flags.rs needs the vstd prelude for the macro. Let me add it, then update FRAME_SHIFT and the structs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/flags.rs
+
+[THINKING] I'm checking whether flags.rs needs to import the vstd prelude for the #[verus_verify] macro to work. Looking at number.rs which has `use vstd::prelude::*;`, but flags.rs only imports `use super::PteWord;` and doesn't bring in vstd at all. The #[verus_verify] attribute comes from verus's builtin_macros, so I need to figure out if that requires the prelude to be in scope.
+
+To be safe, I'll add `use vstd::prelude::*;` to flags.rs. Now moving on to check FRAME_SHIFT in constants.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/flags.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/constants.rs
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Now the two structs and the 5 functions in pde.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now add `#[verus_verify]` to each of the 5 target functions:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40

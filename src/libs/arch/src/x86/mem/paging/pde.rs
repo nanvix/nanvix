@@ -38,6 +38,7 @@ use crate::{
 ///
 /// A type that represents flags of a page directory entry.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub struct PageDirectoryEntryFlags {
     /// Present flag.
@@ -58,7 +59,6 @@ pub struct PageDirectoryEntryFlags {
     page_size: PageSizeFlag,
 }
 
-#[verus_verify]
 impl PageDirectoryEntryFlags {
     ///
     /// # Description
@@ -80,6 +80,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
+    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_flags_new(
@@ -125,6 +126,7 @@ impl PageDirectoryEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
+    #[verus_verify]
     #[verus_spec(result =>
         ensures result == self@.present,
     )]
@@ -276,6 +278,7 @@ impl PageDirectoryEntryFlags {
 ///
 /// A type that represents a page directory entry.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageDirectoryEntry {
     /// Flags.
@@ -284,7 +287,6 @@ pub struct PageDirectoryEntry {
     frame: FrameNumber,
 }
 
-#[verus_verify]
 impl PageDirectoryEntry {
     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
@@ -303,6 +305,7 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_new(flags@, frame@),
@@ -375,6 +378,7 @@ impl PageDirectoryEntry {
     /// `true`: If the target page directory entry is marked as present.
     /// `false`: Otherwise.
     ///
+    #[verus_verify]
     #[verus_spec(result =>
         ensures result == self@.flags.present,
     )]
@@ -404,6 +408,7 @@ impl PageDirectoryEntry {
     ///
     /// The physical address.
     ///
+    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result as int == self@.frame * (crate::mem::FRAME_SIZE as int),

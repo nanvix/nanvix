@@ -1,0 +1,37 @@
+Timestamp: 2026-06-14_11-08-54
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pde.rs:97:12
+   |
+97 |     pub fn new(
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:314:12
+    |
+314 |     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+    |            ^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `arch` (lib) due to 2 previous errors

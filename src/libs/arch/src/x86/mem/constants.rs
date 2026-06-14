@@ -101,6 +101,7 @@ pub const MAX_ADDRESS: usize = usize::MAX;
 ///
 /// Alias for `PAGE_SHIT`.
 ///
+#[verus_verify]
 pub const FRAME_SHIFT: usize = PAGE_SHIFT;
 
 ///
