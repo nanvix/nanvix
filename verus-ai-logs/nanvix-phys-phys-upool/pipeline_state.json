@@ -2,12 +2,13 @@
   "module_name": "phys-upool",
   "log_name": "nanvix-phys-phys-upool",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -69,7 +70,8 @@
     "caller-analysis": "f0eee62b23c5446966da6be387c6b556c237fc8b",
     "view-design": "92031160111facf193a8110a96383bf67001503a",
     "specification": "210425703bc269e07076558969af98c1bbe0d0dd",
-    "proving": "f58e130ac8d40c0af43c584e94ec666b97f6633c"
+    "proving": "f58e130ac8d40c0af43c584e94ec666b97f6633c",
+    "cheating-elimination": "472302a899304214cb1dc3026d5327405228693b"
   },
   "phase_history": [
     {
@@ -118,6 +120,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "343826af1c009123b57ee3e60c125dd4670ff674",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "472302a899304214cb1dc3026d5327405228693b",
       "rollback_iter": 0
     }
   ],
