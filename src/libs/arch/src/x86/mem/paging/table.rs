@@ -224,16 +224,24 @@ impl<E: TableEntry> Table<E> {
     // Trust boundary (see `tcb-allowed.md` / `verus-unsupported.md`): materializes a raw
     // `*mut PteWord` from the integer base address and performs a volatile store — the hardware
     // page-table write. The `usize -> *mut T` cast is unsupported by Verus, so the body cannot be
-    // verified; same int-to-pointer boundary as `read`. The `ensures` pins the (trusted) global
-    // page-table memory ghost at the written slot; because that ghost is a pure function, every
-    // other slot/page is preserved across the call (the caller-facing frame condition), and a
-    // subsequent `read(index)` decodes back to `Some(entry)` via `lemma_entry_roundtrip`.
+    // verified; same int-to-pointer boundary as `read`.
+    //
+    // No contents `ensures`: page-table memory is *mutable* volatile state, but `write` takes
+    // `&self` and the global ghost `spec_table_word(addr, index)` is a *pure* function (one fixed
+    // value per slot). Pinning that pure cell to the caller-chosen `entry` in an `external_body`
+    // (hence *assumed*) postcondition is unsound — two writes of distinct entries to the same slot
+    // would assume `spec_entry_raw(e1) == spec_entry_raw(e2)`, and with `lemma_entry_roundtrip`
+    // that derives `e1 == e2`, i.e. `false`. The slot-update transition
+    // (`self@.entries[index@] == Some(entry)` after the call, with all other slots framed) is a
+    // genuine `old@ -> @` state change and is therefore *deferred to the proving-phase page-table
+    // permission token* — exactly the deferral convention used by `identity_map_view()`'s
+    // `v -> v'` in `identity_map.spec.rs` (a global accessor whose cross-call transition is
+    // realized later by a ghost token, "not a verification escape"). Only the sound `requires`
+    // (in-range index, auto from `TableIndex::inv`) is kept here.
     #[verus_verify(external_body)]
     #[verus_spec(
         requires
             index@ < crate::mem::PAGE_TABLE_LENGTH,
-        ensures
-            spec_table_word(self@.addr, index@) == spec_entry_raw(entry),
     )]
     pub unsafe fn write(&self, index: TableIndex, entry: E) {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;

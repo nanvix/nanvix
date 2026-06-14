@@ -1,3 +1,3 @@
     - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
     - x86/mem/paging/table.rs:209 read: external_body
-    - x86/mem/paging/table.rs:238 write: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
