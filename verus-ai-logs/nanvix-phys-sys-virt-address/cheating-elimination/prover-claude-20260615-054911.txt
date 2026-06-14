@@ -156,3 +156,61 @@ No cheating found in the address directory yet. Let me run the verification to s
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | tail -40
 
 [THINKING] I'm checking the current state of the codebase and confirming there are no cheating items in the source directory—the spec and proof files are empty, and the grep search turned up nothing in the address directory. Now I need to run the verification to establish a baseline and see what needs to be fixed.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Baseline is already CLEAN — zero cheating. Let me confirm the source matches the base branch (AST consistency) and that the target functions actually verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager diff verus-ai-prove-bottom-up -- src/libs/sys/src/sys/mm/add
+
+[THINKING] The verification shows zero cheating already, so there's nothing to eliminate there. I need to check whether the target functions have any issues in their proofs, specs, or source code that require attention.
+[RESULT ✓] bash: === STATUS ===
+ M verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/prover-claude-20260615-054911.jsonl
+ M verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/prover-claude-20260615-054911.txt
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Source files are identical to the base branch (zero AST mismatches) and verification is already CLEAN with zero cheating. Let me verify the target functions actually verify by checking coverage and then write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -i virt verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt 2>
+
+[THINKING] The source files haven't changed and there's no cheating detected in the AST, so the verification task is essentially already done. The verify-sys check passes cleanly, and I'm confirming that the target functions are properly verified rather than just contract-free.
+
+Now I'm writing up the report with the before/after counts both at zero, checking whether verification_todo.md needs to exist, and then creating the fix_report.md file in the report directory.
+[RESULT ✓] bash: === exit ===
+prover-claude-20260615-054911.jsonl
+prover-claude-20260615-054911.txt
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+No virt functions appear in the unverified list, and the full crate verify-sys is CLEAN. Since I made no source changes, there is no cheating to eliminate and no AST drift. Let me write the report.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/fix_report.md
+
+[THINKING] I'm checking whether the virtual functions in the coverage list have contracts or are already covered. The grep search didn't find any virtual functions in the unverified coverage list, which is a good sign. The verification system passed with exit code 0, so the target functions are verified.
+
+Looking at the scope — into_raw_value, from_raw_value, new, and VirtualAddress — these already have the contracts they need, and there's no cheating to eliminate since the verification is already clean. The task asks me to run make verify to confirm no regressions across the full crate, though since I haven't made any source changes, there's no real risk. Let me write up the report now.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/fix_report.md with 1343 characters
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+**Result: PASS** — no cheating to eliminate.
+
+The `sys-virt-address` module is already clean. `make verify-sys` passes with exit 0 and reports `cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`, `status: CLEAN`. A grep over the address directory finds no `assume`/`admit`/`external_body`/`assume_specification`. The in-scope functions (`into_raw_value`, `from_raw_value`, `new`, `VirtualAddress`) carry real contracts/bodies and verify; `virt.spec.rs`/`virt.proof.rs` are empty `verus! { }` blocks.
+
+AST consistency: `git diff` against `verus-ai-prove-bottom-up` for the three files is empty — zero mismatches. No verification TODOs needed. Report written to `fix_report.md`.
+
+
+=== Session End ===
+Session: 1fd54a2e-5cbd-4091-90cf-065a958c23d5
+Duration: 62.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/prover-claude-20260615-054911.jsonl
