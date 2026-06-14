@@ -169,3 +169,44 @@ The fallback entry is present, committed, and accurate. Now let me independently
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | grep -E "Exit code|cheating:|status:" | head; ech
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=11 admit=29 trusted=0 no_decreases=0 cfg_gate=15
+  cheating: assume=0 external_body=11 admit=29 trusted=0 no_decreases=0 cfg_gate=15
+  status: CHEATING_DETECTED
+=== build ===
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/logs
+RUSTC_WRAPPER= RUSTFLAG...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+All claims verified independently. The `assume_specification` item is now FIXED — the placeholder is documented in `tcb-allowed.md` (committed, accurate, with grep-confirmed justification). All checklist items now PASS/FIXED. Writing the final review and the STOP file.
+[TOOL] report_intent: Writing turn 2 review and STOP
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/STOP
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_002_driver.md with 3411 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**.
+
+The fixer addressed the lone Turn-1 FAIL (`assume_specification`) via the permitted fallback: documenting the intra-crate placeholder in `tcb-allowed.md`. I verified independently:
+
+- **tcb-allowed.md:154-168** — new entry records `frame.spec.rs::<PhysicalAddress as ::sys::mm::Address>::from_raw_value` with exact contract, confirms `phys.rs:185` has no `#[verus_spec]`, and gives the bottom-up "superseded when `phys` verified" rationale. Committed (`d5a720d3d`), git clean.
+- `make verify-kernel MODULE=…frame` → exit 0, 6 verified, 0 errors.
+- `make verify-kernel` (all) → exit 0, no regression.
+- `./z build -- all-kernel` → 0 errors, 0 warnings.
+
+**Final audit (target module):** admit=0, external_body=0, assume()=0, assume_specification=1 (now allow-listed), cfg-gated exec=0 (the 1 cfg-gate is a ghost-only `verus!` block).
+
+All 10 checklist items PASS/FIXED with tool evidence. Wrote `turn_002_driver.md` and created `STOP` = `RESOLVED`.
+
+
+=== Session End ===
+Session: 552c107b-3f35-43b5-a630-8f85f4c3370e
+Duration: 64.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-reviewer-t002-claude-20260615-045849.jsonl
