@@ -138,3 +138,118 @@ Confirmed: those lemmas only *preserve* `inv()` given a prior `inv()`; none esta
 The verification status is clear: within the phys-kframe scope, there are no admits, assumes, or trusted declarations—just the one external_body for `KernelFrame::new` which is TCB-allowed and genuinely irreducible due to the uninterpreted global token and lack of an establishing lemma. The cfg-gate in drop is a pre-approved logging pattern, not execution logic. Everything else that needs fixing lives in other modules (frame.rs, manager, mod, upool) that are outside this scope and owned by different phases.
 
 I should re-run the module verification to confirm kframe compiles and verifies cleanly, then update the report to map each out-of-scope item to its owning phase and clarify the discrepancy between the grader's count of 16 external_body items versus the earlier whole-crate count of 17.
+[RESULT ✓] bash: note: verifying module mm::phys::kframe
+verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Exit code : 0
+  verification: 42 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=17 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  status: CHEATI...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+42 verified, 0 errors — all proof obligations discharged. The `CHEATING_DETECTED` is the directory-wide gate counting out-of-scope modules. Let me check the `inbox_entries` table for any specific reviewer directives.
+[TOOL] sql: {'description': 'Check inbox entries', 'query': 'SELECT * FROM inbox_entries;'}
+
+[THINKING] The verification checks out cleanly with all proof obligations satisfied, but the CHEATING_DETECTED flag is coming from other modules in the directory that I can't modify. This mirrors the phys-upool situation exactly—my only in-scope cheating is the single TCB-allowed external_body call for `new`, nothing else. Now I need to respond honestly about this.
+
+I'm worried the grader will reject again, so let me think through whether there's any legitimate action I can take to reduce the count. In phys-upool, they removed an unnecessary external_body from the struct itself—is there something analogous in kframe? Looking at the attributes carefully: the `external_derive` on KernelFrame for Debug isn't counted by the gate and is necessary for the derive, so that stays. The `external_body` on `new` is TCB-allowed and irreducible. There's genuinely nothing unnecessary to remove here.
+
+I'm now confident the right approach is to document this thoroughly, confirm the 42 verified with 0 errors, map the out-of-scope residuals to their owning phases, and conclude PASS within scope—exactly like the accepted phys-upool outcome. But since the grader pushed back before, I should make the report much more rigorous this time, explicitly addressing each of their specific demands with evidence showing why none apply to kframe's scope, and note that touching the out-of-scope items violates the hard constraint. I should also check if there's an inbox_entries table I need to consult—the system reminder mentioned it and might have relevant reviewer feedback.
+[RESULT ✓] sql: Query returned 0 rows.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== upool cheating_report_3 (latest) ==="; cat verus-ai-logs/nanvix-phys-phys-u
+
+[THINKING] I'm wondering whether this final phase should actually clean up those directory-wide admits, or if they're meant to persist as permanent residuals from earlier phases. If the other phases are truly complete and these admits are left behind, then no phase will ever remove them, leaving the directory gate stuck in a failed state—which doesn't seem right.
+
+Let me step back and focus on what I can actually control. I need to confirm my scope is clean, gather evidence for each grader concern, update the documentation, and run the verification. I'll be direct about the fact that phys-kframe itself has zero eliminable cheating, and that the directory gate's failure is due to out-of-scope phases I'm not allowed to modify. But I should also double-check whether I'm being too rigid about the "don't touch unlisted functions" rule—the actual goal is to make the verification pass, and if that's blocked by out-of-scope items, I should report that as a blocker rather than a failure. Let me look at how the previous phys-upool phase handled this situation to see if there's a precedent for how to frame this.
+[RESULT ✓] bash: === upool cheating_report_3 (latest) ===
+# Cheating Detection Report: upool.rs
+
+## Summary: external_body: 16 (15 on user fns), admit: 12
+
+### admit
+- frame.rs:Line 137
+- frame.rs:Line 214
+- frame.rs:Line 299
+- frame.rs:Line 380
+- frame.rs:Line 443
+- frame.rs:Line 498
+- frame.rs:Line 536
+- frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+upool went 3 rounds with the identical directory-wide report and concluded PASS-within-scope (STOP file present). The residuals are structurally out-of-scope. Let me gather final evidence across all grader-named patterns for the kframe files specifically.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== ALL grader patterns in kframe scope files ==="; for p in "admit" "assume" "
+
+[THINKING] upool's cheating_report_3 shows the same directory-wide residuals across all three rounds, with the STOP file indicating the phase concluded. The orchestrator accepted upool's "PASS within scope" determination, meaning the grader will consistently produce this report but the resolution involves...
+
+Writing fix_report and verification_todo...
+[RESULT ✓] bash: === ALL grader patterns in kframe scope files ===
+  admit : 0
+  assume : 1
+  \btrusted\b : 1
+  limitation_assume : 0
+  exec_allows_no_decreases : 0
+  external_body : 2
+  no_decreases : 0
+
+=== owning phases of the 12 admits ===
+src/kernel/src/mm/phys/frame.rs:8
+src/kernel/src/mm/phys/manager.proof.rs...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The matches for `assume`/`trusted`/one `external_body` are in **doc comments**, not code. Let me confirm precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== assume match ==="; grep -nE "assume" src/kernel/src/mm/phys/kframe.rs src/k
+
+[THINKING] I'm realizing the grep search results are picking up these keywords in comments and documentation rather than actual code constructs—"assume" appears in a doc comment explaining the KernelStack index arithmetic, and "trusted" shows up in a comment about the wrap contract, not as actual annotations or function calls.
+[RESULT ✓] bash: === assume match ===
+src/kernel/src/mm/phys/kframe.spec.rs:8:    /// `into_page_address` and the `KernelStack` index arithmetic behind it assume the returned
+=== trusted match ===
+src/kernel/src/mm/phys/kframe.rs:80:    // into that layer, so the wrap contract is trusted until `mm::virt` is verified...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Confirmed precisely: the only real cheating annotation in all kframe-scope files is the single `#[verus_verify(external_body)]` on `KernelFrame::new` (line 81). The `assume`/`trusted`/line-78 matches are doc-comment prose, not code. Every other listed item is in out-of-scope files (frame.rs, manager.*, mod.rs, upool.rs).
+
+Let me update the reports to rigorously address each grader demand, then run final verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/fix_report.md verus-ai-
+
+[THINKING] I'm verifying which annotations are actually cheating in the codebase—the "assume" and "trusted" matches are just comments, not actual annotations, while the `external_body` attribute on the `new` function is the only real TCB-allowed annotation present.
+
+The grader's report clearly identified actual annotations by their precise locations, not comment text, so rewording doc comments to avoid triggering a naive scanner would be cosmetic and unnecessary. I'm keeping the comments as-is and moving forward with the action plan: there's genuinely nothing eliminable in the kframe scope since the single `external_body` is both TCB-allowed and irreducible.
+
+Now I'll update the reports to rigorously address each of the grader's four demands with concrete evidence that none apply to kframe, then run the final verification to confirm the module passes.
+[RESULT ✓] bash: backed up
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat > verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/fix_report.md <<'EOF
+[RESULT ✓] bash: written
+122 verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/fix_report.md
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now update the verification_todo and run the final `make verify-kernel` the user requested.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat > verus-ai-logs/nanvix-phys-phys-kframe/verification_todo.md <<'EOF'
+# Verificati
+[RESULT ✓] bash: todo written
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel 2>&1 | grep -iE "verifying module mm::phys::kframe|ver
