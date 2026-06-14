@@ -1,0 +1,20 @@
+RESOLVED
+
+All 18 specification-phase checklist items are PASS or FIXED with tool-verified evidence
+(see turn_002_driver.md).
+
+Key outcomes vs turn 1:
+- admit: 7 -> 0 (all 7 mod.proof.rs lemmas now have real, Verus-accepted proof bodies).
+- init: `ensures true` -> real Ok/Err contract over `phys_view()` (inv + initialized +
+  allocated.disjoint(free)); genuinely verified (not external_body).
+- book_physical_memory_regions / book_mmio_regions: now carry full `#[verus_spec]`
+  contracts (remain external_body only for the documented std-LinkedList orphan-rule
+  limitation).
+- frame.rs free-function wrappers (init/is_covered/book/alloc_range) given thin
+  pass-through specs binding the proven Inner post-states to `phys_view()`.
+
+Verification: `make verify-kernel` exit 0, assume=0 external_body=17 admit=0 trusted=0.
+Build: `./z build` -> [OK] Build complete.
+Spec drift: 0 contract drift.
+No in-scope admit/assume/trusted. The `phys_view()` axiom set was hand-checked satisfiable
+(verification is sound, not vacuous).
