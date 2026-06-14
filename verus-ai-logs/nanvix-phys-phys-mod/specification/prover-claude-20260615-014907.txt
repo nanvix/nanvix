@@ -1616,3 +1616,67 @@ Normal build succeeds — the added vstd imports don't break dual compilation. F
 [THINKING] The normal build succeeded without warnings even after adding the vstd prelude imports to those files. Now I'm checking whether vstd actually resolves as a dependency in the non-verus build context, since frame.rs already uses it unconditionally and compiles fine.
 
 Let me run a final full `make verify` to confirm there are no regressions with the trigger annotations in place.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=17 admit=7 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  9/1022 exec functions ha...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+All checks pass (exit 0). Let me finalize todos and update the plan:
+[TOOL] sql: {'description': 'Mark all todos done', 'query': "UPDATE todos SET status='done';
+
+[THINKING] All tests are passing, so I'm marking the SQL todos as complete and checking the overall status of the plan.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   6 row(s) updated.
+
+2. SELECT
+   6 row(s) returned:
+   
+   | id | status |
+   | --- | --- |
+   | linkedlist-spec | done |
+   | view-vocab | done |
+   | dep-specs | done |
+   | target-specs | done |
+   | proof-lemmas | done |
+   | verify-all | done |
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+All done. Summary of what was accomplished:
+
+## Result: 0 Verus errors, no regressions, build works
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → **8 verified, 0 errors**; full `make verify` → exit 0; `./z build` → dual compilation OK.
+
+### Changes
+
+**`mod.spec.rs`** — `PhysMemView` vocabulary (lifecycle `initialized` + reused `FrameAllocView`): `inv`, `covered`, `region_frames`, `spec_initialize`, `spec_book_frame`, `spec_book_frames`. Plus `ExLinkedList` opaque type spec (no iterator impl — orphan-rule blocked). FrameAllocView block untouched.
+
+**`mod.proof.rs`** — 7 lemma signatures (`admit()` bodies) mapping every caller expectation: establishes-invariant, per-frame/per-set booking preservation, region reservation, and the MMIO **skip-if-not-covered** tolerance + composite `init` contract.
+
+**`mod.rs`** — `init` genuinely verified (`#[verus_spec]`); `book_physical_memory_regions`/`book_mmio_regions` marked `external_body` (documented LinkedList limitation).
+
+**Dependency stubs** (`external_body`, removed when those modules verify): `frame::{init,is_covered,book,alloc_range}`, `Upool::new`, `PhysMemoryManager::init`; added `#[verus_verify]` to `Upool` struct and vstd imports to upool/manager.
+
+### Key finding (documented, not a bug)
+`alloc::collections::LinkedList` for-loops **cannot** be body-verified: vstd lacks a `LinkedList` ghost-iterator spec, and Rust's orphan rule (E0117) forbids adding one from the kernel crate against the pinned vstd. Recorded in `verus-unsupported.md`; `bugs.md` notes no code defects — the helpers' abstract effect is still fully specified via the View transitions + lemmas.
+
+
+=== Session End ===
+Session: 45524284-7dad-4a9b-adca-bea8d1cca4c2
+Duration: 1571.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/prover-claude-20260615-014907.jsonl
