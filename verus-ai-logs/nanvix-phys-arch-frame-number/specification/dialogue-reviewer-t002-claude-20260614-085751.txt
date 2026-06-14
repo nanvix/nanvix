@@ -234,3 +234,81 @@ Turn 4
 [THINKING] All the crates are passing cleanly with no new cheating introduced—the kernel's metrics match the baseline exactly with admit=28, external_body=11, and cfg_gate=15. The arch assume count actually improved from 1 down to 0. Now I need to verify the arch verification process itself and check the build, plus review any remaining assume values in the kernel.
 
 The specifications are all external—the frame.spec.rs ones are just PageAligned trait implementations from sys/core, nothing workspace-internal. Let me run the verification command to get the explicit and verified counts along with the build results.
+[RESULT ✓] bash: Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 2/525 exec functions have contracts
+  status: CLEAN
+=== spec drift ===
+# Spec Drift Report
+
+#...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All verification passes. Let me confirm the build and check kernel-side spec drift since those files were also modified.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for f in src/kernel/src/hal/mem/types/address/phys.spec.rs src/kernel/src/hal/mem/types/add
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all 2>&1 | tail -8
+
+[THINKING] The architecture looks clean with no regressions in the spec, and the build command should pass according to the fixer. I need to verify the build actually succeeds since that's part of the checklist requirements, then check what the kernel spec page shows.
+
+The spec_page_size change from uninterpreted to concrete (4096) is actually a strengthening, not a weakening — making it definitionally true rather than abstract. The removed assume guarantee is now baked into the definition itself, so callers don't lose anything. Once I run the build to confirm it works, I can mark everything as passing and close this out.
+[RESULT ✓] bash: === src/kernel/src/hal/mem/types/address/phys.spec.rs ===
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+**✅ No contract drift detected.**
+=== src/kernel/src/hal/mem/types/address/frame.rs ===
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: ...
+[RESULT ✓] bash: ================================================================================
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+==============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+All checks pass. Item 7 is FIXED, build succeeds, no spec drift. Let me do a final cheating sweep on the changed files and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "admit\|external_body\|\btrusted\b\|assume(" src/libs/arch/src/x86/mem/paging/fram
+
+[THINKING] All the verification checks are passing—the architecture is clean, the build succeeds, there's no spec drift, and the workspace is properly configured. Item 7 is now fixed, and everything else checked out in the first pass. I need to do a final review of the remaining checklist items to make sure I haven't missed anything, then document the results and mark this as resolved.
+
+Let me verify item 13 to ensure the arch frame module and constants changes aren't using any functions they shouldn't be calling directly.
+[RESULT ✓] bash: NONE — clean
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/STOP
+[TOOL] report_intent: Finalizing RESOLVED review
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_002_driver.md with 3581 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+## Turn 2 — RESOLVED
+
+Verified the fixer's changes for item 7 (the sole FAIL). Independently confirmed:
+
+- **`assume_specification[ FrameNumber::MAX ]` is gone** — `grep` shows the arch crate is now assume-free. `spec_max()` is interpreted as `(MAX_ADDRESS / FRAME_SIZE - 1)`, and the exec `MAX` const is verified against it rather than assumed.
+- **Two extra kernel placeholder assumes superseded** (`PAGE_SIZE`, `FRAME_SIZE`) — concretized via delegation, which strengthens rather than weakens.
+- **`make verify-arch`** → exit 0, CLEAN, `assume=0 external_body=0 admit=0 trusted=0`.
+- **`make verify`** (full workspace) → exit 0 every crate; kernel cheating counts identical to baseline (no regression).
+- **spec_drift** on all 4 changed files → 0 contract drift.
+- **`./z build -- all`** → Build complete.
+
+All 18 checklist items are PASS/FIXED with tool-backed evidence. Wrote `turn_002_driver.md` and created `STOP` with `RESOLVED`.
+
+
+=== Session End ===
+Session: 6b91e77a-7c3e-440a-8ab0-2657da2c1179
+Duration: 101.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue-reviewer-t002-claude-20260614-085751.jsonl
