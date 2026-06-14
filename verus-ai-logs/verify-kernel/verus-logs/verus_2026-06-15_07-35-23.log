@@ -1,0 +1,49 @@
+Timestamp: 2026-06-15_07-35-23
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+31 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=6
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/kernel/src/mm/phys/frame.proof.rs:87:7
+   |
+87 | proof fn lemma_free_count(inner: &Inner)
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.proof.rs:102:12
+    |
+102 |     assert(n >= 0);
+    |            ^^^^^^ assertion failed
+
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.proof.rs:127:12
+    |
+127 |     assert(inner@.free_frames =~= clear.map(f));
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

@@ -84,7 +84,7 @@ impl Inner {
 ///
 /// `free_frames` is the image of the clear bitmap indices under the injective
 /// map `i -> i * PAGE_SIZE`, so its cardinality is `num_bits - usage`.
-pub proof fn lemma_free_count(inner: &Inner)
+proof fn lemma_free_count(inner: &Inner)
     requires
         inner.inv(),
     ensures
