@@ -1185,3 +1185,35 @@ Defining the spec stub... Since the imports are already in scope at the module l
 Turn 62
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+[RESULT ✓] bash: - mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+  Global: assume=0 external_body=28 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  35/44 exec functions have contracts.
+  Unverified functions:
+    - instance
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/Full output/,$p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-11-52.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` exactly 
+             assume_specification provided: `(usize) -> c...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+The signature must be generic. Let me fix:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+
+[THINKING] I need to define the assume_specification with the correct generic signature that takes a type parameter T constrained by the Address trait, then reference the from_raw_value method from the PageAligned implementation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -25
