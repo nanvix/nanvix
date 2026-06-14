@@ -157,3 +157,46 @@ Turn 4
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-arch 2>&1 | tail -40
 
 [THINKING] I'm planning to mark the `invlpg` function with `#[verus_verify(external_body)]` since it's on the tcb-allowed list, keeping the spec and proof files empty. Let me run `make verify-arch` to establish the baseline and see what happens with the current state where the function lacks the external_body attribute.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] I'm seeing an admit=1 flag somewhere in the verification output, which passed with 0 errors but shows 1 admit and external_body=2. Let me dig into the cheating-detail to locate where that admit is coming from, since this is specifically about invlpg.
+[RESULT ✓] bash: - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm realizing that `invlpg` in mod.rs is passing verification without an external_body or contract, which seems odd given the inline assembly. Let me check whether functions without a `verus_spec` annotation are being skipped during verification, or if there's something else going on with how Verus handles unannotated functions in this codebase.
+
+The intended design from body_removed_source.rs is to add `#[verus_verify(external_body)]` to invlpg, which would mark it as trusted while giving it a verified signature. This is the allowed approach per tcb-allowed.md. The key insight is that adding external_body would let callers like identity_map call the real function directly instead of using `assume_specification`. Let me apply this change and see how it affects verification.
+[RESULT ✓] view: 195.     // Trust boundary (see `verus-ai-logs/.../tcb-allowed.md` and `verus-unsupported.md`):
+196.     // materializes a raw `*const PteWord` from the integer base address (`usize as *const`) and
+197.     // performs a volatile load — the hardware page-table access. Verus does not support the
+198....
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The only in-scope function `invlpg` is an inline-asm hardware TLB flush — unverifiable by Verus and already approved as `external_body` in `tcb-allowed.md`. Applying the recorded design (empty contract + `external_body`).
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+
+[THINKING] I see the pattern now—for invlpg, the final form should just be `#[verus_verify(external_body)]` without the `#[verus_spec]` annotation, so I'll make that adjustment.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-arch 2>&1 | tail -25
