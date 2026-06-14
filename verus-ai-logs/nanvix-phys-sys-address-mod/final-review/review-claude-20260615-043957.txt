@@ -344,3 +344,365 @@ Working tree matches base (specs already committed). Let me establish ground tru
 Now I need to set up the final-review directory and launch two sub-agents in parallel to run the verification suite. Each sub-agent will execute the key commands—make verify-sys, function coverage analysis, spec drift checks, AST consistency validation, and grep counts—then write their review findings. I'm considering whether to run verify-sys myself first to establish a baseline and avoid potential cargo lock contention if both sub-agents build simultaneously, or just let them proceed independently and handle any conflicts through cargo's built-in locking mechanism.
 
 Let me start the verification process now to warm up the build cache, which will speed things up when the sub-agents run their checks afterward.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===fn_coverage===" && python3 /home/ruize/verus-ai-exp/verus-ai/scrip
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===ast_consistency===" && python3 /home/ruize/verus-ai-exp/verus-ai/s
+
+[THINKING] The sys crate verification passed with clean cheating counts, showing minimal coverage at 2/255 for the whole crate since trait methods are declarations rather than executable functions. Now I'm running coverage checks on the specific module, spec_drift, and ast_consistency to validate the results.
+[RESULT ✓] bash: ===ast_consistency===
+
+✅ All exec functions consistent.
+# AST Consistency Report: ast_orig_927get_8
+
+**Source:** `/tmp/ast_orig_927get_8.rs`
+**Verus:** `src/libs/sys/src/sys/mm/address/mod.rs`
+
+## Summary
+
+- Functions matched: 0/0
+- Functions mismatched: 0
+- Missing in Verus: 0
+- Extra in Verus: 0
+-...
+[RESULT ✓] bash: ===fn_coverage===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+===spec_drift===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/s
+
+[THINKING] The checks are passing—no spec drift, AST is consistent, and there are no VERUS REWRITE comments to worry about. Now I need to run fn_coverage with the correct arguments, passing both the source file and the exec file (which is mod.rs itself).
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/sys/src/sys/mm/address/mod.rs`
+- **Verus file:** `src/libs/sys/src/sys/mm/address/mod.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Ground truth established: verify-sys PASS (exit 0), cheating all-zero, spec_drift clean, AST consistent, bugs.md empty. Now launching 2 independent review sub-agents (one per model).
+[TOOL] report_intent: Launching independent review agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-gpt', 'agent_type': 'general-purpose', 'mode': 'background', 'm
+
+[THINKING] The module only has trait declarations without implementation bodies, so there are no executable functions to cover—the fn_coverage count is zero. The actual "functions" here are trait method signatures decorated with `#[verus_spec]` contracts that serve as external API specifications. Since there's nothing to prove, the verification produces an empty proof file with no admits, external bodies, or trusted declarations. I've got my baseline now: verify-sys passes cleanly with exit code 0, and the cheating metrics confirm zero assumptions, zero external bodies, zero admits, and zero trusted items.
+
+Looking at the broader codebase metrics, there's no decreases clause, no cfg gates across the whole system crate, no spec drift detected, and the AST is consistent. The three in-scope trait methods—from_raw_value, into_raw_value, and is_aligned—all have ensures clauses specified, and clone_address is also specified though it's not in scope. No VERUS REWRITE directives and bugs.md is empty.
+
+Now I'm setting up two independent sub-agents to run in parallel and produce their own reviews. Each one gets the full ground-truth context I've collected, reads the files themselves, confirms the verification and scripts work, then writes their findings to a model-specific review file. I'll launch one with Claude Opus and one with GPT, saving their raw reviews as final_review.claude.md and final_review.gpt.md respectively.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-gpt. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review agents are running in parallel. Waiting for them to complete before consolidating.
+I'll begin by reading the skills and all the in-scope files, then run the verification checks myself.
+[TOOL] report_intent: Reading skills and source files
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Alignment predicate over an abstract address value `v` (`self@`): the integer
+4. // address is an exact multiple of the alignment's byte value. This is the
+5. // declarative meaning callers attach to `is_aligned` — independent of how the
+6. // alignment check is computed. `spec...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing address module
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Alignment predicate over an abstract address value `v` (`self@`): the integer
+4. // address is an exact multiple of the alignment's byte value. This is the
+5. // declarative meaning callers attach to `is_aligned` — independent of how the
+6. // alignment check is computed. `spec...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `mm::address::mod` (`Address` trait)
+2. 
+3. ## Script Output
+4. 
+5. The automated finder (`find_callers_lsp.py`) was run on
+6. `src/libs/sys/src/sys/mm/address/mod.rs`:
+7. 
+8. ```
+9. Total exec functions: 0
+10. Public / trait-pub: 0
+11. Private: 0
+12. Types: 0
+13. *No public fu...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. # View Design: `mm::address::mod` (`Address` trait)
+2. 
+3. ## Abstract Resource
+4. 
+5. To the outside world an `Address` is **a single machine address modeled as a
+6. mathematical integer**. A caller treats any implementor (`VirtualAddress`,
+7. `PhysicalAddress`, `PageAligned<T>`, `PageTableAlign...
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the analysis docs, TCB list, and skills.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::address::mod` (`Address` trait)
+2. 
+3. ## Script Output
+4. 
+5. The automated finder (`find_callers_lsp.py`) was run on
+6. `src/libs/sys/src/sys/mm/address/mod.rs`:
+7. 
+8. ```
+9. Total exec functions: 0
+10. Public / trait-pub: 0
+11. Private: 0
+12. Types: 0
+13. *No public fu...
+[RESULT ✓] view: 1. # View Design: `mm::address::mod` (`Address` trait)
+2. 
+3. ## Abstract Resource
+4. 
+5. To the outside world an `Address` is **a single machine address modeled as a
+6. mathematical integer**. A caller treats any implementor (`VirtualAddress`,
+7. `PhysicalAddress`, `PageAligned<T>`, `PageTableAlign...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+bugs.md and tcb-allowed.md not at expected paths. Let me locate them and read the skills.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find verus-ai-logs/nanvix-phys-sys-address-mod -type f; echo "---TCB---"; f
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/ 2>/dev/null; echo "---"; ls /home/ruize/verus-ai-exp/verus-ai/scripts/
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+---
+__pycache__
+add_verific...
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-sys-address-mod/verification-plan.json
+verus-ai-logs/nanvix-phys-sys-address-mod/pipeline.log
+verus-ai-logs/nanvix-phys-sys-address-mod/pipeline_state.json
+verus-ai-logs/nanvix-phys-sys-address-mod/body_removed_source.rs
+verus-ai-logs/nanvix-phys-sys-address-mod/caller-anal...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/final-review
+[TOOL] glob: **/nanvix-phys-sys-address-mod/**/bugs.md
+[TOOL] glob: **/nanvix-phys-sys-address-mod/bugs.md
+[RESULT ✓] view: 181.        result.is_ok() ==> /* success postcondition */,
+182.        result.is_err() ==> self@ == old(self)@,
+183.    ```
+184.    Good:
+185.    ```
+186.    ensures match result {
+187.        Ok(v)  => /* success postcondition */,
+188.        Err(e) => self@ == old(self)@,
+189.    }
+190.    ```
+19...
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 361. ---
+362. 
+363. ## Part 3: View Abstraction Design
+364. 
+365. The View type and a skeletal `inv()` should already be designed before writing
+366. specifications. Refine and extend `inv()` as you write specs — new constraints
+367. often emerge from requires/ensures. This section summarizes the ke...
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] view: review-claude-20260615-043957.jsonl
+review-claude-20260615-043957.txt
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/specification/bugs.md
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The tcb-allowed.md and bugs.md are in the repo. Let me read them and the relevant skills.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/specification/bugs.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_repo
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. # Bug Awareness — `sys::mm::address` (`Address` trait), specification phase
+2. 
+3. No fundamentally incorrect code found.
+4. 
+5. Checked:
+6. - `from_raw_value` Ok arm (`a@ == raw_addr as int`) is satisfiable by every
+7.   implementor (VirtualAddress, PhysicalAddress, PageAligned, PageTableAligned...
+[RESULT ✓] bash: # Cheating Elimination Report: sys-address-mod
+
+## Cheating Counts (before → after)
+
+Measured with `make verify-sys` (whole `sys` crate cheating scan).
+
+| Item                 | Before | After | Eliminated |
+|----------------------|--------|-------|------------|
+| admit()              | 0      | 0  ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys
+[RESULT ✓] report_intent: Intent logged
