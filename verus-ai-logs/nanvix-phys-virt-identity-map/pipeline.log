@@ -196,3 +196,34 @@ Module: virt-identity-map
 [2026-06-15 03:26:53] [DIALOGUE] Reviewer turn 2 (remaining: 3010s)...
 [2026-06-15 03:26:53] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 03:32:36]   ↳ dialogue-reviewer-t2 done in 5m43s (exit=0)
+[2026-06-15 03:32:36] [DIALOGUE] Reviewer created STOP file: BLOCKED
+[2026-06-15 03:32:36] [DIALOGUE] STOP detail:
+BLOCKED
+
+Item "Zero admit() remaining" cannot be satisfied within the scope of the
+mm::virt::identity_map module. Independently verified (reproduced admit removal:
+6 verified, 3 errors, exit 101; read dependency contracts; confirmed postcondition
+impossibility structurally):
+
+- ensure_pt (identity_map.rs:534), ensure_pte (:632), identity_map_page (:719).
+- Read preconditions (534/631): TableIndex bound from pd_index/pt_index does not flow
+  into the helpers (opaque param, no requires); cross-crate type invariant unusable
+  ("missing type invariant function").
+- alloc_as precondition (549): needs bump_view(PAGE_TABLE_ALLOCATOR).inv() — uninterp,
+  no axiom, deferred to proving phase.
+- Postconditions (618/706): logically unsatisfiable for the parameterless `uninterp`
+  identity_map_view() — a single fixed V cannot meet both Ok=>contains(p) and
+  Err=>!contains(p); no old() (free fn, no &mut) and Table::write has no (soundly
+  omitted) contents ensures, so nothing links exec state to V.mapped.
+
+Unblocking requires cross-module proving-phase ghost-token infrastructure (replace
+uninterp identity_map_view()/bump_view() with a Tracked permission token threaded
+through out-of-scope callers init/KernelFrame::new, and/or a sound permission token on
+arch::Table::write) — all out of scope and forbidden by the no-weakening / no-signature-
+change constraints. Same deferral every sibling mm::phys::* singleton free function uses.
+
+Repo left in the verifying admits-present baseline (make verify-kernel: exit 0,
+CHEATING_DETECTED). Escalate admit elimination to the proving-phase / cross-module owner.
+
+PASS items (verified): zero assume, zero trusted, zero no_decreases, zero cfg-gated exec.
+[2026-06-15 03:32:36] [DIALOGUE] cheating-elimination ended after 2 turns: BLOCKED (934s)
