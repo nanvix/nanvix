@@ -2,23 +2,52 @@
   "module_name": "virt-identity-map",
   "log_name": "nanvix-phys-virt-identity-map",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 114.4,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "8a1f3490-b52e-4c48-a62b-3a03a49bef2b",
   "completed": false,
   "base_branch": "verus-ai/arch-frame-number",
   "verus_branch": "verus-ai/virt-identity-map",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "16f981e9ee7ed4b4d2408971229186c6bd61985e"
+  },
   "phase_start_shas": {
-    "caller-analysis": "ae3fdde99ae262127edf3665bfaa06e3d6f8f3da"
+    "caller-analysis": "ae3fdde99ae262127edf3665bfaa06e3d6f8f3da",
+    "view-design": "16f981e9ee7ed4b4d2408971229186c6bd61985e"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "ae3fdde99ae262127edf3665bfaa06e3d6f8f3da",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "16f981e9ee7ed4b4d2408971229186c6bd61985e",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "16f981e9ee7ed4b4d2408971229186c6bd61985e",
       "rollback_iter": 0
     }
   ],
