@@ -535,3 +535,88 @@ Working tree has the correct restored version (HEAD is the broken experiment aut
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified|errors|admit
 
 [THINKING] The HEAD commit has the broken state from my experiment, but my working tree has the correct `admit();` version restored, so the actual source of truth is good. When I run verify again, it'll auto-commit the passing state. Let me just confirm the working tree proof file to be sure.
+[RESULT ✓] bash: verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+  42 verified
+  0 errors
+=== Cheating Pattern Check ===
+  Global: assume=0 external_body=18 admit=24 trusted=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+  Unverified functions...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Baseline restored: **42 verified, 0 errors**. Let me run the AST consistency check on the exec source and count cfg-gates:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls scripts/ast_consistency.py 2>/dev/null && python3 scripts/ast_consistency.py --bas
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "cfg_not_keep_ghost in manager.rs:" && grep -c "cfg(not(verus_keep_ghost))\|cfg_
+
+[THINKING] I've verified the baseline with 42 passing checks and no errors, though there are 4 manager admits flagged as irreducible within scope, which triggers the CHEATING_DETECTED status. Now I'm moving on to write up the documentation for this analysis.
+
+Looking at the specific cheating items in the manager scope: the 4 admits in manager.proof.rs can't be eliminated, the 2 external_body calls are tcb-allowed and don't need removal, and the 3 assume_specification items aren't gate-tripping. The cfg-gated logging calls are pre-approved deviations since Verus doesn't support logging macros. So my honest report shows zero items actually eliminated—the 4 admits remain irreducible, which means this is a blocker.
+
+Now I need to document this and verify the AST consistency for manager.rs hasn't changed since I made no modifications to the file itself.
+[RESULT ✓] bash: cfg_not_keep_ghost in manager.rs:
+12
+<shellId: 20 completed with exit code 0>
+[RESULT ✓] bash: script-not-found-or-failed
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name "ast_consistency.py" -not -path "*/target/*" 2>/dev/null; ls /home/ruize
+[RESULT ✓] bash: SKILL.md
+---
+/home/ruize/verus-ai-improve/scripts/ast_consistency.py
+/home/ruize/verus-ai-improve-backup/scripts/ast_consistency.py
+/home/ruize/verus-ai-improve2/scripts/ast_consistency.py
+/home/ruize/verus-ai-improve3/scripts/ast_consistency.py
+/home/ruize/verus-ai-improve4/scripts/ast_consistency....
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-improve/scripts/ast_consistency.py --base-ref verus-ai-p
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MATCH                                
+PhysMemoryManager::alloc_many_kernel_frames MATCH...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+AST consistency is clean (8/8 MATCH, zero mismatches). Now let me write the documentation. First the verification TODO:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md 2>/dev/null && echo EX
+
+[THINKING] The AST verification shows all 8 functions and the struct match perfectly between branches with no discrepancies, and the exec code in manager.rs is identical to the base, so I haven't introduced any execution changes. Now I'm documenting the findings in the verification and fix report files, but I'm hitting a fundamental blocker: 4 remaining admits can't be resolved within the manager's scope because they need the global ghost-token from section 8 threaded through the unverified frame layer, specifically the free-function allocators.
+
+Let me check whether verification_todo.md already exists before I write it.
+[RESULT ✓] bash: does not exist
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md with 5587 characters
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now let me confirm the working tree exactly matches the clean cheating-elimination START state (no net source change), then run a broader check:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== source diff vs START commit a8d643993 ===" && git --no-pager diff a8d643993
+
+[THINKING] I need to run the full `make verify` to check for regressions as requested, though it might take a while. Since I haven't actually modified any source files, I'm expecting no issues.
+[RESULT ✓] bash: === source diff vs START commit a8d643993 ===
+=== (empty above = identical source) ===
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Source is byte-identical to the phase-start state. Running full-crate verify to confirm no regressions (as the task requests):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | grep -iE "verified|errors|status|FAIL|PASS|regress" |
+
+[THINKING] The source hasn't changed from the baseline, so running the full verification should just confirm there are no regressions. I'll execute it with a reasonable timeout since it might be cached and run quickly.
