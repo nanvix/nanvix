@@ -244,4 +244,10 @@ pub assume_specification[ PageTableEntry::is_present ](pte: &PageTableEntry) -> 
 
 pub assume_specification<T>[ <[T]>::as_ptr ](s: &[T]) -> *const T;
 
+// --- Page-table BSS bump allocator constructor (kernel/`bump_allocator`, not yet verified) ---
+
+pub assume_specification<const N: usize, const A: usize, S: ::bump_allocator::BssStorage>[
+    ::bump_allocator::FixedSizeBumpAllocator::<N, A, S>::new
+]() -> ::bump_allocator::FixedSizeBumpAllocator<N, A, S>;
+
 } // verus!

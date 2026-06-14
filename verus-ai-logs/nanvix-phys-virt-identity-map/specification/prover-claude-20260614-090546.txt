@@ -1401,3 +1401,40 @@ Turn 89
 Turn 90
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
+[RESULT ✓] bash: error: cannot use function `bump_allocator::impl&%1::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/page_table_allocator.rs:105:14
+    = help: The following declaration may resolve this error:
+error: could not...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+`new()` needs a trusted spec. Let me check how `BssStorage` trait is declared in bump_allocator.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bump_allocator/src; grep -n "BssStorage\|external_trait\|verus_verify\|pub trait\|pub
+
+[THINKING] The `FixedSizeBumpAllocator::new` function needs an assume_specification since it's unannotated. I'm adding a specification that declares the unsafe const function with its generic parameters and return type in the identity_map.spec.rs file, but I need to account for the unsafe qualifier.
+
+Now I'm checking whether `BssStorage` is already handled as a verus-known trait in the bump_allocator crate or if I need to declare it as an external_trait_specification. Since `FixedSizeBumpAllocator` is verified with the `S: BssStorage` bound, the trait should be accessible, but I'll need to import both `FixedSizeBumpAllocator` and `BssStorage` from bump_allocator into my spec file.
+[RESULT ✓] bash: 13://! - [`BssStorage`] — unsafe trait implemented by the backing store provider.
+20://! 1. Define a static storage region and implement [`BssStorage`] for it.
+28://! use bump_allocator::{align_up, BssStorage, BumpAllocError, FixedSizeBumpAllocator};
+52://! unsafe impl BssStorage for MyBackend {
+146...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+`BssStorage` is verus-native. Let me add the `new()` trusted spec.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] `BssStorage` is a verus-verified trait, so I can use it as a bound in my specification. Now I'm adding an assume_specification for the `new()` method, which is a const unsafe function that takes generic parameters for size, alignment, and storage type, and returns a new allocator instance.
+
+I notice that unsafe functions in assume_specification don't need the `unsafe` keyword in the syntax — my earlier unsafe assume_specifications for `Table::from_address`, `read`, `write`, and `invlpg` were accepted without it, so I'll follow that pattern here. I need to import both `BssStorage` and `FixedSizeBumpAllocator` into the spec file.
+
+Adding the assume_specification...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
