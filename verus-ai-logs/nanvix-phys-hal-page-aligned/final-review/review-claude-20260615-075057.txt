@@ -924,3 +924,69 @@ review-claude-20260615-075057.txt
 ────────────────────────────────────────────────────────────
 Turn 14
 ────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 180, 'shellId': 'verifyall'}
+[RESULT ✓] read_bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] rg: name:\s*(spec-design|verus-constraints|ast-consistency|bug-reporting|spec-drift-check|spec-completeness)
+[TOOL] rg: spec-design|verus-constraints|ast-consistency|bug-reporting|spec-drift-check|spec-completeness
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Both runs return exit 0 but are cached. To get the actual verus "verified/errors" count (not cached), let me force a fresh run by touching the source and re-verifying the module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/address/aligned/page.rs && echo "touched
+[RESULT ✓] bash: touched
+233:#   1. VERUS_EXIT == 0: genuine cache hit — Verus skipped re-verification.
+235:# Only case 1 is a true cache hit; case 2 is a failure.
+239:        VERIFIED="cached (no recompilation)"
+253:# a stale cargo cache that silently returns exit 0.
+776:    if ! git diff --cached --quiet 2>/dev/nu...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Locating review template
+[TOOL] glob: **/final_review.gpt53codex.md
+[TOOL] glob: **/final-review/*.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-pag...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && time make verify-kernel MODULE=kernel::hal::mem::types::address::aligned::p
+[RESULT ✓] bash: <command started in background with shellId: verifyfresh>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/final-review/final_review.gpt-5.3-codex.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Verification Review — `arch-x86-pde`
+2. 
+3. ## Checklist
+4. - [x] 1) Spec quality reviewed for all in-scope functions.
+5. - [x] 2) Caller coverage checked against `caller_analysis.md` (Covered 13/13, Missing: none).
+6. - [x] 3) Proof completeness checked (`admit()`/`external_body` in pde ...
+[RESULT ✓] view: 1. # Final Independent Review — `hal::mem::types::address::frame` (`FrameAddress`)
+2. 
+3. ## Checklist
+4. - **Caller Analysis:** **FAIL** — 11/12 caller expectations are contract-covered; `from_raw_value` error semantics remain under-specified (`Err(_) => true`).
+5. - **View Design:** **PASS** — `Fr...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 240, 'shellId': 'verifyfresh'}
