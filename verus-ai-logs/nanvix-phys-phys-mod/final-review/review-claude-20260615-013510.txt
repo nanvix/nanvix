@@ -771,3 +771,21 @@ Let me read the spec-design skill section on error paths and tautological ensure
 ---
 name: spec-design
 description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when...
+[RESULT ✓] bash: - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:880 book: external_body
+    - frame.rs:901 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attach...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me see the verification result header and the cheating detail for phys-mod specifically.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE 'verif|error|verified|fail|exit|pa
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE 'mod\.rs|mod\.spec\.rs|mod\.proof\.rs' verus-ai-logs/verify-kernel/verus-log
+[RESULT ✓] bash: 31:    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+32:    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+33:    - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+<shellId: 18 completed with exit code 0>
