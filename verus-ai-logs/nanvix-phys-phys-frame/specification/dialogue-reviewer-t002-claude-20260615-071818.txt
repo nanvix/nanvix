@@ -169,3 +169,101 @@ The four edits are present. Let me verify them in context and run `make verify-k
 912.                 #[trigger] PhysMemView::region_frames(region@.start, region@.size).contains(a)
 913.                     ==> phys_view().frames.allocated_frames.contains(a),
 914.             Err(_) => !PhysMemView::region_fram...
+[RESULT ✓] bash: Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_07-18-30
+
+note: verifying module mm::phys
+
+note: verifying mo...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The four error-path arms are correctly strengthened, and `make verify-kernel` is exit 0 (cached → the edited source already verified). Let me confirm the two retained `true` arms against the actual `Inner` contracts and re-run spec drift.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/src/mm/
+
+[THINKING] I'm checking whether the fixer's edits actually compiled and verified successfully by looking at the git diff and build cache consistency. The cached verification result suggests the source hash matches a prior successful build, which would mean the edits from `make all-kernel` and `make verify-kernel` were already validated.
+
+Now I need to confirm the spec_drift analysis shows no ensures were removed and that the strengthened arms didn't accidentally weaken anything. I'm also verifying that the only remaining tautological Err arms are the two justified ones — `alloc_contiguous` and `init` — where the fixer provided actual contract quotes as evidence rather than prose explanations. Let me check those quotes against the actual code to make sure they're accurate, then run spec_drift to confirm nothing was weakened.
+[RESULT ✓] view: 204.                 },
+205.                 Err(_) => {
+206.                     final(self)@ == old(self)@
+207.                 }
+208.             },
+[RESULT ✓] bash: - Functions with changes: 6
+  - Ensures removed: 3
+- Functions removed: 0
+Each item below is a potential spec weakening that must be reviewed.
+### `alloc` (exec) — ensures removed ⚠, ensures added ℹ
+**ENSURES REMOVED** ⚠
+### `alloc_range` (exec) — ensures removed ⚠, ensures added ℹ
+**ENSURES REMOVED...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Spec drift flags 3 "ensures removed" — I must verify these are strengthenings, not weakenings. Let me see the detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/src/mm/
+
+[THINKING] The spec drift tool is reporting three removed ensures for alloc, alloc_range, and book, but these aren't actually weakenings—they're strengthenings where vacuous error handlers like `Err(_) => true` have been replaced with more concrete facts. I'm checking the details to confirm whether the tool is picking up on removed comments or the actual code changes.
+[RESULT ✓] bash: **ENSURES REMOVED** ⚠
+```
+and carrying a single reference. On failure nothing
+        // is reported about the returned (absent) frame.
+        match result {
+--
+**ENSURES REMOVED** ⚠
+```
+// On success every frame of the region is reserved. The region's frame
+        // set is `PhysMemView::region_f...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Spec drift "removed" entries are parser artifacts: each is the `Err(_) => true` / comment chunk replaced by a **stronger** predicate (Ok arms intact). These are strengthenings, not weakenings — exactly what I requested. The two retained `true` arms are verified correct: `Inner::alloc_contiguous` Err arm is `final(self)@ == old(self)@` only (inexpressible over fixed `phys_view()`), and `init`'s own Err arm. Let me run the build to confirm checklist item 17.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make all-kernel 2>&1 | tail -15
+
+[THINKING] The "ensures removed" flags are just an artifact of how the parser chunks the text—it's seeing the comment and the `Err(_) => true` change as separate pieces when they're really part of one logical shift. The actual change is strengthening the error case predicate, not removing any guarantees. The Ok branch with `allocated_frames.contains` is still there, and the Err branch just got stricter, which is exactly what was intended.
+
+Going through the full checklist now: coverage is solid, caller coverage is fixed with the Err facts added, view consistency checks out, the tautological ensures are resolved by pointing to the actual Inner contract arms, and error paths are now meaningful. The external_body and admit counts in the frame are expected at this specification phase—those get discharged during proof. The checklist item asks to report the counts, which I've done, and per the original plan this defers to the proof phase. The question is whether having unresolved cheating blocks the spec phase completion or if reporting it satisfies the requirement. Since every prior module completed the specification phase with these same external_body and admit counts as the accepted baseline, this is the expected end-state — the proof phase will discharge them later. I'll mark it PASS with counts reported and no cheating in the spec definitions themselves, then verify the build actually compiles to satisfy the final checklist item before writing the resolution.
+[RESULT ✓] bash: mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compiler_builtins -Z buil...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Build passes (exit 0). All checklist items are now PASS or FIXED. Writing the final review and STOP.
+[TOOL] report_intent: Writing final review and STOP
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/STOP
+
+[THINKING] The build is successful and all checklist items are resolved, so now I'm documenting the final turn and marking this as complete.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_driver.md with 3830 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**.
+
+I independently verified the fixer's Turn-1 changes (did not trust the verbal claim):
+
+**The 4 flagged Err arms are strengthened correctly** (lines 748/890/914/942), each matching its `Inner::*` Err contract and the caller-relied facts. The 2 retained `Err(_) => true` (`alloc_contiguous` 792, `init` 686) are justified by the **actual quoted contracts** I confirmed in source — `Inner::alloc_contiguous` Err is `final@ == old@` only (inexpressible over fixed `phys_view()`); `init` has no abstract post-state. Not prose hand-waving.
+
+**Tool evidence I ran myself:**
+- `make verify-kernel` → exit 0, 31 verified / 0 errors, `assume=0 trusted=0`
+- `make all-kernel` → exit 0, `kernel.elf` produced
+- `spec_drift git-diff` → the 3 "ensures removed" are text-diff artifacts of `Err(_) => true` being replaced by **stronger** predicates (Ok arms intact) — strengthenings, not weakenings
+
+All 17 checklist items PASS or FIXED. The only residual is external_body=10/admit=7 in `frame.rs` — the expected specification-phase scaffold (spec/proof files themselves have zero admit/assume), to be discharged in the proof phase. Wrote `turn_002_driver.md` and `STOP` = `RESOLVED`.
+
+
+=== Session End ===
+Session: 2caf12dc-5793-4734-b7e2-0240f16e8d63
+Duration: 102.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue-reviewer-t002-claude-20260615-071818.jsonl
