@@ -1500,3 +1500,39 @@ The core problem is that `get_mut` is listed in tcb-allowed.md as "skip," meanin
 Turn 89
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
+[RESULT ✓] bash: error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status:...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Trigger inference issue. Let me get the exact location:
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '/Could not aut
+
+[THINKING] The static error cleared up, but now there's a trigger inference issue in the quantifier for `is_contiguous_run` where the trigger annotation on `addrs[i]` might not be working properly. I'm wondering if the problem stems from how `alloc_many` uses `phys_view()` in its ensures clause with the forall.
+
+Let me pull the full error message with the line number to see exactly what's happening with the trigger on `phys_view().frames.allocated_frames.contains(...)`.
+[RESULT ✓] bash: error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> src/kernel/src/mm/phys/manager.rs:400:25
+    |
+400 |                       &&& exists|base: int|
+    |  _________________________^
+401 | |                    ...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+The `exists|base|` quantifier needs an explicit trigger. Add `#[trigger]` on the `is_contiguous_run` application:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The `is_contiguous_run` function isn't triggering properly because `base` only appears inside it as a non-triggerable arithmetic position, and Verus can't infer a trigger from an open spec function without its body. I need to manually specify a trigger using the `#[trigger]` attribute to mark `is_contiguous_run` itself as the trigger condition.
+
+Adding the trigger annotation...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
