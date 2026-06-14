@@ -116,3 +116,49 @@ All admits gone from frame.rs. A commit log shows mm::phys 58 verified, 0 errors
 [TOOL] report_intent: Running full verify-kernel
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tee /tmp/verify4.log | tail -35
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Cached run — exit 0 but no fresh counts. Let me force a clean verification and check frame-specific cheating + the trigger warning at frame.rs:1357.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep "frame.rs" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | grep -iE
+
+[THINKING] I need to run a clean build to see the actual verification and error counts without caching masking anything, and I'm noticing some kernel-wide parameters (admit=16, cfg_gate=19) that are separate from the frame-specific ones. There's also a trigger warning at frame.rs:1357 that I should look into—the exit code 0 suggests verification passed but with cheating detected.
+[RESULT ✓] bash: === frame admits direct ===
+=== all admits kernel-wide by file ===
+    - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Frame module: **0 admits, 0 assume**. The 16 remaining admits are all in OTHER modules (hal, manager, virt) — out of scope for phys-frame. Let me confirm error/warning counts with a fresh run and check the trigger note at frame.rs:1357.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== warnings/errors in log ==="; grep -iE "warning:|error:|verified," /tmp/veri
+
+[THINKING] The frame module has zero admits and zero assumes, with the remaining 16 admits scattered across other modules that are outside scope for this verification target. I'm noticing a trigger warning at frame.rs:1357 though, and since the verify exit code was cached at 0, I need to force a fresh recompile to get the actual verified and error counts and check that warning — the checklist requires zero errors and zero warnings.
+
+I'm checking whether that trigger note is actually a warning or just informational. The cached output means it didn't rerun, but the prior fresh run at commit 1057db919 showed 58 verified with 0 errors for mm::phys. Let me do a clean verify to confirm the current state and capture any warnings, then grep the logs for actual warning and error strings.
+[RESULT ✓] bash: === warnings/errors in log ===
+=== trigger note context ===
+25:note: automatically chose triggers for this expression:
+31:note:   trigger 1 of 1:
+37:note: automatically chose triggers for this expression:
+43:note:   trigger 1 of 1:
+49:note: automatically chose triggers for this expression:
+55:note: ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+These are informational trigger-selection **notes**, not warnings/errors. The run was cached though. Let me force a fresh verification to get authoritative counts, and confirm file growth.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && wc -l src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.proof.rs; echo "==
+
+[THINKING] These are just informational notes about trigger selection, not actual errors or warnings, so the verification still passes with zero errors and zero warnings. But I'm noticing frame.rs has grown significantly—it now has content up to line 1357 when it was previously only 972 lines, which means the proofs added substantial code. I need to verify the file length is correct and that the cached run is still valid.
+
+The cached result showing 58 verified with 0 errors should be trustworthy since the last meaningful commit (41d7a3ee5) completed the proofs, and the only change since then was documentation-only. But to be thorough as a reviewer, I should force a fresh verification run to confirm the actual verified and error counts rather than relying on the cache.
