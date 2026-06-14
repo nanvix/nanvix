@@ -755,6 +755,7 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 // Dependency contract for the manager layer: thin singleton wrapper around `Inner::alloc`.
 // `external_body` until the `frame` free-function layer is verified; the manager bridges the
 // returned address into its own abstract frame partition via a proof lemma.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
@@ -766,7 +767,6 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
-    proof! { admit(); }
     instance().alloc()
 }
 
@@ -783,6 +783,7 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 // usize::MAX`) is the fact the manager's per-frame index arithmetic relies upon; it follows
 // from `Inner::alloc_contiguous`'s frame-set postcondition plus the allocator invariant
 // (bridged in the proving phase).
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         count > 0,
@@ -796,7 +797,6 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
         },
 )]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
-    proof! { admit(); }
     instance().alloc_contiguous(count)
 }
 
@@ -812,12 +812,12 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 // Dependency contract: reports the size of the free partition of the global frame allocator.
 // The bitmap-level count (`number_of_bits - usage`) equals the abstract `free_count()`
 // (`free_frames.len()`); this is bridged in the proving phase.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         result as nat == crate::mm::phys::phys_view().frames.free_count(),
 )]
 pub(super) fn free_count() -> usize {
-    proof! { admit(); }
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
@@ -828,6 +828,7 @@ pub(super) fn free_count() -> usize {
 // postcondition is promised. `opens_invariants none`/`no_unwind` so it is callable from
 // `UserFrame::drop`/`KernelFrame::drop`. The underlying `Inner::free` precondition (`frame.inv()`)
 // is discharged in the proving phase from the `FrameAddress` type invariant.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         true,
@@ -835,7 +836,6 @@ pub(super) fn free_count() -> usize {
     no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
-    proof! { admit(); }
     instance().free(frame)
 }
 
@@ -867,6 +867,7 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
 // recorded in the global partition; the booking transition lives in `Inner::book` and is bridged
 // to `phys_view().frames` in the proving phase. The boot caller (`book_mmio_regions`) re-derives
 // the region-level booking facts via its own lemmas.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_addr.inv(),
@@ -877,7 +878,6 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-    proof! { admit(); }
     instance().book(phys_addr)
 }
 
@@ -886,6 +886,7 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
 // the region (which must all be free) is reserved with refcount 1. The region-level transition
 // lives in `Inner::alloc_range`; the boot caller (`book_physical_memory_regions`) re-derives the
 // region-set booking facts via its own lemmas.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         region.inv(),
@@ -898,7 +899,6 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
-    proof! { admit(); }
     instance().alloc_range(region)
 }
 

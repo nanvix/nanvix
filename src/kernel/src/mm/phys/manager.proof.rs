@@ -76,7 +76,13 @@ pub proof fn lemma_contig_no_overflow(base_raw: usize, idx: usize, count: usize)
         (idx as int) * spec_page_size() <= usize::MAX as int,
         base_raw as int + (idx as int) * spec_page_size() <= usize::MAX as int,
 {
-    admit();
+    // `spec_page_size()` is a `usize`-derived value, hence non-negative, and `idx < count`,
+    // so multiplying the inequality `idx <= count` by `spec_page_size()` preserves it.
+    vstd::arithmetic::mul::lemma_mul_inequality(
+        idx as int,
+        count as int,
+        spec_page_size(),
+    );
 }
 
 //==================================================================================================
