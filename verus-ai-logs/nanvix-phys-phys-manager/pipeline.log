@@ -229,3 +229,37 @@ Module: phys-manager
 [2026-06-15 02:53:52] [DIALOGUE] Reviewer turn 2 (remaining: 2865s)...
 [2026-06-15 02:53:52] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 02:57:43]   ↳ dialogue-reviewer-t2 done in 3m51s (exit=0)
+[2026-06-15 02:57:43] [DIALOGUE] Reviewer created STOP file: BLOCKED
+[2026-06-15 02:57:43] [DIALOGUE] STOP detail:
+BLOCKED
+
+Checklist status (11/12 PASS, 1 BLOCKED):
+- PASS: assume=0, trusted=0, no_decreases=0, cfg-gate=logging-only,
+  external_body all tcb-allowed (init, kernel_watermark), AST consistency
+  (matched=8/0), no exec rewrites, spec-drift=0 on all 3 files, cross-module
+  verify-kernel exit 0, build exit 0.
+- BLOCKED: "Zero admit()" — 4 admits remain in manager.proof.rs
+  (lines 16/35/55/216: lemma_manager_attached, lemma_kernel_alloc_one,
+  lemma_kernel_alloc_contiguous, lemma_user_bulk_err_restored).
+
+Independently verified (Turn 2), not accepted on the fixer's word:
+  A. Removing the 4 admits -> `make verify-kernel MODULE=mm::phys::manager`
+     = 15 verified, 4 errors (postconditions at proof.rs:14/31/32/49/50/214).
+     Unprovable in-scope.
+  B. Converting to external_body is UNSOUND for 3 of 4 — standalone verus on
+     reproducers/alloc_one_unsound.rs and others_unsound.rs each report
+     "1 verified, 0 errors", i.e. an `exploit() ensures false` VERIFIES. A
+     tcb-allowed boundary here would inject a false-deriving axiom (worse than
+     the admit). alloc_one_realbody.rs = 0 verified, 1 errors.
+  C. Root cause is cross-module: frame::alloc()/alloc_contiguous() (free
+     functions, no &mut self) export only frame membership, not the
+     phys_view() partition step; every token producer is an out-of-scope
+     external_body in the frame/upool layer.
+
+Resolution requires verifying + token-instrumenting mm::phys::frame
+(target nanvix-phys-phys-frame, itself carrying 8 admits) to export a
+singleton attachment token and a versioned partition-step token. Then the 4
+manager lemmas discharge mechanically. Out of this phase's editable scope
+(manager.{rs,spec.rs,proof.rs}); cannot be faked without unsoundness or
+forbidden spec-weakening.
+[2026-06-15 02:57:43] [DIALOGUE] cheating-elimination ended after 2 turns: BLOCKED (966s)
