@@ -88,18 +88,7 @@ impl PageDirectoryEntryFlags {
         accessed: AccessedFlag,
         dirty: DirtyFlag,
         page_size: PageSizeFlag,
-    ) -> Self {
-        Self {
-            present,
-            read_write,
-            user_supervisor,
-            page_write_through,
-            page_cache_disable,
-            accessed,
-            dirty,
-            page_size,
-        }
-    }
+    ) -> Self { ... }
 
     ///
     /// # Description
@@ -111,9 +100,7 @@ impl PageDirectoryEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_present(&self) -> bool {
-        matches!(self.present, PresentFlag::Present)
-    }
+    pub fn is_present(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -125,9 +112,7 @@ impl PageDirectoryEntryFlags {
     /// `true` if the user flag is set, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_user(&self) -> bool {
-        matches!(self.user_supervisor, UserSupervisorFlag::User)
-    }
+    pub fn is_user(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -139,9 +124,7 @@ impl PageDirectoryEntryFlags {
     /// `true` if the page is writable, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_writable(&self) -> bool {
-        matches!(self.read_write, ReadWriteFlag::ReadWrite)
-    }
+    pub fn is_writable(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -153,9 +136,7 @@ impl PageDirectoryEntryFlags {
     /// - `read_write`: The read/write flag.
     ///
     #[inline(always)]
-    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
-        self.read_write = read_write;
-    }
+    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) { ... }
 
     ///
     /// # Description
@@ -167,9 +148,7 @@ impl PageDirectoryEntryFlags {
     /// - `user_supervisor`: The user/supervisor flag.
     ///
     #[inline(always)]
-    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
-        self.user_supervisor = user_supervisor;
-    }
+    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) { ... }
 
     ///
     /// # Description
@@ -181,9 +160,7 @@ impl PageDirectoryEntryFlags {
     /// `true` if the page size flag is set, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_large_page(&self) -> bool {
-        matches!(self.page_size, PageSizeFlag::Large)
-    }
+    pub fn is_large_page(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -195,9 +172,7 @@ impl PageDirectoryEntryFlags {
     /// - `page_size`: The page size flag.
     ///
     #[inline(always)]
-    pub fn set_page_size(&mut self, page_size: PageSizeFlag) {
-        self.page_size = page_size;
-    }
+    pub fn set_page_size(&mut self, page_size: PageSizeFlag) { ... }
 
     ///
     /// # Description
@@ -212,18 +187,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
-    fn from_raw_value(value: PteWord) -> Self {
-        Self {
-            present: PresentFlag::from_raw_value(value),
-            read_write: ReadWriteFlag::from_raw_value(value),
-            user_supervisor: UserSupervisorFlag::from_raw_value(value),
-            page_write_through: PageWriteThroughFlag::from_raw_value(value),
-            page_cache_disable: PageCacheDisableFlag::from_raw_value(value),
-            accessed: AccessedFlag::from_raw_value(value),
-            dirty: DirtyFlag::from_raw_value(value),
-            page_size: PageSizeFlag::from_raw_value(value),
-        }
-    }
+    fn from_raw_value(value: PteWord) -> Self { ... }
 
     ///
     /// # Description
@@ -234,20 +198,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// The raw value.
     ///
-    fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.present.into_raw_value();
-        value |= self.read_write.into_raw_value();
-        value |= self.user_supervisor.into_raw_value();
-        value |= self.page_write_through.into_raw_value();
-        value |= self.page_cache_disable.into_raw_value();
-        value |= self.accessed.into_raw_value();
-        value |= self.dirty.into_raw_value();
-        value |= self.page_size.into_raw_value();
-
-        value
-    }
+    fn into_raw_value(self) -> PteWord { ... }
 }
 
 //==================================================================================================
@@ -285,9 +236,7 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
-    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
-        Self { flags, frame }
-    }
+    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self { ... }
 
     ///
     /// # Description
@@ -303,12 +252,7 @@ impl PageDirectoryEntry {
     /// - `Some(`[`PageDirectoryEntry`]`)`: If the raw value is valid.
     /// - `None`: Otherwise.
     ///
-    pub fn from_raw_value(value: PteWord) -> Option<Self> {
-        Some(Self {
-            flags: PageDirectoryEntryFlags::from_raw_value(value),
-            frame: FrameNumber::from_raw_value(value as usize >> crate::mem::FRAME_SHIFT)?,
-        })
-    }
+    pub fn from_raw_value(value: PteWord) -> Option<Self> { ... }
 
     ///
     /// # Description
@@ -319,14 +263,7 @@ impl PageDirectoryEntry {
     ///
     /// The raw value.
     ///
-    pub fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
-
-        value
-    }
+    pub fn into_raw_value(self) -> PteWord { ... }
 
     ///
     /// # Description
@@ -337,9 +274,7 @@ impl PageDirectoryEntry {
     ///
     /// The flags.
     ///
-    pub fn flags(&self) -> PageDirectoryEntryFlags {
-        self.flags
-    }
+    pub fn flags(&self) -> PageDirectoryEntryFlags { ... }
 
     ///
     /// # Description
@@ -351,9 +286,7 @@ impl PageDirectoryEntry {
     /// `true`: If the target page directory entry is marked as present.
     /// `false`: Otherwise.
     ///
-    pub fn is_present(&self) -> bool {
-        self.flags.is_present()
-    }
+    pub fn is_present(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -364,9 +297,7 @@ impl PageDirectoryEntry {
     ///
     /// The frame number.
     ///
-    pub fn frame_number(&self) -> FrameNumber {
-        self.frame
-    }
+    pub fn frame_number(&self) -> FrameNumber { ... }
 
     ///
     /// # Description
@@ -377,9 +308,7 @@ impl PageDirectoryEntry {
     ///
     /// The physical address.
     ///
-    pub fn frame_address(&self) -> usize {
-        self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
-    }
+    pub fn frame_address(&self) -> usize { ... }
 
     ///
     /// # Description
@@ -390,9 +319,7 @@ impl PageDirectoryEntry {
     ///
     /// `true` if the page size flag is set, `false` otherwise.
     ///
-    pub fn is_large_page(&self) -> bool {
-        self.flags.is_large_page()
-    }
+    pub fn is_large_page(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -403,9 +330,7 @@ impl PageDirectoryEntry {
     ///
     /// - `page_size`: The page size flag.
     ///
-    pub fn set_page_size(&mut self, page_size: PageSizeFlag) {
-        self.flags.set_page_size(page_size);
-    }
+    pub fn set_page_size(&mut self, page_size: PageSizeFlag) { ... }
 
     ///
     /// # Description
@@ -416,9 +341,7 @@ impl PageDirectoryEntry {
     ///
     /// - `read_write`: The read/write flag.
     ///
-    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
-        self.flags.set_read_write(read_write);
-    }
+    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) { ... }
 
     ///
     /// # Description
@@ -429,17 +352,11 @@ impl PageDirectoryEntry {
     ///
     /// - `user_supervisor`: The user/supervisor flag.
     ///
-    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
-        self.flags.set_user_supervisor(user_supervisor);
-    }
+    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) { ... }
 }
 
 impl TableEntry for PageDirectoryEntry {
-    fn from_raw(raw: PteWord) -> Option<Self> {
-        Self::from_raw_value(raw)
-    }
+    fn from_raw(raw: PteWord) -> Option<Self> { ... }
 
-    fn raw(self) -> PteWord {
-        self.into_raw_value()
-    }
+    fn raw(self) -> PteWord { ... }
 }

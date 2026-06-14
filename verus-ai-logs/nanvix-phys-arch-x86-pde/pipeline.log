@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[PIPELINE] NOTE: added cfg-gated include!(pde.spec.rs, pde.proof.rs) to /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[2026-06-14 10:52:10] [BRANCH] Base: verus-ai/arch-paging-table → Verus: verus-ai/arch-x86-pde
+[2026-06-14 10:52:10] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/body_removed_source.rs (11291 -> 8913 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-x86-pde
+Source: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+Crate:  arch
+Branch: verus-ai/arch-x86-pde (base: verus-ai/arch-paging-table)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: arch-x86-pde
+============================================================
