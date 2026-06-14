@@ -523,6 +523,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
     proof! { admit(); }
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
+        #[cfg(not(verus_keep_ghost))]
         error!("ensure_pt(): {reason}");
         Error::new(ErrorCode::InvalidArgument, reason)
     })?;
@@ -538,6 +539,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
         PAGE_TABLE_ALLOCATOR
             .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
             .map_err(|e| {
+                #[cfg(not(verus_keep_ghost))]
                 error!("ensure_pt(): page table allocation failed: {}", e);
                 Error::new(ErrorCode::OutOfMemory, "BSS page table allocation failed")
             })?
@@ -549,6 +551,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
     let pt_frame: FrameNumber =
         FrameNumber::from_raw_value(pt_paddr / mem::PAGE_SIZE).ok_or_else(|| {
             let reason: &str = "BSS page table frame number out of range";
+            #[cfg(not(verus_keep_ghost))]
             error!("ensure_pt(): {reason}");
             Error::new(ErrorCode::BadAddress, reason)
         })?;
@@ -614,6 +617,7 @@ fn ensure_pte(
     proof! { admit(); }
     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PTE read from page table";
+        #[cfg(not(verus_keep_ghost))]
         error!("ensure_pte(): {reason}");
         Error::new(ErrorCode::InvalidArgument, reason)
     })?;
@@ -626,6 +630,7 @@ fn ensure_pte(
     let frame: FrameNumber =
         FrameNumber::from_raw_value(phys_addr / mem::PAGE_SIZE).ok_or_else(|| {
             let reason: &str = "frame number out of range";
+            #[cfg(not(verus_keep_ghost))]
             error!("ensure_pte(): {reason}");
             Error::new(ErrorCode::BadAddress, reason)
         })?;

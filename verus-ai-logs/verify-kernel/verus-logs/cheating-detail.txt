@@ -43,5 +43,5 @@
     - mm/virt/identity_map.proof.rs:45 lemma_map_page_accessible: admit
     - mm/virt/identity_map.proof.rs:53 lemma_map_page_preserves_inv: admit
     - mm/virt/identity_map.rs:522 ensure_pt: admit
-    - mm/virt/identity_map.rs:609 ensure_pte: admit
-    - mm/virt/identity_map.rs:692 identity_map_page: admit
+    - mm/virt/identity_map.rs:612 ensure_pte: admit
+    - mm/virt/identity_map.rs:697 identity_map_page: admit

@@ -780,3 +780,114 @@ Compilation error. Let me see the full error messages.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -nE "error\[|error:
 
 [THINKING] I'm seeing a compilation error with the `error!` macro and `write` function around line 617, and there are a couple other issues too. Let me check the actual error messages at the top to understand what's going wrong.
+[RESULT ✓] bash: 16:error: Unsupported constant type
+17:   --> src/kernel/src/macros.rs:188:12
+19:188 |               let _ = write!(
+21:189 | |                 &mut crate::klog::Klog::get(
+22:190 | |                     module_path!(),
+23:191 | |                     crate::klog::KlogLevel::Error,
+25:194 | |        ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+The `error!` logging macro can't be processed by Verus. Let me see how verified kernel functions handle logging macros.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src; grep -rn "verus_keep_ghost" mm/phys/*.rs | grep -i "info\|error\|warn\|log\|cf
+
+[THINKING] The `error!` macro in `ensure_pt` and `ensure_pte` is causing issues because Verus can't handle the constant types it expands to—specifically the `module_path!()` and `KlogLevel::Error` components. Since these functions are now verified, the macro expansion fails during compilation. I'm checking how the rest of the codebase handles logging macros in verified functions, particularly looking at what `phys mod.rs` does with `info!` calls.
+
+The constraints documentation actually allows logging macros to be gated with `#[cfg(not(verus_keep_ghost))]` since they're non-semantic items. The challenge here is that these `error!` calls are inside closures within the exec body, making them harder to gate as simple attributes. I need to search through the kernel codebase to see how other verified functions already handle this pattern.
+[RESULT ✓] bash: mm/phys/frame.rs:49:#[cfg(verus_keep_ghost)]
+mm/phys/frame.rs:52:#[cfg(verus_keep_ghost)]
+mm/phys/frame.rs:141:                #[cfg(not(verus_keep_ghost))]
+mm/phys/frame.rs:147:        #[cfg(not(verus_keep_ghost))]
+mm/phys/frame.rs:154:                #[cfg(not(verus_keep_ghost))]
+mm/phys/frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] Checking whether the `error!` macro at line 208 in `manager.rs` is wrapped in a conditional compilation gate.
+[RESULT ✓] view: 200.         }
+201.         proof! {
+202.             assert(g_old == old(self)@);
+203.             assert(g_old.wf());
+204.         }
+205.         if !frames.is_empty() {
+206.             let reason: &str = "frames vector is not empty";
+207.             #[cfg(not(verus_keep_ghost))]
+208.           ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The fix: gate logging macros with `#[cfg(not(verus_keep_ghost))]` (the established pattern). Let me find all logging calls in the three in-scope functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/virt; grep -n "error!\|info!\|warn!\|debug!" identity_map.rs | sed -n '1,40p
+
+[THINKING] I'm realizing the issue is that the `error!` macro calls are nested inside closures within `ok_or_else`, not standalone statements, so the `#[cfg(not(verus_keep_ghost))]` attribute can't be applied directly to them the same way. The compiler is hitting `module_path!()` as an unsupported constant in every error! macro call in verified code, which is why manager.rs gates all of them with `#[cfg(not(verus_keep_ghost))]`. I need to find and gate every logging macro in these three functions to resolve this.
+[RESULT ✓] bash: 179:        error!("memcpy(): destination range overflows (dst={dst_start:#x}, size={size:#x})");
+183:        error!("memcpy(): source range overflows (src={src_start:#x}, size={size:#x})");
+189:        error!(
+250:        error!("memset(): target range overflows (base={base_start:#x}, size={size:#x...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I've identified the five error calls I need to gate: three in ensure_pt at lines 526, 541, and 552, plus two in ensure_pte at lines 617 and 629. I'll add the `#[cfg(not(verus_keep_ghost))]` attribute before each one, being careful to only modify these in-scope functions and leave the others untouched.
+[RESULT ✓] view: 522. fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+523.     proof! { admit(); }
+524.     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+525.         let reason: &str = "invalid PDE read from kernel PD";
+526.         error!("ensu...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 612. fn ensure_pte(
+613.     pt: Table<PageTableEntry>,
+614.     pte_idx: TableIndex,
+615.     phys_addr: usize,
+616. ) -> Result<(), Error> {
+617.     proof! { admit(); }
+618.     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
+619.         let reason: &str = "invalid PTE read...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -45
