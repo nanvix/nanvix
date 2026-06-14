@@ -325,6 +325,9 @@ impl Inner {
                 == pre_sb.union(BitmapView::range_set(start, start + count as int)));
             assert(self.bitmap@.num_bits == pre_nb);
             assert(spec_refcount_seq(self) == pre_rc);
+            // `alloc_range` Ok guarantees the booked range was entirely clear beforehand.
+            assert forall|j: int| start <= j < start + count as int implies
+                !pre_sb.contains(j) by {}
         }
         // Newly allocated frames have a single owner.
         #[cfg_attr(verus_keep_ghost, verus_spec(
@@ -334,9 +337,11 @@ impl Inner {
                 start + count as int <= pre_nb,
                 pre_nb <= pre_rc.len(),
                 self.bitmap@.num_bits == pre_nb,
+                self.bitmap.inv(),
                 self.bitmap@.set_bits
                     == pre_sb.union(BitmapView::range_set(start, start + count as int)),
                 self.refcount@.len() == pre_rc.len(),
+                forall|j: int| start <= j < start + count as int ==> !pre_sb.contains(j),
                 forall|k: int| 0 <= k < pre_rc.len() ==>
                     #[trigger] self.refcount@[k] == (if start <= k < i as int {
                         1u8
@@ -349,6 +354,38 @@ impl Inner {
             #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
             self.refcount[i] = 1;
+        }
+        proof! {
+            // Re-establish `internal_inv` after range booking: the bitmap has the whole range set,
+            // and the refcount loop set exactly the range's slots to 1.
+            let lo = start;
+            let hi = start + count as int;
+            assert(old(self).internal_inv());
+            assert forall|k: int| 0 <= k < pre_nb implies {
+                &&& (self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] > 0)
+                &&& (!self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] == 0)
+                &&& (self.bitmap@.set_bits.contains(k) ==> 0 < self.refcount@[k] <= 255)
+            } by {
+                if lo <= k < hi {
+                    assert(BitmapView::range_set(lo, hi).contains(k));
+                    assert(self.refcount@[k] == 1u8);
+                } else {
+                    assert(!BitmapView::range_set(lo, hi).contains(k));
+                    assert(self.refcount@[k] == pre_rc[k]);
+                    assert(pre_sb.contains(k) <==> pre_rc[k] > 0);
+                }
+            }
+            assert forall|k: int| pre_nb <= k < self.refcount@.len() implies
+                self.refcount@[k] == 0 by {
+                assert(self.refcount@[k] == pre_rc[k]);
+                assert(pre_rc[k] == 0);
+            }
+            assert forall|k: int| 0 <= k < pre_nb implies {
+                &&& frame_addr_of(k) >= 0
+                &&& frame_addr_of(k) <= usize::MAX as int
+                &&& k <= spec_max_frame_number()
+            } by {}
+            assert(self.internal_inv());
         }
         proof! {
             // Representability: `start < pre_nb`, so `old(self)`'s internal_inv bounds `start`.

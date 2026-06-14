@@ -2086,3 +2086,106 @@ Turn 153
 Turn 154
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 55 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=17 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-57-...
+
+────────────────────────────────────────────────────────────
+Turn 155
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error" 
+[RESULT ✓] bash: 8:1 errors
+30:note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+36:error: postcondition not satisfied
+51:error: assertion failed
+269:verification results:: 55 verified, 1 errors (partial v...
+
+────────────────────────────────────────────────────────────
+Turn 156
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '36,70p'
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:262:13
+    |
+262 |               final(self).inv(),
+    |               ^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+376 | /         match FrameAddress::from_frame_number(frame_number) {
+377 | |             Ok(frame_address...
+
+────────────────────────────────────────────────────────────
+Turn 157
+────────────────────────────────────────────────────────────
+Two issues: the `!pre_sb.contains(j)` range fact isn't carried, and `inv()` isn't reconstructed. Let me check `inv()` definition.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,15p' src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I'm hitting two verification issues here. First, I need to establish the internal invariant after the loop—I reconstructed the view but didn't prove that `inv()` holds, which requires both `wf()` and `internal_inv()`. Second, there's an assertion failure on line 387 where I'm checking that a bit position isn't already in the set, but the `all_bits_unset` fact isn't supporting that claim.
+
+For the second error, the problem is connecting the precondition snapshot to what `alloc_range` guarantees. When `alloc_range` succeeds, it ensures `old(self)@.all_bits_unset_in_range(start, start+count)`, but I need to verify that this snapshot's `set_bits` field equals the precondition bitmap state. Since the guard didn't mutate anything, `old(self)@.set_bits` should equal `pre_sb`, which means the unset property translates directly to `!pre_sb.contains(j)`. I need to explicitly assert this connection right after capturing the frame number, invoking the alloc_range postcondition to establish that no bits in the range are set in the precondition state. The issue is that `old(self)` in the method body refers to the method's entry state, not the alloc_range call's old state, so I can't directly reference the all_bits_unset postcondition from alloc_range. I need to either re-establish that fact right after the call where it's fresh, or find a way to connect the bitmap state before and after the allocation to prove the range was unset. The key insight is that `pre_sb` and the bitmap view at the call site should be the same SMT term since there's no mutation in between, so Verus should unify them automatically. But to be safe, I'll add an explicit assertion right after the `alloc_range` call that captures the unset-range fact, and then carry it as a loop invariant so it's available after the loop completes. This way the invariant `forall j in [start, start+count): !pre_sb.contains(j)` is directly known at line 387 without needing to re-derive it.
+
+Now I need to handle the `final(self).inv()` error—the view reconstruction gives me `self@` but `inv()` requires both `self@.wf()` and `self.internal_inv()` to hold. Let me check the `Inner::inv` definition in the spec to understand what needs to be proven.
+[RESULT ✓] bash: verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+// =================================================================================================
+// Dependency contracts for not-yet-verified modules.
+//
+// The fu...
+
+────────────────────────────────────────────────────────────
+Turn 158
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn wf" src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/*.rs; echo "==
+
+[THINKING] I'm trying to understand how the invariant gets re-established after mutations in different proof contexts. In the book's approach, after calling `lemma_reserve_one_v`, the proof just returns `Ok(())` without explicitly asserting the internal invariant — so Verus must be automatically deriving it from the bitmap update and refcount changes rather than requiring an explicit reconstruction step.
+
+But with `alloc_contiguous`, the loop makes this harder because the per-index refcount relationship gets obscured. After the loop I have a forall characterization, but Verus needs to verify that each internal_inv clause holds by instantiating both the loop's forall and the old invariant's foralls together. The real bottleneck is proving the "bit set iff refcount>0" clause for each index — I need to connect what the loop did to the refcount with what the bitmap now contains.
+
+I think the cleanest approach is to explicitly prove `internal_inv()` right after the loop finishes, before handling the return value, since that's where both the bitmap and refcount state are fully determined. Writing proof assertions...
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.spec.rs:31:    pub open spec fn wf(&self) -> bool
+===
+<shellId: 69 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 159
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '20,75p' src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] bash: pub struct FrameAllocView
+{
+    pub allocated_frames: Set<int>,
+    pub free_frames: Set<int>,
+    /// Maps each allocated frame address to its reference count.
+    /// A frame is present in the map iff it is currently allocated.
+    pub refcounts: Map<int, int>,
+}
+
+impl FrameAllocView
+{
+    pub ope...
+
+────────────────────────────────────────────────────────────
+Turn 160
+────────────────────────────────────────────────────────────
+Let me add the range-unset fact, carry it as a loop invariant, and add an `internal_inv` reconstruction block after the loop.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] So the invariant breaks down into two parts: the well-formedness of the view and an internal invariant. After reconstructing the state in the lemma, the postcondition requires both to hold, but the proof doesn't establish them directly—there's likely a lemma that derives the view's well-formedness from the internal invariant, or Verus infers this connection automatically.
+
+The real gap is establishing the internal invariant after the loop in the allocation. Once that invariant holds, the view's well-formedness should follow naturally from how the view is defined in terms of the underlying bits and refcounts. Let me add a proof block right after the loop to reconstruct the internal invariant clauses. Writing the proof block... I'm checking that the frame address calculations are valid and within bounds, then verifying the internal invariant holds by referencing the precondition's snapshot of the old state. Since `old(self).inv()` is assumed at entry, I can access `old(self).internal_inv()` to instantiate the forall quantifiers over the previous bitmap and refcount values. After the loop, I need to prove `self.internal_inv()` holds and check whether `self@.wf()` follows automatically or needs explicit assertion. The safest approach is to prove internal_inv first and see if wf derives from the view structure. I should also add the range-unset invariant (that `!pre_sb.contains(j)` for the allocated range) as a loop invariant so it's available throughout, then use it both for the subset proof and for lemma_reserve_range_v's precondition. Let me add the range-unset assertion right after the alloc_range call, carry it as a loop invariant, and then reconstruct the internal_inv proof block after the loop completes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 161
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
