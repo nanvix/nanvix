@@ -315,9 +315,11 @@ impl PhysMemoryManager {
             },
     )]
     fn check_user_watermark(count: usize) -> Result<(), Error> {
-        proof! {
-            lemma_free_count_bounded();
-        }
+        // Reading the free count first pins the abstract `free_count()` to a concrete `usize`,
+        // hence `free_count() <= usize::MAX`. This bound is what the overflow arm below relies on
+        // (a `kernel_watermark() + count` overflow means the threshold exceeds any possible free
+        // count). Binding it here makes that fact available on every path without an axiom.
+        let available: usize = frame::free_count();
         let watermark_threshold: usize = kernel_watermark()
             .checked_add(count)
             .ok_or_else(|| {
@@ -326,7 +328,7 @@ impl PhysMemoryManager {
                 error!("{reason}");
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
-        if frame::free_count() < watermark_threshold {
+        if available < watermark_threshold {
             let reason: &str = "would breach kernel watermark";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason}");

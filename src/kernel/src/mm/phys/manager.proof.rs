@@ -16,15 +16,6 @@ pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
     admit();
 }
 
-/// The free-frame count never exceeds the address space: it is bounded by the (finite) number
-/// of physical frames, which fits a `usize`.
-pub proof fn lemma_free_count_bounded()
-    ensures
-        phys_view().frames.free_count() <= usize::MAX as nat,
-{
-    admit();
-}
-
 //==================================================================================================
 // Kernel-path transitions (frame::alloc / frame::alloc_contiguous take no `self`)
 //==================================================================================================
@@ -113,16 +104,6 @@ pub proof fn lemma_user_bulk_ok(
 /// every frame already taken, restoring the partition to its pre-call state. `Drop` side effects
 /// are not modeled in exec, so the restoration is asserted here.
 pub proof fn lemma_user_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
-    requires
-        pre.wf(),
-    ensures
-        m@ == pre,
-{
-    admit();
-}
-
-/// Same restoration fact for the kernel contiguous bulk path.
-pub proof fn lemma_kernel_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
     requires
         pre.wf(),
     ensures
