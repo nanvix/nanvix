@@ -480,3 +480,41 @@ Final confirmation run:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-bump-allocator VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep
 
 [THINKING] Running a final verification of the bump allocator to ensure everything's in a clean state before generating the complete log.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bump-allocator  --log-dir verus-ai-logs/verify-bump-allocator
+=== Verus Verification (cargo mode) ===
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-lo...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Done. Verification confirms the bump-allocator crate is already clean.
+
+## Result: PASS
+
+**Cheating analysis** (`make verify-bump-allocator` → 12 verified, 0 errors):
+
+| Item | Before | After | Notes |
+|------|--------|-------|-------|
+| admit() | 0 | 0 | — |
+| assume() | 0 | 0 | — |
+| external_body | 2 | 2 | `alloc`, `alloc_as` — both in `tcb-allowed.md` |
+| assume_specification | 1 | 1 | `div_ceil`, external-bottom (vstd has no spec); not gate-counted |
+| cfg-gated exec | 0 | 0 | — |
+
+**Key findings:**
+- The only flagged cheating is `external_body` on `alloc`/`alloc_as`, which materialize `&'static mut` from a `usize` address — unverifiable without a `PointsTo` for externally-owned `BssStorage`. Both are explicitly listed in `tcb-allowed.md`, so they are **allowed to remain**.
+- `align_up` and `as_mut_ptr` (in-scope) are fully verified — not `external_body`.
+- The `div_ceil` `assume_specification` is a legitimate external-bottom trusted spec (escalation ladder: confirmed no `div_ceil` spec in pinned vstd). Rewriting `align_up`'s body to avoid it would violate ast-consistency and isn't required.
+- **AST consistency: zero mismatches** — `lib.rs`/`lib.spec.rs`/`lib.proof.rs` are byte-identical to `verus-ai-prove-bottom-up`. No source changes were needed.
+- Full `make verify` confirms no regressions.
+
+Reports written to `cheating-elimination/fix_report.md` and `verification_todo.md`. The `CHEATING_DETECTED` status from `verify.sh` reflects only the raw `external_body=2` count; the gate doesn't cross-reference `tcb-allowed.md`, but both sites are pre-approved.
+
+
+=== Session End ===
+Session: 827c3e4a-9c77-4d8b-a967-ec7e565997b1
+Duration: 288.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/prover-claude-20260615-002335.jsonl
