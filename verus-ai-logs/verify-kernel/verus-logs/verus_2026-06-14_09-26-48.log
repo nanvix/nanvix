@@ -1,0 +1,31 @@
+Timestamp: 2026-06-14_09-26-48
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `bump_allocator::impl&%1::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/page_table_allocator.rs:105:14
+    |
+105 | > = unsafe { FixedSizeBumpAllocator::new() };
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<const N: usize, const A: usize, S> [bump_allocator::FixedSizeBumpAllocator::<N, A, S>::new] () -> bump_allocator::FixedSizeBumpAllocator<N, A, S>
+            where
+            S: bump_allocator::BssStorage,;
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

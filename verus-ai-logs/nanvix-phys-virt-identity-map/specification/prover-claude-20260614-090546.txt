@@ -1290,3 +1290,114 @@ s=open(f).read()
 Turn 82
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
+[RESULT ✓] bash: error: cannot find constant kernel::mm::virt::page_table_allocator::PAGE_TABLE_ALLOCATOR
+   --> src/kernel/src/mm/virt/identity_map.rs:539:9
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verified
+  verification: 0 verified, compilation/setup error (verus did not run) (...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Need to make the `PAGE_TABLE_ALLOCATOR` static visible to Verus. Let me check `page_table_allocator.rs`.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs
+
+[THINKING] The issue is that `PAGE_TABLE_ALLOCATOR` is declared outside the `verus!` macro, so Verus can't resolve it when it's used in `ensure_pt`. I need to either add `#[verus_verify]` to mark it for verification or register it properly so Verus can access the constant definition. I need to check whether page_table_allocator.rs is Verus-aware and how to properly annotate the static there. Adding `#[verus_verify]` to the dependency's static should resolve the "cannot find constant" error, and this falls within the scope of handling dependencies rather than modifying the core task.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module instantiates a global fixed-size bump allocator for kernel page tables. Allocation
+8. //! is backed by statically reserved and aligned BSS storage and is used...
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src; grep -rn "verus_verify\|static\|use vstd" mm/phys/frame.rs | grep -i "static\|
+
+[THINKING] I'm realizing that `page_table_allocator.rs` doesn't have any Verus imports, so I need to make the `PAGE_TABLE_ALLOCATOR` static visible to Verus by adding the `#[verus_verify]` attribute. The challenge is that this attribute is a proc macro that requires Verus macros to be in scope, which means I need to check whether the kernel crate itself is set up to use Verus.
+
+Looking at how other files handle this, I see that `identity_map.rs` imports `use vstd::prelude::*;` to bring in the macros. For `page_table_allocator.rs`, I'd need to add the same import unconditionally (not cfg-gated per the constraints). However, this feels invasive for a dependency module. The real issue is that Verus will then try to translate the static's initializer—which calls `FixedSizeBumpAllocator::new()` in an unsafe block—and that might not be translatable.
+
+Let me check how the phys frame.rs file handles its statics that get referenced from verified code, since that's probably the pattern I should follow here.
+[RESULT ✓] bash: 78:static mut REFCOUNT_STORAGE: [u8; NFRAMES] = [0; NFRAMES];
+81:#[verus_verify]
+100:    refcount: &'static mut [u8],
+103:#[verus_verify]
+655:static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
+658:static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
+662:// Trust boundary: materia...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bump_allocator/src; grep -n "verus_verify\|verus_spec\|pub const fn new\|pub fn new\|
+
+[THINKING] The issue is that `ensure_pt` directly references the `PAGE_TABLE_ALLOCATOR` static, which Verus can't resolve in verified code. The pattern used elsewhere is to access statics through an `instance()` accessor method rather than directly, so I need to either add verification attributes to the static or refactor how it's accessed.
+
+Let me try adding `#[verus_verify]` and importing the vstd prelude to page_table_allocator.rs, since the `FixedSizeBumpAllocator` type itself is verified and its `new()` method should have a spec. I should check whether the bump_allocator crate has the necessary Verus annotations for both the type and constructor.
+[RESULT ✓] bash: 126:#[verus_spec(result =>
+146:#[verus_verify]
+191:#[verus_verify]
+200:    #[verus_spec(result =>
+218:#[verus_verify]
+219:pub struct FixedSizeBumpAllocator<const N: usize, const A: usize, S: BssStorage> {
+226:impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A, S> {
+266: ...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] view: 226. impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A, S> {
+227.     ///
+228.     /// # Description
+229.     ///
+230.     /// Creates a new fixed-size bump allocator.
+231.     ///
+232.     /// # Returns
+233.     ///
+234.     /// Returns a new allocator.
+235.     ///
+23...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+The static must be Verus-visible. Let me view the static definition and annotate it.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs
+
+[THINKING] The issue is that `FixedSizeBumpAllocator` is marked for Verus verification, but its `new()` function—which is a const unsafe function—lacks Verus annotations. When the static initializer tries to call `new()`, Verus treats it as an unverified external function, which creates a problem since Verus needs a spec to translate the static properly.
+
+I'm considering whether adding `#[verus_verify]` to the static itself and giving `new()` an `assume_specification` would resolve this, allowing Verus to type-check the initializer without needing the full implementation of `new()`.
+
+But I'm realizing this might be overcomplicating things. Let me step back and test the simplest approach: just mark the static with `#[verus_verify]` and see what error surfaces next, then iterate from there. The real issue is whether Verus demands verification of the initializer or just needs to register the static's existence and type. Looking at how other verified code handles build-time constants and statics from other modules, wrapping the access in an `external_body` accessor function might be the cleaner pattern anyway. I need to bite the bullet and modify page_table_allocator.rs — there's no way around it since the static needs the `#[verus_verify]` annotation to be registered in Verus's context. Adding the vstd import and the attribute is the only path forward, so let me locate the static definition and apply the annotation.
+[RESULT ✓] view: 60. 
+61. // Ensure that the kernel memory size is a multiple of a page table size.
+62. ::static_assert::assert_eq!(config::kernel::MEMORY_SIZE.is_multiple_of(mem::PGTAB_SIZE));
+63. 
+64. //==================================================================================================
+65. // Page T...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs
+
+[THINKING] I'm tracing through the type constraints here — `PageTableBss` implements the `BssStorage` trait, and `FixedSizeBumpAllocator` requires that its storage type parameter satisfies `BssStorage`. When Verus processes the static type, it needs to verify that `PageTableBss` actually implements `BssStorage`, which is defined in the bump_allocator crate.
+
+Rather than diving deeper into trait specifications, I'll just add the necessary annotations and see what error comes next. I'm going to add the vstd prelude import and `#[verus_verify]` attribute to the `PAGE_TABLE_ALLOCATOR` static, though I'm aware the `unsafe { FixedSizeBumpAllocator::new() }` call might cause issues since `new()` itself isn't annotated. There's a chance Verus will require treating the static as external or using a different verification strategy, but I'll iterate based on what the compiler tells me.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/page_table_allocator.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error\[|error:|
