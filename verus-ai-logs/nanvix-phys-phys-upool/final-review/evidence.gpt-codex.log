@@ -1,0 +1,309 @@
+# Git branch
+verus-ai/phys-upool
+
+# Diff stat vs base
+ src/kernel/src/mm/phys/frame.rs       |  77 +++++++++++++++++++++
+ src/kernel/src/mm/phys/upool.proof.rs |   1 +
+ src/kernel/src/mm/phys/upool.rs       | 124 +++++++++++++++++++++++++++++-----
+ src/kernel/src/mm/phys/upool.spec.rs  |  53 +++++++++++++++
+ 4 files changed, 237 insertions(+), 18 deletions(-)
+
+# Diff numstat vs base
+77	0	src/kernel/src/mm/phys/frame.rs
+1	0	src/kernel/src/mm/phys/upool.proof.rs
+106	18	src/kernel/src/mm/phys/upool.rs
+53	0	src/kernel/src/mm/phys/upool.spec.rs
+
+# Guardrail counts upool.rs
+admit=0
+assume=0
+external_body=0
+assume_specification=0
+cfg_not_verus_keep_ghost=0
+verus_rewrite=0
+
+# fn_coverage base->current upool.rs
+# Function Coverage Report
+
+- **Source file:** `verus-ai-logs/nanvix-phys-phys-upool/final-review/base_upool.rs`
+- **Verus file:** `src/kernel/src/mm/phys/upool.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 7 |
+| Verus exec fns | 7 |
+| Verus spec fns | 0 |
+| Verus proof fns | 0 |
+| Matched | 7 |
+| Missing | 0 |
+| Extra | 0 |
+
+## MISSING (exec fns in source but not in verus)
+
+_None — all source exec fns are present in verus._
+
+## EXTRA (exec fns in verus but not in source)
+
+_None._
+
+## MATCHED (exec fns present in both)
+
+| Function |
+|----------|
+| `address` |
+| `alloc` |
+| `drop` |
+| `leak` |
+| `new` |
+| `refcount` |
+| `share` |
+
+## SPEC/PROOF ONLY (informational)
+
+_None._
+
+
+# spec_drift HEAD->HEAD upool.rs
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+
+# spec_drift base->current upool.rs
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 9
+- **Contract drift (⚠ review required): 4**
+  - Ensures removed: 0
+  - Requires added: 9
+- Proof drift (informational): 0
+- Functions added: 2
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each item below is a potential spec weakening that must be reviewed.
+
+### `Upool::alloc` (exec) — 2× requires added ⚠, 4× ensures added ℹ
+
+File: src/kernel/src/mm/phys/upool.rs
+
+**REQUIRES ADDED**
+```
+phys_view().inv()
+```
+
+**REQUIRES ADDED**
+```
+phys_view().initialized
+```
+
+**ENSURES ADDED**
+```
+page-aligned frame
+            // whose address is now reserved (`allocated_frames`)
+```
+
+**ENSURES ADDED**
+```
+phys_view().inv()
+```
+
+**ENSURES ADDED**
+```
+phys_view().initialized
+```
+
+**ENSURES ADDED**
+```
+// On success: a handle owning a freshly allocated
+```
+
+### `UserFrame::new` (exec) — requires added ⚠, 3× ensures added ℹ
+
+File: src/kernel/src/mm/phys/upool.rs
+
+**REQUIRES ADDED**
+```
+addr.inv()
+```
+
+**ENSURES ADDED**
+```
+// `new` merely names an existing frame: the handle's address is `addr`
+            // and it inherits `addr`'s page-alignment. No allocation and no
+            // refcount change occur (ownership semantics come from `Drop`/`leak`)
+```
+
+**ENSURES ADDED**
+```
+// so `new` says nothing about `phys_view()`.
+            ret@ == addr@
+```
+
+**ENSURES ADDED**
+```
+ret.inv()
+```
+
+### `UserFrame::refcount` (exec) — 3× requires added ⚠, 3× ensures added ℹ
+
+File: src/kernel/src/mm/phys/upool.rs
+
+**REQUIRES ADDED**
+```
+phys_view().inv()
+```
+
+**REQUIRES ADDED**
+```
+self.inv()
+```
+
+**REQUIRES ADDED**
+```
+phys_view().initialized
+```
+
+**ENSURES ADDED**
+```
+// Pure query of the underlying frame's reference count: neither
+            // consumes `self` nor changes the count. On success the frame is
+            // allocated and the returned count equals its refcount; on failure the
+            // frame is not allocated.
+            match result {
+                Ok(count) => {
+                    &&& phys_view().frames.allocated_frames.contains(self@)
+                    &&& phys_view().frames.refcounts.contains_key(self@)
+                    &&& count as int == phys_view().frames.refcounts[self@]
+                },
+                Err(_) => !phys_view().frames.allocated_frames.contains(self@),
+            }
+```
+
+**ENSURES ADDED**
+```
+phys_view().inv()
+```
+
+**ENSURES ADDED**
+```
+phys_view().initialized
+```
+
+### `UserFrame::share` (exec) — 3× requires added ⚠, 5× ensures added ℹ
+
+File: src/kernel/src/mm/phys/upool.rs
+
+**REQUIRES ADDED**
+```
+phys_view().inv()
+```
+
+**REQUIRES ADDED**
+```
+self.inv()
+```
+
+**REQUIRES ADDED**
+```
+phys_view().initialized
+```
+
+**ENSURES ADDED**
+```
+phys_view().inv()
+```
+
+**ENSURES ADDED**
+```
+well-formed
+```
+
+**ENSURES ADDED**
+```
+and the frame is still allocated (it has gained
+            // a reference). On failure: no reference acquired; `self` is untouched.
+            match child {
+                Ok(handle) => {
+                    &&& handle@ == self@
+                    &&& handle.inv()
+                    &&& phys_view().frames.allocated_frames.contains(handle@)
+                },
+                Err(_) => true,
+            }
+```
+
+**ENSURES ADDED**
+```
+// On success: a fresh handle aliasing the same physical frame (equal
+            // view)
+```
+
+**ENSURES ADDED**
+```
+phys_view().initialized
+```
+
+
+# ast_consistency count upool.rs
+✅ Consistent: 8 functions, 2 structs match.
+
+# ast_consistency summary upool.rs
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Upool::alloc                             MATCH                                
+Upool::new                               MATCH                                
+UserFrame::address                       MATCH                                
+UserFrame::drop                          MATCH                                
+UserFrame::leak                          MATCH                                
+UserFrame::new                           MATCH                                
+UserFrame::refcount                      MATCH                                
+UserFrame::share                         MATCH                                
+
+## Structs
+
+Struct                                   Status              
+──────────────────────────────────────── ────────────────────
+Upool                                    MATCH               
+UserFrame                                MATCH               
+
+Consistent: ✅ YES (matched=8 mismatched=0 missing=0 extra=0)
+
+# do-not-modify symbol hits in base..current diff
+hits=0
+
+# frame/upool external_body counts
+upool_external_body=0
+frame_external_body_total=16
+# frame shim external_body lines
+frame.rs:656:#[verus_verify(external_body)]
+frame.rs:710:#[verus_verify(external_body)]
+frame.rs:731:pub(super) fn alloc() -> Result<FrameAddress, Error> {
+frame.rs:762:#[verus_verify(external_body)]
+frame.rs:778:pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+frame.rs:791:#[verus_verify(external_body)]
+frame.rs:807:#[verus_verify(external_body)]
+frame.rs:827:#[verus_verify(external_body)]
+frame.rs:849:#[verus_verify(external_body)]
+frame.rs:869:pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
+frame.rs:874:#[verus_verify(external_body)]
+frame.rs:894:pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {
