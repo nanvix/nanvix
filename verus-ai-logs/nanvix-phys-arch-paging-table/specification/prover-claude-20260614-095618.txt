@@ -1561,3 +1561,37 @@ Turn 87
 Turn 88
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -35
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Kernel now passes (76 verified, 0 errors). Let me confirm `make verify` covers both arch and kernel.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^verify:\|^verify-arch:\|^verify-kernel:\|verify:.*verify" Makefile | head; echo "
+
+[THINKING] The kernel verification is passing with 76 verified and no errors. The external_body count dropped from 18 to 16 after removing the ExTable and ExTableIndex type specs, which were the external_body definitions I eliminated. The remaining 16 are pre-existing documented ones, along with the 36 admit entries that were already there. I'm wondering if `make verify` only runs on the kernel or if it includes other components too.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+---
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+<shellId: 63 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "VERUS_CRATES" Makefile | head
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+Let me run the complete `make verify` to confirm all crates pass end-to-end.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | grep -E "verification results|Results|verified|errors|Error
+
+[THINKING] I need to run the full `make verify` command from scratch to confirm all the crates pass verification end-to-end, since the previous run stopped at the kernel error and I want to see the complete results.
