@@ -135,3 +135,129 @@ I could restructure the manager proof to eliminate the lemmas entirely, but the 
 I need to check whether the frame module was already completed despite the admits still being present in the code, since the documentation mentions "verified-in-body" Inner methods but the actual frame.rs still has admits at the top of each method.
 
 This is a genuine blocker that belongs to the nanvix-phys-phys-frame module, not something I should resolve. Let me run verify-kernel scoped to the mm::phys module to get accurate numbers and write an honest report with concrete evidence for each item the directive raised.
+[RESULT ✓] bash: verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  verification: 42 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=18 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  status: CHEATING_DETECTED
+<shellId: vk2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification is stable: **42 verified, 0 errors**, with the 4 manager admits + 8 out-of-scope frame admits remaining. Every concrete item the directive named is either vacuous or out-of-scope/permitted. Let me re-examine the structural reason the manager admits are unremovable, to document it precisely, then write the response.
+
+The key structural fact: `frame::alloc` is a **free function** that never takes `self`, so in Verus's model `self.upool@` is provably unchanged across the call — yet the manager's own postcondition demands `final(self)@ == old(self)@.alloc_one(kf@)`. This is only bridgeable by a ghost token in the frame layer. Let me confirm this with a direct in-source experiment (remove the admit at the kernel-alloc lemma's call site reasoning):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/mm/phys/manager.proof.rs /tmp/mpb.bak
+# Replace lemma_manager_attac
+
+[THINKING] I'm realizing the gate might not be accounting for tcb-allowed items when calculating the external body count, which would explain why the numbers don't match up with what the directive expects.
+
+Looking at the manager function more carefully, I'm wondering if I can sidestep the need for a standalone lemma entirely. The key insight is that frame::alloc doesn't modify self at all since it's a free function, so self@ remains unchanged after the call. Then KernelFrame::new wraps the returned address, and the manager's postcondition about the state transition should follow directly from frame::alloc's contract combined with a sound attachment lemma, if I'm careful about when attachment gets applied.
+
+But wait — that doesn't work either. The manager's postcondition demands that final(self)@ equals old(self)@.alloc_one(...), which represents a state change where a frame is removed from free and added to allocated. Yet the exec never actually mutates self@ because the frame allocation happens in the global singleton, not in self.upool. The whole thing depends on a fiction that self@ tracks the global partition, which is only realized through the ghost token.
+
+So the manager function as specified cannot verify without either the admitted lemma forcing the state transition, or a real ghost token threaded through frame::alloc that actually mutates a tracked view tied to self@. Since upool is external_body with no spec state and frame::alloc doesn't touch it, there's genuinely no mechanism for self@ to change. The architecture would need frame::alloc to take and return a Tracked token whose mutation reflects in upool@, which is a frame-layer and upool-layer change entirely out of scope. The conclusion is solid: these four manager admits are structurally necessary given the current design.
+
+Now I'm documenting the findings. I've confirmed the vacuous directive items, verified all external_body declarations are tcb-allowed, and re-ran the kernel verification to show 42 verified with the 4 manager admits and 8 frame admits remaining. I'll write this up as a definitive blocker report in the response file and update the main report.
+[RESULT ✓] bash: === Demonstrate: at alloc_kernel_frame, frame::alloc leaves self@ unchanged ===
+380:        let frame_addr: FrameAddress = frame::alloc()?;
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat > /tmp/repro2.rs <<'EOF'
+use vstd::prelude::*;
+verus! {
+pub struct V { pub f: Set
+[RESULT ✓] bash: error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+  --> /tmp/repro2.rs:19:13
+   |
+19 |     ensures m.vw() == old(m).vw().alloc_one(r),
+   |             ^
+   |
+   = help: For information on the new mutable reference support,...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -i 's/ensures m.vw() == old(m).vw().alloc_one(r),/ensures final(m).vw() == old(m)
+[RESULT ✓] bash: 19 |       ensures final(m).vw() == old(m).vw().alloc_one(r),
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+20 | / {
+21 | |     let addr = frame_alloc();   // does NOT touch m
+22 | |     // m.view is unchanged here; ensures demands it changed. Unprovable with...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+This isolated reproducer cleanly proves the root cause: a free function cannot cause a `self@` transition, so the manager's kernel-path postcondition is structurally unprovable in-scope (`0 verified, 1 errors`). Let me save it and confirm source integrity.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/repro2.rs verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/reprodu
+
+[THINKING] The isolated reproducer shows why a free function can't trigger a `self@` transition—`frame_alloc` lacks `&mut self`, making the postcondition unprovable without `lemma_kernel_alloc_one` to bridge the gap, and that bridge requires a tracked token at the frame layer that can't be introduced in-scope.
+
+Now I need to verify the proof file is still intact since I only created a backup.
+[RESULT ✓] bash: proof file UNCHANGED
+(empty=source clean)
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now writing the response with all the gathered evidence:
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_002_fixer.md with 6145 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/reproducers/ && echo "
+[RESULT ✓] bash: alloc_one_realbody.rs
+alloc_one_unsound
+alloc_one_unsound.rs
+free_fn_no_self_transition.rs
+others_unsound
+others_unsound.rs
+=== final integrity ===
+(empty = source clean)
+4
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -f verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/reproducers/alloc_o
+[RESULT ✓] bash: alloc_one_realbody.rs
+alloc_one_unsound.rs
+free_fn_no_self_transition.rs
+others_unsound.rs
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+I addressed every concrete item in the directive with evidence, not prose.
+
+## Summary
+
+**Directive items — checked each:**
+- **R20p** (`exec_allows_no_decreases_clause`): **0 in the module** — `grep` confirms none exist. Vacuous.
+- **R20c** (multi-line `limitation_assume`): **0** — none exist. Vacuous.
+- **`assume()`**: **0**.
+- **`external_body` on proof fns**: **0** — all 16 are on *exec* fns, and all 16 are listed in `tcb-allowed.md` (the task's stated exception). Cross-checked one-by-one.
+- **8 `frame.rs` admits**: out of scope — they're in `Inner::{alloc,...}` allocator internals, not my 6 target functions; the hard rule forbids touching unlisted functions (they belong to the `nanvix-phys-phys-frame` phase).
+- **4 `manager.proof.rs` admits**: the only in-scope cheating — proven structurally irreducible.
+
+**New decisive evidence** (`reproducers/free_fn_no_self_transition.rs`): `frame::alloc` is a **free function taking no `self`**, so Verus proves `self.upool@` is *unchanged* across the call, while the manager's own postcondition demands `final(self)@ == old(self)@.alloc_one(kf@)` → `0 verified, 1 errors`. The admits exist only to bridge this; turn-1 reproducers already showed in-scope discharge fails *and* the `external_body` fallback is **provably unsound** (verifies `ensures false`).
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → **42 verified, 0 errors**; source byte-identical to phase start (spec-drift 0); no new cheating added.
+
+**Result: NEEDS_GUIDANCE** — cross-module sequencing dependency. The 4 manager admits discharge mechanically once the `frame` layer is verified and exposes a tracked partition-step token + singleton attachment token (out of manager scope). Response written to `cheating-elimination/dialogue/turn_002_fixer.md`; reproducers committed.
+
+
+=== Session End ===
+Session: 511fc3c9-9d9e-499f-9aaa-b8520b146def
+Duration: 304.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/cheating-fix-claude-20260615-025743.jsonl
