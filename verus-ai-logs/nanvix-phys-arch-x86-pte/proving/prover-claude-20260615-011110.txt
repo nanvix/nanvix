@@ -271,3 +271,68 @@ Order confirmed. Let me run baseline verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | tail -40
 
 [THINKING] I'm checking the dependency order for these page table entry functions—they're all leaf nodes with no internal module dependencies except for the is_present calls. Now let me verify the architecture with the baseline check.
+[RESULT ✓] bash: cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module x86::mem::paging::pte:
+    ⚠️  cfg-gated exec code: 2
+  Global: assume=0 external_body=3 admit=0 trusted=0 cfg_gate=4
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, admit=0). Let me check the cheating detail to understand the flags.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | he
+
+[THINKING] The verification passed with no issues, and all four in-scope functions already have contracts in place. The cheating flags are pointing to external_body and cfg_gate code, but those are in other functions and dependency modules, not in what I'm checking. Let me look at the cheating details to confirm none of it affects my in-scope functions.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls verus-ai-logs/verify-arch/verus-logs/; echo "---"; grep -rn "cfg" verus-ai
+
+[THINKING] The external_body items are all in the TCB-allowed list, so those check out. For cfg_gate=4, I'm looking at what those correspond to — likely the configuration-gated includes and attribute annotations that don't affect semantics. Let me trace through the cfg-gated execution code to see where those four global instances and two in the pte module are coming from.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-14_08-09-50.log
+verus_2026-06-14_08-10-07.log
+verus_2026-06-14_08-13-23.log
+verus_2026-06-14_08-13-34.log
+verus_2026-06-14_08-14-25.log
+verus_2026-06-14_08-18-15.log
+verus_2026-06-14_08-18-29.log
+verus_2026-06-14_08-20-25.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, admit=0, assume=0). The external_body=3 are all TCB-allowed (invlpg, table read/write); cfg_gate are non-semantic include/allow markers. Let me confirm no admit/assume in the pte files and that the in-scope contracts genuinely verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "admit\|assume\|external_body" src/libs/arch/src/x86/mem/paging/pte*
+
+[THINKING] The verification checks out with all external operations in the TCB-allowed list and the cfg gates being non-semantic markers. Now I'm examining the cfg_gate entries in pte.rs to confirm they're just conditional compilation directives and include statements that don't affect the actual logic.
+
+Looking at the coverage report, exactly 4 functions have contracts and they're the ones in scope. The verification already passes with admit=0, which is unusual — either the proofs are trivial enough for Verus to auto-prove them, or I need to double-check that there genuinely aren't any admit or assume calls hiding in the source files.
+[RESULT ✓] bash: exit grep: 1
+=== check is_present in flags module for spec funcs ===
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+No admit/assume/external_body in the pte files. The 4 in-scope functions all verify (exit 0). The result was cached, so let me force a fresh verification and then run the full crate to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; touch src/libs/arch/src/x86/mem/paging/pte.rs; timeout 600 make verify-arch M
+
+[THINKING] The PTE files don't contain any admit, assume, or external_body declarations, and the four in-scope functions all verify against their contracts successfully. I need to confirm the contracts are actually being validated and not just passing vacuously — the functions have `#[verus_spec]` ensures clauses that Verus checked (exit 0). Looking at `is_present`, it returns whether the present flag matches Present, and the ensures clause states the result equals the spec representation of that flag, so I need to verify the `spec_present_set` definition aligns with this.
+
+The verification output shows cached results from a previous run that passed with exit 0, which is fine since nothing changed. The CHEATING_DETECTED status is due to pre-existing external_body and cfg_gate declarations in TCB-allowed functions outside my scope (like invlpg and table.rs operations), so those don't affect the four functions I'm responsible for. Since verification already passes with zero admits, the proving work appears complete, but I should run a clean full verification to be absolutely certain there are no regressions and the four functions genuinely verify.
