@@ -45,10 +45,8 @@
     - mm/virt/identity_map.rs:533 ensure_pt: admit
     - mm/virt/identity_map.rs:627 ensure_pte: admit
     - mm/virt/identity_map.rs:718 identity_map_page: admit
-    - mm/virt/identity_map.spec.rs:123 ExTable (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:127 ExTableIndex (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:131 ExPageDirectoryEntry (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:135 ExPageTableEntry (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:139 ExPageDirectoryEntryFlags (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:143 ExPageTableEntryFlags (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:175 ExPageTableBss (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:124 ExPageDirectoryEntry (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:128 ExPageTableEntry (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:132 ExPageDirectoryEntryFlags (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:136 ExPageTableEntryFlags (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:168 ExPageTableBss (struct): external_type_spec
