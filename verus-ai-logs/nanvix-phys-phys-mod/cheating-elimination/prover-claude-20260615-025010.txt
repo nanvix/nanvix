@@ -289,3 +289,61 @@ Now let me run the module-scoped verification to get a baseline.
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | tail -6
 
 [THINKING] I'm setting up the verification environment by configuring the executable directory and module parameters before running the baseline check.
+[RESULT ✓] bash: - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - f...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Verification exited 0 (cached). The MODULE arg didn't filter the cheating scan (it's crate-global). Let me confirm the in-scope state and that `init` actually verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== cheating-detail (phys mod lines) ==="; grep -nE "mod\.rs|mod\.spec\.rs|mod\.proof\.
+
+[THINKING] The filtering by MODULE=mm::phys isn't working as expected—it's still scanning the entire kernel crate across multiple files like frame.rs and manager.rs, showing external_body=17 and cfg_gate=5 across the whole thing. But the actual task scope is just the phys-mod (mod.rs file) and those three specific functions, not all the other separate modules bundled in there.
+
+So for my phys-mod task, the only cheating items that matter are the two external_body calls in book_physical_memory_regions and book_mmio_regions (which are TCB-allowed), plus the ExLinkedList type spec in mod.spec.rs that supports them. The verification ran and cached successfully, but I need to check whether the init function actually got verified or if it's sitting in the unverified list. The external_type_specification for ExLinkedList is a necessary trusted type declaration, not a proof gap—it's the standard mechanism for declaring foreign types to Verus and can't be removed. Checking the counts and the grep results, there are no admits or assumes in the module, and the only external_body functions in scope are the two already listed in tcb-allowed.md, so phys-mod appears to already satisfy the cheating elimination policy.
+
+But I should verify that the functions actually verify end-to-end rather than relying on cached results—particularly `init`, which needs to prove its ensures clause by composing the contracts of the functions it calls like frame::init, the book functions, and PhysMemoryManager::init. Let me check the verus output directly to confirm the proof is genuinely complete.
+[RESULT ✓] bash: === cheating-detail (phys mod lines) ===
+14:    - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
+15:    - mm/phys/mod.rs:117 book_mmio_regions: external_body
+16:    - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+=== tail of verus log ===
+<shellId: 6 completed with ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; L=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "LOG: $L"; tail
+
+[THINKING] The grep search didn't turn up any error or verification status lines in the logs, so I need to examine the log output more carefully and run a fresh verification without caching to see what the init process actually produces. I should also check the verify script itself to understand what the expected output format is, particularly whether it should show a "verified: N errors: 0" line.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_02-51-14.log
+Timestamp: 2026-06-15_02-51-14
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_g...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me force a fresh (non-cached) verification to confirm `init` verifies with 0 errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy; touch src/kernel/src/mm/phys/mod.rs; make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=
+
+[THINKING] The cached verification result shows a successful exit, but I need to see the actual verified count and error summary. Let me force a fresh verification by touching the source file and re-running to get the full output with the verification statistics. I'll force a recompilation by touching the source file to update its modification time, which will trigger cargo to rebuild without actually changing the code.
