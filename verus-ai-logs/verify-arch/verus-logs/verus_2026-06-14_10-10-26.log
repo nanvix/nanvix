@@ -1,0 +1,31 @@
+Timestamp: 2026-06-14_10-10-26
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error[E0425]: cannot find function `from_address` in this scope
+   --> src/libs/arch/src/x86/mem/paging/table.rs:160:25
+    |
+160 |     pub const unsafe fn from_address(base: usize) -> Self {
+    |                         ^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `arch` (lib) due to 1 previous error

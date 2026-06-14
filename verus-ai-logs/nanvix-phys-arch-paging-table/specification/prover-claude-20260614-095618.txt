@@ -425,3 +425,264 @@ Turn 15
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-arch 2>&1 | tail -40
 
 [THINKING] Verus is set up at the default location, so I'll run the baseline verification with `make verify-arch` to confirm the current state passes with empty specs.
+[RESULT ✓] bash: RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --tar...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "verus_spec" /home/ruize/toolchain/verus/ 2>/dev/null | grep -i "with" | head; echo "=== search verus source di
+
+[THINKING] The baseline tests are passing cleanly. Now I'm diving into how vstd handles volatile memory operations with `raw_ptr` and `read_volatile` to see if Verus has existing specs I can build on. But I'm realizing there might be a cleverer approach here — I could embed a PointsTo permission in a Tracked field without needing to modify the execution signatures, though that creates complications around mutable references.
+
+Actually, the `with` clause on `#[verus_spec]` might be exactly what I need — it's designed to thread tracked permission tokens through ghost parameters that disappear from the Rust signature. Let me look up the exact syntax and check if vstd has examples of this pattern.
+[RESULT ✓] bash: /home/ruize/toolchain/verus/builtin_macros/src/lib.rs:352:/// Using proof_with! to tell #[verus_spec] to add ghost input/output.
+/home/ruize/toolchain/verus/builtin_macros/src/lib.rs:353:/// Using proof_with outside of #[verus_spec] does not have any side effects.
+/home/ruize/toolchain/verus/builtin...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '800,900p' /home/ruize/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+
+[THINKING] I'm realizing that `#[verus_spec(with ...)]` is the key mechanism for adding tracked and ghost parameters without modifying the Rust execution signature. Let me look at the attribute rewriting documentation and syntax examples to understand the exact syntax, then figure out how to handle the pointer read since vstd doesn't have a spec for `read_volatile`.
+[RESULT ✓] bash: if erase.keep() {
+                l.body.stmts.splice(0..0, new_stmts);
+            }
+            l.to_token_stream().into()
+        }
+    }
+}
+
+pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::TokenStream {
+    if erase.keep() {
+        let block: TokenStream =
+     ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Let me examine the trait implementations in pde.rs and pte.rs since `raw`/`from_raw` are in scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "impl TableEntry\|fn from_raw\|fn raw\|struct PageDirectoryEntry\|struct PageTableE
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' src/libs/arch/src/x86/mem/paging/pde.rs; echo "=== grep TableEntry impl bodi
+
+[THINKING] The `with` clause adds tracked parameters to functions, but using it to add a Tracked permission to `read`/`write` means every call site needs to pass that permission explicitly. The identity_map module currently calls these functions without the `with` clause, so adding it would require updating all those call sites—but I can't modify identity_map directly.
+
+Even though `with` is erased in non-ghost builds, in Verus mode the type checker would reject identity_map's calls for missing the tracked argument unless identity_map itself uses the `with` clause. This cascades into the kernel crate and violates the constraint of not touching unlisted functions.
+
+I'm reconsidering the realistic scope here. The `with` approach is theoretically correct but breaks too many constraints. Given that I can't change signatures, use external_body, or rely on uninterpreted functions, I need to think about what "describes what the function does" means at an achievable level without the permission token. Maybe the right framing is that `Table::read`/`write` are inherently a trust boundary—like volatile MMIO memory the kernel owns externally—similar to how `frame.rs::instance` and `bump_allocator::alloc` work with external_body and global view ensures. But those functions are in the TCB allowed list, and read/write aren't, so I can't use external_body for them.
+
+That leaves me with a hard constraint: read/write must verify without external_body, yet they contain `read_volatile`/`write_volatile` on raw pointers cast from integers. Verus requires `PointsTo` permissions for such operations, which I don't have. The only options are threading in a permission (ruled out), using external_body (ruled out), or using `assume_specification` on the volatile functions themselves. But `assume_specification` is also gated by the TCB allowed list, and `read_volatile` isn't on it. I need to clarify whether the tcb-allowed.md list applies to this specific module or if there's a different authorization path.
+
+Let me try a more empirical approach: write a real spec for read/write that references a view and see what Verus actually complains about. If it demands a permission, I'll know for certain. But stepping back, the cleanest sound path would be threading a tracked `PointsTo`-like permission through `with`, except the callers already have `assume_specification` for these functions, so adding real specs would cascade conflicts up to identity_map and beyond—exactly what the task scope forbids.
+
+Given these constraints, the realistic deliverable is to fully spec the pure functions that callers actually depend on: `pd_index`, `pt_index`, `TableIndex::into_raw`, and `TableIndex::new`. So the real specs I add to the arch crate will conflict with the placeholder specs in identity_map.spec.rs, which means I need to remove those superseded assume_specifications and external_type_specifications. But the catch is that identity_map's code relies on calling these functions, so the real specs have to maintain the same exec signature without adding tracked parameters like `with` clauses, otherwise the calls will break.
+
+The core tension is that modeling memory contents faithfully requires a ghost permission token threaded through `with`, but that would force me to modify identity_map.rs's exec code to pass proof arguments—which is out of scope. So I'm weighing whether to accept a weaker spec for read/write that doesn't capture the round-trip property, or to thread the permission through and accept the cascading changes in identity_map. The grading criteria prioritizes make verify-arch passing with no regressions in make verify, so I need to find a path that doesn't break the existing callers. I'm realizing the core issue: without threading permissions through the specs, I can't prove the round-trip property that callers actually need. The weak state-free specs would just reproduce what already exists. Let me step back and make a pragmatic decision based on what's actually verifiable—focusing on the rock-solid specs for `TableIndex` with its view and invariants, then reconsidering how to model `Table<E>`'s entries through a separate mechanism rather than trying to force it into a pure view function. The key insight is that if arch exports real verified specs for Table and related types, identity_map can import them directly and won't need the conflicting external specifications—the real specs become available cross-crate automatically. The challenge is that read/write can't add `with` permission parameters (that would break identity_map's call sites), so they must verify using plain `&self` signatures, which means I need to handle the volatile dereferences somehow, likely through assume_specification for the underlying `core::ptr::read_volatile` and `write_volatile` functions. I'm reconsidering whether this volatile MMIO boundary is actually a legitimate use of assume_specification despite not being in the TCB allowlist, or whether the intended design uses vstd's raw pointer PointsTo with a `with` clause in a way that still works for identity_map.
+
+Rather than theorize further, I should just start writing the spec file for the pure functions and TableIndex extractors, verify that part works, then iterate empirically on read/write to see what Verus actually accepts. I need to check the exact constants—PAGE_TABLE_LENGTH = 1024, PGTAB_SHIFT = 22, PAGE_SHIFT = 12—and figure out whether bitwise operations on usize in spec context need special handling or if I should keep them as usize to stay well-defined, even though the View itself uses nat.
+
+For the spec_table_index function, I'll define it to take usize arguments and perform the bitwise shift and mask operations directly on usize, mirroring what the exec code does, then cast the result to nat so the proof obligation becomes matching the exec computation against the spec.
+
+The type invariant on TableIndex requires that any constructed instance satisfies `self@ < PAGE_TABLE_LENGTH`. When pd_index creates a TableIndex by masking with 1023, I need to prove the result is less than 1024 — bit_vector should handle this automatically since `(x & 1023) < 1024` is a bitwise property. The same applies when constructing TableIndex in other places; Verus will demand the invariant proof at each construction site.
+
+For into_raw, I'm specifying that the result as a nat equals self@, and I'll also document that the result is bounded by PAGE_TABLE_LENGTH via the type invariant. The view function returns self.0 as nat, which connects the raw usize to the abstract nat value.
+
+Now I'm moving to the Table structure itself — I need to define its view and spec functions carefully, starting with TableIndex's view and pure operations, then tackling the Table view and read/write specifications incrementally to avoid cascading complexity.
+
+The core challenge is that write takes &self (not &mut self), so it can't mutate a ghost field, and two Table instances pointing to the same memory would have independent ghost state — that's unsound. Threading a permission through the API cascades the complexity everywhere. So for now, I'll specify read and write without claiming they mutate or read the entries map, and document that limitation while I work through the design empirically in Verus. I need to test whether read and write are actually reachable during verification by temporarily adding verification annotations and running the arch crate checks. The cleanest approach is to write out the spec.rs with the pure parts and from_address, annotate the exec functions with admit for now, then iterate based on what Verus reports. I'll need to verify that the constant paths like `crate::mem::PAGE_TABLE_LENGTH` are accessible from within the spec functions in the arch crate. I'm realizing that adding specs to the trait methods means the implementations in pde.rs and pte.rs will need to satisfy those ensures clauses, which expands verification scope to those modules — but they're actually in scope since `raw` and `from_raw` are listed as the TableEntry trait methods that get dispatched inside Table operations. Let me check what those implementations actually look like to understand the verification burden.
+[RESULT ✓] bash: 36:pub struct PageDirectoryEntryFlags {
+76:    pub fn new(
+108:    pub fn is_present(&self) -> bool {
+122:    pub fn is_user(&self) -> bool {
+136:    pub fn is_writable(&self) -> bool {
+150:    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+164:    pub fn set_user_supervisor(&mut self...
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use cra...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+I have enough context. This module is fundamentally about volatile page-table memory. Let me record a plan and start empirically — first the solid pure-function specs, then iterate on the harder volatile-memory functions.
+[TOOL] create: /home/ruize/.copilot/session-state/702a087e-71ae-4509-a5b2-ec753e322d88/plan.md
+
+[THINKING] The scope explicitly specifies only the trait methods `raw` and `from_raw`, not the underlying `from_raw_value` or related functions in the pde/pte modules. Even though the implementations delegate to those lower-level functions, I should focus the spec on just what's listed in the scope rather than cascading into all the dependencies.
+
+The pragmatic approach is to define the trait spec methods with the round-trip law as the key proof obligation, while treating the unscoped value conversions as external dependencies. Since Verus only verifies items explicitly annotated with `#[verus_verify]` or `#[verus_spec]`, I can leave the lower-level functions unannotated to keep them out of the verification scope. I need to narrow the scope decisively based on what's actually graded: the four concrete index-arithmetic properties that gva.rs depends on (pd_index/pt_index correctness, TableIndex::into_raw identity, TableIndex invariant, and from_address validation) are fully doable and high-value, whereas the read/write/raw/from_raw round-trip gets blocked by memory permissions and trait verification complexity.
+
+Let me start by implementing the solid pure-function specs first—TableIndex View with index extractors, Table View, and from_address spec—then tackle read/write/trait specs iteratively. I'm writing spec.rs now to define these core pieces, though I'm realizing the Table View needs to handle the generic TableEntry constraint and the entries field, but from_address only constrains the address part while leaving entries unconstrained initially.
+
+The key insight is that Table's view can't be a pure closed function of just the struct when entries depend on external memory state. So I'm going to make a final decision: the Table struct View should only carry the address as a nat, and the entries map lives separately in a permission token threaded through read/write operations. This means I'll implement the pure specs (TableIndex, index extractors, into_raw, new, from_address with View=addr) and keep read/write/raw/from_raw specs sound but minimal—adding trait spec projections and round-trip laws with proof admits where needed, and ensuring read at least verifies with the volatile read requirement even if the full decode contract can't be expressed.
+
+Now I'm going to test empirically by writing out the spec.rs file with these annotations and running verify-arch to see what Verus actually accepts for the volatile operations.
+[RESULT ✓] create: Created file /home/ruize/.copilot/session-state/702a087e-71ae-4509-a5b2-ec753e322d88/plan.md with 1447 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The volatile-memory functions need careful handling. Let me check the upstream caller (identity_map) baseline and how its calls are structured before deciding the cascade strategy.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '120,140p;290,330p' src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm starting to write the spec.rs file with the View trait implementation for TableIndex and setting up the invariant annotations for the verification layer.
+
+Defining the index extraction spec functions that compute table, page directory, and page table indices by bit-shifting and masking the virtual address. I need to verify that bit operations on usize work in Verus spec context and that the masked results stay within bounds. The spec and implementation should align since the masking operation `(vaddr >> 22) & 1023` is definitionally equal to what the spec expects, so Verus should recognize them as the same. For the type invariant proof at construction, I can either use `use_type_invariant` on the result or prove the bound directly with a bit_vector assertion, though doing this inside a const fn might be tricky. I'm leaning toward keeping the type invariant on TableIndex since it captures the semantic guarantee properly, but I need to figure out whether Verus allows proof blocks in const fn contexts or if I should just assert the bound inline.
+
+For the Table view design, I'm settling on making the View type just `nat` (the base address) to stay sound, since I can't soundly populate the entries field from just the base pointer in a closed spec function. The read/write transitions will be modeled separately through permission-based specs, so the view itself only needs to track the address. I'll start with a simple spec.rs implementation and test iteratively.
+
+For read and write operations, I'm accepting that without a permission system, I can only give them weak specs — essentially just verifying that the bodies translate correctly without making strong guarantees about the returned values. The honest approach is to document this limitation and note that meaningful round-trip semantics would require either a permission or a ghost field modeling per-handle state, though the latter introduces unsoundness across aliased handles that I'd need to carefully scope to avoid.
+
+I'm reconsidering whether a tracked permission passed through a `with` clause could work — having read and write take an optional PointsTo permission that models the actual page contents, which would let me prove the round-trip without cascading the permission requirement through all callers.
+
+But that runs into the same issue: write takes &self, not &mut self, so I can't actually mutate the tracked field. I need to stop chasing this and move forward with what's achievable.
+
+I'll implement the specs I can soundly define: read and write get weaker specs without the round-trip guarantee, while the trait methods raw and from_raw get the full projection specs with the round-trip law. The challenge is that adding spec functions to the trait forces pde and pte to implement them, which cascades the verification burden. I could instead add ensures clauses directly to the raw and from_raw methods themselves, relating them to each other without needing separate spec projections — that keeps the trait clean and avoids the cascade. I can add `proof { admit(); }` before the body to discharge the ensures clause, which works since admit() is allowed as a spec-phase placeholder. For the trait methods in table.rs, I'll annotate `raw` with ensures `Self::from_raw(result) == Some(self)` to capture the round-trip law directly, and the implementations in pde.rs can use this pattern since raw/from_raw are listed in scope.
+
+The trait method specs are inherited automatically by impls, so I just need to annotate the four impl methods (raw and from_raw in both pde and pte) with `proof { admit(); }` to satisfy verification. But the read/write round-trip itself remains blocked—I can't express the ensures without naming the word at a specific slot, which requires a permission or view I don't have.
+
+I'll give read/write minimal sound specs (no ensures or trivial ones) and document this as deferred to the proving phase when the permission mechanism is added. The `with` clause pattern using external tracked permissions would solve this, but that cascades through identity_map and is out of scope. For now, I'll ensure every exec function has at least a basic contract to pass the desk check.
+
+The real issue is that read/write bodies perform pointer arithmetic and volatile reads—operations that genuinely need bounds checking and hardware interface specs. Without either external_body or a cascading permission mechanism, I can't verify these soundly. Since these are hardware trust boundaries similar to patterns in frame.rs and bump_allocator, they arguably belong in the TCB allowed list, but the task restricts me to what's already there. I should either add them to tcb-allowed.md with justification or accept that they'll remain unverified with minimal contracts.
+
+Given the constraints, the pragmatic path is to use `assume_specification` for the standard library's volatile operations (which is a legitimate trust boundary since they're not our code) and add a Table invariant bounding `self.base` to prevent overflow on `self.base + offset`. This way read/write get verified bodies with sound specs, and from_address would require callers to prove the base is in range—which cascades the proof obligation to identity_map and other call sites. I see the trust boundary more clearly now — the volatile MMU access in the standard library is where the actual external boundary lies, not our wrapper functions. So I can use `assume_specification` on the std volatile operations themselves rather than marking our own code with `external_body`. This keeps our functions verified while properly accounting for the hardware trust boundary. For the arithmetic overflow on `self.base + offset`, I'll add a Table type invariant constraining `self.base + PAGE_SIZE` to stay within bounds, which the add operation can then safely assume.
+
+The tricky part is that `from_address` would need a precondition to establish this invariant, which cascades to all callers like `identity_map`. I need to check whether `identity_map` is already using `admit()` in its proof — if the call site is before any `admit()`, the precondition must be proven; if it's after, it's free. Rather than chase this uncertainty, the safest approach is to keep the function specs minimal with weak ensures and let the volatile operation's `assume_specification` handle the boundary, then see if the overflow proof becomes unavoidable or if there's a way to sidestep it entirely.
+
+The real issue is that `read_volatile` and `write_volatile` are hardware trust boundaries that ideally need `external_body`, but that requires adding them to `tcb-allowed.md`, which conflicts with the methodology saying the TCB list is fixed. However, `assume_specification` on standard library functions is explicitly allowed by the Verus constraints, so using it for the volatile operations is legitimate without needing to modify the TCB list. For the overflow in `self.base + offset`, I'll add a bound to make it provable. I'm realizing that either way—whether I add a requires to `from_address` or make it a Table type invariant—the precondition cascades to `identity_map`. The key question is whether `identity_map`'s calls to `from_address` happen in admitted code paths, which would mean adding the precondition won't actually break verification. Let me check that before committing to either approach.
+
+Actually, I should just implement this and test it empirically rather than reason further. I'll write out the full spec with my best judgment: `TableIndex` as a View with a nat invariant, and `Table<E>` with a View containing just the address (bounded to prevent overflow), keeping the design minimal. The entries will live in the permission layer as already noted. Then I'll run the verifier and fix cascades as they surface.
+
+For the exec contracts, I need to decide where to place the address bound requirement to minimize cascading. If I add a type invariant to `Table` requiring the address to be bounded, then `from_address` must establish it, which cascades to all its callers. But `from_address` has only 8 call sites in identity_map, whereas `read` and `write` have many more. So I should push the bound requirement into `read` and `write` instead, avoiding the larger cascade.
+
+Before committing to this design, I should verify that the current kernel identity_map module actually passes verification, so I know what constraints I'm working within.
+[RESULT ✓] bash: /// new PDEs are created at runtime. The kernel PD and CR3 atomics are published only after
+/// pre-allocation succeeds, so other code never observes a partially-initialized identity map.
+pub(crate) fn init(
+    kernel_pd_paddr: PageDirectoryAddress,
+    kernel_cr3: Cr3Register,
+) -> Result<(), Erro...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -c "verus_spec\|verus_verify" src/kernel/src/mm/virt/identity_map.rs; echo "--- which 
+
+[THINKING] If I add a `requires` precondition to `from_address`, the `identity_map` function would need to prove it holds, but since the call happens in a loop without an `admit` statement beforehand, the verification would likely fail and break the build.
+
+The real issue is that `read` and `write` can't verify their bodies without either a precondition (which cascades the problem) or marking them as `external_body`. Since the upstream design already established this as a trusted boundary via `assume_specification`, I'm treating it as a pre-existing trust boundary rather than introducing a new one — I'll add `external_body` to these functions and document the justification in `tcb-allowed.md`.
+
+But wait, the task explicitly forbids adding `external_body` unless the function is already listed there, with bug-reporting as the prescribed path when stuck. Let me reconsider: maybe `read` and `write` can be fully verified without cascading if the permission clause is optional, or maybe `identity_map`'s functions aren't actually being verified yet — if they're just declared in the spec file without `#[verus_verify]` annotations, then their call sites wouldn't be checked, and adding preconditions to `from_address` wouldn't break anything.
+[RESULT ✓] bash: 4
+--- which funcs annotated ---
+88:#[verus_verify]
+122:pub(crate) fn init(
+171:pub(crate) fn memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
+242:pub(crate) fn memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
+289:pub(crate) fn sync_kernel_pdes(target_pd_pa...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '509,700p' src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm noticing that `ensure_pt`, `ensure_pte`, and `identity_map_page` are all verified functions with the `#[verus_spec]` attribute, and they're calling `from_address`, `read`, and `write`. If I add preconditions to those lower-level functions, these verified callers will need to prove those preconditions in their bodies — but if they're using `admit()` early on, that's going to be a problem.
+[RESULT ✓] bash: #[verus_spec(result =>
+    requires
+        identity_map_view().inv(),
+    ensures
+        match result {
+            // The returned page-table physical address is page-aligned (BSS-backed and
+            // immediately usable as `Table::from_address` for the follow-up `ensure_pte`).
+            //...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '718,770p' src/kernel/src/mm/virt/identity_map.rs; echo "=== L88 context ==="; sed -
+
+[THINKING] I'm realizing that both `ensure_pt` and `ensure_pte` start with `proof! { admit(); }`, which means everything inside them operates under a false context where all obligations are automatically satisfied. So if I add `requires` clauses to `from_address`, `read`, `write`, and `invlpg`, the call sites in `identity_map`'s `ensure_pt` and `ensure_pte` won't break since they're already past the admit statement. The same should hold for `init` and `sync_kernel_pdes`
+
+—they're unverified functions, so adding preconditions to their callees won't impose new verification obligations. For `identity_map_page`, which is verified, it likely delegates to the `ensure_*` wrappers rather than calling the raw functions directly, so it should be fine too. This means I can safely add preconditions to these functions without breaking the build.
+[RESULT ✓] bash: pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    proof! { admit(); }
+    let phys_addr: usize = phys_addr.into_raw_value();
+
+    let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
+    // Check if the lazy mapper has been initialized.
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+All call sites in the verified upstream are behind `proof! { admit(); }`, so I have freedom to add preconditions without breaking `make verify`. Let me write the spec file (iteration 1: TableIndex + pure functions + Table view + from_address).
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.spec.rs
+
+[THINKING] All three verified functions that call from_address, read, and write start with proof admits, meaning I can safely add any requirements to those underlying functions without breaking verification since all call sites are either post-admit or unverified. This gives me full freedom to add meaningful specs including requires clauses to from_address, read, write, pd_index, and pt_index. Now I need to check the kernel identity_map.sp file.
+
+When arch provides real View implementations and #[verus_spec] annotations, there will be conflicts with the current external_type_specification and assume_specification declarations in ec.rs — declaring external specs for types and functions that arch now provides real specs for will cause duplicate specification errors. I need to remove ExTable, ExTableIndex, ExTableEntry, and the assume_specification declarations for pd_index, pt_index, from_address, read, and write so that identity_map uses arch's actual specs instead. Since identity_map.spec.rs kept these types opaque and didn't reference their @ views directly, removing the external declarations should be safe, though I need to check what other ExType declarations like ExPageDirectoryEntry and ExPageTableEntry still need to remain.
+
+The complication is that PageDirectoryEntry and PageTableEntry themselves have external_type_specification in identity_map, but if arch adds #[verus_verify] to them (which is needed to verify the raw/from_raw trait implementations), there will be a conflict. To verify the trait impls, Verus needs these types to be known, but if they're not annotated in arch, Verus treats them as external and the impl verification becomes problematic. Rather than fully verify the pde/pte impls, I should scope this down by specifying just the trait method declarations with the round-trip law and marking the pde/pte impls minimally. I'm settling on a concrete deliverable: TableIndex gets full specs with its view and invariant, pd_index and pt_index get correctness specs with range bounds, and from_address ensures the address field matches with a type invariant preventing overflow. For read/write, I'll specify them minimally—requiring index validity and self invariant (both free from the type), and for write I'll defer the state postcondition since I can't express it without full memory permissions, while for read I'll connect the result to the trait's round-trip law to at least guarantee valid decoding, though the actual word value remains unconstrained. I'm settling on a pragmatic approach: read and write will get sound specs that reference the View's entries through a closed model function, without requiring the complex permission threading that would force changes to all the post-admit call sites. I'll implement this design and refine it empirically based on what actually type-checks. I'm realizing that `read` and `write` sit at the hardware boundary and can't get meaningful specs without permissions I can't thread due to scope constraints. Given the codebase treats them as a trust boundary anyway, I'll document this limitation honestly and give them the strongest sound specs possible: the precondition that `self@.inv()` holds (which callers post-admit satisfy), plus for `write` a frame condition confirming the address stays unchanged—these are non-tautological and actually useful since they confirm the handle's identity is preserved.
+
+But I'm stuck on a deeper circularity: to soundly specify `read` as returning a value tied to the page contents, I'd need to define a deterministic `entries` function in the view, but that function can't be derived from just the base address without access to actual memory. If I make `read_volatile`'s spec return a ghost value and tie `view().entries` to that same ghost, the ghost either becomes uninterpreted (which is banned) or needs to be a parameter—creating a circular dependency I can't resolve within the current constraints.
+
+So I'm committing to a pragmatic approach: I'll mark `read` and `write` with bare verification annotations that at least verify memory safety and overflow checks in their bodies, then document in bugs that full specs capturing the actual semantics require a memory-permission mechanism that's out of scope. This way the code still gets real verification for pointer safety, even if the specs can't capture the full contract. I'll lock in my approach: TableIndex and Table get full specs with type invariants, read/write get verified for memory safety with `#[verus_verify]`, and I'll handle the delegating functions (raw/from_raw and their callees) empirically by running the verifier to see what specs are actually needed rather than speculating upfront.
+
+Now I'm writing out the first iteration of spec.rs with TableIndex, the pure helper functions, the Table view with from_address, and its invariants—then I'll compile and verify to validate the pure parts before tackling the trickier memory operations.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > src/libs/arch/src/x86/mem/paging/table.spec.rs <<'EOF'
+verus! {
+
+//==================
+[RESULT ✓] bash: written
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Now annotate the exec functions in table.rs for the pure parts and from_address.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm adding Verus verification annotations to the table.rs file—marking the TableIndex struct and its implementation with `#[verus_verify]`, adding `#[verus_spec]` to individual methods, and doing the same for the free functions and Table struct with special handling for the from_address function.
+
+For the `new` method, I'm specifying that it returns Some only when the index is within PAGE_TABLE_LENGTH bounds, with the view matching the input index. The `into_raw` method needs to extract the invariant from self to prove the bounds, then return the raw value. For `pd_index`, I'm setting up the spec to ensure the result matches the spec_pd_index calculation and stays within bounds.
+
+The tricky part is proving that extracting bits from a shift-and-mask operation stays within bounds — I need a bit_vector assertion to show that `(vaddr >> 22) & 1023` is always less than 1024, which will satisfy the type invariant when constructing the TableIndex.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] Now I'm adding the Table struct and its implementation with Verus annotations. I'm marking the struct and impl block with `#[verus_verify]`, and the `from_address` function with `#[verus_spec]` to specify its preconditions and postconditions—requiring that the base address plus page size doesn't overflow, and ensuring the resulting address matches the input base.
+
+The construction logic is straightforward: it just wraps the base and a PhantomData marker, which Verus should handle fine. The precondition about overflow directly satisfies the type invariant, and the postcondition about the address field matches what the view produces.
+
+I'm holding off on annotating the read and write methods for now—I'll run a verification pass on just the struct and from_address first to validate this iteration. The question is whether to put `#[verus_verify]` on the entire impl block or handle methods individually, since unannotated methods in a verified impl would still get checked and fail on volatile reads and overflow operations. Looking at how number.rs structured it, I should either annotate all methods or be selective about which ones get the impl-level verification marker.
+
+For read and write, I need to prove that the offset calculation doesn't overflow and that adding it to the base stays within bounds. The offset is index (< 1024) shifted left by 2, giving something less than 4096. Since the type invariant guarantees base + PAGE_SIZE ≤ usize::MAX and PAGE_SIZE is 4096, the sum base + offset will always be safe.
+
+The tricky part is that PTE_WORD_SIZE_LOG2 is computed from size_of and trailing_zeros at compile time, which Verus might not be able to evaluate symbolically. I need to figure out how to handle that constant value in the proof. The real issue is that PTE_WORD_SIZE_LOG2 derives its value from size_of and trailing_zeros at compile time, but Verus needs to evaluate these operations to use the constant in proofs — even with #[verus_verify] on the defining module, it can't fold these const operations reliably. So I'm thinking the pragmatic approach is to verify just from_address with #[verus_spec] on that method alone, leaving read/write unverified for now, and see if Verus can handle the struct-level invariants without needing to resolve PTE_WORD_SIZE_LOG2 in the arithmetic.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-arch 2>&1 | tail -45
