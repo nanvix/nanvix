@@ -228,3 +228,34 @@ Turn 8
 
 Now I'm checking that there are no admit or assume violations—both are at zero, which is good. Let me run the full verification suite to make sure nothing has regressed.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+verification results:: 76 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.78s
+
+=== Results ===
+  76 verified
+  0 errors
+  Exit code : 0
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Done. The `table` module now verifies cleanly.
+
+**Result**: `make verify-arch` → 47 verified, 0 errors. Arch module: `assume=0 admit=0`. Full `make verify` shows no regressions (the kernel-side admits/external_body are pre-existing in out-of-scope modules).
+
+**What I did**: The only failures were the int-to-pointer casts (`usize as *const/*mut PteWord`) in `Table::read` and `Table::write` — a known Verus limitation (no provenance model), already documented in `verus-unsupported.md` and sanctioned in `tcb-allowed.md`. I added `#[verus_verify(external_body)]` to both (the only permitted resolution; their full abstract contracts are preserved). All other target functions (`TableIndex`/`new`/`into_raw`, `pd_index`, `pt_index`, `from_address`, trait `raw`/`from_raw`) verified with their existing proofs.
+
+No code bugs found — nothing to report in `bugs.md`. No specs weakened.
+
+[THINKING] Looking at the verification results, the table module shows zero admits and zero errors, which is what I need. The kernel module has 36 admits, but those are pre-existing in other modules outside my scope—my changes only affect the table module. Let me double-check that my specific module has no admits by examining the detailed verification output.
+
+
+=== Session End ===
+Session: f291bc69-62aa-4650-9ff6-c91e913f883a
+Duration: 97.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/proving/prover-claude-20260615-021425.jsonl
