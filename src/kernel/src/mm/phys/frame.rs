@@ -665,7 +665,6 @@ static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 // `PointsTo` for the `static mut` (mirrors the `bump_allocator` materialization). The `ensures`
 // pins the abstract state of the singleton to the global subsystem view (`phys_view().frames`)
 // and records that the allocator is initialized — the §8 ghost-token attachment realized here.
-#[verus_verify(external_body)]
 #[verus_spec(r =>
     ensures
         (*r).inv(),
@@ -698,7 +697,6 @@ fn instance() -> &'static mut Inner {
 // `&'static mut REFCOUNT_STORAGE` and writes the `MaybeUninit` singleton — raw-memory ops Verus
 // cannot verify. Callers rely on it establishing `phys_view().initialized` (via
 // `lemma_frame_initialized`) before any other free function runs.
-#[verus_verify(external_body)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
