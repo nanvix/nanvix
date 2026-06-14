@@ -335,3 +335,16 @@ Turn 27
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
 
 [THINKING] I need to check what lemmas I'm using in the start proof block—I'm still referencing `lemma_alloc_contains` which requires `addr` to be defined, and I have that from `let addr = frame@;`. The key insight is that `lemma_alloc_contains` only needs `internal_inv` and the alignment check `addr%PS==0`, while `lemma_alloc_iff_key` has no preconditions, so both should work fine for the error arms where I need to show `!allocated.contains(frame@)`.
+[RESULT ✓] bash: === Summary ===
+  verification: 54 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=19 admit=19 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-2...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+FIX A done — **54 verified, 0 errors**. The only remaining issue is the 3 admits (`admit=19` in the global cheating count includes other modules; the frame ones are alloc/alloc_contiguous/alloc_range). Let me commit this milestone, then tackle FIX B.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "[verus-ai] phys-frame: FIX A - prove free/share + tra
