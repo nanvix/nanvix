@@ -96,3 +96,6 @@ Final tool state:
   same as bump_allocator/manager/phys/identity_map proof lemmas). No internal
   assume_specification, no trusted, no loops.
 [2026-06-14 10:52:10] [DIALOGUE] specification ended after 3 turns: RESOLVED (1519s)
+[2026-06-14 10:52:10] [PHASE] specification: dialogue-RESOLVED (55m52s)
+[2026-06-14 10:52:10] [SPEC DRIFT] (within specification) Comparing 6b53570e → a21d2660
+[2026-06-14 10:52:10] [SPEC DRIFT] (within specification) No changes detected
