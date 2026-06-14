@@ -249,3 +249,195 @@ Let me start the verification (it's slow) and read the context files in parallel
     "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
     "src/kernel/src/mm/phys/frame.rs:Inner::free",
     "src/kernel/src/mm/phys/frame...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Verification passed (exit 0). Now let me check key details: `identity_map_page` spec, the `Address`/`PageAligned` origin (workspace-internal?), and cheating patterns scoped to kframe.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===cheating detail (kframe)==="; grep -niE 'admit|assume|external_body|trusted' src/k
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===identity_map_page spec==="; grep -rn 'fn identity_map_page' src/kernel/src/mm/virt
+
+[THINKING] The verification passed, though there's a broader kernel issue with external_body counts across the whole crate. For the kframe module specifically, I need to focus on the in-scope functions: `new`, `base`, and `drop`, while `clear`, `deref`, and `deref_mut` fall outside the trusted computing base. Now I'm working through the verification checklist for these functions.
+
+I'm noticing a critical issue with the `new` function's ensures clause. It has `Err(_) => true`, which is tautological—exactly what the checklist flags as a problem. But the view design and caller analysis both indicate the error path should have meaningful ensures: when `new` fails, no frame is consumed, so the global allocator state and `base` remain unchanged, meaning `phys_view() == old(phys_view())` should hold. The two call sites depend on this failure semantics to know the frame wasn't consumed. Since `new` calls `PageAligned::from_raw_value` and `identity_map_page`, neither of which allocates frames, and page tables come from a BSS pool with no recursive frame allocation, `phys_view()` should actually be unchanged on both success and failure paths. This suggests the ensures could potentially be stated unconditionally rather than just on the error case.
+
+I need to check whether `identity_map_page` has a spec that would let us prove this invariant, and I'm also reviewing the other checklist items: function coverage shows 36/1022 functions have contracts, but the in-scope functions (new, base, drop) all have specs. The `assume_specification` for `PageAligned<T>::from_raw_value` is concerning because it's from `crate::hal::mem`, which is workspace-internal code—the checklist explicitly prohibits assume_specification for internal code, though the spec comment claims it's below the verification boundary as an external trait.
+
+For loop invariants, new/base/drop have no loops so that passes. On the cheating front, `clear` has `external_body` but it's marked as TCB and out-of-scope in the documentation, so I need to verify whether that's properly justified or if it violates the rule about not cheating on the module's own functions.
+[RESULT ✓] bash: ===cheating detail (kframe)===
+136:    // Trusted (TCB, out of verification scope): materializes a `*mut u8` from the
+140:    #[verus_verify(external_body)]
+===verus_spec count===
+3
+===Address origin===
+---find Address def---
+src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+<shellId: 4 co...
+[RESULT ✓] bash: ===identity_map_page spec===
+src/kernel/src/mm/virt/identity_map.rs:649:pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+---
+src/kernel/src/mm/virt/identity_map.rs:13://! pre-covered ranges, [`identity_map_page`] lazily installs a page table entry (and,...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===from_raw_value def for PageAligned==="; grep -n 'from_raw_value' src/kernel/src/ha
+
+[THINKING] The `Address` trait lives in the `sys` library crate as an external dependency, while `PageAligned` is defined within the kernel crate itself, making them from different workspace boundaries.
+
+The real concern here is whether the `assume_specification` on `PageAligned`'s `from_raw_value` method violates the checklist rule against assuming specs for workspace-internal code. Since `PageAligned` is defined in the kernel crate, this could be a violation—though the more glaring issue is the tautological `Err(_) => true` in the `new` function's ensures clause, which should instead specify that the physical view remains unchanged on error, as the design explicitly requires.
+
+I need to complete the checklist review by examining `identity_map_page`'s spec and the `from_raw_value` situation, then write up the findings with the first actionable FAIL item.
+[RESULT ✓] view: 630. /// - `phys_addr`: Page-aligned physical address to identity-map.
+631. ///
+632. /// # Returns
+633. ///
+634. /// Upon success, empty is returned. Upon failure, an error is returned instead.
+635. ///
+636. /// # Errors
+637. ///
+638. /// - [`ErrorCode::InvalidArgument`]: Failed to read a valid pagi...
+[RESULT ✓] bash: ===from_raw_value def for PageAligned===
+69:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+70:        Self::from_address(T::from_raw_value(raw_addr)?)
+185:        PageAligned::from_address(PhysicalAddress::from_raw_value(self.into_raw_value())?)
+===does page.rs have verus specs?===
+...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me verify the TCB allowlist and the frame shim contracts to judge feasibility of a stronger `new` Err clause.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===tcb-allowed.md (kframe entries)==="; grep -niE 'kframe|clear|deref' verus-ai-logs/
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===phys_view def & inv==="; grep -rn 'fn phys_view\|spec fn inv' src/kernel/src/mm/ph
+
+[THINKING] The issue is that `identity_map_page` lacks any contract guarantees about preserving `phys_view()`, so proving the postcondition on the error path in `new` would require either adding a preservation clause to its contract or finding another proof strategy. But since `identity_map_page` lives outside this module's scope, that constraint complicates things.
+
+Actually, thinking about this more carefully — `phys_view()` is a zero-argument spec function with no mutable state dependencies, so it's mathematically pure and returns the same value every time. That means `phys_view() == old(phys_view())` should be trivially true regardless of what happens, since there's nothing to modify. The drop spec's comment about `phys_view()` being a single fixed value confirms this interpretation.
+
+So the view-design's suggested ensures for the Err path is itself a tautology, which defeats the purpose of having a meaningful postcondition. The real question becomes: what can I actually state on the Err path that's both provable and non-trivial? Since `FrameAddress` is `Copy`, the caller retains ownership of `base` automatically whether the function succeeds or fails, so there's no linear ownership invariant to express. I'm stuck between the reviewer's demand for non-tautological ensures and the reality that any meaningful statement about the Err path seems to collapse into a tautology given how the spec is structured. The `Err(_) => true` clause is flagged as a canonical tautology by the checklist, so I should push back and require either a meaningful strengthening or formal proof that no stronger spec is expressible given that `base` is Copy and `phys_view()` is a fixed value. The Ok path looks solid with `frame@ == base@`, and callers don't abstractly depend on identity-mapping, so the real question is whether the Err path can say anything more than trivially true. So my job as the strict reviewer is to flag the tautological `Err(_) => true` clause and demand the fixer either produce a meaningful, provable guarantee or demonstrate with Verus output that a stronger one isn't possible. I shouldn't assume it's impossible upfront — they need to attempt it and show evidence. Before I write the fix request, though, I should trace through how `drop` manages to prove `phys_view().inv()` and whether `new` could state the same guarantee, and check what the actual callers in manager.rs rely on from `new`'s contract.
+
+Looking at the caller analysis, when `new` returns `Err`, the callers just invoke `frame::free(base)` themselves, and since `base` is `Copy`, that works regardless of what `new`'s error spec says — so `Err => true` is harmless but still flagged as tautological per the checklist. I'll mark it as FAIL and request a concrete fix: either add `phys_view().inv()` to the error ensures (matching `drop`'s guarantee) or demonstrate via Verus that no stronger clause holds. Before making that demand, I should verify it's actually feasible by checking the frame.rs free/alloc specs and whether that invariant can be asserted in the error path.
+
+Now I'm also noticing the second checklist item about `assume_specification` for workspace-internal code — `PageAligned::from_raw_value` is in the kernel crate, and the trait `Address` is in `sys`, so the method impl is workspace-internal and needs scrutiny. The `clear` function is marked with `external_body` and is the module's own function, which normally violates the cheating rules, but it's explicitly listed in tcb-allowed.md as out of scope since it's an irreducibly-unverifiable raw pointer memset operation.
+
+For `deref` and `deref_mut`, they're plain Rust implementations outside any verus blocks with no verification annotations, so they're not counted in the coverage metrics—but they do contain unsafe code and are also marked as TCB in the allowed list.
+
+I need to verify tcb-allowed.md to confirm all three are documented, then check the frame.rs free/alloc contracts and manager.rs callers before writing the full review. The primary actionable failure is still the `new` Err-path tautology that contradicts the view-design doc, so I'll prioritize investigating whether a stronger Err clause is feasible.
+[RESULT ✓] bash: ===tcb-allowed.md (kframe entries)===
+23:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+24:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+25:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`- `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc` — materia...
+[RESULT ✓] bash: ===phys_view def & inv===
+src/kernel/src/mm/phys/mod.spec.rs:105:    pub open spec fn inv(self) -> bool {
+src/kernel/src/mm/phys/mod.spec.rs:171:pub uninterp spec fn phys_view() -> PhysMemView;
+===manager alloc_kernel_frame new callsite===
+                Ok(frame) => {
+                    &&& phys_...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me read the TCB allowlist's kframe section to confirm the sanctioned external_body/assume_specification scope.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+
+[THINKING] I'm realizing that `phys_view()` is an uninterpreted spec function with no arguments, meaning it always returns the same fixed value—so comparing it to its old state would be meaningless and tautological anyway. The actual preservation guarantee that matters in this codebase is checking `phys_view().inv()`, which is what the free shim and drop implementations rely on.
+
+Now I'm questioning whether `new` can even prove `phys_view().inv()` in its error case. Since `new` calls `from_raw_value` and `identity_map_page`, neither of which mentions or establishes `phys_view().inv()`, Verus wouldn't be able to prove it—unlike `drop`, which gets it from `free`'s ensures clause. So `new` can't currently prove any meaningful non-tautological error condition beyond `true`.
+
+But wait—I'm noticing that the manager's own caller spec (`alloc_kernel_frame`) also uses `Err(_) => true`, which suggests this pattern of having no meaningful error guarantee is actually the established convention in this subsystem for allocation functions.
+
+Given that `old(phys_view())` isn't available in `new`, `phys_view()` equality would be tautological, and `phys_view().inv()` isn't provable, I'm realizing that `Err(_) => true` is genuinely the strongest expressible and provable spec here—and it's consistent with the subsystem's own patterns. So this should probably be a pass with documented rationale, not a fabricated failure, since demanding a "fix" would mean asking for something impossible or tautological.
+
+But the reviewer's role is to be strict, and the checklist does flag `Err(_) => true` as a tautology to reject. The right move is to challenge it: require the fixer to either produce a stronger provable clause or provide Verus tool output showing why stronger clauses fail. That's legitimate strict review—not accepting verbal justification alone, but requiring evidence. The existing code comment documents the reasoning, and the strongest-spec determination is a design fact, so if that evidence exists, it's defensible.
+
+Let me step back and look for a genuine, actionable failure across the whole checklist rather than getting stuck on this one item.
+
+Actually, reviewing the `new` function's Ok path: `frame@ == base@` is correct and matches what the manager uses. The spec aligns with the view-design's own recommendation at line 106, which also wrote `Err(_) => true`. The `phys_view() == old(phys_view())` note was aspirational but not implementable, so the implemented spec is faithful to the design.
+
+Going through the checklist items: no ensures are subsumed by invariants, and the `assume_specification` for PageAligned is documented in tcb-allowed.md as an allowed not-yet-verified dependency since hal::mem isn't in the verification target. This matches the project's sanctioned pattern.
+
+Let me check tcb-allowed.md lines 110-155 to confirm this allowance covers both the assume_specification and cheating concerns.
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 110. - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_kernel_frame` —
+111.   like `alloc_user_frame` but yields a `KernelFrame`.
+112. - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_kernel_frames`
+113.   — like `alloc_many_user_frames` plus the contiguity guarantee
+...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Let me confirm the actual verification results (not just exit code) from the verus log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===latest verus log tail==="; ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.lo
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===FrameAddress::into_raw_value shim==="; grep -n 'into_raw_value' src/kernel/src/hal
+
+[THINKING] Looking at the TCB-allowed.md file, I can see it sanctions certain unsafe operations: `KernelFrame::deref`, `deref_mut`, and `clear` are marked as external_body for raw memory access, while `assume_specification` is used for the `PageAligned<T>` implementation of the `sys::mm::Address` trait boundary, with a note that it'll be removed once the HAL memory layer is verified.
+
+The key insight here is that `kframe.rs` has cross-module dependencies on shims like `FrameAddress::into_raw_value` (from `hal/mem/types/address/frame.rs`) and `identity_map_page`, which are listed in the TCB-allowed.md as sanctioned external_body functions. When `kframe::new` calls `base.into_raw_value()` on line 97, it's relying on that shim's specification that ensures the result equals the raw integer value of `self`. These cross-module dependencies are accounted for in the whole-crate external_body count of 28, but for this module's review, the locally-defined unsafe functions are the three memory operations, all of which have clear TCB justifications.
+
+The critical question becomes whether the `Err(_) => true` clause in `new` is a genuine failure or acceptable. I've traced through the evidence: it's the strongest provable specification given that `base` is `Copy` (no state consumption), `phys_view()` is an uninterpreted function (no transition expressible), and the dependencies don't establish the invariant. This matches the subsystem's own pattern in `alloc_kernel_frame`. Rather than demanding an impossible fix, the honest review conclusion is to document this with evidence and mark it PASS—a strict reviewer verifies claims rather than insisting on unprovable specifications.
+
+Now I'm checking for actual failures elsewhere. The cross-module verification passed (all 5 phys modules compiled and verified via `make verify-kernel`). Function coverage for the in-scope functions (`new`, `base`, `drop`) all have verus specs. The `drop` spec stating `phys_view().inv()` is not tautological—it's a real predicate. The `base` spec `result@ == self@` is straightforward and used correctly. Everything checks out. The `assume_specification` on `from_raw_value` is technically workspace-internal code in the kernel crate, which by a strict reading violates the rule against assume_specification for internal code. However, it's explicitly documented in tcb-allowed.md as a sanctioned exception at the sys-trait boundary with a removal plan, and vstd has no alternative implementation to use anyway.
+
+Since hal::mem sits outside the mm::phys verification target, treating it as an external dependency is consistent with the repo's conventions, making this an acceptable pass with a note rather than a blocking failure. Before I conclude everything resolves on the first pass, I need to verify the cross-module verification actually ran and succeeded—the cached output showed exit 0, but I should check the verus log directly to confirm the verified/errors counts and ensure `FrameAddress::into_raw_value` with its postcondition actually exists and verified correctly.
+[RESULT ✓] bash: ===FrameAddress::into_raw_value shim===
+107:    pub fn into_raw_value(self) -> usize {
+108:        self.0.into_raw_value()
+114:        write!(f, "FrameAddress({:#010x})", self.into_raw_value())
+37:    ensures
+===cheating-detail kframe lines===
+18:    - mm/phys/kframe.rs:141 clear: external_body
+<she...
+[RESULT ✓] bash: ===latest verus log tail===
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=28
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Blocking waiting for file lock on package cache
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+The verification passes (exit 0, no errors). The central question is the `new` spec's `Err(_) => true` — the checklist's flagged tautology. Let me empirically test whether a stronger clause (`phys_view().inv()`) verifies, to decide PASS vs FAIL with tool evidence.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE 'error|verifying module|exit code|Results|verification:|
+
+[THINKING] The cached verification shows exit 0, which means success with no errors. Verus would print any errors it found, and since none appear in the output, the module genuinely verified with zero errors.
+
+Now looking at the `into_raw_value` shim and the contract details — the verification passed, so the shim contract is in place. The only external_body in this module is the `clear` function at line 141, which is TCB-sanctioned. The deref and deref_mut functions aren't in scope since they're plain unsafe Rust outside the Verus annotations.
+
+Walking through the checklist: every in-scope execution function has requires/ensures clauses, caller coverage is documented with the necessary invariants for new, base, and drop, and I'm now checking view consistency against the design document.
+
+For item 4 on tautological ensures — `new` does have `Err(_) => true`, which is the flagged pattern. But I've verified this is the strongest spec that's actually provable given the constraints: phys_view is an uninterpreted fixed value with no old() available in new, base is Copy, and the dependencies don't establish the invariant. This matches the subsystem's own pattern in alloc_kernel_frame. Rather than simply passing this, I think the strict approach is to mark it as a challenge: I'll provisionally fail it and require the fixer to either strengthen the clause to something provable or provide Verus tool output demonstrating that candidate stronger clauses like `phys_view().inv()` on Err actually fail to verify, proving that `true` is maximal.
+
+I've already traced through the logic, but to be truly rigorous and bulletproof, I should test empirically whether adding `phys_view().inv()` as a second ensures clause to `new` would verify. If it fails, that's concrete proof the Err path can't be strengthened that way. If it verifies, then it's a real fix the fixer should implement. Let me run this test by temporarily editing the source and running verify-kernel to see what happens.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
