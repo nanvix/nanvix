@@ -535,3 +535,17 @@ The caller already satisfies all the required preconditions: `addr.inv()` from t
 Turn 33
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+=== errors ===
+<shellId: vphys5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Both lemmas proven — phys module verifies (6 verified, 0 errors). Let me check the full cheating output and AST consistency.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
