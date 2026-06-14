@@ -292,3 +292,18 @@ Turn 11
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "error|war
+[RESULT ✓] bash: verification results:: 8 verified, 0 errors
+  8 verified
+  0 errors
+  ✅ No cheating detected.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: 8 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_de...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Arch: 8 verified, 0 errors, CLEAN, **no assume_specification** and the `MAX` binding is now proven. Now the kernel conflict. Let me run `make verify` to see the exact kernel breakage, then supersede the placeholders.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "error|duplicat
+
+[THINKING] I've got 8 verified specs now with the constants included and no errors, so the architecture is clean. Next I need to replace those kernel placeholders for PAGE_SIZE and FRAME_SIZE, then deal with spec_page_size. Let me run the verification to see what duplicate-spec error comes up.
