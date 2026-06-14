@@ -161,3 +161,54 @@ Turn 3
 
 [THINKING] I see that `read` and `write` are documented as needing `external_body` due to int-to-ptr casts, but the current source doesn't have them marked that way, so they won't pass verification. Let me run the baseline verification to see what the current state actually is.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+error: Verus does not support this cast: `usize` to `*const u32`
+   --> src/libs/arch/src/x86/mem/paging/table.rs:210:35
+    |
+210 |         let ptr: *const PteWord = (self.base + offset) as *const PteWord;
+    |          ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "external_body" src/libs/bump_allocator/src/lib.rs src/libs/arch/s
+
+[THINKING] The `read` and `write` functions are listed as allowed in tcb-allowed.md, so I need to mark them with `external_body`. There's already an `external_body` flag set to 1 somewhere in the arch module, likely in mod.rs. I should only add `external_body` to functions that are explicitly listed in the allowed file.
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.rs:266:    // SAFETY-SPEC: `external_body` because the success path materializes a
+src/libs/bump_allocator/src/lib.rs:271:    #[verus_verify(external_body)]
+src/libs/bump_allocator/src/lib.rs:344:    // SAFETY-SPEC: `external_body` for the same reason as `alloc` (it d...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+
+[THINKING] I'm looking at the `#[verus_verify(external_body)]` syntax and how it works together with `verus_spec` in the bump_allocator implementation around those lines.
+[RESULT ✓] view: 260.     ///
+261.     /// - [`BumpAllocError::Exhausted`] if storage capacity is exhausted.
+262.     /// - [`BumpAllocError::Overflow`] if internal arithmetic overflows.
+263.     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
+264.     /// - [`BumpAllocError::Misaligne...
+[RESULT ✓] view: 75. // `ensures`): any `usize` is accepted, no error path, and no Rust-visible state changes,
+76. // hence every caller-side invariant is preserved. This matches the inherited upstream
+77. // `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
+78. #[inline]
+79. #[verus_v...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm seeing that the `read` and `write` functions need the `#[verus_verify(external_body)]` attribute instead of just `#[verus_spec(...)]`, while the impl block itself carries `#[verus_verify]`. Let me verify this pattern against the table.rs file to confirm the correct annotation approach.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Verifying after external_body additions
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-arch 2>&1 | tail -30
+[RESULT ✓] report_intent: Intent logged
