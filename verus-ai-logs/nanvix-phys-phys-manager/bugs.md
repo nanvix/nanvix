@@ -147,3 +147,27 @@ changes, and forcing them would require unsound axioms:
 
 Net: manager `admit()` count 7 → 4. `make verify-kernel MODULE=mm::phys`
 reports 0 errors (42 verified).
+
+## Review turn 1 — build regression (auto-fixed)
+
+**Bug (BUILD-1):** `alloc_many_user_frames` used `for i in 0..count` with the
+index referenced only inside the `#[cfg_attr(verus_keep_ghost, verus_spec(invariant
+frames@.len() == i ...))]` block. In the non-Verus build the ghost code is stripped,
+leaving `i` unused; the kernel compiles with `-D warnings`, so `./z build` failed:
+`error: unused variable: i` (`manager.rs:244`). Introduced when the loop was changed
+from `for _` to `for i` to name the index in the loop invariant; the plain build was
+not re-run at the time.
+
+**Fix:** renamed the index `i` → `_idx` (loop binding + ghost invariant). The `_`
+prefix is exempt from `unused_variables` in the exec build but remains a normal,
+referenceable identifier in the Verus invariant. Both `./z build` ([OK] Build
+complete) and `make verify-kernel MODULE=mm::phys` (42 verified, 0 errors) pass.
+
+The 4 manager admits remain irreducible in scope (reproducers captured in
+`proving/dialogue/turn_001_fixer.md`): each was re-attempted by removing the
+`admit()`/crutch-lemma call and asserting what Verus actually proves. For the
+kernel/contiguous paths `assert(self@ == g_old)` *passes* (the exec never mutates
+`self`) while the spec demands a `self@` transition; for the user error path
+`assert(self@ == g_old)` *fails* after `clear()` because `Drop`-based frame release
+is not modeled on `self.upool@`. No spec was weakened and no `external_body`/`assume`
+was added.
