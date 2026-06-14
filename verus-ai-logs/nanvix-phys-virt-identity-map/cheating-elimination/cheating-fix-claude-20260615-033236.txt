@@ -179,3 +179,41 @@ Let me run the full-crate verify-kernel to confirm the external_body fix holds w
 The remaining obstacles are the frame alignment check in the present path, establishing `bump_view(self).inv()` for the fresh path's allocator, and proving the alignment of `slot.as_ptr() as usize`. Even if I could handle the read precondition, the bump_view invariant is uninterpreted with no lemmas to establish it, and `as_ptr` has an empty contract, so both are fundamentally unprovable. At best I might remove one admit from `ensure_pt`, but the fresh path requirements make it impossible to fully prove anyway.
 
 All three admits are genuinely blocked—`ensure_pt` by the bump_view and as_ptr alignment issues, and the other two by the logical contradiction in their result-dependent preconditions. I should confirm the whole state by running the full verification, update the reports with the external_body removal, and document this as a confirmed blocker.
+[RESULT ✓] bash: 25:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+32:=== Summary ===
+34:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+36:  status: CHEATING_DETECTED
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager diff --stat; echo "=== verify the spec.rs change ==="; sed -
+
+[THINKING] The external_body crate is down to 11 from 12 after the ExPageTableBss fix, with no verification errors, though those 3 module admits are still hanging around as part of the larger set of 31 globals. I need to pull up the verification line to check on that.
+[RESULT ✓] bash: .../cheating-fix-claude-20260615-033236.jsonl          | 18 ++++++++++++++++++
+ .../cheating-fix-claude-20260615-033236.txt            | 12 ++++++++++++
+ 2 files changed, 30 insertions(+)
+=== verify the spec.rs change ===
+
+// --- BSS page-table storage marker (kernel `page_table_allocator`) ---
+
+#[v...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The external_body fix was auto-committed by verify.sh (12→11 global, 0 verification errors). Now let me capture fresh exact-error evidence for the admits by removing them one at a time, starting with `ensure_pt` (the only one without a logical Ok/Err contradiction).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp src/kernel/src/mm/virt/identity_map.rs /tmp/idmap_backup.rs && python3 -
+
+[THINKING] Ah, so the verify.sh script auto-commits changes after each run — that means my external_body removal is already committed to HEAD. The spec.rs file confirms the change is there, with external_body count dropping from 12 to 11 globally. Now I need to finalize the reports.
+
+The three admits are still a genuine blocker, but I should test removing just ensure_pt's admit in isolation to capture the exact errors for the report, even though I have prior evidence. Let me run that test to get fresh, current data.
+[RESULT ✓] bash: done
+2
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
