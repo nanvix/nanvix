@@ -1,2 +1,2 @@
-    - x86/mem/paging/table.rs:185 read: external_body
-    - x86/mem/paging/table.rs:205 write: external_body
+    - x86/mem/paging/table.rs:195 read: external_body
+    - x86/mem/paging/table.rs:215 write: external_body

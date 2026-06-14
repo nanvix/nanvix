@@ -1154,3 +1154,87 @@ Turn 57
 Turn 58
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-arch 2>&1 | tail -40
+[RESULT ✓] bash: error: bitvector assertion not satisfied (with arch-size set to 64 bits)
+   --> src/libs/arch/src/x86/mem/paging/table.rs:116:14
+    |
+116 |     proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    |              ^^^^^^
+
+error: possible arithmetic underflow/overflow
+   --> s...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error\|-->" verus-ai-logs/verify-arch/verus-logs/verus_2026-06-14_10-17-43.log | h
+
+[THINKING] I'm seeing compilation progress with most checks passing, but there are a couple of issues to resolve. The bit_vector assertion is failing because it doesn't recognize the `PAGE_TABLE_LENGTH` constant as a concrete value—I need to either inline the literal 1024 or find a way to establish that value in the symbolic context. There's also an arithmetic overflow warning that got cut off, but I'll need to see the full error to address it.
+[RESULT ✓] bash: 8:6 errors
+24:error: bitvector assertion not satisfied (with arch-size set to 32 bits)
+25:   --> src/libs/arch/src/x86/mem/paging/table.rs:103:14
+30:error: bitvector assertion not satisfied (with arch-size set to 64 bits)
+31:   --> src/libs/arch/src/x86/mem/paging/table.rs:103:14
+36:error: possible ...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Good progress — 16 verified. The pure-function bit-vector proofs need const values made concrete. Let me fix pd_index/pt_index.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] The errors are isolated to the page index operations. I'm seeing that the underflow issue stems from Verus not folding the constant value of PAGE_TABLE_LENGTH during arithmetic verification—it treats it as an opaque constant that could theoretically be zero, triggering the underflow check even though the actual value is known at compile time.
+
+To resolve this, I need to either assert the concrete value so Verus can reason about it, or restructure the bit_vector proof to explicitly provide the constant relationships as preconditions rather than relying on Verus to automatically evaluate them. Restructuring the proof block... I'm concerned about whether the `compute` tactic can see through the `#[verus_verify]` constants from another module, so I might need to use `compute_only` instead. Also, since the verification runs on both 32-bit and 64-bit architectures, I need to make sure the bit_vector assertions work correctly for both `usize` widths — the explicit literals 1023 and 1024 with the `requires` clause should handle both cases. Let me try the compute plus bit_vector approach and rewrite both `pd_index` and `pt_index` functions.
+[RESULT ✓] view: 92. //==================================================================================================
+93. 
+94. /// Extracts the PD index (bits 22-31) from a virtual address as a [`TableIndex`].
+95. #[verus_spec(result =>
+96.     ensures
+97.         result@ == spec_pd_index(vaddr),
+98.         res...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && cat > vt_mask.rs <<'EOF'
+use vstd::prelude::*;
+fn main() {}
+#[verus_verify] pub const PAGE_SHIFT: usize = 12;
+
+[THINKING] I'll test the compute and bit_vector approach in isolation first to get the syntax right, then apply it to the actual constant chain.
+[RESULT ✓] bash: error: expected one of `,`, `:`, or `}`, found `(`
+  --> vt_mask.rs:19:19
+   |
+19 |     proof { assert(PAGE_TABLE_LENGTH == 1024) by (compute); }
+   |     -----   ------^ expected one of `,`, `:`, or `}`
+   |     |       |
+   |     |       while parsing this struct field
+   |     while parsing this ...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && sed -i 's/    proof {/    proof! {/g' vt_mask.rs && PATH="/home/ruize/toolchain/verus:$PATH" verus --crate-ty
+
+[THINKING] I need to use the `proof!` macro with an exclamation mark in exec functions with attribute style, not the bare `proof` syntax—let me correct that to `proof! { }`.
+[RESULT ✓] bash: verification results:: 8 verified, 0 errors
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] The mask approach is working, so now I'm applying it to the actual page directory and page table indices. The page directory index uses a shift of 22 with a mask of 1023, while the page table index uses a shift of 12 with the same mask. Let me make those edits.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -25

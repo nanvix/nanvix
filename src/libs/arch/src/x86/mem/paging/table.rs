@@ -98,9 +98,14 @@ impl TableIndex {
         result@ < crate::mem::PAGE_TABLE_LENGTH,
 )]
 pub const fn pd_index(vaddr: usize) -> TableIndex {
+    proof! { assert(crate::mem::PAGE_TABLE_LENGTH == 1024) by (compute); }
     // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
     let index: usize = (vaddr >> crate::mem::PGTAB_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
-    proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    proof! {
+        assert(crate::mem::PGTAB_SHIFT == 22) by (compute);
+        assert(index < 1024) by (bit_vector)
+            requires index == (vaddr >> 22usize) & 1023usize;
+    }
     TableIndex(index)
 }
 
@@ -111,9 +116,14 @@ pub const fn pd_index(vaddr: usize) -> TableIndex {
         result@ < crate::mem::PAGE_TABLE_LENGTH,
 )]
 pub const fn pt_index(vaddr: usize) -> TableIndex {
+    proof! { assert(crate::mem::PAGE_TABLE_LENGTH == 1024) by (compute); }
     // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
     let index: usize = (vaddr >> crate::mem::PAGE_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
-    proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    proof! {
+        assert(crate::mem::PAGE_SHIFT == 12) by (compute);
+        assert(index < 1024) by (bit_vector)
+            requires index == (vaddr >> 12usize) & 1023usize;
+    }
     TableIndex(index)
 }
 
