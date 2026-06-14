@@ -51,8 +51,10 @@ impl View for UserFrame {
 
 /// Abstract view of the user page pool: the frame partition it draws from.
 ///
-/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
-/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+/// The pool carries no spec-readable state of its own — its real state is the global frame
+/// allocator — so its view is uninterpreted. The cross-call transition is realized by the
+/// proving-phase ghost token over the singleton allocator; the trust obligation for the two
+/// state-affecting operations is tracked by `Upool::new`/`Upool::alloc` being `external_body`.
 impl View for Upool {
     type V = FrameAllocView;
 
@@ -235,9 +237,12 @@ impl Upool {
     /// A user frame pool.
     ///
     // Dependency contract: opaque pool facade whose real backing store is the global frame
-    // allocator. `external_body` (the `Upool` struct carries no spec-readable state) per
-    // `verus-ai-logs/tcb-allowed.md`. The pool introduces no frames of its own; `wf()` is the
-    // only fact its boot-time caller needs before handing the pool to `PhysMemoryManager::init`.
+    // allocator. `external_body` because the post-state view `result@.wf()` is over the
+    // uninterpreted `View for Upool` and cannot be discharged from the empty struct body (the
+    // pool carries no spec-readable state of its own); see
+    // `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`. The pool introduces no frames
+    // of its own; `wf()` is the only fact its boot-time caller needs before handing the pool to
+    // `PhysMemoryManager::init`.
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
@@ -257,8 +262,14 @@ impl Upool {
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
     // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
-    // as a watermark-agnostic single-frame allocation over the pool's frame partition. Marked
-    // `external_body` until the `frame` free-function layer is verified.
+    // as a watermark-agnostic single-frame allocation over the pool's frame partition.
+    // `external_body`: the postcondition is a `self@` transition
+    // (`final(self)@ == old(self)@.alloc_one(uf@)`), but `frame::alloc`'s own contract speaks
+    // only of the frozen global `phys_view().frames` and `self` is structurally unchanged, so
+    // no in-body proof can establish the transition. The real `old@ -> @` step is deferred to
+    // the proving-phase ghost token over the singleton allocator; see
+    // `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self)@.wf(),

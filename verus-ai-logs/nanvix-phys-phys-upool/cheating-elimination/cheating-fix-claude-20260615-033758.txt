@@ -285,3 +285,91 @@ s=open(f).read()
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verifying module mm::p
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+error: postcondition not satisfied
+    |                   ^^^^^^ failed this postcondition
+error: ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Both `new` and `alloc` confirmed irreducible (postconditions unprovable in-body — the frozen `phys_view()` design defers transitions to the proving phase). Restoring `alloc`'s `external_body` while keeping the struct improvement.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/upool.rs.structonly src/kernel/src/mm/phys/upool.rs && echo "=== confirm: ext
+
+[THINKING] I've confirmed that `Upool::alloc` needs an external_body to satisfy its postconditions about frame allocation and state transitions. I'm restoring the external_body annotation while keeping the improvement of reducing external_body usage in the struct from three to two.
+[RESULT ✓] bash: === confirm: external_body count in upool ===
+54:/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
+55:/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+238:    // allocator. `external_body` (the `Upool` struct carries n...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now only `new` and `alloc` carry `external_body` (both required & authorized). The struct is transparent. Let me update the now-stale doc comments to reflect that the struct is no longer `external_body`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I see that only two `#[verus_verify(external_body)]` attributes are left on the `new` and `alloc` methods, so the struct itself is no longer marked as external. This means the doc comments referencing external_body are now outdated and need to be refreshed to accurately describe the struct's current state.
+[RESULT ✓] view: 52. /// Abstract view of the user page pool: the frame partition it draws from.
+53. ///
+54. /// `Upool` is `external_body` (its real state is the global frame allocator), so its view
+55. /// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+56. impl View for Upool...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 219. /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+220. ///
+221. #[derive(Debug)]
+222. #[verus_verify]
+223. pub struct Upool {
+224.     /// Private field prevents external construction.
+225.     _private: (),
+226. }
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I need to check the comment around line 238 for the `new` function's external_body parameter to make sure it still accurately describes the Upool struct's state handling.
+[RESULT ✓] view: 237.     /// A user frame pool.
+238.     ///
+239.     // Dependency contract: opaque pool facade whose real backing store is the global frame
+240.     // allocator. `external_body` (the `Upool` struct carries no spec-readable state) per
+241.     // `verus-ai-logs/tcb-allowed.md`. The pool introduces...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 262.     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
+263.     ///
+264.     // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
+265.     // as a watermark-agnostic single-frame allocation over the pool's frame partition...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Now let me verify the final state and run AST-consistency check against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/phys/upool.rs && timeout 900 make verify-kernel MODULE=mm::ph
