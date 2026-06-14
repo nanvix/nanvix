@@ -153,3 +153,19 @@ Turn 4
 ────────────────────────────────────────────────────────────
 The fallback entry is present, committed, and accurate. Now let me independently re-run the verification tools to confirm all claims.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -25
+[RESULT ✓] bash: —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::frame:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=11 admit=29 trusted=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/9 exec fun...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | grep -E "Exit code|cheating:|status:" | head; ech
