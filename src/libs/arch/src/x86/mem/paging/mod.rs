@@ -16,9 +16,6 @@ mod table;
 
 pub use flags::*;
 pub use frame::FrameNumber;
-
-#[cfg(verus_keep_ghost)]
-pub use frame::spec_max_frame_number;
 pub use pde::*;
 pub use pte::*;
 pub use table::*;

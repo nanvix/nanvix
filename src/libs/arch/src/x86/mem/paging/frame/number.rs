@@ -56,9 +56,9 @@ impl FrameNumber {
     ///
     #[verus_spec(result =>
         ensures
-            value as int <= spec_max_frame_number() ==> (result is Some
+            value as int <= Self::spec_max() ==> (result is Some
                 && (result->Some_0)@ == value as int),
-            value as int > spec_max_frame_number() ==> result is None,
+            value as int > Self::spec_max() ==> result is None,
     )]
     pub fn from_raw_value(value: usize) -> Option<Self> {
         if value > Self::MAX {
@@ -80,7 +80,7 @@ impl FrameNumber {
     #[verus_spec(result =>
         ensures
             result as int == self@,
-            0 <= self@ <= spec_max_frame_number(),
+            0 <= self@ <= Self::spec_max(),
     )]
     pub fn into_raw_value(self) -> usize {
         proof! { use_type_invariant(self); }

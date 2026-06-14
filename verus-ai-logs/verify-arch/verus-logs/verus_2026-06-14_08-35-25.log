@@ -1,0 +1,32 @@
+Timestamp: 2026-06-14_08-35-25
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+4 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+warning: verus-related attribute has no effect because item is already marked external
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:38:5
+   |
+38 |     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 4 verified, 0 errors
+warning: `arch` (lib) generated 1 warning
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.00s

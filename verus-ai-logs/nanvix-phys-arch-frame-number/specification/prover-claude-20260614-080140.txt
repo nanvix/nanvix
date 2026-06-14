@@ -2169,3 +2169,157 @@ Turn 131
 ────────────────────────────────────────────────────────────
 Now run `make verify-arch`:
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -30
+[RESULT ✓] bash: warning: verus-related attribute has no effect because item is already marked external
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:38:5
+   |
+38 |     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ver...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+4 verified, 0 errors, and `assume=0 external_body=0 admit=0`. But `cfg_gate=2` flags "cheating". Let me check what it caught.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | head -40
+
+[THINKING] Four tests passed with no errors, and the cheating detection shows cfg_gate=2 as the culprit — that's likely from the `#[cfg(verus_keep_ghost)]` directives. The assume_specification attribute isn't being counted as an "assume" statement, which is correct, but I need to understand what cfg_gate specifically refers to in this context.
+[RESULT ✓] bash: 
+<shellId: 85 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/verify-arch/verus-logs/ && echo "---" && grep -rn "cfg_gate\|cfg(verus" ve
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-14_08-09-50.log
+verus_2026-06-14_08-10-07.log
+verus_2026-06-14_08-13-23.log
+verus_2026-06-14_08-13-34.log
+verus_2026-06-14_08-14-25.log
+verus_2026-06-14_08-18-15.log
+verus_2026-06-14_08-18-29.log
+verus_2026-06-14_08-20-25.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '472,520p' /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+[RESULT ✓] bash: count_cfg_gates() {
+    local scan_dir="$1"
+    python3 -c "
+import re, sys
+from pathlib import Path
+
+src_dir = Path('$scan_dir')
+count = 0
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+
+for rs_file in sorted(src_dir.glob('**/*.rs')):
+    lines = rs_file.read_text().splitlines()
+...
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+`cfg_gate=2` flags my two `#[cfg(verus_keep_ghost)] pub use` re-exports (the counter skips `use` but not `pub use`). Let me check how the existing codebase handles cross-module spec re-exports and whether `cfg_gate>0` is tolerated.
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "=== existing cfg(verus_keep_ghost) pub use patterns ==="; grep -rn "cfg(verus_keep_ghost
+
+[THINKING] The issue is that the cfg_gate counter is checking if lines start with keywords like `use `, but my re-exports are `pub use`, which doesn't match that pattern—so they're being counted as cfg_gate violations when they shouldn't be.
+
+I'm wondering whether this is actually a hard failure or just a heuristic warning, since the verification shows 4 verified with 0 errors. The re-exports genuinely need the cfg gate because the spec functions only exist in verus builds, so there's no way to avoid gating them without removing the re-exports entirely.
+
+The real question is whether the kernel actually needs to reference arch's spec_max_frame_number at all, or if I can keep them as separate uninterpreted symbols and rely on the assume_specification to bridge them instead. Let me think through whether that would actually work for the from/into ensures... I'm realizing that bridging `spec_max_frame_number` between kernel and arch requires the kernel to define it as arch's value, which means I need a re-export path and that triggers the cfg_gate flag. I'm checking whether there's a way around this — maybe using `pub(crate) use` or finding a pattern where the counter doesn't flag the re-export, but it seems like any public re-export of a spec symbol will be caught. The core issue is that two uninterpreted symbols can't be proven equal without an axiom, so the kernel genuinely needs to reference arch's definition. The issue is that `frame` and `number` are private submodules, so I can't access them from outside without re-exporting. The public path goes through `paging`, which means I need re-exports at both the `frame` and `paging` levels — that's where the two cfg-gated lines come from. I'm wondering if this cfg_gate flag is actually a hard requirement or just a tooling warning, since the gating pattern itself is legitimate for spec-only functions that only exist under Verus. The real cheating metrics (assume, external_body, admit, trusted) are all zero, which is what matters. I could try collapsing the re-exports, but both module levels genuinely need visibility. Let me explore whether I can avoid re-exporting the spec function altogether by defining the boundary differently. I'm wondering if the counter's look-ahead might skip over the re-export if I position the `#[cfg]` attribute and `pub use` statement adjacently — the counter looks 1-4 lines ahead for the first non-empty, non-attribute line, so if that target is the `pub use` statement, it wouldn't be skipped. Let me check if other verified modules in the kernel use this pattern with `#[cfg(verus_keep_ghost)]` for spec re-exports and whether CI accepts the resulting cfg_gate count.
+[RESULT ✓] bash: === existing cfg(verus_keep_ghost) pub use patterns ===
+
+=== how sys crate exposes spec syms (VirtualAddress) ===
+<shellId: 88 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+No existing cross-crate spec re-export pattern. Better approach: make `spec_max_frame_number` an **associated** spec fn on `FrameNumber` (already pub-exported), avoiding the cfg-gated module re-exports entirely. Let me test.
+[TOOL] bash: cd /tmp
+cat > vtE.rs <<'EOF'
+#![allow(unused)]
+use vstd::prelude::*;
+mod mem { pub const FRAME_SIZE: usize = 4096; pub c
+
+[THINKING] I'm noticing there's no existing pattern for cross-crate spec re-exports with `#[cfg(verus_keep_ghost)]`, so I'm looking at how the sys crate's VirtualAddress spec was successfully handled in the kernel — it uses the `@` View syntax rather than a separate spec function, which suggests the intended design for FrameN should follow a similar approach.
+
+But there's a complication: `spec_max_frame_number` is a global bound used in PhysicalAddress::inv before any FrameNumber instance exists, so it can't be expressed via `@`. The kernel genuinely needs this max symbol to be referenceable from arch. The real issue emerges at the from_raw_value call site — the kernel has its own `spec_max_frame_number()` bound from PhysicalAddress::inv, but arch's from_raw_value ensures a different bound using `arch::spec_max_frame_number()`. To bridge these, I need to establish that `kernel_max <= arch_max`.
+
+If they're separate uninterpreted symbols, there's no relation between them. So either the kernel defines its max as arch's (requiring re-export), or I add an axiom. Redefining the kernel's max as arch's is unavoidable given the architecture. I could flip it and make arch reference the kernel's max, but arch can't depend on kernel. Or I could eliminate the kernel's separate max entirely and rewrite everything to use arch's directly, but that's even more re-export usage.
+
+The re-export seems necessary. Now I'm wondering whether the cfg_gate heuristic is actually a blocking failure or just a warning — the real success criterion is "0 Verus errors" from `make verify`. My usage is legitimate since I'm gating in spec-only items that don't exist in release builds, which is the standard pattern. Let me see if I can restructure the re-export to fit the whitelist, which currently accepts targets starting with `use `, `include!`, `mod `, or `extern `.
+
+I could try putting the attribute and re-export on a single line, or wrapping it differently, but that feels fragile and might just shift where the flag appears. Maybe I should accept the cfg_gate count as legitimate and check what the actual final gate is — whether the task's `make verify` target actually fails on this or just reports it.
+
+Actually, I'm wondering if I even need the separate re-export at all. What if I made `spec_max_frame_number` an associated spec function on the `FrameNumber` type itself? Then the kernel could call it as `FrameNumber::spec_max()` without needing any module-level re-exports, since `FrameNumber` is already publicly exported. That would sidestep the cfg_gate issue entirely.
+
+Let me test whether an uninterpreted associated spec function works and whether the assumption on MAX can reference it properly.
+[RESULT ✓] bash: === associated uninterp spec_max ===
+warning: verus-related attribute has no effect because item is already marked external
+  --> vtE.rs:26:5
+   |
+26 |     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verifica...
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+Associated spec fn works — no module re-exports needed, eliminating the `cfg_gate` flags. Let me revert the mod.rs re-exports and switch arch to an associated `spec_max` fn.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/mod.rs
+
+[THINKING] The `FrameNumber::spec_max()` method works fine and the kernel can call it directly without needing module re-exports or cfg gates. However, the documentation and kernel comments reference a free function `spec_max_frame_number()`, so I'll keep that function in the kernel but have it delegate to `FrameNumber::spec_max()` cast as an int, maintaining compatibility with the existing API.
+
+I'm deciding whether to keep the free function in arch for consistency with view_design.md or switch entirely to the associated function. Since using an associated function avoids re-exports, I'll update view_design.md to reflect this design and use `FrameNumber::spec_max()` as the canonical approach. Now I need to update the arch files to remove the free function and its re-exports, then rewrite number.spec.rs to define the associated function and update the invariants and specifications accordingly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+Now rewrite number.spec.rs to use an associated `spec_max` fn:
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame
+cat > number.spec.rs <<'EOF'
+verus! {
+
+//==============
+
+[THINKING] I should view the existing content first and then replace it with the edits rather than creating something new.
+[RESULT ✓] bash: written
+<shellId: 90 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+Now update the method specs in number.rs to use `Self::spec_max()`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 143
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -22
