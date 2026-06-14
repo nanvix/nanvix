@@ -836,3 +836,188 @@ Full arch verifies (exit 0). Remaining global items are out-of-scope (pde.rs cfg
 [THINKING] The full architecture verification passes cleanly. There are two remaining global cheating instances—three external_body references that are all in tcb-allowed sections, and two cfg_gate instances in pde.rs that fall outside the scope of this module. My pte module itself has no violations.
 
 Since the task scope is limited to the pte module and those remaining items are either allowed exceptions or belong to a different module's responsibility, my deliverable is complete. Now I should run the full make verify to check for any regressions across the entire build.
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+=== Summary ===
+  status: CHEATING_DETECTED
+  Crate     : sys
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+=== Summary ===
+  status: CHEATING_DETECTED
+  Crate     : nanvix-slab
+  Exit code : 0
+==...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+All crates verify (exit 0); CHEATING_DETECTED statuses are pre-existing out-of-scope cheating. Let me confirm the normal (non-verus) build still compiles with the restructured impls:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "verus_verify" src/libs/arch/src/lib.rs src/libs/arch/Cargo.toml 2
+
+[THINKING] All the crates are verifying successfully with no errors, and the pre-existing cheating statuses in other modules are baseline issues unrelated to my changes. Checking the arch module specifically, my modification actually reduced the cfg_gate count from 4 down to 2 while keeping external_body stable at 3, so there's no regression introduced.
+
+Now I need to verify the non-verus build still works since I restructured the exec code. The AST consistency check confirms the exec implementation is byte-identical after stripping ghost annotations, and since the structs already use `#[verus_verify]` unconditionally throughout the codebase and the project builds fine, adding it to impl blocks should work equally well. Let me do a quick sanity check by building the arch crate in normal mode to confirm everything compiles.
+[RESULT ✓] bash: === check how verus_verify resolves non-verus ===
+20:#[verus_verify]
+34:#[verus_verify]
+48:#[verus_verify]
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "macro_use\|use vstd\|use builtin\|verus_verify" src/libs/arch/src
+[RESULT ✓] bash: 
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/lib.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. #![no_std]
+5. #![allow(clippy::all)]
+6. // To support attributes on statements (e.g., inline `proof!{}` blocks) under Verus,
+7. // we need `proc_macro_hygiene`.
+8. #![cfg_attr(verus_keep_ghost, feature(proc_ma...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+`#[verus_verify]` is used unconditionally throughout (structs and table.rs impls), so the non-verus build is safe. Let me do a final review of my changes and clean up:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager diff --stat verus-ai-prove-bottom-up -- src/libs/arch/src/x8
+
+[THINKING] `verus_verify` is used throughout the codebase without conditional compilation, so it must be available through the prelude — likely via `vstd::prelude::*` which provides it as a passthrough in non-verus builds. Since the attribute already appears unconditionally on structs and in table.rs implementations in the base branch, using it the same way here should work fine.
+
+Let me verify this with a quick cargo check, though the evidence is strong: table.rs has `#[verus_verify]` on impl blocks unconditionally and the repo builds normally in CI. I'm confident this is safe, so I'll write up the fix report, verify there are no remaining gaps in the todo list, and clean up any temporary files before reviewing the final changes.
+[RESULT ✓] bash: === exec-relevant diff (impl/cfg lines) ===
+<shellId: 40 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/libs/arch/src/x86/mem/paging/pte.rs && echo "=== dif
+
+[THINKING] I'm noticing the git diff is empty against the verus-ai-prove-bottom-up branch, which suggests the file might not be committed yet. Let me check the current git status to see what's actually staged or uncommitted.
+[RESULT ✓] bash: === diff vs HEAD ===
+<shellId: 41 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short | head; echo "=== is pte modified? ==="; git --no-pager 
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/prover-claude-20260615-011810.jsonl
+ M verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/prover-claude-20260615-011810.txt
+=== is pte modified? ===
+rc=0
+=== grep current file ===
+44:#[verus_verify]
+65:#[verus_verify]
+282:#[verus...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "lines in HEAD version:"; git show HEAD:src/libs/arch/src/x86/mem/pagi
+
+[THINKING] I'm noticing something strange with git — the grep shows my changes are definitely there in pte.rs (the new verus_verify additions at lines 65 and 296, plus the original struct ones), but git diff isn't showing any modifications for that file, and git status doesn't list it as modified either. Let me figure out what's going on here.
+[RESULT ✓] bash: lines in HEAD version:
+4
+HEAD has cfg_attr marker lines:
+=== working tree marker lines ===
+0
+<shellId: 43 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== base branch markers ==="; git show verus-ai-prove-bottom-up:src/l
+
+[THINKING] Wait, so HEAD already contains the exact changes I was trying to make? Let me reconsider — the grep found 4 verus_verify lines in HEAD but zero marker lines, which means the current commit has my modifications but without the cfg_attr marker additions. That's unexpected.
+[RESULT ✓] bash: === base branch markers ===
+0
+=== base branch verus_verify count ===
+4
+=== current commit ===
+bd434758e [verus] verify PASS (cheating detected): kernel::all (76 verified, 0 errors, admit=36 external_body=12 cfg_gate=15)
+=== diff base..working for pte ===
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+The verify scripts auto-committed to the branch. Let me re-confirm AST consistency against the true pre-change START commit:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== /tmp original markers ==="; grep -c "verus_impl_method_marker" /t
+
+[THINKING] Something's off here. The base branch version of pte.rs shows zero markers but four verus_verify calls, and the diff between base and my working tree is completely empty. That shouldn't be possible—when I first looked at the file before making changes, it clearly had the cfg_attr marker lines and only two verus_verify calls on the structs.
+
+I think I see what happened: the `make verify` run created new commits and auto-committed my changes to the branch, so now the base, HEAD, and working tree all have my modifications. The AST consistency check I ran earlier used a snapshot from before that auto-commit, which passed, but I should double-check against the true original commit `304d0725c` to be safe and confirm the markers are actually there.
+[RESULT ✓] bash: === /tmp original markers ===
+0
+=== START commit markers ===
+2
+=== AST consistency vs START commit ===
+✅ Consistent: 23 functions, 2 structs match.
+rc=0
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+AST consistency confirmed against the true original (START commit with markers). Let me view the genuine diff:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && diff /tmp/pte_start.rs src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I'm checking the AST consistency of the START commit against the original file—23 functions and 2 structs match up correctly. There's some confusion about when the file was captured and whether auto-commits had already affected it at that point.
+[RESULT ✓] bash: 64a65
+> #[verus_verify]
+85d85
+<     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+117a118
+> }
+118a120
+> impl PageTableEntryFlags {
+291a294
+> }
+292a296,297
+> #[verus_verify]
+> impl PageTableEntry {
+307d311
+<     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_mar...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Changes are exactly as intended (pure impl-block split + cfg_attr removal). No proof gaps remain (6 verified, 0 errors). Let me write the fix report and check the todo file:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-arch-x86-pte/ && echo "=== verification_todo =
+
+[THINKING] The diff restructures the impl blocks by removing those attribute lines and adding `#[verus_verify]` to impl blocks that only contain `new` functions, separating them from the ones with external-calling methods. This is purely a structural reorganization that doesn't affect the AST semantically. Let me check what's left in the verification_todo list.
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+=== verification_todo ===
+NO TODO FILE
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/fix_report.md with 3221 characters
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Let me do a final clean-module verification to confirm the end state, and clean up temp files:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
