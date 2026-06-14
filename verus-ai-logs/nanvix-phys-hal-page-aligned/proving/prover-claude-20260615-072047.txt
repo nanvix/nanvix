@@ -788,3 +788,57 @@ Confirmed the Verus panic at the impl level. Let me try annotating only the `int
 Turn 50
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
+[RESULT ✓] bash: error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  compilation/setup error (verus did not run)
+  Exit code : 101
+  verification: 0 ver...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Method-level isn't allowed — the whole impl must be verified, but that panics. Let me investigate the Verus panic and look at how sibling modules handle generic trait impls.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== pgtab.rs impl Address ==="; grep -n "verus_verify\|impl.*Address 
+
+[THINKING] I can't verify individual methods in this trait impl—the whole thing needs to be annotated together. But when I try that, I hit a panic in `inherit_default_bodies` because it's finding a duplicate entry for `into_raw_value`. The issue seems to stem from the trait having a `#[verus_spec]` attribute on that method combined with how default bodies are being processed, creating this duplicate that the assertion catches.
+
+Let me trace through what's happening more carefully. The `Address` trait extends `View<V=int>`, and `PageAligned` has its own `impl View`, so there might be some interaction there with how `into_raw_value` is being registered. I should look at how other generic trait impls in this codebase handle verification—checking if there are similar patterns in the sibling files like pgtab.rs.
+[RESULT ✓] bash: === pgtab.rs impl Address ===
+23:#[verus_verify(external_derive)]
+25:pub struct PageTableAligned<T: Address>(T);
+39:impl<T: Address> Address for PageTableAligned<T> {
+40:    fn into_raw_value(self) -> usize {
+=== any generic trait impl verus_verify in kernel ===
+src/kernel/src/hal/mem/types/address/...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat ~/toolchain/verus/version.json 2>/dev/null | head; echo "==="; sed -n '
+
+[THINKING] I'm noticing that `pgtab.rs` has the same pattern as `page.rs` — the trait implementation for `Address` on `PageTableAligned<T>` at line 39 lacks the `#[verus_verify]` attribute, so its body isn't being verified either. Now I need to check the Verus traits source to understand what's causing the panic, which should be in the git checkout at `2769117`.
+
+Let me examine what's happening at line 511 in traits.rs.
+[RESULT ✓] bash: {
+  "verus": {
+    "profile": "release",
+    "version": "0.2026.05.24.ecee80a",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "toolchain": "1.95.0-x86_64-unknown-linux-gnu",
+    "commit": "ecee80a2139923d503338e6989f79fb690ec7847"
+===
+
+The function redirect_calls_in_defaul...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+The assertion means two `TraitMethodImpl` entries share the same `(impl_path, into_raw_value)` — a Verus internal duplicate registration. Let me get the full backtrace to understand the cause.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus RUST_BACKTRACE=1 && make veri
+
+[THINKING] The assertion is failing because the same trait method implementation appears twice in the function list—specifically `into_raw_value` with the same impl path. This suggests a Verus bug where the implementation is being duplicated somewhere in the processing pipeline, possibly related to how `Page` is being handled.
+
+Since this is a genuine Verus tool limitation (version 0.2026.05.24) that causes a panic rather than a verification failure, I can't work around it with `admit()` or `assume()`. My options are either to find a way to structure the code that avoids triggering the duplicate registration, or accept that `into_raw_value`'s body can't be verified due to this tool bug. Let me investigate whether the duplication stems from having multiple trait implementations in scope—maybe the generic `impl<T: Address> Address for PageAligned<T>` is somehow being registered twice. I'm caught between two conflicting pieces of guidance — the skill acknowledges Verus internal panics as limitations, but also states there are no known front-end limitations in this codebase. Let me dig into whether there's actually a duplicate `into_raw_value` definition hiding somewhere, or if the issue stems from how `#[verus_verify]` interacts with the trait implementation. I should enable the full backtrace to understand the panic mechanism better.
