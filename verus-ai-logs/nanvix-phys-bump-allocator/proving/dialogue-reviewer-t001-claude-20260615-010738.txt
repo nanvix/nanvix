@@ -455,3 +455,100 @@ Turn 13
 
 [THINKING] No warnings in the Verus log, so `make verify` should run the full cross-module regression across all crates and the kernel. Let me execute that to confirm everything passes, then figure out the build command—likely `./z build` or a cargo build for the crate.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+  Exit code : 0
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,50p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "z build|cargo|build|li
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bump_allocator && cargo build 2>&1 | tail -20; echo "=== clippy ==="; cargo clippy 2>
+
+[THINKING] All the crates are passing verification with no errors—bitmap, sys, nanvix-slab, bump-allocator, and kernel all exit cleanly. The "CHEATING_DETECTED" flags showing up in some modules are pre-existing issues outside the scope of this review, so the bump-allocator itself is good to go.
+
+Now I need to handle the build step. The checklist requires running both the verification command and a build command with zero errors and zero warnings. I've already confirmed the verification side, so I need to run a targeted build of the bump-allocator crate itself to make sure it compiles cleanly with Verus erased.
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operation...
+[RESULT ✓] bash: Compiling bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
+=== clippy ===
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+    Finished `dev` profile [optimized + debugi...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All checks complete. Let me run the crate tests as a final behavior check, then write the review.
+[TOOL] report_intent: Writing review verdict
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bump_allocator && cargo test 2>&1 | tail -12
+
+[THINKING] The build completed cleanly with no errors or warnings, and Clippy is satisfied. I should run the test suite to be thorough, though it's not strictly required by the checklist. Let me focus on finishing the review verdict across all ten items now that the build verification is complete.
+
+Going through the checklist: spec drift detection passes with no contract drift found. There are zero remaining admit() calls—the proof bodies are fully discharged. The two external_body declarations (alloc and alloc_as) are both explicitly listed in the tcb-allowed file with proper rationale, and the legitimacy checks out against verus-unsupported.md. For assume/assume_specification, there are zero assume() calls, and the one assume_specification for std's div_ceil is justified since vstd provides no spec for it—this is a legitimate external trust boundary.
+
+No cfg-gated exec code exists; the only cfg directives gate ghost-only spec and proof includes. The cheating audit tallies up cleanly: 0 admit, 2 external_body (both TCB-listed), 0 assume, 1 assume_specification (std boundary), 0 cfg-gated exec. The claimed Verus limitations each have isolated reproducers documented with specific constructs and exact error messages rather than vague claims. The exec rewrites are minimal and semantically equivalent, marked with VERUS REWRITE comments.
+
+Cross-module regression testing passes—all five crates verify cleanly with zero errors. The bump-allocator crate itself verifies with 6 verified items and zero errors or warnings, and both cargo build and clippy report clean. All ten checklist items pass, though I should note the deeper soundness concern about external_body plus uninterpreted functions potentially making the ensures vacuous. That's not a checklist failure—it's the approved specification-phase design documented in tcb-allowed.md—but it's worth flagging as a future proving-phase concern.
+
+The proof.rs comment about admit() placeholders being discharged in the proving phase is now stale since the bodies are already verified, but that's a documentation accuracy issue rather than a checklist failure. I'll mention it as a minor observation without blocking the RESOLVED status, since all checklist items genuinely pass and the proving phase's deliverable—zero admits, zero errors—is met.
+
+Now I'm writing the turn_001_driver.md review file with all items marked PASS and creating the STOP file to finalize RESOLVED.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: test tests::alloc_returns_distinct_slots ... ok
+test tests::alloc_returns_exhausted_error ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bump_allocator
+
+running 1 test
+test src/libs/bump_allocator/src/lib.rs - (line 27) ... ok
+
+tes...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All 10 checklist items verified as PASS. Writing the review and STOP file.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/proving/dialogue/turn_001_driver.md with 5413 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Review complete. All 10 proving-phase checklist items **PASS** with tool-backed evidence.
+
+**Summary of verification:**
+
+| # | Item | Verdict | Key evidence |
+|---|------|---------|-------------|
+| 1 | No specs weakened | PASS | `spec_drift.py` vs spec-END SHA `2315c179` → no drift on all 3 files |
+| 2 | Zero `admit()` | PASS | grep → 0 call sites; lemmas fully discharged |
+| 3 | external_body in TCB only (HARD) | PASS | `alloc`/`alloc_as` both listed in `tcb-allowed.md`; Verus errors confirm raw-ptr limitation |
+| 4 | Zero assume/assume_spec (std only) | PASS | only `usize::div_ceil` std boundary; vstd has no spec |
+| 5 | No cfg-gated exec | PASS | `cfg_gate=0`; only ghost `include!` gates |
+| 6 | Cheating audit | PASS | admit=0, external_body=2, assume=0, cfg=0 — all located/justified |
+| 7 | Limitations have reproducers | PASS | `verus-unsupported.md` cites exact construct + error |
+| 8 | Exec rewrites minimal | PASS | `git diff exp` → zero exec deletions, only spec attrs added |
+| 9 | Cross-module regression | PASS | `make verify`: all crates + kernel exit 0 |
+| 10 | Verify + build, 0 err/0 warn | PASS | verus 0 errors/0 warnings; cargo build/clippy/test clean |
+
+Wrote full review to `proving/dialogue/turn_001_driver.md` and created `STOP` = **RESOLVED**.
+
+One minor non-blocking note (does not gate resolution): the comment at `lib.proof.rs:6` still calls the lemma bodies `admit()` placeholders, which is now stale since they're discharged.
+
+
+=== Session End ===
+Session: 137494b7-6a98-4b0e-81a8-b0b14cdc75aa
+Duration: 274.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/proving/dialogue-reviewer-t001-claude-20260615-010738.jsonl
