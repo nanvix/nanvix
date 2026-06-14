@@ -134,10 +134,16 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
     }
-    // Overflow-free `value.div_ceil(alignment)`: Verus has no spec for the
-    // `usize::div_ceil` intrinsic, so the ceiling division is open-coded to be
-    // verifiable. `qd + 1` cannot overflow because a non-zero remainder forces
-    // `alignment >= 2`, hence `qd <= value / 2 < usize::MAX`.
+    // VERUS DEVIATION: the original body was
+    //   `value.div_ceil(alignment).checked_mul(alignment)`.
+    // Verus ships no specification for the `usize::div_ceil` intrinsic (confirmed:
+    // not present in vstd `std_specs`), and the only ways to give it meaning are
+    // `assume_specification`/`external_body`, both of which are unapproved cheating
+    // for this function. The ceiling division is therefore open-coded into the
+    // arithmetically-equivalent `value / alignment` (+1 on a non-zero remainder).
+    // This preserves semantics and O(1) time/space. `qd + 1` cannot overflow
+    // because a non-zero remainder forces `alignment >= 2`, hence
+    // `qd <= value / 2 < usize::MAX` (see `lemma_ceil_div`).
     let r: usize = value % alignment;
     let qd: usize = value / alignment;
     proof! {

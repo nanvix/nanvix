@@ -585,3 +585,117 @@ Turn 29
 [TOOL] report_intent: Verifying after div_ceil change
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | tail -30
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bump_allocator/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+
+[THINKING] I've verified 10 items with no errors and eliminated the assume_specification flag. The external_body count is 2 with both alloc and alloc_as marked as allowed according to tcb-allowed.md, while all other flags are at zero. Now I need to confirm these are the only external_body entries permitted and check the cheating details file to validate. The target functions I'm tracking are alloc_as, alloc, align_up, and as_mut.
+[RESULT ✓] bash: - lib.rs:309 alloc: external_body
+    - lib.rs:396 alloc_as: external_body
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Both remaining `external_body` are the allowed `alloc`/`alloc_as`. Now let me run AST consistency checks. Let me read that skill.
+[TOOL] bash: cat /mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/ast-consistency/*.md 2>/dev/null | sed -n '1,140p'
+
+[THINKING] Both remaining external_body calls are alloc and alloc_as, which matches what's allowed in tcb-allowed.md. Now I need to run the AST consistency check to verify the exec change to align_up maintains semantic equivalence and that the normal build still works. Let me confirm that cargo build compiles align_up correctly and that the proof! macro is available in the normal build through the vstd prelude import.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/ast_consistency.py 2>/dev/null && python3 scripts/ast_consistency.py --base-ref 
+[RESULT ✓] bash: NO SCRIPT - trying VERUS_AI_DIR
+<shellId: 28 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai/ /mnt/shared/verus-ai-improve5-argus-exp2/ -name "ast_consistency.py" 2>/dev/null
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+---
+/mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && AST=/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py; git show exp:src/libs/bum
+[RESULT ✓] bash: got orig
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+BackendA::as_mut_ptr                     MATCH                                
+BackendB::as_mut_ptr                    ...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && AST=/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py; python3 $AST /tmp/orig_li
+
+[THINKING] The align_up function has a mismatch because I rewrote its execution body—this is intentional since Verus doesn't provide a div_ceil specification and using assume_specification isn't allowed. I need to document this as a confirmed Verus limitation rather than an approved deviation.
+[RESULT ✓] bash: ## align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -2,5 +2,14 @@
+     if alignment == 0 {
+         return None;
+     }
+-    value.div_ceil(alignment).checked_mul(alignment)
++    // Overflow-free `value.div_ceil(alignment)`: Verus has no spec for the
++    // `usize::div_ceil` intrinsic, so th...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+The exec diff confirms the only change is the semantically-equivalent open-coded ceiling division. Let me strengthen the deviation comment and verify the normal build still compiles.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] The exec diff shows the proof blocks were removed, confirming the actual change is replacing the div_ceil function call with an equivalent open-coded ceiling division—semantically identical but O(1) in both time and space. This is a known Verus limitation since div_ceil lacks a specification and assume_specification isn't allowed, so I'm documenting this as a proper deviation with a reproducer.
+
+Now I'll update the comment in lib.rs to clearly mark this as a VERUS DEVIATION with full justification, then verify the normal cargo build compiles to confirm the semantics are preserved.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking normal build and full verify
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/bump_allocator && timeout 300 cargo build 2>&1 | tail -15; echo "=== test ==="; timeo
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Compiling bump-allocator v0.16.17 (/home/ruize/nanvix-phy/src/libs/bump_allocator)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.17s
+=== test ===
+
+running 3 tests
+test tests::alloc_as_allows_typed_access ... ok
+test tests::alloc_returns_distinct_slots ... ok
+test tests::alloc_ret...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Normal build and tests pass. Let me run the final verifications.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -E "verified|errors|cheating|status"
+
+[THINKING] The build and tests are passing, so now I need to run the full verification suite to check for any regressions—first re-running the allocator verification to be safe after the comment change, then running the complete project verification.
