@@ -345,3 +345,200 @@ Now I need to double-check the actual counts excluding comments, run the verific
 Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
 
 Preview (first...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, admit=0, assume=0, external_body=2 both TCB-listed). Let me check coverage details and run the drift/coverage scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===UNVERIFIED===" && cat verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unve
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -iE "fn_cover|spec_drift|coverage"; ec
+
+[THINKING] Looking at the verification results, the exit code passes but there's detected cheating with 2 external_body functions that are both allowed in the TCB compliance list, so this is acceptable. Coverage shows 3 out of 6 functions have contracts, and I'm checking which in-scope functions are missing verification.
+[RESULT ✓] bash: ===UNVERIFIED===
+# Unverified exec functions: 3/6
+  fmt
+  new
+  default
+===CHEATING DETAIL===
+    - lib.rs:318 alloc: external_body
+    - lib.rs:405 alloc_as: external_body
+<shellId: 8 completed with exit code 0>
+[RESULT ✓] bash: fn_coverage.py
+refinement_coverage.py
+spec_drift.py
+---run spec_drift---
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/bump_allocator/sr
+
+[THINKING] The unverified exec functions are all outside my scope, and the two external_body calls I found are both in the allowed list. There's no spec drift to worry about since the comparison against HEAD shows zero changes, which makes sense if the work is already committed.
+
+Now I should run the coverage check and verify the git status and build to complete the checklist.
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+===GIT STATUS===
+ M verus-ai-logs/nanvix-phys-bump-allocator/final-review/review-claude-20260615-012...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/bump_allocator/sr
+[RESULT ✓] bash: | Missing | 0 |
+| Extra | 0 |
+
+## MISSING (exec fns in source but not in verus)
+
+_None — all source exec fns are present in verus._
+
+## EXTRA (exec fns in verus but not in source)
+
+_None._
+
+## MATCHED (exec fns present in both)
+
+| Function |
+|----------|
+| `align_up` |
+| `alloc` |
+| `alloc_as` |
+| `...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All checks gathered. Now launching the 2 independent review sub-agents (one per model) and running `make build` in parallel.
+[TOOL] report_intent: Launching dual review agents
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tail -25
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'description': 'Indep
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'description': 'Indepe
+
+[THINKING] I'm verifying the semantic equivalence of the AST rewrite in align_up, where the ceiling division operation gets replaced with an open-coded version that adds one when there's a non-zero remainder. The math checks out since ceiling division of positive operands is equivalent to regular division plus a conditional increment.
+
+Now I'm preparing to launch two sub-agents in parallel to produce their review files. They'll each get the full context including file paths, my verification results, and instructions for writing their independent review outputs. I'm also planning to run the build in the background while they work.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+I'll start by reading all the files in scope, the skills, and the analysis documents in parallel.
+[TOOL] report_intent: Reading source, spec, proof and skills
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Fixed-Size Bump Allocator
+6. //!
+7. //! A generic, `no_std`-compatible bump allocator that hands out fixed-size slots from a
+8. //! statically reserved memory region (typically BSS). Each slot is ...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // FixedSizeBumpAllocator - Specifications
+5. //
+6. // This file contains the abstract View (`BumpView`), its invariant and geometry
+7. // helpers, the numeric specification of `align_up`, and the proof-lemma ...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // FixedSizeBumpAllocator - Proofs
+5. //
+6. // Proof functions for the abstract pool model. Each lemma is fully discharged
+7. // (no `admit()`/`assume()`) and encodes a caller expectation from
+8. // `verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Agents are running. Meanwhile I'll run the cross-module regression (`make verify`) and check the build target, which the checklist requires.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^(build|verify|verify-bump):" Makefile 2>/dev/null | head; echo "---"; grep -nE "
+
+[THINKING] The `make build` command shows "Nothing to be done" because the build is already cached, which is acceptable for the checklist requirement. Let me verify the actual Makefile build target to confirm there's a real build process in place.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+---
+54:# Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
+92:export BUILD_DIR     := $(ROOT_DIR)/build
+115:# passed on the command line (e.g., from Dockerfile.build).
+156:# Exported so that build.rs scripts r...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now let me read the analysis documents and the skills.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: bump_allocator
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-bump-allocator/script_output.md`
+5. (generated by `find_callers_lsp.py`, rust-analyzer LSP, crate `bump-allocator`,
+6. depended on by `kernel`).
+7. 
+8. > Tooling note: the pinned toolchain `nightly-2026-0...
+[RESULT ✓] view: 1. # View Design: `bump_allocator` (`src/libs/bump_allocator/src/lib.rs`)
+2. 
+3. > Phase output. Designs the abstract `View` for `FixedSizeBumpAllocator` (plus the
+4. > supporting numeric spec for `align_up` and the backend spec for `as_mut_ptr`).
+5. > Built **only** from `caller_analysis.md` and th...
+[RESULT ✓] view: 1. # Bugs — `bump_allocator` (`src/libs/bump_allocator/src/lib.rs`)
+2. 
+3. ## Specification phase
+4. 
+5. No code bugs found while specifying the in-scope functions
+6. (`align_up`, `alloc`, `alloc_as`, `as_mut_ptr`).
+7. 
+8. - `align_up` is total and correct: it guards `alignment == 0` and uses
+9.   `...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+8. - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+9. - `src/kernel/src/mm/phys/kframe.r...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "verification|cheating|status|error|verified|Summary|crate|PASS
+
+[THINKING] I'm running the `make verify` command which kicks off verification for all the Verus crates plus the kernel verification—this could take a while, so I'll let it run in the background while other work continues.
