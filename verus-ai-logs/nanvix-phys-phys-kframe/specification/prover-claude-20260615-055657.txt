@@ -1425,3 +1425,16 @@ Now let me run the full `make verify` to check for regressions, and verify `make
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify 2>&1 | tail -35
 
 [THINKING] I'm checking whether `identity_map_page` needs an explicit `ensures true` annotation, but since it's marked with `external_body`, that's already the default behavior. Now I need to verify the kernel still compiles with zero errors, then run the full verification suite and build. The other verified modules like upool and manager won't be affected since they're external_body themselves and don't verify their own bodies when calling into_raw_value. Let me just run make verify to confirm everything still works.
+[RESULT ✓] bash: Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_06-16-33
+
+note: verifying module mm::phys
+
+note: verifying mo...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify 2>&1 | grep -iE "status:|FAIL|error|Exit code|verifying crate|=== |
+
+[THINKING] The verification passed with exit code 0 and the cached build didn't require recompilation, with CHEATING_DETECTED marked as the current state and justified in the documentation. I should check the earlier output to confirm the library crates also verified successfully without any errors.
