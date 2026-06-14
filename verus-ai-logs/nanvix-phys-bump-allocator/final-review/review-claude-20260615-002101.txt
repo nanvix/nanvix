@@ -1411,3 +1411,86 @@ Turn 17
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -60; echo "VERIFY_EXIT=${PIPESTATUS[0]}"
 
 [THINKING] The `build` target exists but has no actual work to do, so let me run the full `make verify` command to check for cross-module regressions—I'll start it asynchronously and move forward with drafting the consolidation while it runs, since the verdict is already FAIL regardless.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=1 trusted=0 no_decreases=0 cfg_gate=4
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Full `make verify` passed across all modules (exit 0, 0 errors — no regression; admit/external_body in kernel/arch are pre-existing other-module work, not bump-allocator). Let me check the documented Verus limitation for an isolated reproducer before finalizing the checklist.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' verus-ai-logs/nanvix-phys-bump-allocator/verus-unsupported.md
+
+[THINKING] Running the verification across all modules shows everything passing with zero errors. The kernel and arch modules do show some admit and external_body counts, but those are pre-existing verification work in other modules outside the bump-allocator scope, so they're not relevant to what I'm checking. The cross-module regression requirement is satisfied since all verified modules are passing with no new errors introduced.
+
+Now I'm putting together the final review document. For caller coverage, I'll use the key-invariant framing of 3 out of 6 as the primary metric since that's the canonical list from the analysis, while also noting the more granular 11 out of 17 breakdown from codex. I'll be strict and honest with the checklist marks as I work through each section — caller analysis checks out completely, and the view design is sound even though the implementation didn't wire everything together properly.
+
+Moving through the specification section now, marking items carefully: most of the core work is there, but caller coverage for expectations, view consistency specs, and error path ensures need to be unchecked since the transition and uniqueness constraints aren't properly wired and some ensures are tautological. The proving section shows zero admits and external_body only in the TCB as required, with cross-module regression passing cleanly.
+
+On the Verus limitation for atomics—the deferral is documented but I'm uncertain whether there's a true isolated reproducer showing it's impossible versus just deferred by design, so I'm marking that uncheck to be strict. The cheating elimination section is solid across the board with zero admits, assumes, or trusted code, and no specs have been weakened. No bugs were recorded since none were found.
+[RESULT ✓] bash: # Verus Unsupported Constructs — `bump_allocator` (`src/libs/bump_allocator/src/lib.rs`)
+
+Genuine Verus front-end limitations encountered while specifying the in-scope
+exec functions. Per the **verus-constraints** skill these are recorded here and
+**not** worked around (no exec rewrite, no `external...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Both reviews and my ground-truth analysis fully converge. The View-transition deferral is backed by a documented Verus limitation (atomics not spec-readable, with exact error + minimal trigger in `verus-unsupported.md`), but the caller-coverage checklist item remains genuinely unsatisfied. Writing the consolidated review.
+[TOOL] report_intent: Writing consolidated final review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/final-review/final_review.md
+
+[THINKING] I see that the specification phase document marked alloc/alloc_as as unable to carry a verified body because bump_allocator wasn't in the allowed list at that time, but it's since been added and the proving phase correctly made them external_body. The real constraint is the raw-pointer materialization limitation, which is the documented reason for keeping them external.
+
+Limitation #3 about atomics not being spec-readable explains why the View transition is deferred — that's also documented with exact errors and a vstd citation, giving me an isolated reproducer for why uniqueness and transition can't be wired now. So the checklist item about claimed Verus limitations having isolated reproducers is actually satisfied for limitations #2 and #3.
+
+This clarifies the nuance: the missing caller coverage isn't a quality lapse but a genuine documented Verus limitation with a deferral that requires atomic_ghost machinery. However, the checklist is explicit — "PASS only if ALL items are checked" — and the caller coverage item remains unsatisfied because three of six key caller invariants aren't on any exec contract. The reason is legitimate, but the coverage gap itself is real, so per the grading rule this must be FAIL. Both independent agents reached FAIL, so my consolidation is FAIL. The important distinction is that this is a spec-completeness gap caused by a documented Verus limitation, not a true code bug.
+
+Now I'm ready to write the final consolidated review.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/final-review/final_review.md with 12061 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-bump-allocator/final-review/*.md
+
+[THINKING] Let me check that all three files are present in the final-review directory.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 14585 Jun 15 00:29 verus-ai-logs/nanvix-phys-bump-allocator/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  5998 Jun 15 00:27 verus-ai-logs/nanvix-phys-bump-allocator/final-review/final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 12159 Jun 15 00:32 verus-ai-logs/n...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Review complete. Two independent sub-agents (claude-opus-4.8 + gpt-5.3-codex) plus orchestrator ground-truth checks all converged.
+
+## Result: **FAIL**
+
+**Mechanical guardrails — all pass:**
+- admit: 0, assume: 0, external_body: 2 (both TCB-approved: `alloc`, `alloc_as`), assume_specification: 1 (`div_ceil`, std external-bottom), cfg-gated exec: 0
+- AST consistency: PASS (12/12 match)
+- `make verify-bump-allocator`: 0 errors; `make build`: OK; cross-module `make verify`: all modules 0 errors
+- spec-drift: clean; bugs.md: accurate (0 code bugs)
+
+**Blocker (caller coverage 3/6):** `alloc`/`alloc_as` exec contracts deliver only In-bounds + Alignment + Stable-size. Missing from the exec contracts: **Uniqueness/non-aliasing**, **Monotone-capacity/Exhausted boundary**, **No-spurious-consumption** — the lemmas that prove them (`lemma_geometry`, `lemma_exhausted_boundary`, `lemma_alloc_transition`) are orphan/floating. The non-aliasing guarantee the kernel's `unsafe` code relies on isn't deliverable to callers. The gap is well-founded (deferred behind the documented "`AtomicUsize` not spec-readable" Verus limitation, pending an atomic-ghost/`PointsTo` token), but per the strict bar it leaves checklist items unchecked.
+
+**Artifacts written:**
+- `final-review/final_review.claude.md`
+- `final-review/final_review.codex.md`
+- `final-review/final_review.md` (consolidated)
+
+
+=== Session End ===
+Session: b1ed81b7-1d16-4a48-881d-432cffee6ae7
+Duration: 681.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/final-review/review-claude-20260615-002101.jsonl
