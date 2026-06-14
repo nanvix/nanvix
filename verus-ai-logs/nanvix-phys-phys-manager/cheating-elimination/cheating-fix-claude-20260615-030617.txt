@@ -174,3 +174,101 @@ Restored. Confirmed identical to prior rounds: removing the 4 admits → exactly
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff a8d643993 -- src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/phys/manage
 
 [THINKING] Removing those 4 admits leaves exactly 4 lemma failures, all at the ensures clauses where the assertions about `self.upool@` and the global partition can't be proven. I've restored the admits and need to verify the baseline is clean and the source matches byte-for-byte before writing up the turn_003 response.
+[RESULT ✓] bash: 0
+(0=unchanged)
+  0 errors
+  verification: 19 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=18 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  status: CHEATING_DETECTED
+<shellId: vbase completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Baseline clean (19 verified, 0 errors; source byte-identical). Now writing the turn_003 response with this round's sharper finding — that the postcondition is provably *unsatisfiable* in-scope, not merely unproven.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_003_fixer.md
+
+[THINKING] The baseline checks out with the module verification passing, and I'm noticing a key insight about the self reference—it points to the same memory location as the upool, not the physical view frames. Since the kernel allocation logic never modifies the upool itself, I can establish that the final state matches the original state after applying the allocation operation.
+
+Now I'm documenting this finding in the fixer response and updating the verification checklist accordingly.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_003_fixer.md with 6214 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now let me update the verification_todo.md with this round's sharper unsatisfiability finding, and confirm the final state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -25 verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md
+[RESULT ✓] bash: lemmas: as free-standing `#[verifier::external_body]` axioms they are
+**provably false** (a caller derives `false`). Isolated reproducers are committed
+under `cheating-elimination/reproducers/`:
+
+- `alloc_one_realbody.rs` — `lemma_kernel_alloc_one` with a real body →
+  `0 verified, 1 errors` (postco...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat >> verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md <<'EOF'
+
+---
+
+## R
+[RESULT ✓] bash: appended.
+4
+0
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me run the build to confirm exec code is intact, then do a final summary.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make build 2>&1 | tail -5
+
+[THINKING] I should wrap up by running the build and final verification to confirm everything is in a clean state, since the fix report already documents the blocker and the module checks out with no errors.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: bld completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls src/kernel 2>/dev/null && grep -rn "build:" Makefile 2>/dev/null | head; echo "---
+[RESULT ✓] bash: Cargo.toml
+build.rs
+src
+230:    # Profiling build: release performance + debug symbols + frame pointers.
+--- try ./z build ---
+
+================================================================================
+SCCACHE Statistics
+========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Build passes ([OK]) and source is byte-identical to phase start. Final state confirmed.
+
+## Summary
+
+`cheating_report_3.md` is content-identical to reports 1 and 2. After re-examining the architecture from scratch this round, I found a **sharper, decisive root cause** than prior rounds — but the conclusion is unchanged: the 4 manager admits are a genuine cross-module BLOCKER.
+
+**This round's new finding (the postconditions are *unsatisfiable*, not merely unproven):**
+- `View for PhysMemoryManager` (do-not-modify) defines `self@ == self.upool@`, and `Upool::view` is an `uninterp` function of the `upool` field.
+- The kernel-alloc bodies call only free functions (`frame::alloc/free`, `KernelFrame::new`) — **none touches `self.upool`** — so Verus derives `final(self)@ == old(self)@`.
+- The target postcondition `final(self)@ == old(self)@.alloc_one(kf@)` therefore reduces to the **false** `v == v.alloc_one(a)`. The `admit()` bridges a literally-false goal that has no model in editable scope.
+
+**Empirically re-confirmed this round:**
+- Removing all 4 admits → exactly `15 verified, 4 errors` (the 4 targeted lemmas, no collateral).
+- Baseline: `19 verified, 0 errors`; `./z build` → [OK]; source `git diff a8d643993` = empty.
+
+**Why no escape exists:** remove → 4 unsatisfiable postconditions; `external_body` axiom → reproduced UNSOUND (verifies `exploit() ensures false`) and forbidden on proof fns; weaken postcondition → forbidden spec-drift; fix `frame.rs` → forbidden ("do not touch unlisted functions"). The 8 frame.rs admits are out-of-scope `Inner::*` allocator internals. All 16 `external_body` are tcb-allowed; `assume`/`trusted`/R20p/R20c are vacuous.
+
+**Artifacts written:** `dialogue/turn_003_fixer.md` (NEEDS_GUIDANCE with fresh evidence), `verification_todo.md` (Round-3 addendum). This matches the reviewer's own independent re-verification (`turn_002_driver.md`: 11/12 PASS, 1 BLOCKED) and the `STOP` file.
+
+**Result: BLOCKER** — unblock prerequisite is the out-of-scope `nanvix-phys-phys-frame` phase exporting a tracked partition-step token and singleton-attachment token.
+
+
+=== Session End ===
+Session: 511fc3c9-9d9e-499f-9aaa-b8520b146def
+Duration: 245.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/cheating-fix-claude-20260615-030617.jsonl

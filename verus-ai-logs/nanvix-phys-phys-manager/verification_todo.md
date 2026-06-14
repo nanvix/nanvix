@@ -134,3 +134,30 @@ pre- and post-points forces `pre == post`, contradicting `post == pre.alloc_one`
 through `frame::alloc`/`alloc_contiguous`/`free`, plus a singleton attachment
 token produced by `init`/`Upool::new`). They cannot be discharged or *soundly*
 converted within `manager.{rs,spec.rs,proof.rs}`.
+
+---
+
+## Round 3 addendum — the postconditions are *unsatisfiable*, not merely unproven
+
+Sharpened root cause (decisive). `View for PhysMemoryManager` (do-not-modify,
+`manager.spec.rs:91`) defines `self@ == self.upool@`, and `Upool::view`
+(`upool.rs:59`) is `uninterp spec fn view(&self) -> FrameAllocView` — a function
+of the `upool` field. The kernel-alloc bodies (`alloc_kernel_frame`,
+`alloc_many_kernel_frames`) call only the free functions `frame::alloc` /
+`frame::alloc_contiguous` / `frame::free` and `KernelFrame::new`, **none of which
+take `self.upool`**. Verus therefore derives `final(self)@ == old(self)@`.
+
+The target postconditions then reduce to provably **false** propositions:
+- `alloc_kernel_frame` (`manager.rs:371`): `final(self)@ == old(self)@.alloc_one(kf@)`
+  ⇒ `v == v.alloc_one(a)` — false.
+- `alloc_many_kernel_frames` (`manager.rs`): `final(self)@ ==
+  old(self)@.book_all(kernel_addr_set(frames))` ⇒ `v == v.book_all(S)` for
+  nonempty `S` — false.
+
+So `lemma_kernel_alloc_one` / `lemma_kernel_alloc_contiguous` are invoked with
+`pre == post`, i.e. their `admit()` bridges a false goal. This is not a missing
+proof step; it is a goal with no model in the manager's editable scope. The only
+state that genuinely steps is the global `frame::INSTANCE` partition behind the
+parameter-free `uninterp` constant `phys_view()`, reachable only via the
+out-of-scope `frame` free-function layer. Unblock prerequisite unchanged:
+token-instrument and verify `mm::phys::frame` first.
