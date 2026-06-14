@@ -1119,3 +1119,253 @@ Turn 17
 ────────────────────────────────────────────────────────────
 Fresh run confirms **47 verified, 0 errors**. Now let me run cross-module `make verify`.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | grep -iE "verification results|verified|errors|Exit code
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+=== Summary ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Cross-module `make verify` passes (exit 0). Let me verify the `FrameNumber` view relationship that `frame_address`'s spec relies on, to confirm caller-expectation equivalence.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && f=src/libs/arch/src/x86/mem/paging/frame.spec.rs; ls -la $f 2>/dev/null && 
+[RESULT ✓] bash: 
+<shellId: 43 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/libs/arch/src/x86/mem/paging/ && echo "---" && find src/libs/arch/sr
+[RESULT ✓] bash: flags.rs
+frame
+mod.proof.rs
+mod.rs
+mod.spec.rs
+pde.proof.rs
+pde.rs
+pde.spec.rs
+pte.proof.rs
+pte.rs
+pte.spec.rs
+table.proof.rs
+table.rs
+table.spec.rs
+---
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/libs/arch/src/x86/mem/paging/frame/ && echo "=== frame spec view/int
+[RESULT ✓] bash: mod.rs
+number.proof.rs
+number.rs
+number.spec.rs
+=== frame spec view/into_raw_value/spec_max ===
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:13:    closed spec fn view(&self) -> int {
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:26:    // `spec_max_frame_number()` (see `hal/mem/typ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '70,95p' src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] bash: ///
+    /// # Description
+    ///
+    /// Converts a [`FrameNumber`] into a raw value.
+    ///
+    /// # Returns
+    ///
+    /// The raw value of the target [`FrameNumber`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+            0 <= self@ <= Self::spec_ma...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-arch-x86-pde/final-review && cat > verus
+[RESULT ✓] bash: 
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Verification Review — `arch-x86-pde`
+2. 
+3. ## Checklist
+4. - [x] 1) Spec quality reviewed for all in-scope functions.
+5. - [x] 2) Caller coverage checked against `caller_analysis.md` (Covered 13/13, Missing: none).
+6. - [x] 3) Proof completeness checked (`admit()`/`external_body` in pde ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Done. I completed an independent strict review and wrote the full raw report to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.gpt-5.3-codex.md`
+
+**Verdict:** PASS (module scope `arch-x86-pde`)
+
+**Blockers:** None.
+
+**Note (informational, out-of-scope):** `make verify` exits 0 but reports existing cheating/admit debt in other modules (e.g., kernel), not in `arch-x86-pde`.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': True, 'timeout': 30}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 174s, total_turns: 0, model: gpt-5.3-codex, duration: 172s
+
+Done. I completed an independent strict review and wrote the full raw report to:
+
+`/home/ruize/...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Codex review complete (PASS). Waiting on the claude review agent.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+Let me do final guardrail counts specific to the pde files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for p in pde.rs pde.spec.rs pde.proof.rs; do f=src/libs/arch/src/x86/mem/pa
+[RESULT ✓] bash: === pde.rs ===
+admit: 0
+assume(: 0
+assume_specification: 0
+external_body: 0
+uninterp: 0
+cfg(not(verus_keep_ghost): 0
+cfg(verus_keep_ghost): 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+=== pde.spec.rs ===
+admit: 0
+assume(: 0
+assume_specification: 0
+external_body: 0
+uninterp: 0
+cfg(not(veru...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All checks complete. Let me create the output directory and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-arch-x86-pde/final-review && echo create
+[RESULT ✓] bash: created
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verification_todo.md
+view-design
+view_design.md
+<shellId: 49 completed with exi...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== verification_todo.md ===" && cat verus-ai-logs/nanvix-phys-arch-x
+[RESULT ✓] bash: === verification_todo.md ===
+# Verification TODOs: arch-x86-pde
+
+None. Zero proof gaps remain.
+
+All in-scope cheating (2 cfg-gated exec items in `pde.rs`) has been eliminated.
+`make verify-arch` reports 47 verified, 0 errors with admit=0, assume=0, cfg_gate=0.
+
+The 3 remaining crate-wide `external_b...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+I have all evidence. Now writing the final review report.
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude-opus-4.8.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude-opus-4.8.md with 11237 characters
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Review complete and written to `verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude-opus-4.8.md`.
+
+## Verdict: **PASS** — no blockers
+
+I independently re-ran every check (did not trust the provided context):
+
+| Check | Evidence | Result |
+|---|---|---|
+| **Verification** | Fresh non-cached `make verify-arch` → `47 verified, 0 errors` (exit 0); cross-module `make verify` exit 0 | ✅ |
+| **admit / assume** | 0 / 0 across pde.rs/.spec/.proof | ✅ |
+| **external_body (pde)** | 0 in pde files | ✅ |
+| **TCB compliance** | 3 crate `external_body` (`invlpg`, `table::read`, `table::write`) — all on tcb-allowed.md, none in pde | ✅ |
+| **AST consistency** | `✅ Consistent: 23 functions, 2 structs`; no `// VERUS REWRITE`; 0 spec drift; fn_coverage 15/15 | ✅ |
+| **Caller coverage** | 5/5 in-scope functions; all 6 caller invariants discharged; no failure paths (all total) | ✅ |
+| **Guardrails** | admit=0, assume=0, assume_specification=0, uninterp=0, cfg-gated EXEC=0 | ✅ |
+| **Bugs** | bugs.md "None" reconciled; no undocumented failures | ✅ |
+
+Key spec-soundness verification: `frame_address`'s spec (`self@.frame * FRAME_SIZE`) is provably equivalent to the caller expectation (`into_raw_value() << FRAME_SHIFT`) since `FrameNumber::into_raw_value` ensures `result == self@` and `FRAME_SIZE == 2^FRAME_SHIFT`.
+
+The two `#[cfg(verus_keep_ghost)]` at pde.rs:9,11 guard `include!` of spec/proof — correctly classified as **ghost includes**, not cfg-gated exec code. The kernel crate's residual cheating (admit=36/external_body=12/cfg_gate=15) is in out-of-scope modules and does not affect the pde module.
+
+**No blockers found.**
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 260s, total_turns: 0, model: claude-opus-4.8, duration: 260s
+
+Review complete and written to `verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_r...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Both reviews PASS with no blockers. Let me confirm the raw files exist and consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/*.md
+
+[THINKING] Both agents passed without issues, so I'm verifying the raw files are in place before merging everything into the final review document.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 11353 Jun 15 02:13 verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude-opus-4.8.md
+-rw-rw-r-- 1 ruize ruize  6769 Jun 15 02:11 verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.gpt-5.3-codex.md
+<shellId: 51 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Both raw reviews saved. Both agents independently reached **PASS** with no blockers, agreeing with my own shared-check results. Consolidating now.
+[TOOL] report_intent: Writing consolidated final review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.md with 9532 characters
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Final review complete. **Result: PASS** — no blockers.
+
+**Process:** 2 independent sub-agents (claude-opus-4.8 + gpt-5.3-codex) each re-ran every check from scratch; both reached PASS with no blockers, matching my own shared checks. Raw reviews saved as `final_review.claude-opus-4.8.md` and `final_review.gpt-5.3-codex.md`; consolidated to `final_review.md`.
+
+**Key findings (in-scope: pde.rs/.spec/.proof):**
+- Guardrails: admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0
+- Verification: `make verify-arch` exit 0 (0 errors); `make verify` all crates exit 0
+- TCB: 3 crate-wide `external_body` (invlpg, table::read/write) — all in `tcb-allowed.md`; none in pde
+- AST: consistent (23 fns/2 structs MATCH, no `// VERUS REWRITE`); spec_drift = 0; fn_coverage 15/15
+- Caller coverage: 5/5 functions, 6/6 invariants discharged (all total/pure — no failure paths)
+- Bugs: `bugs.md` = "None", reconciled — no defects, no undocumented failures
+
+The two `#[cfg(verus_keep_ghost)]` lines guard `include!` of spec/proof (ghost includes, not cfg-gated exec). Kernel-crate cheating debt is pre-existing and out of scope.
+
+
+=== Session End ===
+Session: 00bf247f-66f3-491a-9f02-2364ec39272c
+Duration: 492.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/review-claude-20260615-020612.jsonl
