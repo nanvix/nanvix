@@ -1138,6 +1138,7 @@ impl Inner {
                 rstart / ps == start_fn,
                 (rstart + rsize) / ps == start_fn + nfr,
                 self@ == g_old,
+                self@ == old(self)@,
                 self.bitmap@.set_bits == pre_sb,
                 self.bitmap@.num_bits == pre_nb,
                 self.refcount@ == pre_rc,
@@ -1183,6 +1184,13 @@ impl Inner {
                         assert(index < self.bitmap@.num_bits);
                         assert(!self.bitmap@.is_bit_set(index as int));
                         assert(!pre_sb.contains(index as int));
+                        assert forall|k: int| start_fn <= k < index as int + 1 implies
+                            #[trigger] pre_sb.contains(k) == false && k < pre_nb by {
+                            if k < index as int {
+                            } else {
+                                assert(k == index as int);
+                            }
+                        }
                     }
                 },
                 Ok(true) => {

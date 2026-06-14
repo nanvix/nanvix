@@ -2720,3 +2720,222 @@ The proof.rs notes are just trigger-choice info, not errors. Let me re-verify.
 [THINKING] I see those trigger notes are just informational, not actual errors. The real issues are the four assertions I need to fix: the loop invariant violation in frame.rs at line 1133, two assertions about rstart and rsize alignment that should resolve through the invariant, and a fourth assertion about the pre_sb containment that depends on the existential proof.
 
 The summary reported 2 errors but grep shows 4 error lines total—different counting methods. After my edits shifted the line numbers, I need to verify that the post-loop assertion about pre_sb.contains(start_fn+nfr-1) will trigger correctly now that the exit invariant holds, since my assertion uses that exact predicate as a trigger.
+[RESULT ✓] bash: === Summary ===
+  verification: 56 verified, 2 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-11-...
+
+────────────────────────────────────────────────────────────
+Turn 202
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "^error:
+[RESULT ✓] bash: 41:error: postcondition not satisfied
+55:error: postcondition not satisfied
+69:error: loop invariant not satisfied
+87:error: assertion failed
+344:error: could not compile `kernel` (bin "kernel") due to 4 previous errors
+=== locs ===
+31:    --> src/kernel/src/mm/phys/frame.rs:1133:9
+42:    --> src/ke...
+
+────────────────────────────────────────────────────────────
+Turn 203
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '41,110p'
+[RESULT ✓] bash: error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1058:13
+     |
+1058 | /             ({
+1059 | |                 let start_frame_number = region@.start / spec_page_size();
+1060 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+106...
+
+────────────────────────────────────────────────────────────
+Turn 204
+────────────────────────────────────────────────────────────
+The loop-invariant preservation and `Set::map` membership need explicit handling. Let me check vstd's `Set::map` axiom.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "axiom_set_map\|pub.*spec fn map\|fn map<" /home/ruize/verus-ai-exp/verus-ai
+
+[THINKING] I'm hitting postcondition failures at two error return points where my loop proofs establish one version of the frames constraint but the postcondition expects another—the mismatch seems to be between what my assertions prove about `frames.contains(a)` and what the spec's final state actually requires.
+
+The loop invariant itself is still failing at normal exit, even after adding assertions for the Ok(false) case. When the loop completes normally at `index==end_exclusive`, the invariant should hold for the entire range `[start_fn, end_exclusive)`, but my proof that each iteration with `Ok(false)` maintains this isn't connecting properly—the assertion that `!is_bit_set(index)` should follow from the test returning false, which should align with the precondition's set bits, but something in that chain isn't clicking. The issue might be with how the invariant is checked at loop exit versus how the facts are established in the proof block. I'm wondering if the problem is that `number_of_bits()` returns a value whose spec connects to `num_bits`, but Verus isn't properly linking that connection when checking `k < pre_nb` at the invariant exit point. Maybe I need to make the relationship between the runtime comparison and the spec-level invariant more explicit rather than relying on the transitive connection through `number_of_bits()`. I need to restructure the proof by moving the invariant maintenance to the end of the loop body, after the match block, so it applies to the Ok(false) path that continues. I should also add an explicit forall assertion to help Verus instantiate the invariant at k==index with my coverage facts. For the postcondition failures on the Err returns, I'm checking whether my assertion about frames and the old state is correctly matching the postcondition — the old(self)@ should equal g_old, and since self is unchanged on those paths, the final state should match the old state, so my proof should work unless there's a subtle mismatch in how I'm referencing the free frames. The issue might be that I need to explicitly invoke the Set::map axiom to prove frames.contains(a), since Verus may not automatically trigger it. But stepping back, these postcondition failures could all stem from the same root cause — the loop invariant not being properly maintained. Let me focus on fixing the invariant preservation first, then check what axioms vstd provides for set membership under map operations.
+[RESULT ✓] bash: ===
+766:pub broadcast axiom fn axiom_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
+771:pub broadcast axiom fn axiom_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, key: K)
+1013:    axiom_mk_map_domain,
+1014:    axiom_mk_map_index,
+<shellId: 98 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 205
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn map" /home/ruize/verus-ai-exp/verus-ai/vstd/set.rs /home/ruize/verus-ai-
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs:29:    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+/home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs:45:    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B>
+/home/ruize/verus-ai-exp/verus-ai/vst...
+
+────────────────────────────────────────────────────────────
+Turn 206
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs
+[RESULT ✓] view: 27. 
+28.     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
+29.     pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+30.         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+31.     }
+32. 
+33.     /// `Set::map_by` is like `Set::map`, but ...
+
+────────────────────────────────────────────────────────────
+Turn 207
+────────────────────────────────────────────────────────────
+Let me restructure the loop1 invariant maintenance and fix the `Set::map` membership. Let me view the loop body end.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the proof that `frames.contains(a)` holds by expanding the definition of `map` as a set comprehension. Since `frames` is constructed by mapping function `g` over `frame_numbers`, I need to show there exists a witness `x` in `frame_numbers` where `a == g(x)`. The key is providing that witness—in this case `x=index`—so Verus can verify the assertion.
+
+Writing assertion with witness hints...
+[RESULT ✓] view: 1178.             }
+1179.             match self.bitmap.test(index) {
+1180.                 Ok(false) => {
+1181.                     proof! {
+1182.                         // Record coverage of `index` so the loop invariant extends to `index + 1`.
+1183.                         assert(index < self.bi...
+
+────────────────────────────────────────────────────────────
+Turn 208
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the loop1 header and its invariant, plus checking which Err arm isn't covered by the `is_covered` test.
+[RESULT ✓] view: 1125.         }
+1126. 
+1127.         // Check that all frames in the range are covered by the bitmap and free,
+1128.         // then book them. Uncovered frames indicate a memory layout bug.
+1129.         //
+1130.         // The coverage check runs unconditionally — including optimized builds —
+1131...
+
+────────────────────────────────────────────────────────────
+Turn 209
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm seeing that the postcondition failures at lines 1177 and 1223 stem from a mismatch between my proof's `frames` variable and the postcondition's `frames` — they're computed differently, so I need to verify whether `rstart/ps` and the postcondition's `region@.start / spec_page_size()` are actually syntactically equivalent. The asserts passed locally, so the non-subset proof is solid, but I need to verify whether the postcondition's `old.free` actually refers to the same `g_old.free_frames` I'm checking against. Let me look at the exact ensures clause to see what `old(self)` resolves to in the spec.
+[RESULT ✓] view: 1040.     /// # Description
+1041.     ///
+1042.     /// Allocates all frames in the given region.
+1043.     ///
+1044.     /// # Parameters
+1045.     ///
+1046.     /// - `region`: Physical memory region whose frames should be booked.
+1047.     ///
+1048.     /// # Returns
+1049.     ///
+1050.     /// U...
+
+────────────────────────────────────────────────────────────
+Turn 210
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking whether the postcondition's constraint on `frames` is consistent with the ghost variable capture. Since `g_old` was assigned at line 1090 before any mutations occurred, it should equal `old(self)@`, which means the subset check `!frames.subset_of(g_old.free_frames)` should be equivalent to the postcondition's requirement. Maybe the issue is that `frames.contains(a)` isn't being proven by Verus, and without that assertion succeeding, the postcondition checks at lines 1177 and 1223 fail because the reasoning chain breaks down. Let me trace through whether the invariant `self@ == g_old` is actually being maintained at the loop exit points where these early returns happen — if the invariant holds at iteration start, then `final(self)@ == old(self)@` should follow, but perhaps Verus isn't connecting these facts properly across the loop boundaries.
+[RESULT ✓] view: 1089.         proof_decl! {
+1090.             let ghost g_old = self@;
+1091.             let ghost pre_sb = self.bitmap@.set_bits;
+1092.             let ghost pre_nb = self.bitmap@.num_bits;
+1093.             let ghost pre_rc = self.refcount@;
+1094.             let ghost ps = spec_page_size();
+1095....
+
+────────────────────────────────────────────────────────────
+Turn 211
+────────────────────────────────────────────────────────────
+Let me check how `alloc_contiguous` handles the closure-map in its (working) proof.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "map(\|spec_range_frames\|subset_of\|\.map" src/kernel/src/mm/phys/frame.rs |
+
+[THINKING] I'm realizing that `g_old` correctly captures the old state at function entry, so `final@==old@` should indeed hold on early returns. The real issue might be that the postcondition check at the EXIT point doesn't have access to the assertions I made inside the proof! block—even though those assertions should carry forward in the linear control flow, the prover might not be connecting them properly across scope boundaries.
+
+Actually, the facts from the proof! block do persist to the return point, so `!frames.subset_of(g_old.free_frames)` should be known. But here's the catch: `frames` inside the proof! block is a local let binding, while the postcondition has its own `frames` let. Even though they're defined identically (both compute the same set of page frame indices), Verus needs to recognize them as equal. Since the ghost lets like `rstart` and `ps` get substituted during verification, the two `frames` definitions should be defeq—but I'm not certain the prover is making that connection automatically.
+
+The real issue might be closure equality. The `.map(|i| i*spec_page_size())` closure in the proof block and the same closure in the postcondition could be treated as different SMT terms by Verus, since closure literals at different locations don't necessarily unify. That's a known quirk in Verus's encoding. To work around this, I should either prove the subset using the postcondition's exact `frames` expression directly, or find a way to avoid relying on closure equality—maybe by using a named spec function instead of an inline closure, like `alloc_contiguous` does.
+
+Actually, the cleanest approach is to prove the witness membership directly. For the postcondition's `!frames.subset_of(old@.free_frames)`, I need to show there exists some `a` in `frames` but not in `free_frames`. If `a = index * spec_page_size()` where `index` is in the range `[s, e)`, then `frames.contains(a)` follows from the map definition: there exists `x` in `set_int_range(s, e)` such that `a == (|i| i*spec_page_size())(x)`. Verus beta-reduces spec closure applications, so `(|i| i*spec_page_size())(index)` reduces to `index * spec_page_size()`, which matches `a`. This should let me prove the witness membership without worrying about closure equality across different locations. The postcondition's frames unfolds via the open spec map definition, so I need to provide a witness directly rather than relying on Verus to find it automatically. I can create a helper lemma that takes the closure as a parameter and proves the non-subset property generally—passing in the frame index and the closure function, then asserting that the mapped value exists in the set and isn't in the free frames.
+
+But there's a fundamental issue: the closure at the call site needs to match the closure in the postcondition for the lemma's conclusion to apply, and closure identity across different syntactic locations is tricky. Let me look at how alloc_contiguous handles this same problem in its own postcondition proofs.
+[RESULT ✓] bash: 270:                        &&& frames.subset_of(old(self)@.free_frames)
+430:                    assert(frames =~= spec_range_frames(start, count as int)) by {
+432:                            spec_range_frames(start, count as int).contains(addr) by {
+441:                            spec_range_frames...
+
+────────────────────────────────────────────────────────────
+Turn 212
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '85,105p'
+
+[THINKING] In `alloc_contiguous`, I'm proving that the frames set equals the spec function result using extensional equality, which checks membership in both directions without relying on the closure implementation—once that equality holds, Verus can treat them interchangeably.
+
+For the error arms in `alloc_range`, I should follow the same pattern: establish `frames =~= spec_range_frames(start_fn, nfr)` extensionally, then work with the spec function to prove the non-subset property using a witness. The key insight is that I shouldn't create a separate local `frames` variable and try to transfer facts—instead, I should either prove membership directly against `spec_range_frames` or replicate the line-430 approach exactly by asserting the extensional equality first, which makes the frames variable provably equivalent to the spec function for all subsequent reasoning.
+
+Now I'm realizing that if `alloc_contiguous` verifies with this pattern, then Verus must be treating identical closure literals as equal in spec mode, meaning my local `frames` definition with the same closure structure should match the postcondition's `frames` directly. So closure identity isn't actually the blocker—I need to figure out why the postcondition still isn't being satisfied.
+
+Let me check whether those asserts at 1161 and 1200 are actually passing or failing silently. Verus reports only 4 errors total, so if those asserts were failing, they'd show up. That means `frames.subset_of(g_old.free_frames)` is proven at the return point. The postcondition requires `!frames.subset_of(old(self)@.free_frames)`, and since `frames` is identical and `g_old == old(self)@`, the `.free_frames` should be equal too. Unless Verus isn't seeing them as equal—but that seems unlikely given how the snapshot works.
+
+I think the real issue might be cascading from the loop invariant failure at error 3, where the invariant about `k < pre_nb` isn't being preserved at loop exit, which could be invalidating downstream reasoning about the final state.
+
+Actually, wait—let me focus on whether `g_old == old(self)@` is even available inside the loop body where those early returns happen. The ghost `g_old` is immutable and set before the loop, but facts about immutable ghosts don't automatically persist into loop bodies unless they're explicitly in the loop invariant. So Verus might not know that `g_old == old(self)@` when checking the postcondition at those early returns, which would break the proof that `final(self)@ == old(self)@`.
+
+The fix is to ensure the invariant captures what's needed for the postcondition—either by adding `self@ == old(self)@` directly to the invariant (if that's allowed), or by tying `g_old` to `old(self)@` in a way that's available at the return points. I need to verify that Verus allows `old(self)` in loop invariants, then add that invariant to establish the relationship between the current and original state. For the coverage invariant maintenance, I'm checking whether the assertions about the index and bitmap state are sufficient for Verus to extend the forall quantifier across the new iteration. The facts I'm asserting inside the Ok(false) match arm should be in scope when the invariant is checked at the loop exit, so they ought to satisfy the maintenance obligation. But the invariant is still failing, which suggests either the facts aren't actually being used by the quantifier prover, or there's something about how the invariant is being checked at the loop exit that I'm missing. Let me think about whether the normal loop completion path is actually where the error is occurring.
+[RESULT ✓] bash: | |___________^ at this loop exit
+
+error: assertion failed
+    --> src/kernel/src/mm/phys/frame.rs:1239:28
+     |
+1239 |                       assert(pre_sb.contains(start_fn + nfr - 1) == false
+     |  ____________________________^
+1240 | |                         && start_fn + nfr - 1 < pre_nb);
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 213
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Error 4 stems from a post-loop assertion that depends on the loop-1 invariant holding at exit—once that coverage condition is satisfied, the assertion follows naturally. This means error 4 cascades from error 3, pointing to a couple of underlying root causes, with the loop itself being the primary issue.
+
+The second problem is likely a missing invariant inside the loop—I need to add `self@ == old(self)@` to preserve the postcondition. For the first issue, I'm reconsidering the coverage clause more carefully. The invariant requires `k < pre_nb`, but during maintenance at a given index, I need to verify `index < pre_nb`. I'm checking whether the assertion `index < self.bitmap@.num_bits` actually holds given the loop guard and the coercion between usize and int types. The guard at 1151 ensures `index < self.bitmap.number_of_bits()`, which should translate to `index as int < num_bits`, so that assertion should be valid. The real issue might be more subtle—the maintenance assertions establish facts for the current iteration, but the loop invariant proof at the end of the loop body needs to show the invariant still holds.
+
+In a Verus for-loop, the invariant references the iterator's current state during the body, and after the body executes, the iterator advances and the invariant is re-checked with the incremented value. So `forall k < index` becomes `forall k < (index+1)` after the iteration. My maintenance facts about the current index should cover the new range. I'm trying a more explicit approach by asserting the full extended forall directly in the Ok(false) branch, splitting the proof into two cases—one for k values already covered by the incoming invariant, and one for the newly added k value.
+
+But I'm uncertain whether Verus checks the invariant at body end with the incremented index or the current one, so I should look at how the existing working loops in this file (like the alloc_contiguous refcount loop around line 400) handle similar forall coverage invariants.
+[RESULT ✓] view: 1235.         proof! {
+1236.             // Every requested index is in range and free; the range fits the bitmap.
+1237.             assert(start_fn + nfr <= pre_nb) by {
+1238.                 if nfr >= 1 {
+1239.                     assert(pre_sb.contains(start_fn + nfr - 1) == false
+1240.          ...
+
+────────────────────────────────────────────────────────────
+Turn 214
+────────────────────────────────────────────────────────────
+I'll fix both root issues: add `self@ == old(self)@` to loop-1's invariant (so the Err postconditions connect), and make the coverage-invariant maintenance explicit.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the coverage invariant for error 3, checking whether the condition at line 1239 gets covered when the loop completes normally. The invariant guarantees coverage for all k in the range [start_fn, end_exclusive), and since end_exclusive equals start_fn plus nfr, the last element at position start_fn+nfr-1 is indeed covered by this range.
+
+To fix both error 3 and error 4, I need to focus on maintaining the invariant properly. I'm planning to add an explicit clause to the loop invariant stating that self remains unchanged throughout the loop, and then replace the proof in the Ok(false) arm with explicit forall maintenance. For the error cases that reference g_old.free_frames, the invariant should establish that g_old equals the old state, which allows the postcondition to connect the final state back to the original state. I'm considering whether to reference old(self) directly in the invariant or use g_old as an intermediary, and I'll test which approach compiles in Verus.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 215
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 216
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
