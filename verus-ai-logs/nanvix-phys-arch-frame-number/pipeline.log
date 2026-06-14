@@ -76,3 +76,6 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: arch-frame-number
 ============================================================
+[2026-06-15 03:56:37] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[2026-06-15 03:56:37] [PROVER] Running proving...
+[2026-06-15 03:56:37] [COPILOT] Running: copilot --model claude-opus-4.8 ...
