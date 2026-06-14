@@ -161,3 +161,24 @@ Module: hal-phys-address
 [2026-06-15 07:06:53] [DIALOGUE] Reviewer turn 1 (remaining: 3600s)...
 [2026-06-15 07:06:53] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 07:09:22]   ↳ dialogue-reviewer-t1 done in 2m28s (exit=0)
+[2026-06-15 07:09:22] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 07:09:22] [DIALOGUE] STOP detail:
+RESOLVED
+
+All cheating-elimination checklist items for hal-phys-address are PASS with tool evidence:
+
+1. Zero admit() — grep clean in phys.rs/.spec.rs/.proof.rs; no phys entry in verify-kernel cheating-detail.
+2. Zero assume() — grep clean (only in comments).
+3. Zero trusted functions — none.
+4. Zero exec_allows_no_decreases_clause — none.
+5. Zero cfg-gated exec code — only #[cfg(verus_keep_ghost)] ghost include! guards.
+6. Zero unlisted external_body — no external_body in target; the one surviving assume_specification
+   (VirtualAddress::into_raw_value) is listed in verus-ai-logs/tcb-allowed.md.
+7. AST consistency — matched=17 mismatched=0 missing=0 extra=0 vs phase-start baseline e5299c3.
+8. Exec rewrites — zero exec changes this phase; the from_number intermediate-value deviation is
+   pre-approved and documented with a comment.
+9. Surviving external_body / assume_specification confirmed in tcb-allowed.md.
+10. No spec drift — spec_drift git-diff: 0 contract drift since phase start.
+11. Cross-module regression — make verify-kernel (module <all>) Exit 0.
+12. Verification + build — make verify-kernel Exit 0; ./z build Exit 0, no warnings.
+[2026-06-15 07:09:22] [DIALOGUE] cheating-elimination ended after 1 turns: RESOLVED (149s)
