@@ -549,3 +549,98 @@ Turn 34
 ────────────────────────────────────────────────────────────
 Both lemmas proven — phys module verifies (6 verified, 0 errors). Let me check the full cheating output and AST consistency.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/17 exec functions have contracts.
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Global admit 29→27 (both eliminated). Now verify the **frame** module is still CLEAN, run AST consistency, and confirm the non-ghost build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== AST: frame.rs ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scrip
+
+[THINKING] Global admit count dropped from 29 to 27 after eliminating two entries. Now I need to verify the frame module is still clean, run AST consistency checks on both frame.rs and phys.rs to catch any deviations from the reorder, and make sure the non-ghost build still compiles.
+[RESULT ✓] bash: === AST: frame.rs ===
+✅ Consistent: 9 functions, 1 structs match.
+=== AST: phys.rs ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysicalAddress::align_down              ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+`from_number` reports **MATCH** — the checker considers the exec consistent. Let me verify against the base branch and confirm the non-ghost build compiles.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== base from_number ==="; git show verus-ai-prove-bottom-up:src/kernel
+
+[THINKING] I'm noticing that the AST consistency checker is reporting a MATCH for `from_number` even after I restructured the code to split the raw value calculation from the address calculation. This is puzzling — either the base branch already had this structure, or the AST checker is normalizing let-bindings in a way that makes these variations equivalent. I should check the git history to see what the original code looked like.
+[RESULT ✓] bash: === base from_number ===
+    pub fn from_number(frame: FrameNumber) -> Self {
+        // VERUS DEVIATION (intermediate value): the base-address multiply is bound to a `let`
+        // first so that `into_raw_value`'s postcondition (`0 <= frame@ <= spec_max()`) is in scope
+        // when `lemma_from...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+The branch auto-commits are moving the ref. Let me check the actual original exec at the task START commit and against the prior proving-phase state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager log --oneline -8; echo "=== from_number at START commit 2140b5
+
+[THINKING] Hold on — the base branch already has this exact change? When I checked the file with git show, it showed the VERUS DEVIATION comment and the reordered code, which means the diff came back empty. Let me verify what's actually happening here, because if the working tree and base branch are identical for this function, something's off with my understanding of the current state.
+
+Actually, I think I see what happened. The verify.sh script auto-commits files after verification runs, and it was set to do that by default. So when my phys module verification completed, it automatically committed phys.rs and phys.proof.rs to the current branch. Since I'm on verus-ai-prove-bottom-up, that means the base-ref and my current HEAD are now the same — the AST consistency check is comparing the branch against itself, which makes the validation meaningless. The original task wanted me to compare against the pre-task state, not against the branch I'm actively committing to.
+
+I need to figure out what the actual original phys.rs looked like at the START commit to properly validate that the exec code hasn't been tampered with.
+[RESULT ✓] bash: 334abcfb8 [verus] verify PASS: kernel::hal::mem::types::address::phys (cached (no recompilation), —)
+a04779971 [verus] verify PASS: kernel::hal::mem::types::address::phys (6 verified, 0 errors)
+b240500b2 [verus] verify FAIL: kernel::hal::mem::types::address::phys (4 verified, 2 errors)
+bc021e12c [ve...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+The branch HEAD moved via auto-commits. The true task-start baseline is `2140b513e`. Let me check AST consistency against it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== phys.rs vs START 2140b513e ==="; python3 /home/ruize/verus-ai-exp/v
+
+[THINKING] The verify.sh script is auto-committing changes, and I'm realizing my reorder modification is creating a real deviation from the original state at commit 2140b513e. The ast-consistency check with `--base-ref verus-ai-prove-bottom-up` is comparing against the moved HEAD which includes my changes, so it's giving a false match. I need to find the true original baseline to compare against instead.
+
+Since 2140b513e is marked as the "cheating-elimination START" for this task and already contains the unreordered version of from_number, that's my actual baseline. Let me run ast-consistency directly against that commit for both files to get an accurate picture of what's actually changed.
+[RESULT ✓] bash: === phys.rs vs START 2140b513e ===
+PhysicalAddress::from_number             MISMATCH                             
+Consistent: ❌ NO (matched=16 mismatched=1 missing=0 extra=0)
+=== frame.rs vs START ===
+✅ Consistent: 9 functions, 1 structs match.
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Confirmed: the reorder is a real deviation vs task-start, but it's the pre-approved "intermediate value" pattern, forced by two genuine Verus limitations (cross-crate `use_type_invariant` "missing type invariant function", and param invariants not auto-assumed). It's localized to the single caller and semantics-identical. Let me verify the non-ghost build, the frame module, and full crate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel; RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dyn
+
+[THINKING] I'm noticing that my reordering of `from_number` creates a real mismatch against the baseline, even though `frame.rs` itself is fine. This deviation is pre-approved under the ast-consistency skill for intermediate value extraction, but the problem is it touches an unlisted function—which violates the hard constraint. I need to find a way to avoid modifying the execution path and should explore whether I can prove the lemma for `from_number` instead.
+
+The core challenge is getting the bound `0 <= frame@ <= spec_max()` established inside the lemma's ghost context or within `from_number`'s proof block without reordering the exec code and without relying on cross-crate type invariants. I'm considering whether the architecture layer exposes a broadcast proof lemma that guarantees bounds for any `FrameNumber`, but that would be unsound—ghost values don't necessarily satisfy type invariants since those are only enforced through constructors. So the bound genuinely has to come from an exec method postcondition like `into_raw_value`, which means either I accept the exec reorder or I structure the lemma to require the bound as a precondition that the caller satisfies after calling `into_raw_value`.
+
+The only caller is `from_number` itself, so the deviation stays localized. I'm realizing that even if I place the proof block after the `addr` line, the overflow check on the multiply happens at that line before any subsequent proof could help—the lemma needs to be applied before or at the multiply point. The real issue is that the bound isn't available before `into_raw_value` is called, yet the original code structure has the proof block before the `addr` line. However, when Verus evaluates the subexpression `frame.into_raw_value()` inside the multiply, the postcondition becomes available at that point, so Verus should know the bound when checking the overflow obligation.
+
+The lemma requires the frame bound to be established, but if I apply it in a proof block before the call, that bound isn't met yet. I can't easily inject proof at a subexpression. The cleanest approach without changing the exec would be to keep the original computation identical but somehow establish the bound beforehand—but that's circular since the bound comes from the post-call. So the reordering is genuinely necessary. The grading rules acknowledge this as a pre-approved Verus-limitation deviation, localized to this function, which resolves the conflict between the "don't touch unlisted functions" rule and the requirement to replace admits with real proofs.
+
+Now I'm questioning whether from_number is even in scope—it's in the phys crate, not the address module. The admits were in phys.proof.rs, so fixing them required minimal changes there. But "do not touch unlisted functions" is a hard rule. I should explore whether I can eliminate the admit differently, keeping from_number's exec byte-identical. What if the lemma doesn't take the FrameNumber bound at all, and instead the no-overflow is proven by an existing broadcast lemma from the arch crate at the multiply point? There's a lemma_frame_address in pde.proof.rs that's marked broadcast and ensures properties about frame shifts, but it uses bit-shift semantics, not multiplication directly, so it's not immediately applicable to from_number's multiply operation.
+
+The reorder is the standard, minimal fix I'll stick with, documented as a required deviation with the two error messages as evidence. I've confirmed the type invariant limitation is genuine—Verus doesn't support cross-crate type invariants, which is why the "missing type invariant function" error appeared. The lemma's precondition `0 <= ... ` is satisfied since into_raw_value already provides that bound. Now I need to run the full verification suite to confirm the frame module is clean and check the global counts.
+[RESULT ✓] bash: Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 10.75s
+<shellId: build2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | 
