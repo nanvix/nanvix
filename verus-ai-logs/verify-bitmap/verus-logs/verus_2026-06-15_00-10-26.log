@@ -1,0 +1,51 @@
+Timestamp: 2026-06-15_00-10-26
+Mode: cargo
+Crate: bitmap
+Directory: N/A
+Module: <all>
+Exit code: 0
+70 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling quote v1.0.45
+   Compiling autocfg v1.5.0
+   Compiling verus_prettyplease v0.0.0-2026-05-31-0205
+   Compiling build-utils v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/build-utils)
+   Compiling hashbrown v0.12.3
+   Compiling vstd v0.0.0-2026-05-31-0205
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/config)
+   Compiling indexmap v1.9.3
+   Compiling verus_syn v0.0.0-2026-05-31-0205
+   Compiling syn v2.0.117
+   Compiling synstructure v0.13.2
+   Compiling verus_state_machines_macros v0.0.0-2026-05-31-0205
+   Compiling verus_builtin_macros v0.0.0-2026-05-31-0205
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+    Checking cfg-if v1.0.4
+    Checking static_assert v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/static_assert)
+    Checking mmio-tag v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/mmio-tag)
+    Checking verus_builtin v0.0.0-2026-05-17-0151
+    Checking sysapi v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sysapi)
+verification results:: 1523 verified, 0 errors
+    Checking error v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/error)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys)
+verification results:: 6 verified, 0 errors
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/raw-array)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap)
+verification results:: 70 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 36.86s
