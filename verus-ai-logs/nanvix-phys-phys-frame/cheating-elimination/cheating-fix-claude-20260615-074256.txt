@@ -389,3 +389,41 @@ Turn 22
 ────────────────────────────────────────────────────────────
 Let me run the final confirmation that the module verifies and clean up the temp backup.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; rm -f /tmp/manager.proof.rs.bak; echo "=== final source cleanliness check ==="; git sta
+[RESULT ✓] bash: === final source cleanliness check ===
+(empty = no source modified)
+=== final verify ===
+  Global: assume=0 external_body=19 admit=16 trusted=0 cfg_gate=19
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  status: CHEATING_DETECTED
+<shellId: 19 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+## Summary
+
+I investigated the flagged hard cheating. **The phys-frame target file (`frame.rs`/`frame.proof.rs`/`frame.spec.rs`) is clean** — zero `admit`/`assume`, no `trusted`, no `exec_allows_no_decreases_clause`, no multi-line `limitation_assume`, and no `external_body` on proof fns. Its 10 exec `external_body` are all on the human-approved `tcb-allowed.md` list.
+
+**The 4 flagged `admit()`s are not in frame.rs** — they're in `manager.proof.rs:{16,35,55,216}` (the phys-manager module):
+- Pre-existing (`git diff 50e4de7c8 HEAD` shows phys-frame work touched only logs).
+- Out of the phys-frame target scope (hard rule: don't touch unlisted functions).
+- **Empirically unprovable**: removing them yields `postcondition not satisfied` at lines 14/30/31/47/48/211 — the transitions (`m@ == phys_view().frames`, `post == pre.alloc_one(addr)`, `m@ == pre`) are not derivable from the preconditions.
+
+**Root cause:** `phys_view()` is a parameter-free `uninterp` global with no pre/post index; `frame::alloc()` mutates the global `INSTANCE` singleton without borrowing `self`, so Verus can't see `self@` change. These admits stand in for the §8 global ghost-token attachment and unmodeled `Drop` restoration.
+
+**Why no legitimate fix exists in-scope:** they are external-bottom trust assumptions — per verus-constraints/spec-design I may not author `axiom`/`assume_specification` without human approval (and `tcb-allowed.md` doesn't list them). Realizing the §8 token needs `Tracked` token parameters threaded through exec signatures (forbidden), and is the phys-manager phase's job. I made **zero exec changes and authored no axioms**.
+
+I recorded an honest hand-off in `verification_todo.md` (per-admit Verus errors + resolutions) and updated `fix_report.md`.
+
+## Result: BLOCKER
+
+The phys-frame deliverable carries no eliminable cheating; the 4 module-wide admits are pre-existing phys-manager §8-ghost-token obligations that require human approval (to record as external-bottom assumptions) or the phys-manager token-realization proving work — neither within this phase's authority. `make verify-kernel MODULE=mm::phys` → 58 verified, 0 errors.
+
+[THINKING] The verification confirms frame.rs is clean with no eliminable issues, while the four pre-existing admits stem from phys-manager obligations that fall outside the module's scope and can't be resolved without external axioms or token realization. I've documented this honestly and flagged it as a blocker—the correct outcome given the constraints.
+
+
+=== Session End ===
+Session: e8ebf350-78c2-42f6-94d1-67406728dc0f
+Duration: 590.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating-fix-claude-20260615-074256.jsonl
