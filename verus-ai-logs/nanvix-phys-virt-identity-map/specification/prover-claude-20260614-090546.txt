@@ -1483,3 +1483,16 @@ The 3 admits are exactly the in-scope functions — expected for the spec phase.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify 2>&1 | grep -E "error\[|error:|warning:|--> src|verified|errors|stat
 
 [THINKING] The three admits correspond exactly to the three in-scope functions with contracts, which is the correct state for this phase of the spec. The "CHEATING_DETECTED" flags are expected since the task explicitly allows admits in proof bodies and specifies an admit count of three. Now I need to run the full verification suite and build to check for any regressions.
+[RESULT ✓] bash: status: CHEATING_DETECTED
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  status: CHEATING_DETECTED
+  status: CHEATING_DETECTED
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  status:...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify 2>&1 | grep -iE "verified,|verification results|VERIFY_FAILED|compil
+
+[THINKING] I need to verify that the `make verify` sub-targets are passing without actual errors, just the expected CHEATING_DETECTED admissions. Let me check the error counts for each target to confirm they're all at zero.
