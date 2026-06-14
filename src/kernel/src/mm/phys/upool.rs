@@ -168,7 +168,6 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
-    #[verus_verify(external_body)]
     pub(super) fn new() -> Self {
         Self { _private: () }
     }

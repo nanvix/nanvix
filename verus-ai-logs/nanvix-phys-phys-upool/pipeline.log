@@ -39,3 +39,4 @@ Module: phys-upool
 PHASE: specification
 Module: phys-upool
 ============================================================
+[2026-06-15 04:40:21] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
