@@ -619,3 +619,30 @@ Turn 35
 Turn 36
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
+[RESULT ✓] bash: verification results:: 48 verified, 0 errors
+verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+  2 verified
+  0 errors
+  Exit code : 0
+  Unverified functions:
+  verification: 2 verified, 0 errors (exit 0)
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Verus now resolves the constant directly — the trust boundary is eliminated. Let me check the full cheating report and confirm no warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "assume_specification\|admit\|assume(\|external_body" src/kernel/s
+
+[THINKING] The fix worked—removing `assume_specification` and adding the `#[verus_verify]` attribute to PAGE_ALIGNMENT let Verus resolve the constant directly, giving us 2 verified with no errors. The arch crate also came through with 48 verified. Now I'm checking the cheating report to see if `assume_specification` usage has dropped to zero and reviewing the overall counts.
+[RESULT ✓] bash: exit 1
+=== full log tail ===
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+No forbidden patterns, no warnings. Now let me run the full verification to confirm no regressions (I modified the arch constant).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify 2>&1 | grep -i
+
+[THINKING] I've confirmed there are no problematic patterns in the page module files, and now I need to run the full verification suite to catch any regressions, particularly in the arch module since I modified the arch constant and anything relying on PAGE_ALIGNMENT. I'll start by checking the kernel without MODULE to ensure nothing broke there before running the complete verification.
