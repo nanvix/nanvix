@@ -228,3 +228,42 @@ Let me run verification to check the lemmas + free + share before tackling the 3
 For the Some branch where the addition succeeds, the new refcount becomes pre_rc[fnx]+1, and I need to verify this value is properly tracked and that the update lemma's preconditions are met. The view equality gives us `self@.wf()` but we still need to verify `internal_inv()` holds after the mutation—Verus should handle this via SMT reasoning over the field values since only the refcount at one slot changed and the bitmap consistency is maintained. For the free operation specifically, when we decrement the refcount, the bit remains set as long as the refcount stays positive, which the else branch guarantees, so the invariant holds there too.
 
 One thing to verify: the decrement `self.refcount[frame_number] -= 1` requires no underflow, but since we asserted the refcount was nonzero just before, it's at least 1, so subtracting 1 is safe. Let me run verify now to check the current progress on free, share, book, and the refcount logic before moving on to the allocation functions.
+[RESULT ✓] bash: - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mmio_regions: external_body
+    - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:251 new: external_body
+    - upool.rs:289 alloc: external_body
+  Global: assume=0 external_body=19 admit=19 trusted=...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Compilation error (verus didn't run). Let me see the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[
+[RESULT ✓] bash: 20:error[E0425]: cannot find value `addr` in this scope
+38:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,38p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0425]: cannot find value `addr` in this scope
+    --> src/kernel/src/mm/phys/frame.rs:538:44
+     |
+ 538 |                     assert(g_old.refcounts[addr] == 255);
+     |                               ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+In the share overflow `None` arm I reference `addr` but didn't bind it there. Let me fix.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -20

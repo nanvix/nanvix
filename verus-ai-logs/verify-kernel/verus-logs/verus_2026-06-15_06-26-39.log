@@ -1,0 +1,211 @@
+Timestamp: 2026-06-15_06-26-39
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+52 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:320:13
+    |
+320 |             lemma_refcount_value(self, addr);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.proof.rs:222:9
+    |
+222 |         inner@.refcounts.contains_key(addr),
+    |         ----------------------------------- failed precondition
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:321:20
+    |
+321 |             assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/map.rs:73:13
+    |
+ 73 |             self.dom().contains(key),
+    |             ------------------------ recommendation not met
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:321:45
+    |
+321 |             assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+    |                                             ^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:486:13
+    |
+486 |             lemma_refcount_value(self, addr);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.proof.rs:222:9
+    |
+222 |         inner@.refcounts.contains_key(addr),
+    |         ----------------------------------- failed precondition
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:487:20
+    |
+487 |             assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+    |                    ^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/map.rs:73:13
+    |
+ 73 |             self.dom().contains(key),
+    |             ------------------------ recommendation not met
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:487:45
+    |
+487 |             assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+    |                                             ^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:293:9
+    |
+293 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:293:31
+    |
+293 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:301:9
+    |
+301 |         assert forall|a: int| pre.allocated_frames.insert(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:302:21
+    |
+302 |             implies post.allocated_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:313:9
+    |
+313 |         assert forall|a: int| post.free_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:313:31
+    |
+313 |         assert forall|a: int| post.free_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:322:9
+    |
+322 |         assert forall|a: int| pre.free_frames.remove(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:323:21
+    |
+323 |             implies post.free_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:384:9
+    |
+384 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:384:31
+    |
+384 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:392:9
+    |
+392 |         assert forall|a: int| pre.allocated_frames.remove(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:393:21
+    |
+393 |             implies post.allocated_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:402:9
+    |
+402 |         assert forall|a: int| post.free_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:402:31
+    |
+402 |         assert forall|a: int| post.free_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:411:9
+    |
+411 |         assert forall|a: int| pre.free_frames.insert(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:412:21
+    |
+412 |             implies post.free_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/frame.proof.rs:411:9
+    |
+411 |         assert forall|a: int| pre.free_frames.insert(addr).contains(a)
+    |         ^^^^^^
+
+verification results:: 52 verified, 2 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

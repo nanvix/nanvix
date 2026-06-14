@@ -531,6 +531,7 @@ impl Inner {
                 proof! {
                     // Overflow: the old refcount was at its u8 maximum (255). The state is
                     // unchanged, satisfying the Err arm's refcount-saturated disjunct.
+                    let addr = frame@;
                     let fnx = frame_number as int;
                     lemma_view_of(self);
                     assert(spec_refcount_seq(self) == pre_rc);
