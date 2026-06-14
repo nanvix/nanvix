@@ -425,3 +425,58 @@ view-design
 view_design.md
 ---todo exists?---
 no verif...
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Full crate verification passes (0 errors) for bump-allocator; only the 2 TCB-allowed `external_body` remain. Other crates' cheating is pre-existing and out of scope (I changed no source). Let me check the existing todo file, then write the reports.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== existing verification-todo.md ==="; cat verus-ai-logs/nanvix-phys-b
+
+[THINKING] The full verification run completed successfully — bump-allocator came through cleanly with 12 verified items and no errors, though it does have 2 external body entries. The other crates have some pre-existing quirks in their configurations that aren't regressions from my changes, and the kernel verify finished with an exit code of 0 despite the grep output being truncated.
+
+I notice there's an existing `verification-todo.md` file with a hyphen in the directory, but the task specifies an underscore version. Since the current state already satisfies the core requirement — verify passes cleanly with zero cheating except for TCB-allowed external_body — I don't have genuine proof gaps to document. I'll create the verification_todo.md file and the fix_report.md to formalize that everything is in order.
+[RESULT ✓] bash: === existing verification-todo.md ===
+# Verification TODO — `bump_allocator` (`src/libs/bump_allocator/src/lib.rs`)
+
+Functions that are in scope but cannot be body-verified in the specification
+phase. They are **not** trust boundaries (absent from `tcb-allowed.md`) and are
+**not** marked `external_b...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All three files are byte-identical to base — zero AST drift, and nothing to eliminate. The two `external_body` (alloc, alloc_as) are TCB-allowed trust boundaries; `align_up`/`as_mut_ptr` are fully verified. Let me write the report and todo files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -c "" verus-ai-logs/tcb-allowed.md >/dev/null && grep -n "bump_allocator
+
+[THINKING] All three files match the base version exactly, so there are no changes needed. The `verification-todo.md` from the specification phase already explains the situation: `alloc` and `alloc_as` were originally honest hand-offs but now have `#[verus_verify(external_body)]` with full specs and are registered in tcb-allowed.md. Since they materialize `&'static mut` from raw usize addresses, they genuinely can't be verified, so they stay as external_body functions in the TCB-allowed list.
+
+The verification passes: `align_up` is fully verified using `div_ceil` (which is an external-bottom function from vstd), `as_mut_ptr` is a specified trait method that's verified, and there are no admits, assumes, or cfg-gates anywhere. The AST shows zero drift. Now I need to write the fix_report.md and verification_todo.md files for the cheating-elimination phase, noting that there are no remaining proof gaps since the only unverified bodies are legitimate trust boundaries.
+[RESULT ✓] bash: 16:- `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc` — materializes a
+21:- `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc_as` — delegates to
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-bump-allocator/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-bump-allocator/verification_todo.md with 1353 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/fix_report.md with 2747 characters
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Final confirmation run:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-bump-allocator VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep
+
+[THINKING] Running a final verification of the bump allocator to ensure everything's in a clean state before generating the complete log.
