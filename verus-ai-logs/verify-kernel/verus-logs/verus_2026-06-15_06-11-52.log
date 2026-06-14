@@ -1,0 +1,33 @@
+Timestamp: 2026-06-15_06-11-52
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=28
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` exactly 
+             assume_specification provided: `(usize) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>, sys::error::Error>`
+             expected:                      `for<T> (usize) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<T>, sys::error::Error>`
+  --> src/kernel/src/mm/phys/kframe.spec.rs:33:1
+   |
+33 | / pub assume_specification [
+34 | |     <crate::hal::mem::PageAligned<crate::hal::mem::PhysicalAddress> as crate::hal::mem::Address>::from_raw_value
+35 | | ](raw_addr: usize) -> (result: Result<
+36 | |     crate::hal::mem::PageAligned<crate::hal::mem::PhysicalAddress>,
+37 | |     ::sys::error::Error,
+38 | | >);
+   | |_^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

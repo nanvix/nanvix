@@ -1091,3 +1091,97 @@ Turn 55
 Turn 56
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+[RESULT ✓] bash: - mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+  Global: assume=0 external_body=29 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  35/44 exec functions have contracts.
+  Unverified functions:
+    - instance
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/Full output/,$p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-10-23.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:81:8
+   |
+81 |     fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+   |       ...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+The trait method needs impl-level `#[verus_verify]` (which would cascade to all trait methods). For trait methods, `assume_specification` is the right tool (and Verus recommends it). Let me revert the page.rs change and use `assume_specification` in kframe.spec.rs instead:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] The same E0425 error is happening because `from_raw_value` has the `#[verus_spec]` attribute but the enclosing impl block for `PageAligned<T>` isn't marked with `#[verus_verify]`. I need to add that attribute to the impl block at line 50, though that would pull in other methods like `into_raw_value`, `align_up`, and `align_down` that would then need to be handled as well.
+
+Actually, this cascading problem suggests a better approach — instead of marking the trait impl, I should use `assume_specification` in kframe.spec.rs to handle the `from_raw_value` method directly, which avoids touching the trait impl entirely. The original Verus error message even recommended this approach.
+
+But wait, there's a key difference I'm noticing: `#[verus_verify(external_body)]` on an inherent method like `into_raw_value` worked fine without needing the impl marked, but `#[verus_spec]` on a trait method like `from_raw_value` fails with E0425. The issue is that trait methods require the impl block itself to be `#[verus_verify]`, which then cascades verification to all other methods in that impl, whereas inherent methods can be marked individually.
+
+So for `from_raw_value`, I have two options: either mark the entire impl with `#[verus_verify]` (which cascades), or use `assume_specification` in kframe.spec.rs. Since this is a boundary conversion between external code and internal code, `assume_specification` is the right choice here and aligns with how the codebase handles other sys/arch boundary specs.
+
+I'll write the assume_specification with a generic form matching the impl but without an ensures clause, since I can't reference the result without a View bound. This keeps it simple and callable. Then I'll revert the page.rs changes and keep `into_raw_value` as-is with its external_body approach — mixing different mechanisms for different cases is fine.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Now let me add the `assume_specification` to kframe.spec.rs. First, check exact syntax from slab and the imports needed:
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,35p' src/libs/slab/src/lib.spec.rs; echo "=== Address trait path ==="; grep -rn "
+
+[THINKING] I need to add the `assume_specification` function to kframe.spec.rs with the proper imports — `PageAligned`, `Address`, and `Error` — and I'm verifying the correct module paths for these types.
+
+Looking at what kframe.rs already imports, I can see that `PageAligned` and `Address` are both accessible from `crate::hal::mem`. Now I need to figure out the exact syntax for the `assume_specification` macro by checking how it's used in the slab examples to understand whether it requires an `ensures` clause and how it terminates.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// Slab - Specifications
+//
+// This file contains specification functions, SlabView, and View trait for Slab.
+
+verus! {
+
+pub assume_specification<T: core::marker::PointeeSized> [ <*mut T>::is_null ] (ptr: *mut T) -> (resu...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '31,90p' src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] bash: pub trait Address
+where
+    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord,
+{
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new [`Address`] from a raw value.
+    ///
+    /// # Parameters
+    ///
+    /// - `raw_addr`: The raw value.
+    ///
+    /// # Returns
+    ///...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+I'll add the `assume_specification` for the trait method to kframe.spec.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+
+[THINKING] I need to write an `assume_specification` for the concrete implementation of `from_raw_value` on `PageAligned<PhysicalAddress>` rather than the generic trait method, since that's the only instantiation used by `new`. This avoids generic View-bound complications by working directly with the concrete type.
+
+Defining the spec stub... Since the imports are already in scope at the module level in kframe.rs, and Rust allows forward references within a module, I can safely reference PageAligned, PhysicalAddress, Address, and Error directly in the assume_specification without needing to redeclare them inside the verus! block.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -25

@@ -24,4 +24,17 @@ verus! {
 // `kframe.rs` can state invariant preservation over `phys_view()`.
 use crate::mm::phys::phys_view;
 
+// `<PageAligned<PhysicalAddress> as Address>::from_raw_value` is a trait method
+// of the external `sys::mm::Address` trait, below this module's verification
+// boundary. `KernelFrame::new` calls it only to obtain the page-aligned physical
+// address it then identity-maps; no abstract `mm::phys` fact depends on the
+// returned value, so a trivial trusted contract suffices to make the call
+// verifiable. Replaced when `hal::mem` is verified.
+pub assume_specification [
+    <crate::hal::mem::PageAligned<crate::hal::mem::PhysicalAddress> as crate::hal::mem::Address>::from_raw_value
+](raw_addr: usize) -> (result: Result<
+    crate::hal::mem::PageAligned<crate::hal::mem::PhysicalAddress>,
+    ::sys::error::Error,
+>);
+
 } // verus!

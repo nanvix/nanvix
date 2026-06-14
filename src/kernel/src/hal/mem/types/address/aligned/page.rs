@@ -66,18 +66,6 @@ impl<T: Address> Address for PageAligned<T> {
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
-    // Not-yet-verified dependency (hal::mem): trusted placeholder so verified
-    // `mm::phys` callers can invoke it. On success the parsed address carries the
-    // requested raw value; on failure nothing is reported. Removed when `hal::mem`
-    // is verified.
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        ensures
-            match result {
-                Ok(addr) => addr@ == raw_addr as int,
-                Err(_) => true,
-            },
-    )]
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
         Self::from_address(T::from_raw_value(raw_addr)?)
     }
