@@ -1731,3 +1731,69 @@ Non-verus build works. Let me confirm verus mode still passes after the cfg-gati
 [THINKING] The non-verus build is working now, so I need to verify that the cfg_attr change doesn't break verify-arch and the full verify suite. Since the change is gated and verus mode still gets the marker, the behavior should be unchanged, but I'll run a quick verify-arch to confirm. I should also check the cheating-detail to make sure there are no unexpected admits.
 
 Looking at the admits introduced by my changes: I added a frame_address admit (expected), the kernel's into_frame_number now calls lemma2_to64() which is a real proof with no admit, and lemma_frame_index which is a pre-existing admit. The total admit count stays at 36, so that's good. Now let me run verify-arch and verify to make sure the gated attribute didn't break verus mode.
+[RESULT ✓] bash: cheating: assume=0 external_body=2 admit=2 trusted=0 no_decreases=0 cfg_gate=2
+  status: CHEATING_DETECTED
+verification results:: 39 verified, 0 errors
+verification results:: 76 verified, 0 errors
+  cheating: assume=0 external_body=14 admit=36 trusted=0 no_decreases=0 cfg_gate=15
+  verification: 76 ...
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+Both crates pass: arch 39 verified/0 errors, kernel 76 verified/0 errors. Let me confirm the cheating detail contains only expected (pre-existing + my deferred frame_address) admits.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== ARCH ===" && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/
+
+[THINKING] Both the arch and kernel builds are passing verification with no errors, which is good. The CHEATING_DETECTED flag is expected during the spec phase since I'm using admits in the proof bodies. Now I'm checking the cheating details to make sure only the expected admits and external_body calls are present—looking at the arch crate specifically to verify that my frame_address admit is the only one I added.
+[RESULT ✓] bash: === ARCH ===
+    - x86/mem/paging/pde.rs:414 frame_address: admit
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== KERNEL pde/phys ===
+<shellId: 58 completed with exit c...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+All goals met. Let me update task tracking.
+[TOOL] sql: {'description': 'Mark verify todo done', 'query': "UPDATE todos SET status='done
+
+[THINKING] I'm confirming that my changes only introduce the expected `frame_address` admit in the proving phase, with no new kernel admits related to pde/phys operations. All verification goals are passing: 39 verified in arch verification and 115 total verified across both phases with zero errors.
+
+Now I'm updating the todo status to mark verification as complete and doing a final check for any temporary files I may have created during development.
+[RESULT ✓] sql: 1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+Done. All three goals are met.
+
+## Summary
+
+Completed the Verus spec phase for the x86 PDE module. Final results:
+- **`make verify-arch`**: 39 verified, 0 errors
+- **`make verify`** (whole workspace): arch 39 + kernel 76 verified, 0 errors
+- **`./z build -- all-kernel`** (non-verus dual compilation): succeeds
+
+### Key work this session (resolving the FRAME_SHIFT cross-crate regression)
+
+1. **Confirmed FRAME_SHIFT must be modeled** — `frame_address`'s `<< FRAME_SHIFT` fails to compile under Verus otherwise (exec code must not be changed, per the skill).
+
+2. **Modeled FRAME_SHIFT transparently** in `arch/.../constants.rs` with `#[verus_verify]` (no `ensures` — a `pub const` can't discharge the `pow2(12)` postcondition).
+
+3. **Superseded the kernel placeholders** (documented "remove placeholder when dependency verified" pattern):
+   - Removed `assume_specification[::arch::mem::FRAME_SHIFT]` from `phys.spec.rs`.
+   - Removed the 4 PDE `assume_specification`s and the now-conflicting `external_type_specification`s for `PageDirectoryEntry`, `PageDirectoryEntryFlags`, and the 8 flag enums from `identity_map.spec.rs`.
+   - Added `vstd::arithmetic::power2::lemma2_to64()` in `into_frame_number`'s proof block so `spec_page_size() == pow2(FRAME_SHIFT)` follows from the transparent constants (no guarantee weakened).
+
+4. **Fixed non-verus build** — cfg-gated the manual `verus_impl_method_marker` lint via `#[cfg_attr(verus_keep_ghost, allow(...))]`.
+
+Only deferred `admit()` is `frame_address` (shift→multiply proof, expected for the proving phase); all other cheating-detail entries are pre-existing.
+
+
+=== Session End ===
+Session: a66fdff5-0eb1-48ce-be3b-983ec65d03d9
+Duration: 1776.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/specification/prover-claude-20260614-105754.jsonl
