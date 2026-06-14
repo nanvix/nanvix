@@ -472,3 +472,80 @@ All crates verify with **0 errors**. The kernel's `admit=36`/`external_body=12` 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | grep -E "verification results|errors|crate|Crate" | grep
 
 [THINKING] All the crates are passing verification with no errors, and my module checks out fine too. Let me scan through the full verify output to make sure there aren't any issues lurking elsewhere in the codebase.
+[RESULT ✓] bash: 
+<shellId: 20 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+No errors anywhere — no regressions. Let me verify no stray files and confirm final state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/libs/bump_allocator/ ; echo "---"; grep -rn "admit\|
+
+[THINKING] The test results look clean with no regressions, and I've checked the bugs.md file — there are no actual code bugs to report since the unsupported features are inherent limitations handled through the pre-authorized external_body parameter. I'm reconsidering whether adding external_body support counts as weakening the implementation or if it's the right approach.
+
+Looking back at the task requirements, the targets explicitly include alloc and alloc_as, and tcb-allowed.md already authorizes external_body for these cases with clear rationale — Verus can't verify integer-to-pointer materialization. The source code comments document this intent, and the specs themselves remain unchanged and strong, so this is the correct approach. Everything's complete now, and I've cleaned up any temporary files.
+[RESULT ✓] bash: ---
+no admit/assume
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short | head; echo "=== bug log ==="; tail -5 verus-ai-logs/na
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-bump-allocator/proving/prover-claude-20260615-001342.jsonl
+ M verus-ai-logs/nanvix-phys-bump-allocator/proving/prover-claude-20260615-001342.txt
+=== bug log ===
+- `alloc_as` validates `size_of::<T>()` and `align_of::<T>()` before touching
+  storage.
+
+The only obstacles en...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/libs/bump_allocator/src/lib.rs src/libs/bump_allocat
+
+[THINKING] That's strange — git status shows only the proving log files as modified, but I expected lib.rs and lib.proof.rs to show changes too. Let me verify whether those files are actually being tracked or if something else is going on.
+[RESULT ✓] bash: exit=0
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git check-ignore src/libs/bump_allocator/src/lib.proof.rs; git ls-files --e
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.proof.rs
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+All work is complete. Summary:
+
+## Result
+
+`make verify-bump-allocator`: **12 verified, 0 errors, 0 admit, 0 assume**. `make verify`: **0 errors across all crates** (no regressions).
+
+## Changes to `src/libs/bump_allocator/src/`
+
+**`lib.rs`** — Added `#[verus_verify(external_body)]` to `alloc` and `alloc_as`. Both use Verus-unsupported features (complex `break` expression; `usize`→raw-pointer deref of externally-owned `BssStorage`) and are explicitly pre-authorized in `verus-ai-logs/tcb-allowed.md`. The source already documented this with `// SAFETY-SPEC: external_body` comments; only the attribute was missing. Their `requires`/`ensures` (alignment + in-bounds over `bump_view`, size/align guard arms) are unchanged — no spec weakening.
+
+**`lib.proof.rs`** — Replaced all 3 `admit()` placeholders with real proofs:
+- `lemma_geometry` — proves alignment, in-bounds, and uniqueness for every slot. Added helper `lemma_aligned_sum` (using `lemma_fundamental_div_mod` + `lemma_mod_multiples_basic`) for the modular alignment clause; `nonlinear_arith` blocks for the bounds and distinctness clauses.
+- `lemma_exhausted_boundary` — discharged by linear arithmetic from `inv()`.
+- `lemma_alloc_transition` — `spec_alloc()` advances `allocated` by one, preserves `inv()`, and frames all config fields (`=~=` ext-equality assert).
+
+## Targets
+`align_up` (verified automatically against `align_up_spec`), `as_mut_ptr` (trait-level spec verified), `alloc`/`alloc_as` (authorized `external_body`). Out-of-scope `fmt`/`new`/`default` untouched.
+
+No code bugs found — the only obstacles were inherent Verus front-end limitations handled via the pre-authorized TCB boundary, so no `bugs.md` entry was required.
+
+[THINKING] The source files are gitignored as part of the verification workflow, which is fine since the changes are already on disk and verification passes. I've completed everything: the external body implementations for alloc and alloc_as are authorized, align_up is verified, the trait spec for as_mut_ptr checks out, and all three lemmas are proven with no remaining admits.
+
+The full verification run shows zero errors across all crates with no regressions, and I haven't found any actual code bugs—just Verus front-end limitations that are already handled through pre-authorized external_body declarations, so no new bugs.md entry is needed.
+
+
+=== Session End ===
+Session: 287a572e-b19d-4bd0-ae43-aad8d1ede568
+Duration: 325.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-bump-allocator/proving/prover-claude-20260615-001342.jsonl
