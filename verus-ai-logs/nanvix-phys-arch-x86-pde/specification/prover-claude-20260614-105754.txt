@@ -760,3 +760,38 @@ Turn 48
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pde.rs:97:12
+   |
+97 |     pub fn new(
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:314:12
+    |
+314 |  ...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The macro needs `#[verus_verify]` on the impl for associated `new`. Let me re-add impl-level annotations (flags are now modeled) and see what remains.
+[TOOL] bash: cd /home/ruize/nanvix-phy && perl -0pi -e 's/\nimpl PageDirectoryEntryFlags \{/\n#[verus_verify]\nimpl PageDirectoryEntr
+
+[THINKING] The per-function attribute doesn't resolve the issue, so I need the impl-level `#[verus_verify]` instead. That pulls in all methods at once, which earlier caused errors about unmodeled flag enums—but now that I've fixed those and added the struct definitions, the impl-level verification might actually succeed or at least get past the out-of-scope method errors.
+
+Actually, the real problem is that impl-level verification forces the out-of-scope flag methods like `from_raw_value` and `into_raw_value` to be verified too, but they're not modeled and I can't touch them per the rules. I could mark them as external_body, but that requires a TCB list which isn't allowed. Or I could cascade the `#[verus_verify]` annotation up to the flag impl blocks themselves, but that explodes the scope even further. The fundamental issue is that associated functions in non-verified impls trigger a macro error about "cannot find function new," forcing me into this verification scope trap. impl-level #[verus_verify] might only check methods that are themselves annotated, but the compiler still needs to typecheck all method bodies in the Verus type system, which is why unannotated methods fail when they reference unmodeled types or functions.
+
+Let me test this empirically by re-adding the impl-level #[verus_verify] annotation now that the flags are modeled and see what errors actually remain.
+[RESULT ✓] bash: 41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+282:#[verus_verify]
+291:#[verus_verify]
+292:impl PageDirectoryEntry {
+477:impl TableEntry for PageDirectoryEntry {
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "^error|cannot|verified|Exit code|status:" | head -50
