@@ -273,6 +273,8 @@ proof fn lemma_reserve_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
         addr % spec_page_size() == 0,
         fnx == addr / spec_page_size(),
         0 <= fnx < nb,
+        nb <= rc.len(),
+        forall|i: int| sb.contains(i) ==> 0 <= i < nb,
         !sb.contains(fnx),
     ensures
         view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == (FrameAllocView {
@@ -341,6 +343,7 @@ proof fn lemma_reserve_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
                 assert(rc2[fnx] == 1u8);
             } else {
                 assert(i != fnx);
+                assert(sb.contains(i));
                 assert(rc2[i] == rc[i]);
             }
         }
@@ -361,6 +364,8 @@ proof fn lemma_release_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
         addr % spec_page_size() == 0,
         fnx == addr / spec_page_size(),
         0 <= fnx < nb,
+        nb <= rc.len(),
+        forall|i: int| sb.contains(i) ==> 0 <= i < nb,
         sb.contains(fnx),
     ensures
         view_of(sb.remove(fnx), nb, rc.update(fnx, 0u8)) == (FrameAllocView {
@@ -427,6 +432,7 @@ proof fn lemma_release_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
             assert(i != fnx);
             lemma_frame_addr_div(i);
             assert(a / spec_page_size() == i);
+            assert(sb.contains(i));
             assert(rc2[i] == rc[i]);
         }
     }
@@ -446,6 +452,8 @@ proof fn lemma_update_refcount_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, a
         addr % spec_page_size() == 0,
         fnx == addr / spec_page_size(),
         0 <= fnx < nb,
+        nb <= rc.len(),
+        forall|i: int| sb.contains(i) ==> 0 <= i < nb,
         sb.contains(fnx),
     ensures
         view_of(sb, nb, rc.update(fnx, nv)) == (FrameAllocView {
@@ -478,6 +486,7 @@ proof fn lemma_update_refcount_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, a
                 assert(rc2[fnx] == nv);
             } else {
                 assert(i != fnx);
+                assert(sb.contains(i));
                 assert(rc2[i] == rc[i]);
             }
         }

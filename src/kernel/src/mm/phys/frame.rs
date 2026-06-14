@@ -299,8 +299,37 @@ impl Inner {
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (downstream bounds checks reject oversized).
         let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            let addr = frame@;
+            let fnx = frame_number as int;
+            assert(addr >= 0);
+            assert(addr % spec_page_size() == 0);
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+            assert(fnx == addr / spec_page_size());
+            lemma_view_of(self);
+            assert(spec_refcount_seq(self) == pre_rc);
+            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+            lemma_alloc_contains(self, addr);
+            lemma_alloc_iff_key(self, addr);
+            lemma_refcount_value(self, addr);
+            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+        }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
+                // so the bit is clear and the frame is not allocated.
+                let fnx = frame_number as int;
+                assert(fnx >= self.refcount@.len());
+                assert(self.refcount@.len() >= self.bitmap@.num_bits);
+                assert(!self.bitmap@.set_bits.contains(fnx));
+            }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
@@ -309,25 +338,80 @@ impl Inner {
 
         // Reject double-frees: the frame must currently have at least one owner.
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
+                let fnx = frame_number as int;
+                assert(self.refcount@[fnx] == 0);
+                assert(!self.bitmap@.set_bits.contains(fnx));
+            }
             let reason: &str = "frame is already free";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        proof! {
+            // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit
+            // is set. Records the facts needed to discharge the postcondition's first conjuncts.
+            let fnx = frame_number as int;
+            assert(self.refcount@[fnx] != 0);
+            assert(fnx < self.bitmap@.num_bits);
+            assert(self.bitmap@.set_bits.contains(fnx));
+        }
+
         self.refcount[frame_number] -= 1;
 
         // Only release the bit in the bitmap when the last owner releases the frame.
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // Post-decrement refcount is 0, so the old refcount was 1. The decrement only
+                // touched the refcount slot; the bitmap bit is still set and in range, so
+                // `clear` cannot fail (its Err arm is unreachable).
+                let fnx = frame_number as int;
+                assert(self.bitmap@.set_bits == pre_sb);
+                assert(pre_sb.contains(fnx));
+                assert(fnx < self.bitmap@.num_bits);
+            }
             match self.bitmap.clear(frame_number) {
-                Ok(()) => Ok(()),
+                Ok(()) => {
+                    proof! {
+                        let addr = frame@;
+                        let fnx = frame_number as int;
+                        lemma_view_of(self);
+                        assert(self.bitmap@.set_bits == pre_sb.remove(fnx));
+                        assert(self.bitmap@.num_bits == pre_nb);
+                        assert(spec_refcount_seq(self) == pre_rc.update(fnx, 0u8));
+                        assert(self@ == view_of(pre_sb.remove(fnx), pre_nb, pre_rc.update(fnx, 0u8)));
+                        lemma_release_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
+                        assert(g_old.refcounts[addr] == 1);
+                    }
+                    Ok(())
+                },
                 Err(error) => {
+                    proof! {
+                        // Unreachable: the bit is set and in range, so `clear` returns `Ok`.
+                        assert(false);
+                    }
                     #[cfg(not(verus_keep_ghost))]
                     error!("{error:?} (frame={frame:?})");
                     Err(error)
                 },
             }
         } else {
+            proof! {
+                // Still shared: only the refcount slot changed (decremented by one); the
+                // allocated/free partition is unchanged.
+                let addr = frame@;
+                let fnx = frame_number as int;
+                let nv = self.refcount@[fnx];
+                lemma_view_of(self);
+                assert(self.bitmap@.set_bits == pre_sb);
+                assert(self.bitmap@.num_bits == pre_nb);
+                assert(spec_refcount_seq(self) == pre_rc.update(fnx, nv));
+                assert(self@ == view_of(pre_sb, pre_nb, pre_rc.update(fnx, nv)));
+                lemma_update_refcount_v(pre_sb, pre_nb, pre_rc, fnx, addr, nv);
+                assert(nv as int == g_old.refcounts[addr] - 1);
+            }
             Ok(())
         }
     }
@@ -381,8 +465,37 @@ impl Inner {
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (downstream bounds checks reject oversized).
         let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            let addr = frame@;
+            let fnx = frame_number as int;
+            assert(addr >= 0);
+            assert(addr % spec_page_size() == 0);
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+            assert(fnx == addr / spec_page_size());
+            lemma_view_of(self);
+            assert(spec_refcount_seq(self) == pre_rc);
+            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+            lemma_alloc_contains(self, addr);
+            lemma_alloc_iff_key(self, addr);
+            lemma_refcount_value(self, addr);
+            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+        }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
+                // so the bit is clear and the frame is not allocated.
+                let fnx = frame_number as int;
+                assert(fnx >= self.refcount@.len());
+                assert(self.refcount@.len() >= self.bitmap@.num_bits);
+                assert(!self.bitmap@.set_bits.contains(fnx));
+            }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
@@ -392,21 +505,59 @@ impl Inner {
         // The frame must currently have at least one owner. Sharing an unallocated
         // frame is a logic error.
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
+                let fnx = frame_number as int;
+                assert(self.refcount@[fnx] == 0);
+                assert(!self.bitmap@.set_bits.contains(fnx));
+            }
             let reason: &str = "cannot share an unallocated frame";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        proof! {
+            // The frame is allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
+            let fnx = frame_number as int;
+            assert(self.refcount@[fnx] != 0);
+            assert(fnx < self.bitmap@.num_bits);
+            assert(self.bitmap@.set_bits.contains(fnx));
+        }
+
         self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
             Some(n) => n,
             None => {
+                proof! {
+                    // Overflow: the old refcount was at its u8 maximum (255). The state is
+                    // unchanged, satisfying the Err arm's refcount-saturated disjunct.
+                    let fnx = frame_number as int;
+                    lemma_view_of(self);
+                    assert(spec_refcount_seq(self) == pre_rc);
+                    assert(self@ == g_old);
+                    assert(g_old.refcounts[addr] == 255);
+                }
                 let reason: &str = "frame reference count overflow";
                 #[cfg(not(verus_keep_ghost))]
                 error!("{reason} (frame={frame:?})");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
+
+        proof! {
+            // Only the refcount slot changed (incremented by one); the allocated/free partition
+            // is unchanged.
+            let addr = frame@;
+            let fnx = frame_number as int;
+            let nv = self.refcount@[fnx];
+            lemma_view_of(self);
+            assert(self.bitmap@.set_bits == pre_sb);
+            assert(self.bitmap@.num_bits == pre_nb);
+            assert(spec_refcount_seq(self) == pre_rc.update(fnx, nv));
+            assert(self@ == view_of(pre_sb, pre_nb, pre_rc.update(fnx, nv)));
+            lemma_update_refcount_v(pre_sb, pre_nb, pre_rc, fnx, addr, nv);
+            assert(nv as int == g_old.refcounts[addr] + 1);
+        }
 
         Ok(())
     }

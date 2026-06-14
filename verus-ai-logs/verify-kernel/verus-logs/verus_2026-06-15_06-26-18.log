@@ -1,0 +1,38 @@
+Timestamp: 2026-06-15_06-26-18
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0425]: cannot find value `addr` in this scope
+    --> src/kernel/src/mm/phys/frame.rs:538:44
+     |
+ 538 |                     assert(g_old.refcounts[addr] == 255);
+     |                                            ^^^^
+     |
+    ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin-0.0.0-2026-05-17-0151/src/lib.rs:1079:1
+     |
+1079 | pub const fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+     | ---------------------------------------------------------------------------------------------- similarly named function `add` defined here
+     |
+help: a function with a similar name exists
+     |
+ 538 -                     assert(g_old.refcounts[addr] == 255);
+ 538 +                     assert(g_old.refcounts[add] == 255);
+     |
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
