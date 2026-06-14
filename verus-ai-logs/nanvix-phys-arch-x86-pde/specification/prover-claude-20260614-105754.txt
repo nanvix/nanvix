@@ -1561,3 +1561,58 @@ The PDE conflicts are resolved. Now the `broadcast use` placement has an error. 
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -B3 -A8 "lemma2_to64\|broadcast" | head -40
 
 [THINKING] The PDE conflicts are resolved, but now there's an issue with `broadcast use` appearing inside the proof block—let me check what the full error message says.
+[RESULT ✓] bash: Timestamp : 2026-06-14_11-25-02
+
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: `broadcast use` statements require a broadcast proof fn
+   --> src/kernel/src/hal/mem/types/address/phys.rs:162:13
+    |
+162 |             broadcast use vstd::arithmetic::power2::lemma2_to64;
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+`broadcast use` can't go in an inline proof block. Let me check `lemma2_to64`'s signature to call it directly instead.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rn "pub broadcast proof fn lemma2_to64\|pub proof fn lemma2_to64\|fn lemma
+
+[THINKING] I'm realizing that `broadcast use` needs to live in a proof function context, not inline in exec code, so I can't use it directly in a `proof!{}` block. The challenge is that `lemma_frame_index` has an `admit()` body and its preconditions include `spec_page_size() == pow2(shift)`, which the caller needs to prove—but I'm considering whether adding the broadcast inside the lemma body itself would help establish `pow2(12)==4096`.
+
+The real issue is at the call site in `into_frame_number` where I need to prove that precondition. Instead of relying on `broadcast use`, I could call `lemma2_to64` directly as a regular proof function invocation—since broadcast proof functions can be called normally—which would bring all its `pow2` facts (including `pow2(12)==4096`) into scope.
+[RESULT ✓] bash: vstd/arithmetic/power2.rs:190:pub proof fn lemma2_to64()
+vstd/arithmetic/power2.rs:270:pub proof fn lemma2_to64_rest()
+---
+130:pub broadcast proof fn lemma_pow2(e: nat)
+190:pub proof fn lemma2_to64()
+268:/// This lemma is separated from `lemma2_to64()` to avoid a stack overflow issue
+270:pub proof f...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/power2.rs
+[RESULT ✓] view: 190. pub proof fn lemma2_to64()
+191.     ensures
+192.         pow2(0) == 0x1,
+193.         pow2(1) == 0x2,
+194.         pow2(2) == 0x4,
+195.         pow2(3) == 0x8,
+196.         pow2(4) == 0x10,
+197.         pow2(5) == 0x20,
+198.         pow2(6) == 0x40,
+199.         pow2(7) == 0x80,
+200.         po...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+`lemma2_to64()` is a regular proof fn — I'll call it directly.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I can call `lemma2_to64()` directly since it's a public proof function, and its ensures clause gives me `pow2(12) == 4096`. This means `spec_page_size() == PAGE_SIZE == 4096 == pow2(12) == pow2(shift)` since shift is 12. The question is whether Verus can connect that `shift == 12` given that `FRAME_SHIFT` is modeled transparently as a constant.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30

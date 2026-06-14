@@ -159,7 +159,7 @@ impl PhysicalAddress {
         let shift: usize = mem::FRAME_SHIFT;
         let frame_number: usize = raw_addr >> shift;
         proof! {
-            broadcast use vstd::arithmetic::power2::lemma2_to64;
+            vstd::arithmetic::power2::lemma2_to64();
             lemma_frame_index(self, raw_addr, shift, frame_number);
         }
         // Safety: the following unwrap is safe because a physical address has a valid frame number.
