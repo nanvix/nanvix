@@ -5,7 +5,7 @@ use vstd::arithmetic::div_mod::{
     lemma_mod_bound,
 };
 use vstd::arithmetic::mul::lemma_mul_inequality;
-use vstd::arithmetic::power2::{pow2, lemma_pow2_pos};
+use vstd::arithmetic::power2::lemma_pow2_pos;
 use vstd::bits::lemma_usize_shr_is_div;
 
 // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address

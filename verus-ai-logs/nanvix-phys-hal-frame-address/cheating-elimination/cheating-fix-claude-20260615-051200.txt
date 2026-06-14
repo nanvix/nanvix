@@ -232,3 +232,47 @@ Turn 13
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
 
 [THINKING] I need to verify the phys module first to ensure the proofs are correct, then check the frame module to confirm it's clean. The phys.proof.rs file is included by phys.rs, so verifying the phys module will validate those lemmas. I could run the full kernel verification, but let me start by checking just the phys module to see if the proofs are working properly.
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; tail -60 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_05-15-19.log
+
+[THINKING] There's a compilation error even though the admit count dropped from 29 to 27, which is progress. Let me check what the error is in the logs.
+[RESULT ✓] bash: compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+--
+error[E0252]: the name `pow2` is defined multiple times
+ --> src/kernel/src/hal/mem/types/address/phys.proof.rs:8:32
+  |
+8 | use vstd::arithmetic::po...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I see pow2 is already being imported in phys.spec.rs, so I need to remove it from my own import to avoid the naming conflict since both files are in the same module scope.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
