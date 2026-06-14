@@ -182,3 +182,197 @@ The cfg pattern here is the standard spec/proof gating with verus_keep_ghost, wh
 624:verify-kernel: ensure-verus
 629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
 <shellId: 4 completed with exit code 0>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit detail in phys ===" && grep -i "phys" verus-ai-logs/verify-
+
+[THINKING] The verification passes for the phys module, but the cheating pattern check is reporting global counts across the entire kernel—11 external_body, 27 admit, and 14 cfg_gate instances. When I grep through the three files in the phys module scope, I find none of these patterns, only comments mentioning them. So these global numbers are coming from other modules in the codebase.
+[RESULT ✓] bash: === admit detail in phys ===
+=== all phys/address refs ===
+=== head of detail ===
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    -...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== scripts ==="; ls scripts/ 2>/dev/null; echo "=== ast/drift script
+
+[THINKING] The cheating-detail entries are all coming from out-of-scope modules like mm/phys/frame.rs and identity_map, so the phys.rs target module itself passes all its per-function checklist items. Now I need to work through the remaining checklist items, starting with AST consistency.
+
+I'm looking for the ast-consistency skill in the GitHub skills directory and checking what tooling is available for it. I also notice the checklist has several unresolved placeholders like `{spec_drift_cmd}`, `{build_cmd}`, and `{verus_cmd}` that I need to interpret based on what's actually available in the repository. Let me search through the scripts and verus-ai directory to find the spec-drift and ast-consistency tools.
+[RESULT ✓] bash: === scripts ===
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test.py
+run-uservm.py
+setup
+setup-nanvix....
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md 2>/dev/null | head -60; echo "=========== SPE
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -5; echo "=== branch ==="; git branch --show-current; ech
+
+[THINKING] I'm running the ast-consistency and spec-drift checks on the phys module, so I need to locate the baseline by checking the git status and pipeline_state.json.
+[RESULT ✓] bash: ed6287474 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=27 external_body=11 cfg_gate=14)
+f75f30002 [verus-ai] cheating-elimination scaffold END: hal-phys-address
+1fad2a1fd [verus-ai] cheating-elimination prover END: hal-phys-address
+7f84dd531 [verus] verif...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/spec_drift.py check hal-phys-address 2>&1 | tail -40
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+
+[THINKING] I'm starting the cheating-elimination phase from a specific commit and need to run consistency checks against the baseline. I'll use the ast-consistency tool to verify that the exec code matches the original pre-verification version, and also run the spec-drift check to ensure everything aligns properly.
+[RESULT ✓] bash: Error: pipeline_state.json not found for module 'hal-phys-address'
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysicalAddress::align_down              MATCH                                
+PhysicalAddress::align_up                MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/spec_drift.py git-diff src/kernel/src/hal/mem/types/address/phys
+
+[THINKING] The AST validation is passing with all 17 checks matched. The spec drift check is failing because it's looking for the pipeline state file in the wrong location relative to the verus-ai directory, so I need to run it with git-diff manual mode against the phase start SHA to properly compare the baseline against HEAD and verify that the requires and ensures clauses haven't been weakened.
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+spec_drift.py: error: unrecognized arguments: --repo /home/ruize/nanvix-phy-specs-bottom-up
+EXIT: 0
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT: 0
+<shellId: 13 completed with e...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "^build:\|^all:\|^kernel:" Makefile | head; ls z* 2>/dev/null
+
+[THINKING] The cheating-elimination phase baseline is correct at e5299c with zero spec drift, which is good. I should also verify that cheating-elimination didn't weaken anything compared to the proving phase baseline. Now I'm checking the entire crate version to make sure everything is consistent.
+
+For cross-module regression, the key verification already passed with exit code 0 — the cheating-detected status is just from downstream modules not yet in scope, which is expected in the bottom-up pipeline. For the build, I need to confirm there are zero errors and zero warnings, so I'm looking for the appropriate build command to run against the kernel.
+[RESULT ✓] bash: 411:all: all-nanvix
+z
+z.bat
+z.ps1
+z.py
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 ./z build 2>&1 | tail -30; echo "EXIT: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: cp -f --preserve /home/ruize/nanvix-phy-specs-bottom-up/target/debug/nanvixd /home/ruize/nanvix-phy-specs-bottom-up/bin/nanvixd.elf
+# Build the standalone rootfs image from a seed directory using mkramfs.
+/home/ruize/nanvix-phy-specs-bottom-up/bin/mkramfs.elf -o /home/ruize/nanvix-phy-specs-bottom-u...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+All checklist items verified. Let me write the review and STOP file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/di
+
+[THINKING] The build completed successfully with no compiler warnings. Looking at the checklist items, I've verified that the kernel has zero admit() calls, zero assume() calls, zero trusted functions, and no exec_allows_no_decreases_cl violations.
+
+The cfg-gated exec code only contains ghost includes which are allowed. The external_body assume_specification for VirtualAddress::into_raw_value is properly listed in tcb-allowed.md. AST consistency shows 17 matches with zero mismatches, and the from_number function has a pre-approved VERUS DEVIATION comment for an intermediate let-binding that doesn't actually change the exec semantics. No specs have been weakened, cross-module regression testing passed, and both verification and build completed successfully.
+
+All checklist items pass, so the result is RESOLVED. Now I need to write the turn_001_driver.md file and create the STOP file marking this as resolved, then verify the dialogue directory exists.
+[RESULT ✓] bash: dialogue
+dialogue-reviewer-t001-claude-20260615-070653.jsonl
+dialogue-reviewer-t001-claude-20260615-070653.txt
+fix_report.md
+prover-claude-20260615-070350.jsonl
+prover-claude-20260615-070350.txt
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/turn_001_driver.md with 3435 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/STOP with 1157 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+**Review complete — RESOLVED.** All 12 cheating-elimination checklist items PASS for `hal-phys-address`, verified with tools:
+
+- **admit/assume/trusted/no_decreases/external_body**: zero in the three target files. `make verify-kernel` cheating-detail has **no** entry referencing `address/phys.*` — the global `admit=27 external_body=11` are all out-of-scope downstream modules.
+- **cfg-gated exec**: only `#[cfg(verus_keep_ghost)]` ghost `include!` guards.
+- **assume_specification** (`VirtualAddress::into_raw_value`): listed in `tcb-allowed.md`.
+- **AST consistency**: matched=17, mismatched=0 vs phase-start baseline.
+- **Spec drift**: 0 contract drift.
+- **Cross-module**: `make verify-kernel` (module `<all>`) exit 0.
+- **Build**: `./z build` exit 0, no warnings.
+
+Wrote `turn_001_driver.md` and `STOP` (RESOLVED). No fixes required.
+
+
+=== Session End ===
+Session: 40656f81-a0dc-475c-b6fe-86e0bdecc951
+Duration: 148.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue-reviewer-t001-claude-20260615-070653.jsonl
