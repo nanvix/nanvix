@@ -36,23 +36,6 @@ pub struct UserFrame {
     addr: FrameAddress,
 }
 
-#[cfg(verus_keep_ghost)]
-verus! {
-
-/// Abstract view of a [`UserFrame`]: the physical address of the frame it owns.
-///
-/// Lets allocator contracts name a returned user frame's address (e.g. "the
-/// returned frame is now allocated") without exposing any storage detail.
-impl View for UserFrame {
-    type V = int;
-
-    closed spec fn view(&self) -> int {
-        self.addr@
-    }
-}
-
-} // verus!
-
 #[verus_verify]
 impl UserFrame {
     ///
