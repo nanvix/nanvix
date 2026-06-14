@@ -559,6 +559,7 @@ impl Inner {
             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
             assert(fnx == addr / spec_page_size());
             lemma_view_of(self);
+            assert(spec_refcount_seq(self) == pre_rc);
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
             lemma_free_contains(self, addr);
         }
@@ -573,7 +574,8 @@ impl Inner {
                     lemma_view_of(self);
                     assert(self.bitmap@.set_bits == pre_sb.insert(fnx));
                     assert(self.bitmap@.num_bits == pre_nb);
-                    assert(self.refcount@ == pre_rc.update(fnx, 1u8));
+                    assert(spec_refcount_seq(self) == pre_rc.update(fnx, 1u8));
+                    assert(self@ == view_of(pre_sb.insert(fnx), pre_nb, pre_rc.update(fnx, 1u8)));
                     lemma_reserve_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
                 }
                 Ok(())
@@ -581,6 +583,7 @@ impl Inner {
             Err(error) => {
                 proof! {
                     lemma_view_of(self);
+                    assert(spec_refcount_seq(self) == pre_rc);
                     assert(self@ == g_old);
                 }
                 #[cfg(not(verus_keep_ghost))]

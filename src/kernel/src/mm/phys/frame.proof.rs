@@ -209,6 +209,13 @@ closed spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
     inner.refcount@[i] as int
 }
 
+/// The full refcount sequence of `inner`. A spec-fn wrapper so the `&'static mut [u8]` field can
+/// be named in `proof fn` postconditions (Verus rejects dereferencing a `&mut` field directly in
+/// an `ensures`); reading the field in a spec-fn body is the same context `view()` already uses.
+closed spec fn spec_refcount_seq(inner: &Inner) -> Seq<u8> {
+    inner.refcount@
+}
+
 /// The refcount-map value at an allocated address equals the underlying refcount slot.
 proof fn lemma_refcount_value(inner: &Inner, addr: int)
     requires
@@ -249,9 +256,9 @@ closed spec fn view_of(set_bits: Set<int>, num_bits: int, refcount: Seq<u8>) -> 
 /// `Inner::view()` equals `view_of` applied to its own bitmap/refcount component values.
 proof fn lemma_view_of(inner: &Inner)
     ensures
-        inner@ == view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, inner.refcount@),
+        inner@ == view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, spec_refcount_seq(inner)),
 {
-    let v = view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, inner.refcount@);
+    let v = view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, spec_refcount_seq(inner));
     assert(inner@.allocated_frames =~= v.allocated_frames);
     assert(inner@.free_frames =~= v.free_frames);
     assert(inner@.refcounts =~= v.refcounts);
