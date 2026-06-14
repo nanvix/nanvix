@@ -1442,3 +1442,122 @@ Let me run `make verify` to see whether the new arch specs actually conflict cro
 [THINKING] I'm realizing there's a potential conflict here — identity_map.spec.rs declares external type and trait specifications for Table, TableIndex, and TableEntry, along with assume specifications for various functions. Now that the arch's table module has actual Verus specs with the proper annotations, these declarations will clash. I need to figure out whether identity_map.spec.rs is even part of the verification build.
 
 The real question is whether marking Table with `#[verus_verify]` in the arch crate actually exports its specification across the crate boundary, which would create a duplicate specification conflict in the kernel. The safest approach is to run `make verify` as-is with the arch specs added and see if conflicts actually occur — if it passes, no changes needed; if it fails, then I'll remove the placeholder specifications.
+[RESULT ✓] bash: 33 | |     fn from_raw(raw: PteWord) -> Option<Self>;
+ 34 | |     /// Returns the raw [`PteWord`] representation.
+ 35 | |     fn raw(self) -> PteWord;
+ 36 | | }
+    | |_^ declared here (and not marked as `external`)
+    |
+   ::: src/kernel/src/mm/virt/identity_map.spec.rs:114:1
+    |
+114 | / pub tra...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+Confirmed cross-crate conflict. Let me view the placeholder block to remove the now-superseded declarations.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I've confirmed there's a conflict between the `TableEntry` trait marked with `#[verus_verify]` and the `ExTableEntry` external trait specification, so I need to remove the conflicting placeholder declarations. Let me pull up the relevant section of the identity_map.spec.rs file to see exactly what needs to be cleaned up.
+[RESULT ✓] view: 100. //
+101. // The kernel HAL paging layer (`arch::mem::paging` types/functions) and the kernel
+102. // `page_table_allocator` storage marker are not verified yet. They are registered as external
+103. // types / given trusted external specifications here so that the in-scope identity-map bodies can...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Now I'll remove the superseded placeholders. First, check remaining usages of these symbols in the spec file to avoid dangling references.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "TableEntry\|\bTable\b\|TableIndex\|pd_index\|pt_index\|from_address\|\.read\|\.wri
+
+[THINKING] I'm cleaning up the placeholder external trait specifications that now conflict with the new verified implementations—removing `ExTableEntry`, `ExTable`, and `ExTableIndex` since their corresponding types in the arch module now have proper `#[verus_verify]` annotations.
+
+For the functions like `pd_index`, `pt_index`, `read`, and `write`, I need to remove their `assume_specification` declarations since they're now annotated with `#[verus_verify]` in the arch specs.
+
+But I'm realizing there's a gap: `read` and `write` are marked `#[verus_verify(external_body)]` but I haven't actually added `ensures` or `requires` clauses to them yet—they're just external bodies without specifications, so removing the assume_specification might be premature.
+
+Actually, that's fine. The kernel callers use `admit()` anyway, so they don't depend on the contracts. When the kernel calls these functions, it gets arch's real (empty) contract, which is acceptable since the callers are already admitting the proof.
+
+The trickier part is `from_address`, which does have a spec with `ensures result@.addr == base as nat`. This references `TableView` and the `View` impl from arch's spec file. The kernel will inherit this ensures when it calls `from_address`, and since those types are public in arch, they should be importable as opaque facts.
+
+Now I need to clean up by removing the conflicting external trait declarations: `ExTableEntry`, `ExTable`, `ExTableIndex`, and a few other lines that are no longer needed.
+
+But I should check whether `TableEntry` is still used elsewhere in the file after removing these declarations, since the import might still be necessary for other specs or the identity_map implementation.
+[RESULT ✓] bash: 109:use ::arch::mem::paging::TableEntry;
+112:// The `TableEntry` trait bound must be declared before it can appear in external specs.
+114:pub trait ExTableEntry: Copy {
+115:    type ExternalTraitSpecificationFor: TableEntry;
+123:pub struct ExTable<E: TableEntry>(Table<E>);
+127:pub struct ExTableInde...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "use ::arch::mem::paging" src/kernel/src/mm/virt/identity_map.spec.rs; echo "---"; 
+
+[THINKING] I need to trace through which imports are actually being used after I remove those placeholder declarations. The `TableEntry`, `Table`, and `TableIndex` types are only referenced in the code I'm deleting, so their imports will become orphaned and need to be cleaned up too.
+[RESULT ✓] bash: 109:use ::arch::mem::paging::TableEntry;
+---
+1:use crate::hal::mem::spec_page_size;
+13:/// exec struct. Addresses use `int` (the `View` of `PhysicalAddress` / `PageAligned`), consistent
+<shellId: 59 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "Table\b\|TableIndex\b" src/kernel/src/mm/virt/identity_map.spec.rs | grep "use " ;
+[RESULT ✓] bash: --- where do Table/TableIndex come from? ---
+<shellId: 60 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "include!\|mod \|use ::arch\|use arch\|paging::" src/kernel/src/mm/virt/identity_ma
+
+[THINKING] I'm wondering if Table and TableIndex are being pulled in through a wildcard import or if the spec file is included directly into identity_map.rs — I should check the top of identity_map.rs to see how it's structured.
+[RESULT ✓] bash: 25:include!("identity_map.spec.rs");
+27:include!("identity_map.proof.rs");
+42:use ::arch::{
+46:        paging::{
+131:        let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+306:        let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+668:    unsafe { paging::invlpg(p...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 42. use ::arch::{
+43.     cpu::cr3::Cr3Register,
+44.     mem::{
+45.         self,
+46.         paging::{
+47.             self,
+48.             AccessedFlag,
+49.             DirtyFlag,
+50.             FrameNumber,
+51.             PageCacheDisableFlag,
+52.             PageDirectoryEntry,
+53.           ...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+I'll remove the superseded `TableEntry`/`Table`/`TableIndex`/`pd_index`/`pt_index`/`from_address`/`read`/`write` placeholders (now provided by real arch specs), keeping the still-external PDE/PTE/flags/invlpg/BSS ones.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] The `Table` and `TableIndex` types come from the paging module imported in identity_map.rs, while `TableEntry` is separately imported in the spec file. Once I remove the placeholder code, that `TableEntry` import becomes unnecessary and should be deleted, leaving only the `Table` and `TableIndex` references that are actually used.
+
+Now I need to remove the conflicting blocks: the `ExTableEntry` trait and its import, the `ExTable` and `ExTableIndex` definitions (keeping the section comment but removing just those type definitions), and the helper methods like `pd_index`, `pt_index`, `from_address`, `read`, and `write` that relied on the generic `TableEntry` constraint. Since the concrete kernel code uses specific types like `PageDirectoryEntry` and `PageTableEntry` rather than a generic `E`, the `TableEntry` import was only needed for these placeholders and can be safely removed.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -35

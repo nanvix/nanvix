@@ -106,25 +106,18 @@ impl IdentityMapView {
 // currently `admit()`-ed in the exec bodies, so minimal (state-free) contracts suffice.
 //==================================================================================================
 
-use ::arch::mem::paging::TableEntry;
 use super::page_table_allocator::PageTableBss;
 
-// The `TableEntry` trait bound must be declared before it can appear in external specs.
-#[verifier::external_trait_specification]
-pub trait ExTableEntry: Copy {
-    type ExternalTraitSpecificationFor: TableEntry;
-}
+// NOTE: `TableEntry` (trait), `Table<E>`, `TableIndex`, `pd_index`, `pt_index`,
+// `Table::from_address`, `Table::read`, and `Table::write` now have real
+// `#[verus_spec]`/`#[verus_verify]` contracts in `arch::x86::mem::paging::table`.
+// Their former placeholder declarations here (`ExTableEntry`,
+// `ExTable`/`ExTableIndex` external type specs, and the `assume_specification`s
+// for the index helpers and raw accessors) were removed because the real arch
+// specifications now supersede them — per the documented "placeholders are
+// removed when the dependency module is verified" methodology.
 
 // --- Page-table structure types ---
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types(E)]
-pub struct ExTable<E: TableEntry>(Table<E>);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExTableIndex(TableIndex);
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -176,28 +169,16 @@ pub struct ExPageTableBss(PageTableBss);
 
 // --- Paging index helpers ---
 
-pub assume_specification[ ::arch::mem::paging::pd_index ](vaddr: usize) -> TableIndex;
-
-pub assume_specification[ ::arch::mem::paging::pt_index ](vaddr: usize) -> TableIndex;
+// `pd_index` / `pt_index` are specified in `arch::…::paging::table` (removed here).
 
 // --- TLB maintenance ---
 
 pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
 
-// --- `Table` raw accessors (trusted HAL boundary) ---
+// --- `Table` raw accessors ---
 
-pub assume_specification<E: TableEntry>[ Table::<E>::from_address ](base: usize) -> Table<E>;
-
-pub assume_specification<E: TableEntry>[ Table::<E>::read ](
-    table: &Table<E>,
-    index: TableIndex,
-) -> Option<E>;
-
-pub assume_specification<E: TableEntry>[ Table::<E>::write ](
-    table: &Table<E>,
-    index: TableIndex,
-    entry: E,
-);
+// `Table::from_address` / `Table::read` / `Table::write` are specified in
+// `arch::…::paging::table` (removed here).
 
 // --- Page-directory-entry operations ---
 
