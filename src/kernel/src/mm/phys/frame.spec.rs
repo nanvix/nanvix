@@ -27,19 +27,12 @@ impl Inner {
 // Callers that relied on `FRAME_SIZE == spec_page_size()` still get it: `spec_page_size()` is now
 // defined as `::arch::mem::PAGE_SIZE as int` and `FRAME_SIZE == PAGE_SIZE` holds by the verified
 // constants.
-
-pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
-    a: crate::hal::mem::PageAligned<T>,
-) -> (result: usize)
-    ensures
-        result as int == a@,
-;
-
-pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
-    a: &crate::hal::mem::PageAligned<T>,
-) -> (result: &<crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::Target)
-    ensures
-        (*result)@ == a@,
-;
+//
+// Note: the placeholder `assume_specification`s for `<PageAligned<T> as Address>::into_raw_value`
+// and `<PageAligned<T> as Deref>::deref` were removed. `into_raw_value` is covered by the
+// verified `Address::into_raw_value` trait contract (`#[verus_spec(ensures result as int ==
+// self@)]` in `sys::mm::address`), which applies at every call site, so the workspace-internal
+// placeholder was redundant. `deref` is not used anywhere in `mm::phys`, so its placeholder was
+// dead and is dropped as well.
 
 }

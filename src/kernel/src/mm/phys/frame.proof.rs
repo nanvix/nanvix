@@ -100,6 +100,43 @@ proof fn lemma_frame_addr_injective(i: int, j: int)
     vstd::arithmetic::mul::lemma_mul_equality_converse(spec_page_size(), i, j);
 }
 
+/// Every frame address is page-aligned: `frame_addr_of(i) % spec_page_size() == 0`.
+proof fn lemma_frame_addr_mod_zero(i: int)
+    requires
+        spec_page_size() > 0,
+    ensures
+        frame_addr_of(i) % spec_page_size() == 0,
+{
+    vstd::arithmetic::div_mod::lemma_mod_multiples_basic(i, spec_page_size());
+}
+
+/// Dividing a frame address by the page size recovers its index.
+proof fn lemma_frame_addr_div(i: int)
+    requires
+        spec_page_size() > 0,
+    ensures
+        frame_addr_of(i) / spec_page_size() == i,
+{
+    vstd::arithmetic::div_mod::lemma_div_multiples_vanish(i, spec_page_size());
+}
+
+/// A non-page-aligned address can never be a tracked (allocated) frame.
+proof fn lemma_alloc_unaligned(inner: &Inner, addr: int)
+    requires
+        inner.internal_inv(),
+        addr % spec_page_size() != 0,
+    ensures
+        !inner@.allocated_frames.contains(addr),
+{
+    if inner@.allocated_frames.contains(addr) {
+        let i = choose|i: int|
+            #[trigger] inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+        assert(addr == frame_addr_of(i));
+        lemma_frame_addr_mod_zero(i);
+        assert(false);
+    }
+}
+
 //==================================================================================================
 // View membership lemmas
 //==================================================================================================
