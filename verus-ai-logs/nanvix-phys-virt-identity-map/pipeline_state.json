@@ -29,6 +29,13 @@
       "verdict": "FAIL-cheating",
       "review_file": null,
       "duration_s": 1680.4
+    },
+    "final-review": {
+      "verdict": "UNKNOWN",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": false,
+      "duration_s": 350.8
     }
   },
   "prover_session_id": "8479c69d-e2de-4c1e-abc2-5ca2060868ef",
