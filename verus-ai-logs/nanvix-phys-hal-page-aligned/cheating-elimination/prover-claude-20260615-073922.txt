@@ -629,3 +629,176 @@ Normal build passes. Now the module verification:
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
+[RESULT ✓] bash: === Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=11 admit=27 trusted=0 no_decreases=0 cfg_gate=13
+  coverage: 1/18 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-44-34.l...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Module is CLEAN (verus exit 0, no module-scoped cheating). Now AST consistency check — diff exec source vs base branch:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== page.rs diff ==="; git diff verus-ai-prove-bottom-up -- src/kerne
+
+[THINKING] The module verification passed cleanly with no issues in scope, and all the global counts are from other modules outside my task boundaries. Now I'm running the AST consistency check against the previous version to see what changed in the page.rs file, specifically looking at the cfg-gate removal I made.
+
+I moved the ghost specification material from page.rs into a separate page.spec.rs file while keeping the View block intact. The executable code—structs, implementations, signatures, and comments—all remain unchanged, so the AST consistency is preserved. Let me compare the actual diff against the base version to confirm.
+[RESULT ✓] bash: === page.rs diff ===
+=== spec/proof diff ===
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short && echo "=== HEAD vs base ===" && git --no-pager diff ve
+
+[THINKING] Something's off with the diff — it's showing nothing against the verus-ai-prove-bottom-up branch even though I made edits. Let me check the working tree status to see if my changes actually persisted.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/prover-claude-20260615-073922.jsonl
+ M verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/prover-claude-20260615-073922.txt
+=== HEAD vs base ===
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== current page.spec.rs ==="; cat src/kernel/src/hal/mem/types/addre
+
+[THINKING] I'm noticing that git status isn't showing changes to page.rs and page.spec.rs even though I edited them — either the working tree was reverted or my edits ended up matching the original committed state exactly. Let me check what's actually in those files now to figure out what happened.
+[RESULT ✓] bash: === current page.spec.rs ===
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+// Success condition for the validating constructor, stated purely on the abstract
+// address value. `from_address` validates, it does NOT normalize: success requires the
+// *input* to already be page-aligned.
+pub open spec...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager log --oneline -6
+
+[THINKING] I'm realizing the verify script must be auto-committing changes, since HEAD already shows my modifications. Let me check the git log to see what's happening with the commits.
+[RESULT ✓] bash: 84b77d3ea [verus] verify PASS: kernel::hal::mem::types::address::aligned::page (cached (no recompilation), —)
+8f4244264 [verus] verify PASS: kernel::hal::mem::types::address::aligned::page (2 verified, 0 errors)
+53e389c2f [verus] verify PASS: kernel::hal::mem::types::address::aligned::page (cached (...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== base page.spec.rs ==="; git show verus-ai-prove-bottom-up:src/ker
+
+[THINKING] The verify script is auto-committing with "PASS" status, and my changes are committed. But when I compare page.rs between the base branch and HEAD, there's no difference showing up—which is strange since I definitely modified that file. Let me trace through what happened with those changes.
+[RESULT ✓] bash: === base page.spec.rs ===
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+// Success condition for the validating constructor, stated purely on the abstract
+// address value. `from_address` validates, it does NOT normalize: success requires the
+// *input* to already be page-aligned.
+pub open spec fn...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager show e1ed2c325 --stat | head -30; echo "=== what START chang
+
+[THINKING] The base branch already has the correct structure with the inv impl and import in place, and only the View block ungated in page.rs. My changes just recreated that state, which suggests the starting commit introduced a regression with the cfg-gated block A compared to what was working before.
+
+But wait—at the very beginning, `git diff` showed the working tree matched the base branch exactly, yet my initial file views showed the cfg-gated block A structure and page.spec.rs without the inv. That's contradictory. The most likely explanation is that the verify script auto-committed changes between my first view and now, potentially reverting page.spec.rs and page.rs to an earlier regressed state.
+
+Actually, let me step back. The current state is clear: HEAD matches the base branch with no diff, the module verifies cleanly, and the cfg_gate regression is gone. What I really need to understand is what exactly changed in commit e1ed2c325.
+[RESULT ✓] bash: commit e1ed2c32589863f7f68de259f723d07601d882d5
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 07:39:22 2026 +0800
+
+    [verus-ai] cheating-elimination START: hal-page-aligned
+
+ verus-ai-logs/nanvix-phys-hal-page-aligned/pipeline.log |  6 ++++++
+ .../nanvix-phys-hal-page-aligned/pipeline_...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== net change vs START commit (exec source) ==="; git --no-pager dif
+
+[THINKING] The START commit only modified logs, leaving the source files unchanged—page.rs had block A cfg-gated and page.spec.rs only had spec_aligned at session start. But the base branch contains the fixed version, and the git diff came back empty, which creates a contradiction I need to resolve by checking whether HEAD at session start actually matched that commit's tree state.
+
+Between shellId 5 and now, the auto-commit verify script ran multiple times and my edits got committed. The base branch `verus-ai-prove-bottom-up` may have been updated by the harness, or my understanding of what "base" refers to is off. But what actually matters is that the module verifies cleanly with zero errors, there's no cheating in the code, the normal build passes, and the current source is well-formed. Since the current page.rs and page.spec.rs now match `verus-ai-prove-bottom-up` exactly, the AST consistency is perfect. Let me diff against the START commit to see my actual net change and verify there's no unexpected modification.
+[RESULT ✓] bash: === net change vs START commit (exec source) ===
+diff --git a/src/kernel/src/hal/mem/types/address/aligned/page.rs b/src/kernel/src/hal/mem/types/address/aligned/page.rs
+index 7fc33366d..32a4bc0c0 100644
+--- a/src/kernel/src/hal/mem/types/address/aligned/page.rs
++++ b/src/kernel/src/hal/mem/types/ad...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Net change is a pure ghost-code relocation (moved `inv()` spec fn into the cfg-gated `page.spec.rs` include); zero exec changes, and it matches the canonical base branch exactly. Let me confirm no cheating tokens remain in the module's three files and write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating tokens in module files ==="; grep -nE "admit\(|assume\(|
+
+[THINKING] I'm moving the ghost `inv()` spec function and the `use spec_page_size` import from a cfg-gated block in page.rs into the cfg-gated page.spec.rs include file, which removes the module-scoped cfg gate and keeps only ghost and spec code untouched while matching the base branch exactly.
+
+The exec AST remains unchanged with zero mismatches, and while the global counts still show external_body and admit in other modules like mm/phys and mm/virt, those are intentionally out of scope for this bottom-up task — my module-scoped check is clean with 2 verified and 0 errors from the verus verification. Now I need to write the fix_report.md documenting that the module is clean and create an empty verification_todo.md since there's nothing left to do.
+[RESULT ✓] bash: === cheating tokens in module files ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/aligned/page.rs:11:#[cfg(verus_keep_ghost)]
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+All clean — only the `include!` cfg-gates remain (not counted). Now writing the report and a TODO file noting zero remaining gaps.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md 2>/dev/n
+
+[THINKING] I've confirmed the cfg-gate counter is working correctly with only the two `#[cfg(verus_keep_ghost)]` annotations remaining on the include statements, and there's no other cheating patterns in the module. Now I'm writing up the fix_report.md and verification_todo.md files, and I've verified the cheating-elimination directory exists. I'm about to document the before and after counts for the module.
+[RESULT ✓] bash: no todo yet
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md with 423 characters
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md with 3549 characters
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Module verification is CLEAN (`2 verified, 0 errors`) and the normal build passes. Since the final source is byte-identical to the `verus-ai-prove-bottom-up` base branch, there is no regression risk. Done.
+
+## Summary
+
+**Cheating eliminated in `hal-page-aligned`:** 1 item (cfg-gated `verus!` ghost block) → 0.
+
+- The only module-local cheating was a `#[cfg(verus_keep_ghost)]`-gated `verus!` block in `page.rs` holding the `inv()` spec fn + `spec_page_size` import. The `count_cfg_gates` heuristic flagged it as cfg-gated exec code.
+- **Fix:** relocated that ghost material into the already-cfg-gated `page.spec.rs` include (whose `include!` cfg-gate is not counted), matching the sibling `frame.rs`/`phys.rs` pattern. Pure ghost-code move — no exec logic, signatures, or comments changed.
+
+**Verification:**
+- `make verify-kernel MODULE=hal::mem::types::address::aligned::page` → `✅ No cheating detected`, `2 verified, 0 errors`, status **CLEAN**.
+- `make check-kernel` (normal build) → success (confirmed the import must live in a cfg-gated context; un-gating triggers `E0432`).
+
+**AST consistency:** zero mismatches — final source is byte-identical to the base branch (`git diff verus-ai-prove-bottom-up` empty). Remaining global `admit/external_body` counts are all in out-of-scope modules (`mm/phys`, `mm/virt`), untouched per the hard rules.
+
+**Result: PASS.** Reports written to `cheating-elimination/fix_report.md` and `verification_todo.md` (no remaining gaps).
+
+[THINKING] I've already confirmed the module verify shows CLEAN status with no errors and the kernel build succeeded, so I don't need to run the full verification again since it would just surface pre-existing issues that are out of scope for this task.
+
+Since my change is a pure ghost relocation that matches the base branch exactly, there's no regression risk — the base already verifies successfully in this configuration. I've cleaned up any temporary files, so I'm ready to summarize the results for the user.
+
+
+=== Session End ===
+Session: 26f83982-f452-4d5f-896b-2afb6865ff5b
+Duration: 442.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/prover-claude-20260615-073922.jsonl
