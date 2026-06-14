@@ -247,3 +247,177 @@ I should check the git history to see how the spec files have changed and unders
 79081ccf4 [verus-ai] proving prover END: phys-manager
 2af4f8f3f [verus] verify PASS (cheating detected): kernel::mm::phys (11 verified, 0 errors, external_body=22 cfg_gate=9)
 d0336e5f1 [verus] verify PASS (cheating detected): kernel::all (cache...
+[RESULT ✓] bash: Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covere...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification ran (cached). Let me read the cheating detail and check the cfg_gate locations.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | head -120
+
+[THINKING] The verification was cached with a summary showing external_body=22 and cfg_gate=9 across the entire `mm::phys` module, triggering a CHEATING_DETECTED status. But I need to check whether these violations are actually in the TCB allowed list, since the detection is module-wide while my focus is specifically on manager.rs.
+
+All six external_body functions in manager.rs are in the TCB allowed list, but the cfg_gate=9 count is concerning — the checklist explicitly forbids cfg-gated exec code. I need to examine the cheating-detail.txt file to locate where these cfg-gated branches are, and I should also run a fresh verification to ensure the cached result is current before doing a full cross-module regression check.
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/verify-kernel/verus-logs/ && echo "===" && grep -rin "cfg_gate\|cfg-gate\|
+[TOOL] grep: cfg\(|cfg_attr|cfg!\(
+
+[THINKING] I need to locate the cfg_gate=9 details since the current file only shows external_body information, so I'm searching through the full logs to find where the cfg-gated execution code is being counted.
+[RESULT ✓] grep: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:49:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:52:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs:32:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.r...
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-15_00-55-32.log
+verus_2026-06-15_01-01-27.log
+verus_2026-06-15_01-04-34.log
+verus_2026-06-15_01-06-51.log
+verus_2026-06-15_01-10-45.log
+verus_2026-06-15_01-12-18.log
+verus_2026-06-15_01-19-48.log
+verus_2026-06-15_01-20-04.log
+verus_2026-06-15...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && L=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_04-07-40.log; grep -in "cfg" $L |
+
+[THINKING] Looking at the cfg_gate count from the cheating detector, I can see the manager.rs file has several cfg gates: the ones at lines 9 and 11 are standard includes for spec and proof files marked with `#[cfg(verus_keep_ghost)]`, which are ghost code rather than executable code being gated. Then there are attribute configurations at lines 97 and 291 that handle verification-related markers.
+
+The key point is that the checklist item specifically flags "cfg-gated exec code" — branches, expressions, and match arms. The cfg gates in manager.rs aren't actually gating any executable logic; they're controlling ghost code includes and lint attributes. So these don't violate the cfg-gated exec code requirement. I need to check the full log to understand exactly what the detector counted toward the cfg_gate=9 value and confirm my analysis.
+[RESULT ✓] bash: 16:  cfg_gate=9
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rln "cfg_gate" scripts/ 2>/dev/null | head; echo "==="; grep -rln "cfg_gate" --includ
+
+[THINKING] The log doesn't show where cfg_gate is used, just that there are 9 instances module-wide. I need to find the script generating these counts to understand what's being gated, but for the review the key question is whether manager.rs has any cfg-gated execution code. Looking at the grep results, the cfg occurrences in manager.rs are ghost includes on lines 9 and 11, plus something starting on line 97.
+
+None of these gate actual execution branches or expressions—they're just ghost code and lint attributes. So manager.rs passes the checklist. The scope here is specifically the phys-manager proving phase targeting manager.rs, while the other files are from earlier phases and out of scope. The cfg_gate=9 count across the whole module is less relevant than what's actually in the in-scope file. Let me check the detector script to confirm what it's counting and verify manager.rs is clean.
+[RESULT ✓] bash: scripts/verify.sh
+===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg_gate\|cfg_gated\|cfg-gate\|cfg(" scripts/verify.sh | head -30
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me check spec drift via git history, scan for admit/assume/VERUS REWRITE, and look at what proving changed.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== commits touching manager files ===" && git --no-pager log --oneline -15 -- src/ke
+
+[THINKING] I'm looking at how the cfg_gate counter works—it excludes certain macros like `include!`, `use`, `mod`, and `extern`, focusing instead on cfg gates in executable code. The `#[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]` attributes at lines 97 and 291 in manager.rs apply to the functions that follow them, like `#[verus_verify(external_body)]` before `pub(super) fn init`. I need to trace what comes after line 97's cfg_attr to understand the target structure better.
+
+The script skips empty lines and attribute lines starting with `#[`, so it lands on the actual function definition. Since that function doesn't start with `use`, `include`, `mod`, or `extern` and isn't a log macro, it counts as a cfg_gate—so manager.rs contributes 2 cfg_gate counts from those two locations. But I'm realizing there's a potential issue: `cfg_attr` with a lint allow isn't actually gating executable code semantically, it's just gating an attribute. The detector flags it anyway, which might be a false positive or at least something that needs clarification against the checklist requirement about no cfg-gated exec code in branches, expressions, or match arms. I should re-run the module-scoped analysis to see what the actual cfg_gate count is for mm::phys specifically, since the earlier output showed a global count. A strict reviewer would flag these cfg_attr lines as violations and demand their removal or justification, even though they're technically not executable code—they're lint allows required by the Verus tooling. The real question is whether they're necessary, and if so, whether that necessity should exempt them from the cfg-gating rule.
+
+Now I need to step back and run through the full checklist systematically. Let me start with spec drift—I should compare the contracts in manager.rs and manager.spec.rs between the proving phase start and now to ensure no specs were weakened. Then I'll verify the admit count is truly zero, check that external_body is only used in TCB contexts, and work through the remaining items to determine if this passes or fails the review. Now I'm checking the git history for manager.rs to see what's changed since the proving started.
+[RESULT ✓] bash: === commits touching manager files ===
+2af4f8f3f [verus] verify PASS (cheating detected): kernel::mm::phys (11 verified, 0 errors, external_body=22 cfg_gate=9)
+de748e6e5 [verus] verify PASS (cheating detected): kernel::mm::phys (11 verified, 0 errors, external_body=22 cfg_gate=9)
+de605f242 [verus-ai...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== full recent log ===" && git --no-pager log --oneline -30 | grep -nE "specificatio
+
+[THINKING] Looking at the git history, the admit count dropped from 2 to 0 after the strip-external-body commit. Now I'm checking the grep results for `assume_init_mut` in manager.rs at line 147 — this is a MaybeUninit method, not a Verus assume, so the detector correctly didn't flag it in the cheating scan.
+
+For the VERUS REWRITE comments checklist item, there are none in the codebase, which makes sense since all six functions are external_body (trust boundary), so no exec rewrites were needed. That's a pass.
+
+Now I need to check for spec drift by comparing the specification contracts between the end of the specification phase and the current proving phase. The rule is that original guarantees can't be weakened — the proving phase should only add proof bodies, not modify the specs themselves. Let me diff the contracts in manager.rs and manager.spec.rs across those phase boundaries.
+[RESULT ✓] bash: === full recent log ===
+2:f3ad5238f [verus-ai] proving scaffold END: phys-manager
+3:79081ccf4 [verus-ai] proving prover END: phys-manager
+13:de605f242 [verus-ai] proving strip-external-body: phys-manager (6)
+14:ec3624c76 [verus-ai] proving START: phys-manager
+20:9cfbc88fc [verus-ai] specification EN...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== manager.rs diff (spec END -> HEAD) ===" && git --no-pager diff 9cfbc88fc HEAD -- 
+
+[THINKING] I'm checking for specification drift by comparing the manager files across the commits, looking at whether the requires and ensures clauses have been weakened between the specification version and the current HEAD.
+[RESULT ✓] bash: === manager.rs diff (spec END -> HEAD) ===
+=== manager.spec.rs diff ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== proof.rs diff (spec END -> HEAD) ===" && git --no-pager diff 9cfbc88fc HEAD -- sr
+
+[THINKING] The manager.rs and manager.spec.rs files haven't changed between the specification end and HEAD, so the contracts and spec functions remain intact—spec drift passes with no weakened specifications. I'm checking whether the proving phase's strip-external-body commit altered manager.rs or if those changes were reverted, but the diff between those points appears empty.
+[RESULT ✓] bash: === proof.rs diff (spec END -> HEAD) ===
+diff --git a/src/kernel/src/mm/phys/manager.proof.rs b/src/kernel/src/mm/phys/manager.proof.rs
+index 845cf858b..6277166a1 100644
+--- a/src/kernel/src/mm/phys/manager.proof.rs
++++ b/src/kernel/src/mm/phys/manager.proof.rs
+@@ -5,7 +5,7 @@
+ //
+ // Abstract laws ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+No spec drift — proving only discharged the two `admit()` lemmas. Now running the cross-module (full kernel) verification and checking the build command.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tee /tmp/verify_all.log | tail -40
+
+[THINKING] The proving phase only replaced the admit() calls in manager.proof.rs with actual proofs, keeping the spec unchanged and eliminating all admits. The verification passed cleanly with all 11 lemmas verified and zero errors. Now I need to work through the remaining checklist items, starting with isolating a reproducer for the Verus limitation involving external_body.
+
+Actually, looking more carefully at the trust boundaries — the global static mut and unspecced upstream functions aren't really "Verus limitations needing a reproducer." They're documented trust boundaries in tcb-allowed.md and verus-unsupported.md, and the manager functions are justified as a stateless facade mutating global state. That's a legitimate design choice, not a claimed Verus bug, so there's nothing to reproduce here. Next I need to run the full cross-module kernel verification and then figure out the build command to check for zero warnings.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
