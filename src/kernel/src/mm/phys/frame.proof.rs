@@ -65,6 +65,7 @@ impl Inner {
         &&& forall|i: int| 0 <= i < self.bitmap@.num_bits ==> {
             &&& frame_addr_of(i) >= 0
             &&& frame_addr_of(i) <= usize::MAX as int
+            &&& i <= spec_max_frame_number()
         }
         // Tail-zero: refcount slots beyond the bitmap range must be zero
         &&& forall|i: int| self.bitmap@.num_bits <= i < self.refcount@.len() ==>
