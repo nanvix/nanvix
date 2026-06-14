@@ -514,3 +514,121 @@ Now re-run full verification:
 [THINKING] I'm checking whether removing the assume_specifications will leave unused imports in the spec file — PresentFlag, ReadWriteFlag, and PageTableEntry were only referenced there, so I need to verify if identity_map.rs itself still needs them before cleaning up the imports.
 
 Let me just run the verification build and see what happens.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+verification results:: 76 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.27s
+
+=== Results ===
+  76 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Full verify passes: 76 verified, 0 errors (the `admit`/`external_body` counts are pre-existing from other unverified modules — and actually dropped by 2 since I removed the Ex specs). Now verify the normal build (dual compilation):
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tail -20
+
+[THINKING] All 76 verifications passed with no errors. The "CHEATING_DETECTED" status comes from pre-existing admits and external_body declarations in other unverified modules, not from my changes. My pte.proof.rs file is empty with no admits, and I actually reduced the external_body count from 14 to 12 by removing two type specs—that's a net improvement.
+
+Now I need to run the build to verify everything compiles correctly in both configurations.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build:|^all:|build-|^verify-arch:" Makefile | head -20
+[RESULT ✓] bash: 216:export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc -Zjson-target-spec
+221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+263:# build-std configuration and a non-standard target triple that can produce incorre...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-z-]+:" Makefile | grep -iE "kernel|all-nanvix|^all" | head
+
+[THINKING] I need to track down the actual build command—the `build` skill references `./z`, so I'm looking for what the kernel build target actually is.
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+`make build` is a no-op; the project builds via `./z`. Let me confirm normal compilation works using the build skill's approach.
+[TOOL] skill: build
+
+[THINKING] I should verify that the Verus attributes are properly gated behind cfg flags so the code compiles in normal mode—let me run a cargo check on the arch crate to confirm everything builds without the Verus toolchain.
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- kernel 2>&1 | tail -20
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "check-kernel|check-guest|^check" Makefile | head
+[RESULT ✓] bash: 652:	rust-lint-check-kernel \
+653:	rust-lint-check-guest-binaries \
+654:	rust-lint-check-guest-rlibs \
+655:	rust-lint-check-guest-staticlibs
+750:	format-check-guest-binaries \
+751:	format-check-guest-rlibs \
+752:	format-check-guest-staticlibs \
+753:	format-check-kernel
+820:check: \
+821:	check-kernel...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- check-kernel 2>&1 | tail -25
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#verus_prettyplease@0.0.0-2026-05-31-0205","manifest_path":"/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_prettyplease-0.0.0-2026-05-31-0205/Cargo.toml","target":{"kind":["lib"],...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+All checks pass. Dual compilation works (normal `check-kernel` succeeded; Verus `make verify` clean).
+
+## Summary
+
+Added formal Verus specs to `pte.rs`, mirroring the verified `pde` sibling and the View design.
+
+**`pte.spec.rs`** — Added `PteFlagsView` (8 control bits) and `PteView` (`flags` + `frame: int`) View types with `closed` `view()` impls, `inv()` predicates, the new `spec_cow_set` projection (reusing pde's other 7 helpers to avoid glob-re-export collisions), and spec transitions `spec_pte_flags_new` (defaults `cow = false`) / `spec_pte_new`.
+
+**`pte.rs`** — Added `#[verus_verify]` to both structs and `#[verus_spec]` contracts to the four in-scope functions:
+- `PageTableEntryFlags::new` → `result@ == spec_pte_flags_new(...)`
+- `PageTableEntryFlags::is_present` → `result == self@.present`
+- `PageTableEntry::new` → `result@ == spec_pte_new(flags@, frame@)` + `result.inv()` (via `use_type_invariant`)
+- `PageTableEntry::is_present` → `result == self@.flags.present`
+
+**`flags.rs`** — Added `#[verus_verify]` to `CopyOnWriteFlag` (the one PTE-specific enum lacking it) so `is CopyOnWrite` works in spec.
+
+**`identity_map.spec.rs`** — Removed the now-superseded placeholder `assume_specification`s and `Ex*` external type specs (they caused duplicate-spec errors), per the documented "placeholders removed when the dependency module is verified" methodology.
+
+**`pte.proof.rs`** — Left empty; no in-scope function needs a proof lemma.
+
+Results: `make verify-arch` → 48 verified, 0 errors; `make verify` → 76 verified, 0 errors (no regressions; `external_body` count even dropped by 2); normal kernel build succeeds. No bugs found.
+
+[THINKING] Both compilation modes are working correctly now—the dual compilation passes with verus mode and normal mode both succeeding. I've completed all the necessary components: the spec file with view types and invariants, the proof file (which remains empty since no lemmas are needed), the main file with verus_spec annotations on the four in-scope functions, and the flags file with verus verification enabled.
+
+
+=== Session End ===
+Session: f9ecadea-b864-4e11-aa10-94d6888ccac5
+Duration: 295.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pte/specification/prover-claude-20260614-114221.jsonl
