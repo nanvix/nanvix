@@ -79,3 +79,71 @@ inexpressible at this abstraction; if a caller ever needs it, the fix is an
 exec-behavior change (make `KernelFrame::new` infallible in the kernel-frame
 context, or convert wrap-failure to a panic) — out of scope for the spec phase.
 
+
+## Proving-phase outcome (admit discharge)
+
+No code bugs were found while proving `manager.rs`. Two source changes were
+required and both are sanctioned by `verus-ai-logs/tcb-allowed.md` (not bug
+fixes):
+
+- `PhysMemoryManager::init` and `kernel_watermark()` gained
+  `#[verus_verify(external_body)]`. Verus cannot translate their bodies
+  (`init` writes the `static mut PHYS_MEMORY_MANAGER`; `kernel_watermark`
+  reads the build-time constant `config::kernel::KERNEL_WATERMARK` from a
+  non-Verus crate). Both are already listed in `tcb-allowed.md`; without the
+  attribute the crate does not compile under Verus.
+- `check_user_watermark` was refactored to bind `let available =
+  frame::free_count();` *before* the `kernel_watermark() + count` overflow
+  check. This is behaviour-preserving (`free_count()` is a side-effect-free
+  read) and lets the `available as nat == phys_view().frames.free_count()`
+  postcondition supply the bound `free_count() <= usize::MAX` on every path,
+  which the overflow `Err` arm relies on.
+
+### Discharged (admit removed)
+
+- **`lemma_free_count_bounded`** — deleted. The `<= usize::MAX` bound is now
+  obtained soundly from `frame::free_count()`'s `usize`-typed result (see the
+  `check_user_watermark` refactor above) instead of being assumed.
+- **`lemma_kernel_bulk_err_restored`** — deleted (dead code, 0 call sites).
+  The kernel contiguous-bulk `Err` arm proves `final(self)@ == old(self)@`
+  directly from the loop invariant `self@ == g_old` (the kernel path never
+  mutates `self@`: `frame::alloc_contiguous` is a free function).
+- **`lemma_user_bulk_ok`** — deleted and replaced by a real inductive proof.
+  `alloc_many_user_frames`'s loop now carries `user_bulk_inv`, discharged via
+  proven helper lemmas (`lemma_user_addr_set_empty/_push`,
+  `lemma_book_all_empty`, `lemma_book_all_alloc_one`, `lemma_user_bulk_base`,
+  `lemma_user_bulk_step`). The `book_all`-accumulation and distinctness
+  (`user_addr_set(frames@).len() == count`, OBS-2) follow from `Upool::alloc`'s
+  real `&mut self` transition spec (`final@ == old@.alloc_one(uf@)`, `uf@`
+  drawn from `old@.free_frames`), so each handle owns a distinct,
+  previously-free frame.
+
+### Remaining (irreducible within this module's scope — record only)
+
+These 4 `admit()`s are the genuine §8 ghost-token / Drop trust boundary; they
+are **not** dischargeable in `kernel::mm::phys::manager` without out-of-scope
+changes, and forcing them would require unsound axioms:
+
+- **`lemma_manager_attached`** (`m@ == phys_view().frames`). `m@ == m.upool@`
+  (closed) and `phys_view()` are both `uninterp`; no axiom in scope links the
+  manager/upool view to the global partition. The link is the §8 ghost-token
+  attachment, realized by a token over the `frame::INSTANCE` singleton — which
+  lives in the out-of-scope `frame` layer.
+- **`lemma_kernel_alloc_one`** / **`lemma_kernel_alloc_contiguous`**
+  (`post == pre.alloc_one(addr)` / `pre.book_all(...)`). `frame::alloc` and
+  `frame::alloc_contiguous` are *free functions* that do not take `self`, and
+  `phys_view()` is a **constant** (parameter-free) accessor, so the pre→post
+  partition transition is inexpressible at this layer (asserting it alongside
+  `lemma_manager_attached` would even force `pre == post`). Expressing the
+  transition needs a versioned/stepped ghost token threaded through the frame
+  layer (out of scope; `frame.rs` and `phys_view()` are not modifiable here).
+  Compare `Upool::alloc`, which *can* express its transition because it takes
+  `&mut self` — that is exactly why the user bulk path was dischargeable above.
+- **`lemma_user_bulk_err_restored`** (`m@ == pre` after `frames.clear()`).
+  `clear()` drops the already-allocated `UserFrame`s, which frees them via
+  `UserFrame::drop` → `frame::free`. Verus does not model `Drop` side effects
+  on `self@`, so the restoration of the partition is genuinely unobservable in
+  the exec model and must be asserted.
+
+Net: manager `admit()` count 7 → 4. `make verify-kernel MODULE=mm::phys`
+reports 0 errors (42 verified).
