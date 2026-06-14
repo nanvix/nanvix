@@ -995,9 +995,10 @@ impl DynamicLibrary {
     ///
     /// Each returned dependency edge is removed from this library, so the
     /// `Arc` references it held are released to the caller. `dlclose` relies
-    /// on this to drop a dependent's hold on its dependencies before deciding
-    /// whether those dependencies have become unreferenced and can be
-    /// unloaded.
+    /// on this during the final teardown phase — after all `.fini_array`
+    /// destructors have run — to drop a dependent's hold on its dependencies so
+    /// that the unloaded libraries can be reclaimed once the last references are
+    /// dropped.
     pub fn take_dependencies(&mut self) -> Vec<(String, Arc<Mutex<Self>>)> {
         let mut dependencies: Vec<(String, Arc<Mutex<Self>>)> = Vec::new();
         for (name, library) in self.dependencies.iter_mut() {
