@@ -99,3 +99,4 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: phys-upool
 ============================================================
+[2026-06-15 03:20:40] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
