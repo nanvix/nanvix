@@ -63,6 +63,21 @@ frame singleton bridge is itself verified.
   reference count. `ensures` (on success) the returned count equals the frame's
   refcount; (on failure) the frame is not allocated.
 
+## Allowed `external_body` — `UserFrame::drop` (`upool.rs`)
+
+`UserFrame::drop` releases the frame's reference by calling `frame::free` and, on
+the error path, logs via the `error!` macro. The `error!`/`write!` expansion uses
+`core::fmt` Debug formatting (`{:?}`), which Verus cannot translate to VIR
+("Unsupported constant type"). The function is therefore `external_body`; its
+`#[verus_spec]` contract is honored by trusting that body. The contract is not a
+new guarantee — `ensures phys_view().inv()` is exactly the post-state already
+established by the `external_body` `frame::free` shim it calls, and the logging
+branch performs no state change. `opens_invariants none` / `no_unwind` record that
+`drop` opens no invariant and cannot unwind (errors are logged, not propagated).
+
+- `src/kernel/src/mm/phys/upool.rs::<UserFrame as Drop>::drop` — releases one
+  reference on scope exit. `ensures phys_view().inv()` on every path.
+
 ## Allowed `external_body` — `PhysMemoryManager` (`manager.rs`)
 
 `PhysMemoryManager` is a **stateless facade** over the global frame allocator

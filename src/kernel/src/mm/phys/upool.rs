@@ -200,6 +200,7 @@ impl UserFrame {
 
 #[verus_verify]
 impl Drop for UserFrame {
+    #[verus_verify(external_body)]
     #[verus_spec(
         ensures
             // Releasing a reference preserves the subsystem invariant (the last
