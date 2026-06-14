@@ -735,3 +735,38 @@ Turn 44
 Turn 45
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
+[RESULT ✓] bash: verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Exit code : 0
+  verification: 2 verified, 0 errors (exit 0)
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Confirmed: returning `0` still passes — `into_raw_value`'s body is **not** being verified (it's trusted via the trait spec). This is the VERUS-TOOL-1 gap. Let me revert the test and attempt to actually verify the impl.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/page.rs.bak src/kernel/src/hal/mem/types/address/aligned/page.rs &&
+
+[THINKING] The body of `into_raw_value` is returning `0`, which clearly violates the postcondition, yet verification still passes with "2 verified, 0 errors" — meaning the body itself isn't being checked. The two verified items are likely `from_address` and another obligation, while the trait impl body is being trusted without verification. This points to the core issue: generic trait impl bodies aren't verified unless the impl block itself is marked for verification.
+
+I need to revert my test change and then work on actually verifying the impl body to close this gap.
+[RESULT ✓] bash: 64:    fn into_raw_value(self) -> usize {
+impl<T: Address> Address for PageAligned<T> {
+    fn into_raw_value(self) -> usize {
+        self.0.into_raw_value()
+    }
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Now let me reproduce the reported panic by adding `#[verus_verify]` to the generic trait impl.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'll try adding the `#[verus_verify]` attribute directly to the impl block for `PageAligned<T>` to see if I can reproduce the panic.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=

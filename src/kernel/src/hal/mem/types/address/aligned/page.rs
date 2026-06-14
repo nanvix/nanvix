@@ -60,10 +60,10 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
     fn into_raw_value(self) -> usize {
-        let _ = self.0.into_raw_value();
-        0
+        self.0.into_raw_value()
     }
 
     fn clone_address(&self) -> Self {
