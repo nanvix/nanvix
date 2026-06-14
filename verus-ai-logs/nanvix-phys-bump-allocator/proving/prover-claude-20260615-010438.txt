@@ -259,3 +259,56 @@ Turn 9
 
 [THINKING] I need to run a verification check to establish the baseline state, starting by setting the executable directory variable.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "external_body" src/ | head -20
+
+[THINKING] So the external_body attributes were stripped during the body-removal phase, and now I'm in the proving stage where I can see the actual issues: `alloc` has a break statement inside a loop that Verus doesn't support, plus a raw pointer dereference, while `alloc_as` also has a raw pointer dereference. Both are marked as TCB-allowed external_body functions according to the documentation, which permits these kinds of operations.
+
+The real constraint here is that without PointsTo permissions for the BssStorage region—which don't exist in this crate—I genuinely can't verify these functions with real bodies. The right approach is to restore the `#[verus_verify(external_body)]` attribute to both functions, which aligns with the prior specification phase that verified cleanly. The bodies are still present in the code, but marking them as external_body acknowledges that they're trusted TCB functions rather than trying to prove something that's impossible given the current permission model.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:115:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/frame.rs:181:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/frame.rs:254:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/frame.rs:339:    #[verus_verify(external_body)]
+src/kernel/src/m...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/raw-array/src/lib.rs
+
+[THINKING] I should check how raw-array handles this pattern with verus_spec and verus_verify to apply the same approach here.
+[RESULT ✓] view: 235.     ///
+236.     /// # Returns
+237.     ///
+238.     /// On success, the new managed array is returned, with all bits set to zero.
+239.     /// On failure, an error is returned instead.
+240.     ///
+241.     #[verus_verify(external_body)]
+242.     #[verus_spec(result =>
+243.         requires
+24...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Restoring TCB external_body markers
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I need to add the `#[verus_verify(external_body)]` attribute to both `alloc` and `alloc_as` since they're TCB-allowed functions. But I'm weighing whether this is the right approach or if I should attempt actual proofs instead—`align_up` has a verifiable body, while `as_mut_ptr` is a trait method with an external implementation, so the verification strategy needs to account for these differences.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-bump-allocator 2>&1 | tail -40
