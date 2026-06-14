@@ -854,3 +854,106 @@ Now I'm documenting the deferred obligations in verification-todo.md and confirm
 ────────────────────────────────────────────────────────────
 Turn 52
 ────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md with 4901 characters
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /tmp/verify_kernel_full.log
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=12 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+No regressions — full kernel verify exits 0, global admits dropped 36→31 (my 5 lemma proofs). Let me confirm the exec source is byte-identical to baseline (I only changed proof.rs).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== source vs baseline (should be identical) ==="; diff /tmp/identity_m
+
+[THINKING] The kernel verification passed with no errors and no regressions—the "CHEATING_DETECTED" flag is just from the remaining admits scattered throughout the codebase, which I've actually reduced from 36 down to 31 by removing 5 lemma admits with my changes. Now I'm checking the final state of proof.rs and running an AST consistency check to make sure I didn't accidentally modify the exec function.
+[RESULT ✓] bash: === source vs baseline (should be identical) ===
+IDENTICAL
+=== proof.rs diff vs original (lemma bodies) ===
+18c18,19
+<     admit();
+---
+>     assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
+>     assert(v.mapped.insert(page).contains(page));
+27c28,30
+<     admit();
+---
+>     asse...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status --short src/kernel/src/mm/virt/; echo "=== check ignore ==="; git 
+
+[THINKING] I'm noticing that git status isn't showing proof.rs as modified even though the diff confirms changes exist, which suggests it might be gitignored or already in a particular state — let me check the status for that specific file to understand what's happening.
+[RESULT ✓] bash: === check ignore ===
+exit:1
+=== ls-files ===
+src/kernel/src/mm/virt/identity_map.proof.rs
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git diff --stat src/kernel/src/mm/virt/identity_map.proof.rs; echo "=== git d
+
+[THINKING] I'm noticing something odd with the git status — proof.rs shows as tracked but no modifications appear for that directory, yet my local changes differ from the backup I made. This suggests the git HEAD might already contain the proved version, which doesn't match my understanding of when I made the backup.
+[RESULT ✓] bash: === git diff (any) ===
+=== HEAD version has admit? ===
+1
+=== working tree admit count ===
+1
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "admit" src/kernel/src/mm/virt/identity_map.proof.rs; echo "=== recen
+
+[THINKING] I'm checking the admit() counts in the proof file across different versions. The HEAD version and my working tree both show just 1 admit(), which is strange since I expected to see multiple admits from the original lemmas. It looks like HEAD might already have most of the proofs completed, which is unexpected—let me investigate what's actually in there.
+[RESULT ✓] bash: 6:// Signatures only during the specification phase; bodies are `admit()` placeholders that the
+=== recent git log ===
+ae2052735 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=31 external_body=12 cfg_gate=15)
+1fda5e9e6 [verus] verify PASS (cheating detected...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+All 5 lemmas are proven (the only remaining "admit" is in a comment). The verify harness auto-commits each run. Let me update the now-stale header comment in proof.rs to reflect that the lemma bodies are proven.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] The comment on line 6 is just a placeholder, so proof.rs actually has all 5 lemmas proven with zero admit() calls. Looking at the git log, the verify.sh script auto-commits after each run—the passing commits show the proved proof.rs, while the earlier failed commits are where things weren't working yet.
+
+Since the lemma bodies are now proven, I should update the header comment in proof.rs to reflect that the bodies are complete rather than just placeholders, while noting that the exec admits in the source remain.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // Signatures only during the specification phase; bodies are `admit()` placeholders that the
+7. // proving phase disch...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
