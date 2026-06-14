@@ -303,3 +303,108 @@ Turn 13
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch MODULE=mem::paging::frame::number 2>&1 | tail -30
+[RESULT ✓] bash: - into_raw_value
+    - is_user
+    - is_writable
+    - set_read_write
+    - set_user_supervisor
+    - is_cow
+    - set_cow
+    - from_raw_value
+    - into_raw_value
+    - flags
+    - frame_number
+    - frame_address
+    - set_read_write
+    - set_user_supervisor
+    - is_cow
+    - set_cow
+    - from...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null; e
+
+[THINKING] I'm looking at the verification results for the module filter—it seems everything is being verified and showing some cheating flags from external_body=3, which are actually allowed in the TCB. Let me dig into the cheating details to see what's actually in scope. The real question is whether number.rs is actually verified since it's currently showing admit=0, which makes me wonder if the proofs are already working in the source. I need to check whether the into_raw_value and from_raw_value functions are actually being verified.
+
+The coverage is only 18 out of 525, so I should look at the cheating details and cross-reference against the unverified list to see if the number.rs functions are actually getting verified or if they're still unverified.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== coverage unverified grep number ===
+  frame_number
+  frame_number
+  frame_address
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "verification results\|verified\|errors" verus-ai-logs/verify-arch
+
+[THINKING] I'm checking whether the number.rs functions have verification contracts and pass their checks, and looking for references to into_raw_value and from_raw_value in the coverage data to see if they're associated with PageTableEntry or elsewhere.
+[RESULT ✓] bash: === full unverified count ===
+508 verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "verified\|error" verus-ai-logs/verify-arch/verus-logs/verus_2026-
+[RESULT ✓] bash: === check number funcs in unverified ===
+52
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/verify-arch/verus-logs/; echo "==="; grep -rln "number" ve
+
+[THINKING] The log file might not have "verified" text, but the coverage-unverified entries show 52 from_raw/into_raw conversions across different types, while number.rs has contracts on 18 out of 525 functions that count as verified. The verification exit code is 0, meaning the proofs already pass, so I need to confirm there are no admits and that the build actually completed successfully.
+
+Since the cache shows nothing changed, I should force a clean re-verification to ensure the number module genuinely verifies and isn't being skipped. The verify script counts 18 functions with contracts, so I need to check if number's 3 targets are among them by looking for a verified-functions log.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-14_08-09-50.log
+verus_2026-06-14_08-10-07.log
+verus_2026-06-14_08-13-23.log
+verus_2026-06-14_08-13-34.log
+verus_2026-06-14_08-14-25.log
+verus_2026-06-14_08-18-15.log
+verus_2026-06-14_08-18-29.log
+verus_2026-06-14_08-20-25.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -40 verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_03-58-21.log
+
+[THINKING] I need to verify that the proofs are actually complete by forcing a fresh check rather than relying on cached results. Let me pull the most recent verification logs to see what functions were actually verified and whether there are any errors.
+[RESULT ✓] bash: Timestamp: 2026-06-15_03-58-21
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: mem::paging::frame::number
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Finished `dev` profile [opti...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/frame/number.rs && make verify-arch 
+
+[THINKING] I need to clear the cache by modifying the number.rs file and run the verification again to get an accurate count of verified items and any errors.
