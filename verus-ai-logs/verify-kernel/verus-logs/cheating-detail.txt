@@ -37,3 +37,11 @@
     - mm/phys/upool.rs:221 Upool (struct): external_body
     - mm/phys/upool.rs:246 new: external_body
     - mm/phys/upool.rs:279 alloc: external_body
+    - mm/virt/identity_map.proof.rs:14 lemma_install_page_maps: admit
+    - mm/virt/identity_map.proof.rs:23 lemma_install_page_monotone: admit
+    - mm/virt/identity_map.proof.rs:32 lemma_install_page_preserves_inv: admit
+    - mm/virt/identity_map.proof.rs:45 lemma_map_page_accessible: admit
+    - mm/virt/identity_map.proof.rs:53 lemma_map_page_preserves_inv: admit
+    - mm/virt/identity_map.rs:522 ensure_pt: admit
+    - mm/virt/identity_map.rs:609 ensure_pte: admit
+    - mm/virt/identity_map.rs:692 identity_map_page: admit
