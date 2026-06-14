@@ -318,3 +318,486 @@ Now I need to run the two sub-agents independently to review all eight points an
 
     // SAFETY: the PT is identity-mapped (BSS-backed).
     let pt: Table<PageTableEntry> = unsafe { Table::from_address(pt_paddr...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Ground truth established. Verification exits 0 but reports **CHEATING_DETECTED**: `admit=31` crate-wide, with **3 admits in the in-scope functions** (`ensure_pt` L534, `ensure_pte` L632, `identity_map_page` L719). This is a decisive FAIL. Now launching the two independent sub-agent reviews.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== in-scope file grep ===" && grep -nE "admit\(|assume\(|external_bo
+
+[THINKING] The verification passes with exit code 0 only because of the admits scattered throughout—this is fundamentally a failed verification. I've now pinpointed the exact locations: three admit statements in identity_map.rs at lines 534, 632, and 719, each corresponding to one of the in-scope functions, with no external_body annotations present.
+
+Looking at the other trust markers, there are two assume_specification calls in the spec file (one for std's slice pointer method which is allowed as an external-bottom boundary, and one for FixedSizeBumpAllocator::new from an unverified internal dependency—a gray area), plus one external_type_specification and some cfg-gated logging code. But these are secondary concerns compared to the core issue: the three in-scope function bodies are entirely admitted rather than actually proven, which directly violates the proving checklist requirement of zero admits. The CHEATING_DETECTED status confirms this—the verification is fundamentally incomplete.
+
+I'm planning to launch two independent reviewers to validate this finding and write their assessments. I'll provide them with the verification output and file-level context so they can confirm the admit counts and other facts without needing to run make themselves, avoiding parallel build conflicts. Then I'll consolidate their reviews into a final report.
+[RESULT ✓] bash: === in-scope file grep ===
+src/kernel/src/mm/virt/identity_map.rs:534:    proof! { admit(); }
+src/kernel/src/mm/virt/identity_map.rs:632:    proof! { admit(); }
+src/kernel/src/mm/virt/identity_map.rs:719:    proof! { admit(); }
+src/kernel/src/mm/virt/identity_map.spec.rs:106:// currently `admit()`-e...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Comprehensive ground truth gathered. Launching the two independent sub-agent reviews in parallel (claude-opus-4.8 and gpt-5.3-codex).
+[TOOL] report_intent: Launching independent sub-agent reviews
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'mode': 'background', 
+
+[THINKING] Now I'm launching both sub-agents in parallel to write their independent reviews. I'll give them the ground truth I've gathered to prevent conflicts, but have them verify file-level details themselves through grep and direct inspection. The output will go into a final-review directory with separate markdown files for each agent's findings.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both independent reviews are running in the background. I'll wait for them to complete before consolidating.
+[TOOL] report_intent: Reading in-scope files
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (32.5 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // Fully proven from the `IdentityMapView` spec definitions (no `admit()`). They expose the
+7. // monotonicity / idempo...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me read the source file in sections.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] grep: admit|external_body|assume|assume_specification|external_type_specification|VERUS REWRITE|cfg
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:24:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:26:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:534:    pr...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module implements identity mapping for physical memory accesses.
+8. //!
+9. //! Only the kernel process has physical memory identity-mapped into its virtual address s...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing verification artifacts
+[TOOL] glob: src/kernel/src/mm/virt/identity_map*.rs
+[TOOL] glob: verus-ai-logs/nanvix-phys-virt-identity-map/*.md
+[TOOL] glob: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification_todo.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/find_call...
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+I found 3 admits at lines 534, 632, 719. Let me view the three functions with their contracts.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 460. ///
+461. /// # Notes
+462. ///
+463. /// If `size == 0`, this function is a no-op and returns success.
+464. fn ensure_identity_mapped_range(
+465.     start: PageAligned<PhysicalAddress>,
+466.     size: usize,
+467. ) -> Result<(), Error> {
+468.     debug_assert!(size.is_multiple_of(mem::PAGE_SIZE)...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] rg: fn\s+(identity_map_page|ensure_pt|ensure_pte)\b
+[TOOL] rg: admit\s*\(
+[TOOL] rg: external_body|assume\b|assume_specification|external_type_specification|#\[cfg
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:533:fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:627:fn ensure_pte(
+/home/ruize/nanvix-phy-specs-b...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs:6:// Fully proven from the `IdentityMapView` spec definitions (no `admit()`). They expose the
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:106:// currently `admit()`-ed in the ex...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:115:// `ExTable`/`ExTableIndex` external type specs, and the `assume_specification`s
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:141:#[verifier::external_type_specification]
+/hom...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 600. ///
+601. /// # Returns
+602. ///
+603. /// Upon success, empty is returned. Upon failure, an error is returned instead.
+604. ///
+605. /// # Errors
+606. ///
+607. /// - [`ErrorCode::InvalidArgument`]: Failed to read the PTE.
+608. /// - [`ErrorCode::BadAddress`]: The frame number is out of range.
+60...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] rg: VERUS REWRITE|verus_keep_ghost|external_body|assume_specification|admit\s*\(
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:24:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:26:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:534:    pr...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module implements identity mapping for physical memory accesses.
+8. //!
+9. //! Only the kernel process has physical memory identity-mapped into its virtual address s...
+[RESULT ✓] view: 260.         // SAFETY: `base` is identity-mapped (virtual == physical) and valid for
+261.         // writes of `size` bytes.
+262.         unsafe {
+263.             fast_memset(base, value, size);
+264.         }
+265.         Ok(())
+266.     })
+267. }
+268. 
+269. ///
+270. /// # Description
+271. ///
+27...
+[RESULT ✓] view: 520.                 &&& spec_is_page_aligned(pt_paddr as int)
+521.             },
+522.             // On failure no usable page-table address is produced and the identity map is left
+523.             // well-formed: `ensure_pt` only ever installs *empty* page tables, so it maps no
+524.             ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.proof.rs
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // Fully proven from the `IdentityMapView` spec definitions (no `admit()`). They expose the
+7. // monotonicity / idempo...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+All three in-scope functions begin with `proof! { admit(); }` (lines 534, 632, 719). Let me check supporting files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "=== bugs.md existence ==="
+ls -la verus-ai-logs/nanvix-phys-virt-identit
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] bash: === bugs.md existence ===
+ls: cannot access 'verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md': No such file or directory
+=== cheating-detail in-scope grep ===
+40:    - mm/virt/identity_map.rs:533 ensure_pt: admit
+41:    - mm/virt/identity_map.rs:627 ensure_pte: admit
+42:    - mm/virt/identity_ma...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] glob: verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] view: 1. # View Design: `mm::virt::identity_map`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, this module is the **kernel's identity map**: a single global,
+6. write-and-supervisor mapping that answers one question — *"is this physical page
+7. reachable at its own physical address (V == P) in the kernel...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::virt::identity_map`
+2. 
+3. ## Scope
+4. 
+5. Verification-order target functions (only these are in scope):
+6. 
+7. - `identity_map_page` — `pub(crate)`
+8. - `ensure_pt` — private helper
+9. - `ensure_pte` — private helper
+10. 
+11. All other functions in the module (`init`, `m...
+[RESULT ✓] view: 1.     - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+2.     - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+3.     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+4.     - hal/mem/types/address/phys.proof.rs:16 lemma_fra...
+[RESULT ✓] glob: No files matched the pattern.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] rg: VERUS REWRITE
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Confirmed: 3 admits in-scope, bugs.md absent, no VERUS REWRITE. Now reading caller analysis and view design.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::virt::identity_map`
+2. 
+3. ## Scope
+4. 
+5. Verification-order target functions (only these are in scope):
+6. 
+7. - `identity_map_page` — `pub(crate)`
+8. - `ensure_pt` — private helper
+9. - `ensure_pte` — private helper
+10. 
+11. All other functions in the module (`init`, `m...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Counting guardrail markers
+[TOOL] bash: python - <<'PY'
+from pathlib import Path
+files=[
+'/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: FILE /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+  24: cfg_attr: #[cfg(verus_keep_ghost)]
+  26: cfg_attr: #[cfg(verus_keep_ghost)]
+ 534: admit: proof! { admit(); }
+ 537: cfg_attr: #[cfg(not(verus_keep_ghost))]
+ 553: cfg_attr: #[cfg(not(verus_keep_ghost))]
+ 565: cfg_...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] rg: ^\s*proof!\s*\{\s*admit\(\);\s*\}
+[TOOL] rg: \bassume\s*\(
+[TOOL] rg: ^\s*pub\s+assume_specification
+[TOOL] rg: external_type_specification|verus_verify\(external_body\)|^\s*#\[cfg
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:534:    proof! { admit(); }
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:632:    proof! { admit(); }
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:719:    pr...
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:178:pub assume_specification<T>[ <[T]>::as_ptr ](s: &[T]) -> *const T;
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:182:pub assume_specification<const N: usize, const A: usize, S:...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:141:#[verifier::external_type_specification]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs:151:// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB flush),
+...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+All files reviewed. Let me verify the directory exists and confirm cfg counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+mkdir -p verus-ai-logs/nanvix-phys-virt-identity-map/final-review
+echo "=== ad
+[RESULT ✓] bash: === admit in-scope ===
+src/kernel/src/mm/virt/identity_map.rs:534:    proof! { admit(); }
+src/kernel/src/mm/virt/identity_map.rs:632:    proof! { admit(); }
+src/kernel/src/mm/virt/identity_map.rs:719:    proof! { admit(); }
+src/kernel/src/mm/virt/identity_map.spec.rs:106:// currently `admit()`-ed in...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] glob: verus-ai-logs/nanvix-phys-virt-identity-map/final-review
+[RESULT ✓] glob: No files matched the pattern.
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final report
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review && cat > /home/
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Review (gpt-5.3-codex): virt-identity-map
+2. ## Spec Quality
+3. - In-scope function contracts exist on all three functions, but are too weak for caller obligations.
+4. - `IdentityMapView::internal_inv()` is `true` (`identity_map.spec.rs:60-62`), so `inv()` carries only alignment + pre-ini...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Done. I wrote the raw review to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.codex.md`
+
+**Verdict: FAIL**
+
+Key blockers:
+- `admit()` present in all 3 in-scope bodies: `identity_map.rs:534` (`ensure_pt`), `632` (`ensure_pte`), `719` (`identity_map_page`).
+- Verification status is `CHEATING_DETECTED` (confirmed against `cheating-detail.txt` and direct grep).
+- Caller-critical guarantees remain under-specified (idempotence, pre-init no-op relation, permissions/TLB/non-recursion guarantees).
+- `bugs.md` for this module does not exist.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': True, 'timeout': 60}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 121s, total_turns: 0, model: gpt-5.3-codex, duration: 119s
+
+Done. I wrote the raw review to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Codex review complete (FAIL). Waiting on the claude review.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+All counts confirmed. Writing the final review.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md with 8160 characters
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+## Verdict: **FAIL**
+
+Wrote the review to `verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md`.
+
+**Key blockers (verified independently with grep/view):**
+
+1. **3 `admit()`s in-scope** — `proof! { admit(); }` at the very top of all three functions:
+   - `identity_map.rs:534` `ensure_pt`
+   - `identity_map.rs:632` `ensure_pte`
+   - `identity_map.rs:719` `identity_map_page`
+   
+   (cheating-detail.txt lists them as 533/627/718 — same three.) This means **nothing about the bodies is proven**.
+
+2. **Verification = CHEATING_DETECTED** (exit 0 is misleading; crate-wide `admit=31 external_body=11`).
+
+**Supporting findings:**
+- In-scope guardrail counts: admit **3**, assume 0, external_body 0, assume_specification 2 (spec.rs:178,182), external_type_specification 1 (spec.rs:142), cfg-gated exec 5 (logging on error paths).
+- Spec is **vacuous against implementation**: `identity_map_view()` is `uninterp` and `internal_inv()==true`, so the abstract map is never tied to real page tables.
+- Caller coverage ~5/8: missing no-frame-allocator-recursion, TLB consistency, explicit permission predicate; `ensure_pt` Ok omits "PDE present / pt_paddr is PT frame address."
+- AST consistency: PASS (no `// VERUS REWRITE` comments).
+- `bugs.md` confirmed absent. No functional code bug found, but the module is wholly unproven.
+- proof.rs lemmas are clean (no admit) but never touch the admitted exec bodies.
+
+PASS criteria (zero admit, clean verification) are not met.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 138s, total_turns: 0, model: claude-opus-4.8, duration: 138s
+
+## Verdict: **FAIL**
+
+Wrote the review to `verus-ai-logs/nanvix-phys-virt-identity-map/fina...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Both independent reviews agree: **FAIL**. Let me verify the raw files exist and consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-virt-identity-map/final-review/ && echo "=
+
+[THINKING] Both reviews came back with the same result—a fail. Now I need to check that the raw review files are actually there, then put together the consolidated final_review.md file.
+[RESULT ✓] bash: total 1036
+drwxrwxr-x 1 ruize ruize    222 Jun 15 03:55 .
+drwxrwxr-x 1 ruize ruize    516 Jun 15 03:50 ..
+-rw-rw-r-- 1 ruize ruize   8226 Jun 15 03:55 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize   5546 Jun 15 03:54 final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 986852 Jun 15 03:55 review-claude-...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Both raw reviews are saved. Now writing the consolidated final review.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.md with 10775 characters
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Review complete. Both independent sub-agents (claude-opus-4.8, gpt-5.3-codex) and my own verification concur.
+
+## Result: **FAIL**
+
+**Decisive blockers:**
+1. **3 `admit()` in the in-scope functions** — `ensure_pt` (L534), `ensure_pte` (L632), `identity_map_page` (L719). Every body begins with `proof! { admit(); }`, so *nothing* about them is proven. The proving/cheating-elimination phases did **not** actually complete despite being marked done.
+2. **`make verify-kernel` → `CHEATING_DETECTED`** — exit 0 is vacuous (admits discharge obligations). Crate-wide: `admit=31, external_body=11`.
+
+**Supporting findings:**
+- In-scope guardrails: admit **3**, assume 0, external_body 0, assume_specification 2 (std `as_ptr` + workspace `bump_allocator::new` placeholder), external_type_specification 1, cfg-gated exec 5 (error-path logging only).
+- Spec is **vacuous against implementation**: `identity_map_view()` is `uninterp`, `internal_inv()` is `true` — abstract `mapped` never tied to real page tables.
+- Caller coverage ~5/8: missing no-frame-recursion, TLB consistency, explicit permission predicate, and `ensure_pt`'s PDE-present/pt_paddr facts.
+- TCB: compliant (no unauthorized in-scope `external_body`).
+- AST consistency: PASS (no rewrites). `bugs.md`: absent (no functional code defect found — the issue is a verification gap, not a bug).
+
+**Outputs written:**
+- `final-review/final_review.claude.md`
+- `final-review/final_review.codex.md`
+- `final-review/final_review.md` (consolidated)
+
+
+=== Session End ===
+Session: fafbf6c7-c8e9-4d53-8be0-bf2f03aff3bb
+Duration: 350.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/review-claude-20260615-035046.jsonl
