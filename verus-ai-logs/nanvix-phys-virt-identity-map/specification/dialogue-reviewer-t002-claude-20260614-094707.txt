@@ -214,3 +214,132 @@ The three `Err(_) => true` arms are gone, replaced with meaningful predicates. L
 703.         match result {
 704.             // The page containing `phys_addr` is reachable at its own physical address. After init
 705.             // this...
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+All three Err arms are now meaningful and verification passes (exit 0). Let me critically scrutinize soundness and the remaining items before deciding.
+
+The new Err predicates:
+- `identity_map_page`: `Err(_) => !accessible(phys_addr@)` — tight negation of Ok arm; sound (Err only post-init; failed map ⇒ not in `mapped`).
+- `ensure_pte`: `Err(_) => !mapped.contains(spec_page_base(phys_addr))` — tight negation of Ok.
+- `ensure_pt`: restructured `Ok => inv() && aligned`, `Err => inv()`.
+
+Let me verify the `ensure_pt` Err-arm reasoning (the reviewer-suggested "mapped unchanged" requires `old()`, which isn't available for a parameterless global accessor) against the established `mm::phys` free-function convention.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== mm::phys free-fn (singleton, no self) Err-arm style ===" && grep -n 'Err(_) =>' s
+
+[THINKING] Verification passes, but the exec bodies use `admit()` to skip actual proof, so I'm not getting verifier confirmation that these Err predicates are sound—I need to reason through that myself and check whether each Err arm actually specifies the behavior correctly.
+
+For `identity_map_page`'s `Err(_) => !accessible(phys_addr@)`, the body only fails when `ensure_pt` or `ensure_pte` fails (after the `pd_paddr==0` early return). The question is whether the abstract `initialized` flag is guaranteed true at that point—that's a view-mapping assumption from the proving phase, not something the spec phase verifies. The predicate seems plausible and meaningful for the caller, and it satisfies the checklist: no tautologies, error paths are meaningful, and it captures what the caller needs. But there's a lingering concern about whether the page could already be mapped from a prior call, which would make the guarantee too strong.
+
+Looking at the concrete paths: if the page were already mapped, the PDE would be present and readable, so `ensure_pt` would succeed and return `Ok`. For `Err` to occur, the PDE read must fail—and in the abstract model, if the page were mapped, the internal invariant would guarantee the PDE is present, so a read failure implies the page isn't mapped. That reasoning is sound at the abstraction level. Similarly, `ensure_pte`'s error guarantee that the page isn't mapped follows the same logic. For `ensure_pt`'s `Err(_) => identity_map_view().inv()`, the reviewer wanted it to state that `mapped` is unaffected, but that can't be expressed without a pre-state snapshot mechanism for the global view—`old()` doesn't apply to parameterless uninterpreted functions like `identity_map_view()`.
+
+Looking at the actual spec, both the `Ok` and `Err` arms of the match carry the invariant; there's no unconditional top-level `inv()` outside the match. So the `Err` arm's `inv()` isn't subsumed by anything else—it's the sole guarantee for failure cases. That's actually meaningful: it asserts the global map remains well-formed after a failed `ensure_pt`, which is a real no-corruption guarantee for callers, not a tautology. This aligns with the pattern of having meaningful ensures on error paths.
+
+The reviewer wanted "mapped unaffected," but that's genuinely inexpressible without pre-state threading. Unlike methods in other modules that can use `old(self)@`, `ensure_pt` is a free function operating on a parameterless global accessor with no `old()` available—you can't write `old(identity_map_view()).mapped == identity_map_view().mapped`. The fixer correctly identified this limitation and provided the strongest expressible predicate instead, which is a legitimate fix, not a workaround. But this raises a deeper question: the view design table prescribed `self@.mapped == old@.mapped` for `ensure_pt`, yet the current spec can't express it. Is this a sign the view design itself needs reconsideration, or is the parameterless global pattern just fundamentally incompatible with that requirement?
+
+Looking at how other free functions in the codebase handle this—like the frame functions in mm::phys—they also state post-state facts rather than deltas. They don't express "old == new" either. So the established convention for global-singleton free functions is post-state facts only, no deltas. The view design table's `self@.mapped == old@.mapped` was aspirational; the realized pattern is post-state facts, which is what `ensure_pt` now does with `inv()`. This is consistent with the codebase's singleton pattern, so it's not a rollback situation—the spec is sound.
+
+Now I need to re-verify the checklist items. For #13 on admits, there are 36 globally and 8 in-module (3 exec + 5 proof lemmas). These are spec-phase scaffolding meant to be discharged during proving. The task is the specification phase, so admits in exec bodies are placeholders to let the specs be written and the module translate.
+
+The key insight: the checklist applies across all phases, but for the spec phase specifically, the realistic bar for #13 is ensuring no new external_body or assume_specifications on the module's own functions, and that admits are only the expected scaffold. The module's own functions have admit only—no external_body, no assume, no trusted. This is acceptable for the specification phase since proofs come next.
+
+I'll mark #13 as PASS for the spec phase with a note that the proving phase must discharge these admits. Now I need to double-check #7 and #11, which were flagged as concerns—specifically the assume_specification on workspace-internal code like arch and bump_allocator, which the checklist says shouldn't have, though the spec.rs header documents these as temporary placeholders to be replaced when those modules are verified.
+
+The arch crate is the HAL boundary (trusted hardware/MMU operations), and bump_allocator is listed in tcb-allowed.md. These aren't really external dependencies—they're workspace members—but they're not-yet-verified boundaries that the checklist's own note allows temporarily. The caller_analysis explicitly identifies the paging operations as the trusted HAL boundary. I'll mark #7 as PASS for the spec phase with a tracked note that these assume_specifications must be removed once arch and bump_allocator are verified, consistent with how prior phases handled this.
+
+For #11, the Err arms are now meaningful and properly match caller expectations—the fixer made them tight negations of Ok. PASS. Let me double-check for soundness issues: ensure_pte's Err arm uses `!mapped.contains(spec_page_base(phys_addr as int))`, and while phys_addr is raw usize (not PageAligned), spec_page_base computes the aligned base consistently on both Ok and Err arms, so that's sound. The top-level `ensures identity_map_view().inv()` appears unconditionally for ensure_pte and identity_map_page but was moved into arms for ensure_pt—stylistic inconsistency but both are sound. No #5 subsumption concern reintroduced here.
+
+For #13, I need to be careful: the checklist explicitly says "report counts" and carves out external dependencies as temporarily allowed. The spec phase produces specs with admit scaffolding; the proof phase discharges those admits. Demanding zero admits in the spec phase would be unreasonable since that's the next phase's job. Marking #13 as PASS-for-spec-phase with tracked notes is appropriate.
+
+Everything previously failing is now fixed. I'll write turn_002_driver.md marking all items PASS or FIXED, then create STOP with RESOLVED.
+[RESULT ✓] bash: === mm::phys free-fn (singleton, no self) Err-arm style ===
+src/kernel/src/mm/phys/frame.rs:130:                Err(_) => {
+src/kernel/src/mm/phys/frame.rs:208:                Err(_) => {
+src/kernel/src/mm/phys/frame.rs:292:                Err(_) => {
+src/kernel/src/mm/phys/frame.rs:369:            ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Confirmed: `mm::phys` free functions (parameterless `phys_view()`, no `self`) state post-state facts on Err — never `old()` deltas — so `ensure_pt`'s `Err => inv()` matches the established singleton convention. Let me confirm the in-module cheating counts for #13.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== in-module own-function cheating ===" && grep -i 'identity_map' verus-ai-logs/veri
+
+[THINKING] I'm verifying that the free functions in `mm::phys` follow the established pattern of stating post-state facts on errors rather than using `old()` deltas, which aligns with how `ensure_pt`'s error case invokes `inv()`. There's a pre-existing `Err(_) => true` case in frame.rs that's outside my scope. Now I need to check the admit count within the module and ensure there are no new external_body, assume, or trusted annotations on my own functions.
+[RESULT ✓] bash: === in-module own-function cheating ===
+    - mm/virt/identity_map.proof.rs:14 lemma_install_page_maps: admit
+    - mm/virt/identity_map.proof.rs:23 lemma_install_page_monotone: admit
+    - mm/virt/identity_map.proof.rs:32 lemma_install_page_preserves_inv: admit
+    - mm/virt/identity_map.proof.rs:4...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All FAIL items resolved. In-module own-function cheating is **admit-only** (3 exec bodies + 5 proof lemmas) — the expected spec-phase scaffold; no `external_body`/`assume`/`trusted` on own functions. Let me update tracking and write the review.
+[TOOL] sql: {'description': 'Update checklist verdicts turn 2', 'query': "UPDATE checklist S
+
+[THINKING] I've confirmed that only `admit` appears on the functions I'm defining—three execution bodies and five proof lemmas—with no external bodies, assumptions, or trusted declarations. These admits are intentional scaffolding for the specification phase that I'll discharge during proving. Now I'm updating the checklist to mark all the FAIL items as resolved and moving into turn 2, then I'll create the STOP=RESOLVED marker. For the spec phase requirements, items #2, #4, and #6 are fixed, and #13 passes the spec phase criteria.
+[RESULT ✓] sql: Executed 5 statement(s):
+
+1. UPDATE
+   3 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+3. UPDATE
+   1 row(s) updated.
+
+4. UPDATE
+   1 row(s) updated.
+
+5. SELECT
+   17 row(s) returned:
+   
+   | id | item | verdict |
+   | --- | --- | --- |
+   | 1 | in-scope fns have requires/ensures | PASS |
+   | 2...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue/turn_002_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue/turn_002_driver.md with 7429 characters
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Turn 2 complete. Review written to `turn_002_driver.md`; `STOP = RESOLVED` created.
+
+## Verdict: RESOLVED — all 17 checklist items PASS or FIXED
+
+**Fixer changes verified independently** (commit `2439e5eda`, re-ran all tools):
+
+The three forbidden `Err(_) => true` arms are gone, replaced with sound, meaningful negations:
+- `identity_map_page`: `Err(_) => !accessible(phys_addr@)` — tight negation of the Ok arm; sound because Err is only reachable post-init and a failed map leaves the page unmapped.
+- `ensure_pte`: `Err(_) => !mapped.contains(spec_page_base(phys_addr))` — exact negation; present-PTE returns Ok via the idempotent fast path.
+- `ensure_pt`: `Ok => inv() && aligned`, `Err => inv()`. The "mapped unchanged" delta is genuinely inexpressible (free function over parameterless `identity_map_view()`, no `old()`); I confirmed `mm::phys` singleton free functions use the same post-state-fact convention, so `inv()`-preservation is the strongest sound predicate.
+
+**Independent tool results:** `make verify-kernel` exit 0; `spec_drift` 0 (ensures strengthened, never weakened); `fn_coverage` 14/14.
+
+**Closed concerns:** #13 own-function cheating is `admit`-only (3 exec bodies + 5 proof lemmas) — the expected spec-phase scaffold, no `external_body`/`assume`/`trusted` on own functions. #7 `assume_specification`s are on the trusted HAL (`arch`) + `bump_allocator` (in `tcb-allowed.md`), temporarily allowed and documented.
+
+**Carry-forward to proving phase:** discharge the 8 `admit()`s; replace `arch`/`bump_allocator` assume-specs with real contracts once verified.
+
+
+=== Session End ===
+Session: 5d7dbec5-9233-4207-866e-296054a3db6d
+Duration: 183.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue-reviewer-t002-claude-20260614-094707.jsonl
