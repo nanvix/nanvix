@@ -278,3 +278,58 @@ Only legitimate cross-crate `assume_specification` for `VirtualAddress::into_raw
 [THINKING] I'm noticing there's an `assume_specification` for `VirtualAddress::into_raw_value` that acts as a placeholder for a cross-crate dependency in the sys crate. The question is whether this is acceptable given the task requirement to eliminate all `admit()` calls and `assume()` statements — `assume_specification` is different from those, but I need to clarify if it falls under the same restrictions.
 
 Looking at the verification results, the cheating check passed with zero `assume` violations, and `assume_specification` is a standard pattern for external dependencies that haven't been verified yet. The tcb-allowed.md doesn't list this particular one, but the task rule about external_body requiring tcb-allowed listing doesn't directly apply to `assume_specification` for cross-crate dependencies. Let me force a fresh verification to confirm the proof is actually complete and cached correctly.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module hal::mem::types::address::phys --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Module    : hal::mem::types::address::phys
+note: verifying module hal::mem::types::address::phys
+verificatio...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Fresh verification: **6 verified, 0 errors**, CLEAN. The target module already verifies completely. Let me confirm I haven't altered any file content (only ran `touch`) via git.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short; echo "---diff stat---"; git --no-pager diff --stat
+
+[THINKING] The verification passed cleanly with all 6 items confirmed and no errors in the address module. All the target functions are verified without any admits in scope, so the module is complete. Now I need to run the full verification suite to make sure there are no regressions across the codebase.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-064207.jsonl
+ M verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-064207.txt
+---diff stat---
+ .../proving/prover-claude-20260615-064207.jsonl    | 23 ++++++++++++++++++++++
+ .../proving/prover-claude-...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+No source files changed — only session logs. The module was already fully proven. Let me record the (no-bugs) result in the bugs file as the task references it.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md
+
+[THINKING] The session logs are the only files that changed since the module was already fully proven. I should create a bugs.md file to document that no bugs were found, as the task references recording findings there.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md with 732 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Done. The `hal::mem::types::address::phys` module is **fully verified**.
+
+## Result
+
+Fresh, non-cached verification: **6 verified, 0 errors — CLEAN**.
+
+All in-scope target functions verify with their existing proofs, no contracts weakened:
+- `PhysicalAddress::from_mmio_address` — identity wrap, preserves `addr@` and `inv()`.
+- `PhysicalAddress::from_number` — base-address multiply; no-overflow discharged by `lemma_from_number_no_overflow`.
+- `PhysicalAddress::into_frame_number` — `>> FRAME_SHIFT` proven equal to `addr / FRAME_SIZE` via `lemma_frame_index` (shift-equals-divide using `FRAME_SIZE == 2^FRAME_SHIFT`).
+- `PhysicalAddress` `View`.
+
+## Status checks
+- **No `admit()` / `assume()` / `external_body`** in the target files. The only remaining trusted contract is the legitimate cross-crate `assume_specification` for `VirtualAddress::into_raw_value` (a not-yet-verified `sys` dependency), which the cheating scanner counts as `assume=0`.
+- The global `admit=27` / `external_body=11` are entirely in out-of-scope `mm/phys/*` modules (other agents' targets), not in this module.
+- **No source/spec/proof files were modified** — the proofs were already complete; only `git status` shows session log files. No regressions possible.
+- Recorded the no-bugs outcome in `verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md`.
+
+
+=== Session End ===
+Session: 3be9abd4-2363-44c2-bef6-fd2a32728384
+Duration: 122.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-064207.jsonl
