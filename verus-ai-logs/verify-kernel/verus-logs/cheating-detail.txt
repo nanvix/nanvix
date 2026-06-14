@@ -6,3 +6,10 @@
     - mm/phys/frame.rs:481 book: external_body
     - mm/phys/frame.rs:517 is_covered: external_body
     - mm/phys/frame.rs:565 alloc_range: external_body
+    - mm/phys/frame.rs:657 init: external_body
+    - mm/phys/frame.rs:744 is_covered: external_body
+    - mm/phys/frame.rs:750 book: external_body
+    - mm/phys/frame.rs:756 alloc_range: external_body
+    - mm/phys/mod.rs:64 book_physical_memory_regions: admit
+    - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+    - mm/phys/mod.spec.rs:84 ExLinkedListIter (struct): external_type_spec

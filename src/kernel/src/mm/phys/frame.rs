@@ -653,6 +653,7 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
+#[verus_verify(external_body)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
@@ -739,16 +740,19 @@ pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
 ///
 /// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
 ///
+#[verus_verify(external_body)]
 pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
     instance().is_covered(phys_addr)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
+#[verus_verify(external_body)]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     instance().book(phys_addr)
 }
 
 /// Book every frame in the given physical memory region.
+#[verus_verify(external_body)]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
 }

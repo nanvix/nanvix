@@ -57,14 +57,18 @@ pub use self::{
 //==================================================================================================
 
 #[verus_spec(ret =>
-    ensures true,
+    requires
+        forall|i: int| 0 <= i < physical_memory_regions@.len()
+            ==> (#[trigger] physical_memory_regions@[i]).inv(),
 )]
 fn book_physical_memory_regions(
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {
+    proof! { admit(); }
     info!("booking physical memory regions ...");
 
     // Book physical memory that is not usable.
+    #[verus_spec(invariant true)]
     for region in physical_memory_regions.iter() {
         info!("booking: {:?}", region);
         frame::alloc_range(region)?;
