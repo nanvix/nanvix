@@ -668,3 +668,173 @@ Full `make verify` completed (exit 0). The kernel still shows global CHEATING_DE
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify > /tmp/verify_full.log 2>&1; echo "EXIT=$?"; echo "=== any FAIL/err
 
 [THINKING] The full verification suite passed, and the kernel's cheating detection shows the baseline is holding at external_body=25 with cfg_gate dropping from 10 to 9—confirming I successfully removed the upool's cfg_gate contribution and reduced the total cheating count by 1.
+[RESULT ✓] bash: EXIT=0
+=== any FAIL/error across crates ===
+=== status lines ===
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CLEAN
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CHEATING_DETECTED
+=== upool in cheating detai...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+`make verify` exits 0; all crates verify with 0 errors. upool module is **CLEAN** and absent from the cheating detail. Let me confirm the non-verus exec build still compiles cleanly.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make build 2>&1 | tail -15; echo "EXIT=$?"
+
+[THINKING] The verification passed with all crates clean—the CHEATING_DETECTED flags are expected for TCB-approved crates like the kernel, and upool isn't flagged at all. Now I'm running the build to confirm the relocation change doesn't break the non-verus compilation path.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+EXIT=0
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build:|^build-|all-kernel|build .*kernel" Makefile | head; echo "==="; ./z build
+[RESULT ✓] bash: 420:	all-kernel \
+853:# Seed directory used to build the test-kernel-ramfs.img.
+===
+[INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+ZEXIT=0
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all-kernel 2>&1 | tail -20; echo "ZEXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Non-verus exec kernel build compiles cleanly. Everything validated. Let me write the report and the (empty) verification TODO file.
+[TOOL] report_intent: Writing fix report
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination; echo "=== base upool ch
+
+[THINKING] The non-verus exec kernel built successfully without issues, and my View relocation didn't impact it. All validation checks are passing: the upool module is clean with all 8 functions verified and no cheating detected, the AST consistency shows all functions and structs matching the base with exec unchanged, and the full verification suite completed successfully.
+
+Now I'm documenting the results. The global cheating metrics improved—cfg_gate dropped from 10 to 9 by eliminating upool's instance, and external_body remains at 25 with all entries being TCB-allowed in other files. For the upool module specifically, the before/after counts are: admit 0→0, assume 0→0, external_body 0→0, and cfg-gated exec 1→0, which represents the successful elimination of the View block's cfg_gate. So the base branch had both external_body in Upool::new and cfg_gate in the View block, and I've eliminated both by the end of this phase—external_body was removed during proving with a real verified body, and cfg_gate during this elimination phase. Now I'll write up the report and create the verification_todo.md file to document the changes.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === base upool cheating ===
+33:verus! {
+165:    #[verus_verify(external_body)]
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md with 550 characters
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md with 4132 characters
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Let me do a final confirmation of the module state and review my changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== final git diff stat ==="; git diff --stat src/kernel/src/mm/phys/; echo "=== upoo
+
+[THINKING] Running a final verification pass on the module to confirm everything's in order, then I'll generate the diff summary showing what changed.
+[RESULT ✓] bash: === final git diff stat ===
+=== upool.rs/spec cheating grep ===
+ZERO cheating tokens in upool files
+<shellId: 36 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short; echo "=== diff vs HEAD ==="; git diff --stat HEAD -- src/kernel/src/mm/
+
+[THINKING] I'm checking why git diff isn't showing changes to those files—they should be marked as modified since I edited them. Let me verify the actual git status to see what's happening.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/prover-claude-20260615-052548.jsonl
+ M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/prover-claude-20260615-052548.txt
+?? verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+?? verus-ai-logs/nanvix-phys-phys-...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== upool.rs around View/struct ==="; sed -n '38,60p' src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm noticing that git diff shows no changes to upool.rs and upool.spec.rs against HEAD, which is strange since I made edits. Let me verify the files actually contain my changes by checking them directly.
+[RESULT ✓] bash: === upool.rs around View/struct ===
+
+#[verus_verify]
+impl UserFrame {
+    ///
+    /// # Description
+    ///
+    /// Instantiates a user frame.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Frame address.
+    ///
+    /// # Returns
+    ///
+    /// A user frame.
+    ///
+    #[verus_spec(ret =>...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -3; echo "=== does HEAD upool.rs contain View block? ==="; git show HEAD:
+
+[THINKING] I'm noticing a discrepancy — the file shows my changes applied, but git diff HEAD indicates no modifications, which suggests HEAD already contains this exact state. Yet when I initially examined upool.rs, it had the View block at lines 39-54, so something doesn't add up about what the starting commit actually contained versus what I'm seeing now.
+
+The most likely explanation is that the verify pipeline or some git operation automatically committed my changes, so I should check the git log to see what actually happened.
+[RESULT ✓] bash: 531420093 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=25 cfg_gate=9)
+2d865d572 [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+0b3ad0e3e [verus] verify PASS (cheating detected): nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Done. The verify pipeline auto-committed my changes (commit `531420093`, "verify PASS ... cfg_gate=9").
+
+## Summary
+
+**phys-upool cheating elimination: PASS** — module `mm::phys::upool` is **CLEAN** (8/8 verified, 0 errors, no cheating).
+
+Findings & actions:
+- The proving phase had already removed `Upool::new`'s `external_body` (relative to base `verus-ai/phys-manager`). upool had **0** `admit`/`assume`/`external_body`.
+- The one remaining indicator was a `cfg(verus_keep_ghost)`-gated `verus!` block wrapping `View for UserFrame` (flagged as "cfg-gated exec"). I **relocated that ghost-only view impl into `upool.spec.rs`** (the conventional, `include!`-excluded home for view defs). Pure ghost relocation — exec build identical in both configs.
+
+Validation:
+- `make verify-kernel MODULE=mm::phys::upool` → 8 verified, 0 errors, **No cheating detected, status CLEAN**. Global `cfg_gate` dropped 10→9.
+- AST consistency vs base: **8 functions + 2 structs MATCH**, zero mismatches.
+- `make verify` (full crate set): exit 0, all crates 0 errors. Remaining global `external_body=25`/`cfg_gate=9` are all in other files listed in `tcb-allowed.md` — none in upool.
+- `./z build -- all-kernel`: non-verus exec build compiles cleanly.
+
+Reports written:
+- `verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md` (Result: **PASS**)
+- `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md` (no remaining gaps)
+
+[THINKING] So the verify pipeline auto-committed my changes—that's why the working tree is clean and matches HEAD. The latest commit was generated by the verification process and includes both my edits to the upool.rs and spec.rs files, which explains why there's no View block in the current HEAD version of upool.rs and the View implementation is present in spec.rs.
+
+The cfg_gate count is now down to 9 globally, the module is clean, and the full verification passed. The report files I generated are untracked but the actual code changes are committed and verified. Everything checks out, so I'm ready to summarize the final results for the user.
+
+
+=== Session End ===
+Session: 09128a49-e238-4650-94f5-dd04893d345a
+Duration: 566.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/prover-claude-20260615-052548.jsonl
