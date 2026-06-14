@@ -789,3 +789,115 @@ Let me see the verification result header and the cheating detail for phys-mod s
 32:    - mm/phys/mod.rs:103 book_mmio_regions: external_body
 33:    - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
 <shellId: 18 completed with exit code 0>
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module mm::phys --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+note: verifying module mm::phys
+note: verifying module mm::phys::frame
+note: verifying module mm::phys::kframe
+note: verifying module mm::phys...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE 'verification results|[0-9]+ verified|[0-9]+ errors|0 errors' verus-ai-logs/
+[RESULT ✓] bash: ---full cheating-detail phys section---
+    - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+    - hal/mem/types/addres...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Collecting compliance evidence
+[TOOL] rg: admit\s*!?\s*\(
+[TOOL] rg: \bassume\s*!?\s*\(
+[TOOL] rg: assume_specification
+[TOOL] rg: external_body
+[TOOL] rg: \buninterp\s+spec\s+fn\b
+[TOOL] rg: cfg\s*\(
+[TOOL] rg: VERUS REWRITE
+[TOOL] rg: byte_at_address|phys_view\(|phys_regions_frame_set|mmio_regions_frame_set
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:13:pub uninterp spec fn byte_at_address(ptr: int) -> u8;
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:98:pub uninterp spec fn phys_view() -> PhysModView;
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:60:// `book_mmio_regions`) cannot have their bodies verified and are `external_body`. See
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:66:#[verifier::external_body]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs:15:#[cfg(feature = "test")]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs:36:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs:40:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.proof.rs:6:// (manager ready), composed over the parameter-free `phys_view()` accessor.
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:13:pub uninterp spec fn byte_at_address(ptr: int) -> u8;
+/home/ruize/nanvix-phy-specs/src/ke...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for p in 'admit\s*!?\s*\(' '\bassume\s*!?\s*\(' 'assume_specification' 'external_body
+[RESULT ✓] bash: === PATTERN: admit\s*!?\s*\( ===
+
+=== PATTERN: \bassume\s*!?\s*\( ===
+
+=== PATTERN: assume_specification ===
+
+=== PATTERN: external_body ===
+src/kernel/src/mm/phys/mod.rs:59:#[verus_verify(external_body)]
+src/kernel/src/mm/phys/mod.rs:87:#[verus_verify(external_body)]
+src/kernel/src/mm/phys/mod.spec...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] rg: \bbyte_at_address\b
+[TOOL] rg: \bphys_regions_frame_set\b
+[TOOL] rg: \bmmio_regions_frame_set\b
+[TOOL] rg: \bphys_view\b
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:177:pub uninterp spec fn phys_regions_frame_set(
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:182:/// GVA->GPA translation). Uninterpreted for the same reason as `phys_regions_frame_set`.
+/home/ruize/nanvix-phy-specs/...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:13:pub uninterp spec fn byte_at_address(ptr: int) -> u8;
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:24
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs:4
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.proof.rs:1
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.spec.rs:1
+/home/ruize/nanvix-phy-specs...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:183:pub uninterp spec fn mmio_regions_frame_set(
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs:97:                #[trigger] mmio_regions_frame_set(mmio_regions).contains(a)
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/ph...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "book_physical_memory_regions|book_mmio_regions|ExLinkedList|external_type_spec
+[RESULT ✓] bash: 74:- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates an
+79:- `src/kernel/src/mm/phys/mod.rs::book_mmio_regions` — same `LinkedList` limitation.
+144:These `assume_specification` (and one `external_type_specification`) declarations live in
+151:  - `::arch::mem::paging::FrameNu...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/m
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/m
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ✅ Consistent: 4 functions, 0 structs match.
+<shellId: 22 completed with exit code 0>
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+book_mmio_regions                        MATCH                                
+book_physical_memory_regions             MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys
