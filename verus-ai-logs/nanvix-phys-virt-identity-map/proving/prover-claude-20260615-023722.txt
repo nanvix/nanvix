@@ -829,3 +829,28 @@ The identity map view postconditions are fundamentally uncontrollable since the 
 Given the task's "0 admit" requirement, I can't meet it soundly for these functions—the correct approach is to record them in verification-todo.md as genuine unproven hand-offs, which is the sanctioned mechanism for stuck proofs. I'll place this in the logs directory for this module. Since there are no actual code bugs here, only spec-framework deferrals, I won't create a bugs.md entry.
 
 Let me run a final module verification to confirm the clean state (5 lemmas proven, 3 exec admits remaining), then write up the verification-todo.md.
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 3
+    - identity_map.rs:533 ensure_pt: admit
+    - identity_map.rs:627 ensure_pte: admit
+    - identity_map.rs:718 identity_map_page: admit
+  v...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Module is clean: 9 verified, 0 errors, no warnings. The 5 transition lemmas are now fully proven; the 3 exec admits are blocked by the deferred cross-module ghost-token framework. Let me record the honest hand-off and start a full kernel regression check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel 2>&1 | ta
+
+[THINKING] The verification passed cleanly with 9 items confirmed and no errors, though three exec admits are still deferred pending the ghost-token framework. I'm reconsidering whether I should push harder to eliminate all admits entirely, which might mean building a minimal ghost-token implementation directly in this module without pulling in external dependencies. The main blocker right now is handling the ensure_pte post operation.
+
+The core issue is that `identity_map_view()` is defined as an uninterpreted function, which means its behavior is fundamentally opaque to the exec code—there's no way to make the containment check provable without giving the function a concrete definition that exec can actually influence. Redefining it as a closed spec function would require tracking some global state, but the available statics are atomics that can't be read in spec without ghost permissions, and adding those permissions would require restructuring the code significantly. The real constraint here is that the spec files ship with this uninterpreted function as a pre-existing condition, and I shouldn't redesign the spec architecture since that would constitute drift from the provided baseline. Given these hard constraints, the honest path forward is accepting the three deferred admits while delivering the five transition lemmas that are genuinely provable.
+
+Now I'm documenting the deferred obligations in verification-todo.md and confirming there are no code bugs to record. I should run a full kernel verification to ensure my additive proof changes don't introduce any regressions across the crate.
+[RESULT ✓] bash: <command started in background with shellId: vk>
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
