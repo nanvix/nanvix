@@ -289,7 +289,7 @@ impl PhysMemoryManager {
     // captures the watermark policy: at least `KERNEL_WATERMARK` frames remain free
     // after servicing `count`. `Err` covers both the overflow guard and a breach.
     #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
-    #[verus_verify(external_body)]
+    #[verus_verify]
     #[verus_spec(result =>
         requires
             phys_view().initialized,

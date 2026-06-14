@@ -13,7 +13,6 @@
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
     - mm/phys/manager.rs:267 alloc_user_frame: external_body
-    - mm/phys/manager.rs:306 check_user_watermark: external_body
     - mm/phys/manager.rs:352 alloc_kernel_frame: external_body
     - mm/phys/manager.rs:409 alloc_many_kernel_frames: external_body
     - mm/phys/mod.rs:82 book_physical_memory_regions: external_body

@@ -321,3 +321,66 @@ Turn 7
 [THINKING] Looking at the manager files, I've got 6 external_body declarations for the target functions, with no admit, assume, or assume_specification items. The two `#[cfg(verus_keep_ghost)]` annotations are just for including spec and proof files, which is standard practice. All 6 external_body instances are already whitelisted in tcb-allowed.md, so they're accounted for. Now I'm wondering if I should try to eliminate them, starting with the most promising candidates, so let me run the baseline verification first to make sure everything passes.
 
 Running the kernel verification for the mm::phys module...
+[RESULT ✓] bash: - mod.rs:117 book_mmio_regions: external_body
+    - mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+    - upool.rs:166 new: external_body
+  Global: assume=0 external_body=22 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Cover...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but reports global cheating. Note the unverified callees (`alloc`, `alloc_contiguous`, `free_count`, `free`, `new`...) have NO contracts — confirming the target functions can't discharge their rich `ensures` from bodies. Let me see the cheating detail and the full verify-kernel log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -iE "mana
+
+[THINKING] The baseline verification passes but flags cheating with external_body=22 globally and cfg_gate=9, with phys-manager contributing 6 of those external_body violations. The unverified functions like instance, alloc, alloc_contiguous, free_count, and free are callees without contracts—they're not marked as external_body, just using default specs, which means they have no ensures clauses.
+
+Since the verification was cached with no recompilation needed, I'm checking the cheating-detail.txt output to see the manager-specific breakdown and understand what's being counted.
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+All 6 manager `external_body` are whitelisted. Before accepting, I'll follow the escalation ladder and **empirically prove** the limitation by attempting to remove `external_body` and capturing the concrete Verus errors. Let me create a verification todo dir and experiment on the clearest case (`check_user_watermark`).
+[TOOL] report_intent: Empirically testing external_body removal
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && grep -n "spec_kernel_watermark\
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec_kernel_watermark\|KERNEL_WATERMARK" src/ 2>/dev/null | grep -v "target/"
+
+[THINKING] I've confirmed all 6 manager external_body items are documented in tcb-allowed.md. Now I need to decide whether to genuinely attempt eliminating these external_body references or accept the whitelist approach. Given the task's explicit requirements, I'm going to pursue genuine elimination following the escalation ladder, only retaining external_body where it's truly impossible to remove and already whitelisted.
+
+The core issue is that the unlisted callees like `Upool::alloc`, `frame::alloc`, and others have no ensures clauses, which means the target functions can't verify their rich contracts without those callees providing specifications. Since I can't modify unlisted functions and can't use assume_specification (that would be cheating), genuine elimination is blocked by the constraint. However, I could potentially weaken the contracts on the target functions themselves to make verification possible without relying on external_body.
+
+The real question is whether callers depend on these ensures — if they do, dropping them defeats the purpose. Let me try removing external_body from one of the simpler functions like `check_user_watermark` to empirically demonstrate what Verus errors arise and prove the limitation concretely. I'll create a backup and run the module verifier after removing the external_body annotation from check_user_watermark to see the exact error that surfaces.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:735:pub(super) fn free_count() -> usize {
+src/kernel/src/mm/phys/manager.rs:157:    /// leave fewer than `KERNEL_WATERMARK` free frames, the allocation is rejected.
+src/kernel/src/mm/phys/manager.rs:192:                    &&& phys_view().frames.free_frames.finite()
+s...
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs:157:    /// leave fewer than `KERNEL_WATERMARK` free frames, the allocation is rejected.
+src/kernel/src/mm/phys/manager.rs:277:    /// [`config::kernel::KERNEL_WATERMARK`].
+src/kernel/src/mm/phys/manager.rs:288:    // `KERNEL_WATERMARK + count`. Pure gate, no alloca...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Confirmed: `spec_kernel_watermark()` is `uninterp` with **no link** to the concrete `config::kernel::KERNEL_WATERMARK`, and `frame::free_count()` (unlisted, unspecced) has no link to `phys_view().frames.free_frames.len()`. Let me empirically capture the Verus error by removing `external_body` from `check_user_watermark`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -i '292s/#\[verus_verify(external_body)\]/#[verus_verify]/' src/kernel/src/mm/phys/mana
+
+[THINKING] I've confirmed that `spec_kernel_watermark()` is an uninterpreted spec function with no connection to the concrete `config::kernel::KERNEL_WATERMARK` constant, and similarly `frame::free_count()` has no link to the actual frame count in `phys_view()`. This means `check_user_watermark` can't actually prove `spec_watermark_ok` from its implementation alone. Let me test this by stripping the external_body annotation and running verus to see what happens.
+[RESULT ✓] bash: #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
+    #[verus_verify]
+    #[verus_spec(result =>
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|watermark|free_count
