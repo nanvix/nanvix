@@ -32,7 +32,7 @@
       "review_rounds": 0
     }
   },
-  "prover_session_id": "41f6edcd-b01c-443f-8b09-e50fea113094",
+  "prover_session_id": "192b0f9d-a9fa-44e9-a783-a394052cef33",
   "completed": false,
   "base_branch": "verus-ai/arch-x86-pte",
   "verus_branch": "verus-ai/arch-paging-mod",
