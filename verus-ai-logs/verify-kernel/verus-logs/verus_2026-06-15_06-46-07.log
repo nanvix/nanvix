@@ -1,0 +1,171 @@
+Timestamp: 2026-06-15_06-46-07
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+54 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=18
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.proof.rs:238:9
+    |
+238 | /         forall|i: int| #![trigger frame_addr_of(i)]
+239 | |             (0 <= i < inner.bitmap@.num_bits ==> i <= spec_max_frame_number()),
+    | |______________________________________________________________________________^ failed this postcondition
+240 |   {
+241 |       assert forall|i: int| #![trigger frame_addr_of(i)]
+    |       ------ at the end of the function body
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:314:9
+    |
+314 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:314:31
+    |
+314 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:322:9
+    |
+322 |         assert forall|a: int| pre.allocated_frames.insert(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:323:21
+    |
+323 |             implies post.allocated_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:334:9
+    |
+334 |         assert forall|a: int| post.free_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:334:31
+    |
+334 |         assert forall|a: int| post.free_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:343:9
+    |
+343 |         assert forall|a: int| pre.free_frames.remove(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:344:21
+    |
+344 |             implies post.free_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:405:9
+    |
+405 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:405:31
+    |
+405 |         assert forall|a: int| post.allocated_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:413:9
+    |
+413 |         assert forall|a: int| pre.allocated_frames.remove(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:414:21
+    |
+414 |             implies post.allocated_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:423:9
+    |
+423 |         assert forall|a: int| post.free_frames.contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:423:31
+    |
+423 |         assert forall|a: int| post.free_frames.contains(a)
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:432:9
+    |
+432 |         assert forall|a: int| pre.free_frames.insert(addr).contains(a)
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:433:21
+    |
+433 |             implies post.free_frames.contains(a) by {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:163:37
+    |
+163 |   ...                   let i = choose|i: int|
+    |  _______________________________^
+164 | | ...                       0 <= i < pre_nb && !pre_sb.contains(i) && a == frame_addr_of(i);
+    | |_________________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:164:80
+    |
+164 | ...                   0 <= i < pre_nb && !pre_sb.contains(i) && a == frame_addr_of(i);
+    |                                                                      ^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/frame.rs:163:37
+    |
+163 |   ...                   let i = choose|i: int|
+    |  _______________________________^
+164 | | ...                       0 <= i < pre_nb && !pre_sb.contains(i) && a == frame_addr_of(i);
+    | |_________________________________________________________________________________________^
+
+verification results:: 54 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

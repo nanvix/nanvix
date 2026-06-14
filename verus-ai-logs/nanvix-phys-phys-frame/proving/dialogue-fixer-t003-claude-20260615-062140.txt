@@ -1285,3 +1285,75 @@ Turn 92
 Turn 93
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 53 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-44-...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error:\
+[RESULT ✓] bash: 30:error: assertion failed
+31:   --> src/kernel/src/mm/phys/frame.rs:182:20
+133:   --> src/kernel/src/mm/phys/frame.rs:160:37
+141:   --> src/kernel/src/mm/phys/frame.rs:161:80
+159:   --> src/kernel/src/mm/phys/frame.rs:160:37
+167:error: could not compile `kernel` (bin "kernel") due to 1 previous err...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+The strengthened invariant matches its own documented intent ("representable frame address") and is a *strengthening* (not a weakening — it can only make `inv()` harder to satisfy, so it passes spec-drift and doesn't regress the other 53 verified functions). It's required for the locked `alloc` spec to be provable on the canonical **x86** CI target. I'll keep it and add a helper lemma to thread the bound. Let me add the lemma.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The error's moved to line 182 in the idx-facts block where it's asserting that idx is within the spec max frame number. The issue seems to be that `old(self).internal_inv()` isn't unfolding properly — Verus might not be exposing the forall clause from the closed internal_inv definition, so it can't derive the constraint that idx <= spec_max.
+
+Actually, wait — internal_inv is defined in frame.proof.rs which gets included into the frame module, so it should be transparent within the same module and unfold automatically. The real problem might be the forall's trigger pattern. I have the connection: `old(self).bitmap@.num_bits == pre_nb`, and since idx < pre_nb, instantiating the forall with i=idx should give me idx <= spec_max. But the trigger might not be matching correctly.
+
+Let me try explicitly asserting `frame_addr_of(idx)` to force the forall to instantiate at that index, which should pull in the full body including the bound on idx. I need to make sure internal_inv unfolds first so the clause is available, then trigger it properly. Writing helper lemma... So the strategy is to capture the universal bound at the start of alloc using a lemma with a trigger on `frame_addr_of(i)`, then later when I know the index, assert the trigger condition to unlock the bound. I'll add the lemma to frame.proof.rs near the other representability lemmas, call it at the beginning of alloc to establish the forall fact, and then in both the success and failure paths, assert `frame_addr_of(idx) <= usize::MAX` to fire the trigger before asserting the final bound. I see the issue — the forall I'm asserting has no valid trigger since it only mentions `i` in comparisons, not function applications. Verus needs an explicit trigger, so I'm restructuring the helper lemma to use `frame_addr_of(i)` as the trigger, which will let the SMT solver instantiate the forall when I later assert `frame_addr_of(idx) <= usize::MAX`.
+
+The lemma body checks that for any valid index, `frame_addr_of(i) <= usize::MAX` holds, which combined with the strengthened invariant clause directly gives `i <= spec_max`. After calling this lemma in alloc, the forall persists with the trigger, so mentioning `frame_addr_of(idx)` in the reserve proof will trigger the instantiation to get `idx <= spec_max`.
+
+The remaining question is whether the persisted forall still refers to the original `num_bits` value or re-evaluates after the bitmap mutation — in Verus, the ensures clause is instantiated at call time with the current state, so it captures the specific `num_bits` from when the lemma was called. I'm deciding whether to keep the strengthened internal_inv clause. The strengthening actually matches the documented intent about representable frame addresses, and it's a strengthening rather than a weakening—making the invariant harder to satisfy, not easier. Since init is external and trusted to guarantee this property (which holds in practice), and all the in-scope methods that establish the invariant don't change num_bits anyway, the strengthening preserves correctness. Given that this fixes a real soundness issue on x86 and is necessary to prove the locked alloc spec, I'm going to keep it and document it as addressing a genuine bug. The verify output shows 53 functions still passing with only alloc failing, so the strengthening doesn't break existing proofs — that's reassuring. Since init is marked external_body, its invariant is trusted and doesn't need proof, and nothing else establishes Inner outside of that. I'm confident keeping the strengthening is the right call. Now I'll add the lemma to frame.proof.rs and complete the remaining proofs.
+[RESULT ✓] view: 219. }
+220. 
+221. /// The refcount-map value at an allocated address equals the underlying refcount slot.
+222. proof fn lemma_refcount_value(inner: &Inner, addr: int)
+223.     requires
+224.         inner@.refcounts.contains_key(addr),
+225.     ensures
+226.         inner@.refcounts[addr] == spec_refc...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Now thread the lemma into `alloc`: call it at the start, and use `frame_addr_of(idx)` to trigger the bound.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

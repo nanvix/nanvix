@@ -144,6 +144,9 @@ impl Inner {
             lemma_view_of(self);
             assert(spec_refcount_seq(self) == pre_rc);
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+            // Every in-range frame index is representable (`i <= spec_max`); `num_bits` is unchanged
+            // by the allocation below, so this bound carries to the constructed index.
+            lemma_index_representable(self);
         }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
@@ -177,8 +180,9 @@ impl Inner {
             assert(self.bitmap@.set_bits == pre_sb.insert(idx));
             assert(self.bitmap@.num_bits == pre_nb);
             assert(spec_refcount_seq(self) == pre_rc);
-            // Representability: the old invariant bounds every in-range frame index by `spec_max`.
-            assert(old(self).internal_inv());
+            // Representability: `num_bits` (= `pre_nb`) is unchanged, and `idx < pre_nb`, so the
+            // forall from `lemma_index_representable` gives `idx <= spec_max`.
+            assert(frame_addr_of(idx) <= usize::MAX as int);
             assert(idx <= spec_max_frame_number());
         }
         // Newly allocated frames have a single owner.
@@ -192,9 +196,9 @@ impl Inner {
             Some(frame_number) => frame_number,
             None => {
                 proof! {
-                    // `None` would require `idx > spec_max`, but the allocator invariant bounds
-                    // every in-range frame index by `spec_max` (representability). Unreachable.
-                    assert(old(self).internal_inv());
+                    // `None` would require `idx > spec_max`, but `idx <= spec_max` was established
+                    // above (representability of every in-range index). Unreachable.
+                    assert(frame_addr_of(idx) <= usize::MAX as int);
                     assert(idx <= spec_max_frame_number());
                     assert(false);
                 }
