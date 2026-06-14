@@ -1091,3 +1091,120 @@ Confirmed — only the expected placeholder `admit()` in `frame_address` (to be 
 The task explicitly says admit in proof bodies is acceptable during the specification phase, and the proving phase is meant to fill in those bodies later. Even though I could potentially prove the frame_address property (that left-shifting by 12 equals multiplying by 4096 without overflow), the instructions are clear that I should leave it as admit for now. The CHEATING_DETECTED flag is expected and not a concern at this stage.
 
 Now I need to run the full verification suite to check for any regressions in the kernel modules.
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_11-13-44
+
+    Checking arch v0.16.17 ...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+Expected regression: the kernel has a placeholder `assume_specification[ ::arch::mem::FRAME_SHIFT ]` that now duplicates arch's real spec. This is the documented "remove placeholder when dependency is verified" case. Let me inspect it.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm hitting a regression where the kernel has a placeholder specification for FRAME_SHIFT that's now conflicting with the actual verified definition I just added to the arch module. This is the exact scenario where I need to remove the old assume_specification since the real implementation is now available.
+
+The key question is whether FRAME_SHIFT actually needs to be modeled in arch for the verification to work. Since frame_address uses FRAME_SHIFT in its body and has a spec, Verus needs to process that body even with admit(), which means FRAME_SHIFT must be defined. The verify-arch build succeeded with FRAME_SHIFT marked as verified, confirming it's necessary.
+
+So the path forward is clear: keep FRAME_SHIFT modeled in arch and remove the duplicate assume_specification from the kernel's phys.spec.rs, but I need to check what that placeholder was ensuring to make sure removing it doesn't break anything that depends on it.
+[RESULT ✓] view: 55. // =================================================================================================
+56. 
+57. // Note: `VirtualAddress::new` now carries its own verified `#[verus_spec]` in the `sys` crate
+58. // (`result@ == value as int`), so its placeholder `assume_specification` was removed —...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+The kernel's FRAME_SHIFT placeholder carries real ensures (`result < 32`, `page_size == pow2(result)`). I must move these to arch and remove the kernel placeholder without weakening. Let me examine the kernel's `spec_page_size`/`pow2` definitions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec_page_size\|fn pow2\|use.*pow2\|pow2(" src/kernel/src/hal/mem/types/address/p
+
+[THINKING] The `assume_specification` for `FRAME_SHIFT` establishes critical invariants that the kernel depends on—specifically that it's less than 32 and that the page size equals 2 raised to that power. Removing this assumption would strip away these guarantees, causing downstream proofs that rely on `FRAME_SHIFT`'s properties to fail.
+
+The real issue is that `frame_address`'s implementation references `FRAME_SHIFT` directly, so Verus needs to resolve it somehow. My spec uses `FRAME_SIZE` instead, and the `admit()` bridges that gap. But if I don't model `FRAME_SHIFT` at all, Verus will error when it encounters the reference in the function body. The cleanest path forward might be to leave `FRAME_SHIFT` without `#[verus_verify]` and rely on the kernel's existing `assume_specification` to provide the necessary guarantees. I'm realizing this might not actually be a pde scope issue at all — FRAME_SHIFT is a mem/constants concern that's pulling me into kernel territory. Let me test whether removing the `#[verus_verify]` annotation from FRAME_SHIFT and relying on PAGE_SHIFT being verified would let frame_address verify on its own, rather than forcing me to model a constant that's outside my scope.
+
+The real insight is that the kernel already owns FRAME_SHIFT's specification through assume_specification, so maybe the right approach is to give arch's FRAME_SHIFT a concrete value or derive the relationship from FRAME_SIZE instead, letting the kernel drop its placeholder once it can re-derive the facts it needs from what arch actually exposes. Trying a different approach — maybe I can structure frame_address so it doesn't require FRAME_SHIFT to be modeled at all, since I'm admitting the proof anyway. But Verus still needs to understand what FRAME_SHIFT means to construct the intermediate representation. Let me look at how other parts of the arch code handle PAGE_SHIFT or similar constants. I'm wondering whether removing the kernel's assume_specification for FRAME_SHIFT would break existing proofs that depend on the facts it provides — specifically the `result < 32` bound and the `pow2` relationship. If arch's #[verus_verify] FRAME_SHIFT makes its value transparent to Verus, the kernel could potentially re-derive those facts, but I need to verify whether the current proofs actually do that or if they're relying on the axiom. The core issue is whether I can avoid verifying frame_address's body entirely, or if I need to find a middle ground like adding a spec to arch's FRAME_SHIFT that provides the bound but leaves the pow2 relationship to the kernel. I need to decide whether to add a spec to arch's FRAME_SHIFT that captures the constraint and its relationship to FRAME_SIZE using vstd's pow2 function, or step back and reconsider if the task actually intended for me to model these constants and cause kernel changes. Let me check what the original task is asking for before going deeper into this verification rabbit hole. I need to verify empirically whether removing the `#[verus_verify]` attribute from FRAME_SHIFT actually prevents the VIR-build error, since I know from earlier attempts that it showed up as "cannot use external" at that stage. The real question is whether I can make frame_address work by giving arch a proper spec for FRAME_SHIFT that the kernel can then reference, or if I need to rethink the approach entirely and check what spec_page_size actually is in the kernel.
+[RESULT ✓] bash: 1:use crate::hal::mem::spec_page_size;
+2:use vstd::arithmetic::power2::pow2;
+31:    addr_view / spec_page_size()
+36:    frame_view * spec_page_size()
+71:        spec_page_size() == pow2(result as nat),
+=== where spec_page_size defined ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:9: ...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 40. // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+41. // that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+42. // definition names the same concrete value the proofs already relied on.
+43. pub open s...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Let me understand how the kernel consumes the FRAME_SHIFT spec before deciding the fix.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] So `spec_page_size()` equals `arch::mem::PAGE_SIZE`, which is already verified in the arch module. The kernel's `FRAME_SHIFT` specification guarantees that the result is less than 32 and that `PAGE_SIZE` equals 2 raised to the power of `FRAME_SHIFT`.
+
+To clean this up, I should add a verified spec to arch's `FRAME_SHIFT` with the same ensures clauses—`result < 32` and `PAGE_SIZE == pow2(result as nat)`—then remove the kernel's placeholder. This way, when kernel proofs call `FRAME_SHIFT`, they'll get the verified spec from arch instead of relying on an assumption, and the kernel's derivation of `spec_page_size() == pow2(FRAME_SHIFT)` will follow naturally.
+
+But there's a catch: proving `PAGE_SIZE == pow2(12)` for a const isn't straightforward. The kernel originally used axioms precisely because this equivalence is non-trivial to verify. If I move it to arch as a verified spec, arch has to prove it, which is difficult for a const value—I can't easily attach a proof body to a const definition, even with `by(compute)` or lemmas from vstd. The kernel's `assume_specification` exists because it needed FRAME_SHIFT's spec when arch didn't provide one, so the real solution is to move that specification into arch itself and have the kernel reference it instead. I need to figure out whether a const can carry Verus specifications, or if I need to wrap FRAME_SHIFT in a function that provides the ensures clauses for `result < 32` and the power-of-two relationship with PAGE_SIZE.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
+4. // multiply never overflows. This follows from `FrameNumber::MAX == MAX_ADDRESS / FRAME_SIZE - 1`,
+5. // hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. Proven in the pr...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+This is the documented placeholder-removal pattern (like PAGE_SIZE before it). Arch must provide FRAME_SHIFT's spec and the kernel placeholder is removed. Let me find where the kernel consumes FRAME_SHIFT and check the value/pow2 facts needed.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "FRAME_SHIFT\|lemma_frame_index\|pow2" src/kernel/src/hal/mem/types/address/phys.r
+
+[THINKING] I'm tracing through how the kernel's `lemma_frame_index` lemma gets invoked—it requires `spec_page_size() == pow2(shift)` as a precondition, and the caller needs to satisfy this by passing `FRAME_SHIFT` and establishing that relationship through the `assume_specification[FRAME_SHIFT]` ensures clause. Now I need to locate where this lemma is actually called in the exec code.
+
+The key insight is that if I move the specification from the kernel's assumption to arch's `FRAME_SHIFT` constant, arch can provide ensures clauses guaranteeing both that the shift is less than 32 and that `PAGE_SIZE == pow2(FRAME_SHIFT)`. Since the kernel's `spec_page_size()` is defined as arch's `PAGE_SIZE`, the kernel automatically inherits the required relationship without needing its own assumption.
+
+Writing spec ensures clause... I'm realizing that making FRAME_SHIFT a transparent const in arch might push the proving burden onto the kernel's call sites, requiring edits to kernel code just to verify the frame_address spec. That's more scope creep than I want. Let me step back and think about whether I can avoid needing FRAME_SHIFT in the spec altogether—maybe I can write the frame_address ensures in a way that doesn't require concrete frame size constants.
+
+But wait, the real blocker isn't the spec or proof strategy—it's that Verus can't even construct the function body because FRAME_SHIFT is an unmodeled external symbol. That's a VIR-level error, not a verification issue. So FRAME_SHIFT has to be modeled in arch no matter what, and the kernel's placeholder assume_specification needs to go.
+
+The cleanest approach might be to model FRAME_SHIFT as a transparent const in arch and give the kernel the facts it needs through a separate spec lemma, rather than trying to bundle everything into one assume_specification. Let me explore whether that's feasible. So the real question is whether the task expects me to modify the kernel module too. Looking at the precedent in the comments—PAGE_SIZE, VirtualAddress::new, and FrameNumber placeholders were all removed once arch/sys verified them—it seems like removing the FRAME_SHIFT assume_specification is the intended approach. I'll add a `#[verus_spec]` annotation to the const in arch that provides both the `result < 32` bound and the PAGE_SIZE relationship, then strip out the kernel's placeholder. The tricky part is figuring out how to actually prove a const's ensures clause—I might need a separate proof lemma with admit, or see if by(compute) can handle it. Let me check how Verus handles const specifications. Let me just test whether the const's ensures clause can be proven by checking if arch already has the necessary power-of-two lemmas available, then write out the FRAME_SHIFT spec and see if verify-arch can handle it.
+[RESULT ✓] bash: 79:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+84:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+149:    // `self@ / FRAME_SIZE` (equivalently `self@ >> FRAME_SHIFT`). `inv()` underwrites the unwrap.
+158:        // Bind `FRAME_SHIFT`...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 140.             result@ == spec_from_number(spec_frame_raw_value(frame)),
+141.     )]
+142.     pub fn from_number(frame: FrameNumber) -> Self {
+143.         proof! { lemma_from_number_no_overflow(frame); }
+144.         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+145.         Self(Vi...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Let me test whether FRAME_SHIFT truly needs modeling in the current per-function config.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -i 's|^#\[verus_verify\]\npub const FRAME_SHIFT|pub const FRAME_SHIFT|' src/libs/arch/s
+
+[THINKING] The `into_frame_number` kernel invokes `lemma_frame_index` with `shift` set to `mem::FRAME_SHIFT`, and that lemma requires two conditions: `shift < 64` and `spec_page_size() == pow2(shift as nat)`. These preconditions are currently satisfied through the ensures clause of `assume_specification[FRAME_SHIFT]`, which provides both the upper bound on the shift value and the equivalence between page size and the power of two.
+
+If I remove the kernel's placeholder assumption and instead provide an architecture-level `FRAME_SHIFT` spec with matching ensures clauses, the call site will automatically derive those facts from the arch spec. The key insight is that the arch spec can express `PAGE_SIZE as int == pow2(FRAME_SHIFT as nat)`, and since the kernel's `spec_page_size()` is defined as `arch::mem::PAGE_SIZE as int`, Verus will recognize these as the same fact through definitional equality—so the lemma's requirement for `spec_page_size() == pow2(FRAME_SHIFT)` is satisfied without any additional kernel-level proof work.
+
+Writing arch FRAME_SHIFT spec... I'm reconsidering the structure here. Rather than trying to prove the pow2 relationship directly on the const, maybe I should separate concerns: have arch provide just the FRAME_SHIFT constant with basic verification, then add a separate lemma that establishes both the shift bound and the pow2 relationship with an admit. The kernel would then need to call this lemma explicitly before using the shift value, rather than relying on ensures attached to the constant itself. I'm wrestling with type casting issues — `pow2` returns `nat` but I need to compare it with `PAGE_SIZE as int`, so I'd need `pow2(...) as int` in the ensures clause. This is getting complicated, so let me step back and try a simpler approach: keep the kernel's `assume_specification` as-is and just remove the `#[verus_verify]` annotation from `FRAME_SHIFT` in arch to avoid the conflicting spec. The real question is whether Verus can still resolve `FRAME_SHIFT` in `frame_address`'s bit-shift operation if it's not explicitly verified — I should just test this directly to see if it actually fails or if the earlier error was from a different configuration.
+[RESULT ✓] bash: 103-///
+104:pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|FRAME_SHIFT|verified|Exit code" | head -20
