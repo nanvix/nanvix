@@ -706,3 +706,88 @@ But I want to be thorough rather than give up prematurely. Let me empirically at
 Turn 41
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:535:44...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+The calls themselves have unmet preconditions. Let me inspect `Table::read`/`alloc_as` requires and `TableIndex` to see if dischargeable.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== Table::read verus_spec ==="; grep -n -B2 -A15 "fn read" src/libs/ar
+
+[THINKING] The precondition failures are happening at the actual function calls themselves — `pd.read(pde_idx)` and the page table allocator both require conditions that aren't being satisfied. The read operation needs `pde_idx` to be within bounds of `PAGE_TABLE_LENGTH`, but there's no proof that this index meets that constraint.
+
+The issue is that `TableIndex` should carry an invariant guaranteeing it's within bounds, but the verifier isn't automatically recognizing this invariant as established. Similarly, the allocator's precondition about `bump_view` satisfying its invariant isn't being discharged. These are exactly the kinds of global facts that the ghost framework should provide, but they're not being connected to the proof. I need to look at the actual `Table::read` specification and `TableIndex` invariant to see what's required to make these preconditions provable.
+[RESULT ✓] bash: === Table::read verus_spec ===
+207-            result == spec_table_read::<E>(self@.addr, index@),
+208-    )]
+209:    pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
+210-        let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
+211-        let ptr: *const PteWord = (self.base +...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] view: 195.     // Trust boundary (see `verus-ai-logs/.../tcb-allowed.md` and `verus-unsupported.md`):
+196.     // materializes a raw `*const PteWord` from the integer base address (`usize as *const`) and
+197.     // performs a volatile load — the hardware page-table access. Verus does not support the
+198....
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "struct TableIndex\|impl.*TableIndex\|TableIndex@\|fn view.*TableInd
+
+[THINKING] I'm checking whether `TableIndex` has a type invariant that guarantees its value stays within `PAGE_TABLE_LENGTH` bounds, since `ensure_pt` takes a `pde_idx: TableIndex` parameter but doesn't explicitly require that constraint like `read` does.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/table.rs:55:pub struct TableIndex(usize);
+src/libs/arch/src/x86/mem/paging/table.rs:58:impl TableIndex {
+src/libs/arch/src/x86/mem/paging/table.rs:91:        proof! { use_type_invariant(self); }
+src/libs/arch/src/x86/mem/paging/table.spec.rs:9:impl View for TableInde...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // TableIndex — a validated page-table slot number
+5. //==================================================================================================
+6. 
+7. // A `TableInde...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The `read` precondition is dischargeable via `use_type_invariant`, but the postcondition's path-2 alignment (`slot.as_ptr()` disconnected from `slot_ref_addr`) and the global-view facts in the other two functions remain genuinely blocked by the deferred ghost-token framework. Let me restore the admit and confirm the full module still passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/identity_map.rs.bak src/kernel/src/mm/virt/identity_map.rs; sed -n '5
+
+[THINKING] The `TableIndex` type has a type invariant asserting that the index is less than `PAGE_TABLE_LENGTH`, which Verus assumes automatically but requires explicitly bringing into scope with `use_type_invariant()` when needed in proofs. The precondition for the read operation should be satisfiable by invoking this type invariant before the read call.
+
+Looking at the actual obligations, the read precondition at line 535 is fixable with `use_type_invariant(pde_idx)`. The trickier precondition at line 550 requires proving that `bump_view(PAGE_TABLE_ALLOCATOR).inv()` holds for the static allocator — I need to check whether this invariant is available from the allocator's definition. The real challenge is the postcondition: proving the returned address is aligned and satisfies the global view constraints, though the alignment should follow from `frame_address()` ensuring proper alignment relative to `FRAME_SIZE` and `PAGE_SIZE`. The core issue is that `as_ptr()` has no contract connecting it to `slot_ref_addr()`, so I can't prove the alignment needed for path2. Adding alignment ensures to `as_ptr` universally would be unsound since slice pointers aren't always page-aligned. So the fresh-alloc path's alignment requirement is genuinely blocked by this ghost-pointer disconnect. I also need to verify that `PAGE_TABLE_ALLOCATOR` satisfies the preconditions for `alloc_as` and the read operation.
+
+Given that all three exec functions hit fundamental blockers—`mapped.contains` is opaque, `accessible` is impossible to prove, and alignment is deferred—I should restore the exec admits and document these as cross-module deferrals in a verification-todo file. The sound deliverable here is the five lemmas in proof.rs, and since the entire codebase is still in the deferred-ghost-token specification phase, the exec admits are the expected state for this task.
+[RESULT ✓] bash: fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    proof! { admit(); }
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Let me capture concrete error evidence for all three exec functions (for the verification-todo record), then restore.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 - <<'EOF'
+import re
+p='src/kernel/src/mm/virt/identity_map.rs'
+s=open
+
+[THINKING] I should push harder on whether I can actually prove the postconditions for ensure_pte and identity_map_page are unprovable by removing their admits and capturing the concrete errors. This will give me empirical evidence to document in the verification-todo. Let me try removing all three admits at once to see what errors surface, though I've already established these are logically impossible due to the opaque constant view issue.
+[RESULT ✓] bash: 3 admits removed
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
