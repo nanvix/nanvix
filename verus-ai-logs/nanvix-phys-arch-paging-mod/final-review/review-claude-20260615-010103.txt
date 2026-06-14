@@ -1103,3 +1103,80 @@ To properly mark these boxes, I should run the key verification scripts myself: 
 
 ===fn_coverage===
 us...
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-built...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Cross-module `make verify` passes (exit 0); kernel's admit=36 are pre-existing unverified kernel modules (out of scope), not regressions from this module (spec_drift: 0 changes). Now running `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1800 make build 2>&1 | tail -25
+
+[THINKING] The `make verify` check passed with the kernel showing 36 admits in unverified modules outside the scope of this bottom-up verification effort, while the arch crate containing our module came through clean with zero admits. The cross-module regression check confirms all verified modules passed, so the admits in the kernel are pre-existing and not a concern for what we're verifying. But something's still bothering me about this...
+
+Actually, looking back at the spec_drift report showing zero functions changed in mod.rs, and the git diff only touching table.proof.rs, our module hasn't introduced any regression at all. The single in-scope function invlpg is external_body, which counts as having a contract. The verify-arch coverage report already shows the crate-wide picture of 18/525 exec functions with contracts. Let me just run `make build` now to wrap this up.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: mkbuild completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^(build|verify-arch|all):" Makefile 2>/dev/null | head; echo "---
+
+[THINKING] I need to figure out the correct build command since `make build` isn't working—the project uses `./z build` instead of the standard make target.
+[RESULT ✓] bash: 411:all: all-nanvix
+---z?---
+z
+z.ps1
+---try z build arch lib---
+   Compiling nanvixd v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/utils/nanvixd)
+   Compiling unit-prefix v0.5.2
+   Compiling vfs-bench-common v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/vfs-bench-common)
+   Compil...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All checks pass: spec_drift 0, verify-arch exit 0 (47 verified/0 errors), cross-module verify exit 0, `./z build` exit 0. Writing the consolidated review.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.md
+[TOOL] report_intent: Consolidating final review
+
+[THINKING] The build completed successfully with all verification checks passing—no spec drift, architecture verified with no errors, cross-module checks clean, and the build exiting cleanly. Now I'm compiling the final review document with all the evidence from these checks.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.md with 10416 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Done. Both independent reviews (claude-opus-4.8, gpt-5.3-codex) and my own cross-checks agree.
+
+## Result: **PASS** — no blockers
+
+**Module:** `arch-paging-mod` (only in-scope function: `invlpg`)
+
+**Evidence (all tool-verified):**
+- **Spec quality** — `invlpg` is `#[verus_verify(external_body)]` with a faithful empty contract; the body is a single `core::arch::asm!` TLB-flush — a genuine Verus-unsupported hardware boundary. The inherited upstream `assume_specification` was correctly removed (superseded by this module's contract — no duplicated trust boundary).
+- **Caller coverage** — 1/1, missing none.
+- **Guardrails** — admit **0**, assume **0**, external_body **1** in scope (`invlpg`, listed in `tcb-allowed.md:52`), assume_specification **0**, cfg-gated exec **0** (the `cfg_gate=4` is spec/proof `include!` directives only).
+- **TCB** — `invlpg` is in the pre-approved TCB. YES.
+- **AST consistency** — `invlpg` MATCH (matched=1, mismatched=0); no `// VERUS REWRITE` in scope.
+- **Verification** — `make verify-arch` exit 0 (47 verified, 0 errors); cross-module `make verify` exit 0; `./z build` exit 0; `spec_drift.py` clean.
+- **Bugs** — 0; no bugs.md needed.
+
+Only a non-blocking informational note: `caller_analysis.md`/`tcb-allowed.md` are slightly stale re: the now-removed upstream `assume_specification`.
+
+**Files written:**
+- `final-review/final_review.claude.md`
+- `final-review/final_review.codex.md`
+- `final-review/final_review.md` (consolidated)
+
+
+=== Session End ===
+Session: baf39551-cd06-4c28-ab4e-dd9abe99e02d
+Duration: 607.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/review-claude-20260615-010103.jsonl
