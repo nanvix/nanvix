@@ -21,3 +21,11 @@ Module: arch-x86-pde
 [2026-06-14 10:52:11] [PROVER] Running caller-analysis...
 [2026-06-14 10:52:11] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 10:54:15]   ↳ prover done in 2m04s (exit=0)
+[2026-06-14 10:54:15] [PHASE] caller-analysis: no-review (2m04s)
+[2026-06-14 10:54:15] ✅ caller-analysis: PASS (0/0)
+[2026-06-14 10:54:15] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-x86-pde/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: arch-x86-pde
+============================================================
