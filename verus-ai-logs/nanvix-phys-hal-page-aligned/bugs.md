@@ -39,3 +39,48 @@
   `T::into_raw_value` trait spec.
 
 - **Status**: open (tool bug). No Nanvix source logic is wrong.
+
+---
+
+## Proving-phase update (2026-06-15)
+
+### VERUS-TOOL-1 — re-confirmed (still open)
+
+Reproduced the `vir/src/traits.rs:511` panic with Verus `0.2026.05.24.ecee80a`
+(the pinned, newest-available binary). Both alternatives were tried and rejected:
+
+- Annotating only the method (`#[verus_verify]` on `fn into_raw_value`) is
+  rejected: *"In order to verify any items of this trait impl, the entire impl
+  must be verified."*
+- Annotating the whole `impl` block panics Verus (duplicate `TraitMethodImpl`
+  registration for `into_raw_value`).
+
+I also empirically confirmed the body is currently **unverified**: replacing it
+with `{ let _ = self.0.into_raw_value(); 0 }` (which violates `result as int ==
+self@`) still reports `2 verified, 0 errors`. The body is therefore trusted via
+the *trait-declaration* contract only — the impl body is not machine-checked.
+
+Outcome: left unchanged and unannotated (no `admit`/`assume`/`external_body`).
+Full reproduction, isolation, and mitigation moved to
+`verus-unsupported.md` in this directory. This remains a Verus tool bug; no
+Nanvix source logic is wrong.
+
+## Improvement — eliminated an out-of-TCB trust boundary (not a bug)
+
+**What**: `page.spec.rs` previously modeled `::arch::mem::PAGE_ALIGNMENT` with an
+`assume_specification` (ensures `spec_align_value(PAGE_ALIGNMENT) ==
+spec_page_size()`). `PAGE_ALIGNMENT` is **not** in `tcb-allowed.md`, so this was
+an unlisted trust axiom that `from_address` depended on.
+
+**Fix**: `PAGE_ALIGNMENT` is the concrete constant `Alignment::Align4096`. Adding
+`#[verus_verify]` to its definition in
+`src/libs/arch/src/x86/mem/constants.rs` (matching the existing pattern on
+`PAGE_SIZE` / `FRAME_SIZE`) lets Verus resolve the value directly, so
+`spec_align_value(Align4096) == 4096 == PAGE_SIZE == spec_page_size()` is proved
+rather than assumed. The `assume_specification` block was removed. `from_address`
+still verifies (now with no trust axiom). This strengthens — never weakens — the
+spec.
+
+**Auto-Fixed**: Yes — added `#[verus_verify]` to the `PAGE_ALIGNMENT` constant
+and deleted the `assume_specification` from `page.spec.rs`. Module verifies
+`2 verified, 0 errors`; full `make verify` reports `0 errors` across all crates.

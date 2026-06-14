@@ -1091,3 +1091,138 @@ Before finalizing, let me make one more legitimate attempt. The `#[verus_verify]
 The key difference is that `into_raw_value` takes `self` by value while `clone_address` and `is_aligned` take `&self`, and `from_raw_value` is an associated function. Since the struct is `Copy`, maybe there's something about how Verus handles by-value self methods with specs that reference `self@`. The spec `ensures result as int == self@` is unique to this method among the trait methods, so that could be the trigger. Without deeper Verus debugging I can't pinpoint the exact cause, but I should verify my hypothesis by checking the macro expansion. Actually, I should just accept this limitation and follow the guidance: if Verus reports an unsupported construct, I need to document it in verus-unsupported.md with the exact error and minimal reproduction code rather than trying to work around it with exec rewrites or external_body.
 
 So my plan is to keep the assume_specification elimination (which is a real improvement), leave `into_raw_value`'s body unverified due to the Verus bug, record the issue in verus-unsupported.md, update bugs.md with the confirmation, and then verify the module passes cleanly.
+[RESULT ✓] bash: verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+  2 verified
+  0 errors
+  Exit code : 0
+  Unverified functions:
+  verification: 2 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+The page module verifies (2 verified, 0 errors; CHEATING_DETECTED is global from pre-existing admits in other modules). Let me review my complete diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager diff --stat; echo "=== DIFF ==="; git --no-pager diff
+
+[THINKING] The page module shows 2 verified items and no errors, with CHEATING_DETECTED being a global status from elsewhere. I'm trying to identify which fields are verified—likely `from_address` and possibly another field like `into_raw_value`, though the distinction between verified and trivially verified is still unclear to me.
+
+The key point is that removing the `assume_specification` actually strengthens the spec by replacing a trusted axiom with real verification, so there's no spec weakening or drift issues. I should verify that the architecture changes are minimal and consistent—just the `#[verus_verify]` annotation on PAGE_ALIGNMENT and corresponding updates to page.spec.rs.
+
+Since the current state matches what passed the full `make verify` earlier, I'm confident in the changes, but I'll double-check the git diff to confirm all modifications are accounted for and the cleanup is complete.
+[RESULT ✓] bash: Output too large to read at once (21.7 KB). Saved to: /tmp/copilot-tool-output-1781480008762-9lzkdj.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager status --short | head -20; echo "=== constants PAGE_ALIGNMEN
+
+[THINKING] Git diff is only showing log files, which is strange since I edited constants.rs and page.spec.rs — they should be appearing too. Either these files are in a different git state, already committed, or my changes got reverted somehow. Let me check git status to figure out what's actually tracked and what state these files are in.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-page-aligned/proving/prover-claude-20260615-072047.jsonl
+ M verus-ai-logs/nanvix-phys-hal-page-aligned/proving/prover-claude-20260615-072047.txt
+=== constants PAGE_ALIGNMENT ===
+120-#[verus_verify]
+121:pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
+=== pa...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/libs/arch/src/x86/mem/constants.rs src/kernel/src/ha
+
+[THINKING] I'm noticing my changes to constants.rs and page.spec.rs are actually present in the files, but git status isn't showing them as modified—which suggests these files might not be tracked by git, could be in a submodule, or the repository's HEAD already contains these changes. Let me investigate whether these paths are gitignored or if the current HEAD already has my modifications.
+[RESULT ✓] bash: exit 0
+=== check ignore ===
+=== HEAD version of constants line 120 ===
+/// Alignment for a page.
+///
+#[verus_verify]
+pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager log --oneline -8; echo "=== last commit files ==="; git --no
+
+[THINKING] I'm noticing something odd here—the HEAD version of constants.rs already has `#[verus_verify]` on PAGE_ALIGNMENT, but git status shows no modifications. That's strange because I thought I added that attribute myself, yet it seems it was already there in the committed version. Let me trace back through what I saw earlier when I first checked the file.
+[RESULT ✓] bash: 48b3aae26 [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page (2 verified, 0 errors, admit=27 external_body=11 cfg_gate=14)
+06e8e5b99 [verus] verify FAIL: kernel::hal::mem::types::address::aligned::page (0 verified, compilation/setup error (verus did not run))
+31...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+The harness auto-commits after each verify run — my changes (arch `#[verus_verify]`, removed `assume_specification`, reverted impl experiment) are committed in a PASS state. Now let me finalize documentation. Let me check for an existing `verus-unsupported.md` convention.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find verus-ai-logs -name "verus-unsupported.md" 2>/dev/null; echo "---"; ls
+
+[THINKING] The harness is auto-committing after each verification run, and the latest commit shows a passing state with 2 verified items and no errors. My recent changes—reverting the impl annotation experiment and removing the assume_specification along with the arch change—are all committed and the working tree is clean except for log files being generated during development.
+
+Now I need to wrap up the documentation by updating bugs.md with what I've learned during the proving phase and recording the Verus tool limitation in verus-unsupported.md. I'm checking where verus-unsupported.md should be located, likely following the same directory convention as the bugs file in the logs directory.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-bump-allocator/verus-unsupported.md
+verus-ai-logs/nanvix-phys-sys-virt-address/verus-unsupported.md
+verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+verus-ai-logs/nanvix-phys-arch-paging-mod/verus-unsupported.md
+---
+body_removed_source.rs
+bugs.md
+caller-anal...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+
+[THINKING] I'm checking an example of the `verus-unsupported.md` file format that exists in each module's logs directory to understand the convention I should follow.
+[RESULT ✓] bash: # Verus-Unsupported Constructs — `arch::x86::mem::paging::table`
+
+This file records language/library constructs in the `table` module that Verus
+cannot translate or verify, together with the minimal reproduction and the
+trust-boundary mitigation used.
+
+## 1. Integer-to-pointer cast (`usize as *const...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+I'll document the confirmed Verus internal panic in a `verus-unsupported.md` and update the bugs file with proving-phase results.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/verus-unsupported.md
+
+[THINKING] I'll create a verus-unsupported.md file documenting the panic issue, and update the existing bugs.md to reflect the confirmed status from the proving phase.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-page-aligned/verus-unsupported.md with 4234 characters
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+Now let me update the bugs file with the proving-phase confirmation and the TCB-reduction improvement.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -5 verus-ai-logs/nanvix-phys-hal-page-aligned/bugs.md
+[RESULT ✓] bash: `#[verus_verify]` to the `Address for PageAligned<T>` impl and confirm
+  `result as int == self@` proves from `view() == self.0@` plus the inner
+  `T::into_raw_value` trait spec.
+
+- **Status**: open (tool bug). No Nanvix source logic is wrong.
+<shellId: 62 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat >> verus-ai-logs/nanvix-phys-hal-page-aligned/bugs.md <<'EOF'
+
+---
+
+## 
+[RESULT ✓] bash: appended
+86 verus-ai-logs/nanvix-phys-hal-page-aligned/bugs.md
+<shellId: 63 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+Let me run a final full `make verify` to confirm no regressions across all crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify 2>&1 | grep -i
+
+[THINKING] Running the full verification suite to ensure everything is clean and there are no regressions across the board.
