@@ -1,0 +1,811 @@
+Timestamp: 2026-06-14_11-04-55
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: cannot use type `arch::x86::mem::paging::flags::ReadWriteFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:14:30
+    |
+ 14 | pub open spec fn spec_rw_set(f: ReadWriteFlag) -> bool {
+    |                              ^^^^^^^^^^^^^^^^
+ 15 |     f is ReadWrite
+    |     -
+...
+ 74 |             writable: spec_rw_set(self.read_write),
+    |                                   ---------------
+...
+ 97 |     read_write: ReadWriteFlag,
+    |     -------------------------
+...
+107 |         writable: spec_rw_set(read_write),
+    |                               ----------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:87:17
+    |
+ 87 |                 read_write,
+    |                 ----------
+...
+ 98 |         read_write: ReadWriteFlag,
+    |         -------------------------
+...
+108 |             read_write,
+    |             ----------
+...
+160 |         matches!(self.read_write, ReadWriteFlag::ReadWrite)
+    |         ---------------------------------------------------
+...
+173 |     pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+    |                                      -------------------------
+174 |         self.read_write = read_write;
+    |         ---------------   ----------
+...
+235 |             read_write: ReadWriteFlag::from_raw_value(value),
+    |                         ------------------------------------
+...
+258 |         value |= self.read_write.into_raw_value();
+    |                  ---------------
+...
+452 |     pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+    |                                      -------------------------
+453 |         self.flags.set_read_write(read_write);
+    |                                   ----------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExReadWriteFlag(crate::x86::mem::paging::flags::ReadWriteFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::UserSupervisorFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:18:30
+    |
+ 18 | pub open spec fn spec_us_set(f: UserSupervisorFlag) -> bool {
+    |                              ^^^^^^^^^^^^^^^^^^^^^
+ 19 |     f is User
+    |     -
+...
+ 75 |             user: spec_us_set(self.user_supervisor),
+    |                               --------------------
+...
+ 98 |     user_supervisor: UserSupervisorFlag,
+    |     -----------------------------------
+...
+108 |         user: spec_us_set(user_supervisor),
+    |                           ---------------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:88:17
+    |
+ 88 |                 user_supervisor,
+    |                 ---------------
+...
+ 99 |         user_supervisor: UserSupervisorFlag,
+    |         -----------------------------------
+...
+109 |             user_supervisor,
+    |             ---------------
+...
+146 |         matches!(self.user_supervisor, UserSupervisorFlag::User)
+    |         --------------------------------------------------------
+...
+187 |     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
+    |                                           -----------------------------------
+188 |         self.user_supervisor = user_supervisor;
+    |         --------------------   ---------------
+...
+236 |             user_supervisor: UserSupervisorFlag::from_raw_value(value),
+    |                              -----------------------------------------
+...
+259 |         value |= self.user_supervisor.into_raw_value();
+    |                  --------------------
+...
+465 |     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
+    |                                           -----------------------------------
+466 |         self.flags.set_user_supervisor(user_supervisor);
+    |                                        ---------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExUserSupervisorFlag(crate::x86::mem::paging::flags::UserSupervisorFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::PageWriteThroughFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:22:31
+    |
+ 22 | pub open spec fn spec_pwt_set(f: PageWriteThroughFlag) -> bool {
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^
+ 23 |     f is WriteThrough
+    |     -
+...
+ 76 |             write_through: spec_pwt_set(self.page_write_through),
+    |                                         -----------------------
+...
+ 99 |     page_write_through: PageWriteThroughFlag,
+    |     ----------------------------------------
+...
+109 |         write_through: spec_pwt_set(page_write_through),
+    |                                     ------------------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:89:17
+    |
+ 89 |                 page_write_through,
+    |                 ------------------
+...
+100 |         page_write_through: PageWriteThroughFlag,
+    |         ----------------------------------------
+...
+110 |             page_write_through,
+    |             ------------------
+...
+237 |             page_write_through: PageWriteThroughFlag::from_raw_value(value),
+    |                                 -------------------------------------------
+...
+260 |         value |= self.page_write_through.into_raw_value();
+    |                  -----------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageWriteThroughFlag(crate::x86::mem::paging::flags::PageWriteThroughFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::PageCacheDisableFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:26:31
+    |
+ 26 | pub open spec fn spec_pcd_set(f: PageCacheDisableFlag) -> bool {
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^
+ 27 |     f is CacheDisabled
+    |     -
+...
+ 77 |             cache_disabled: spec_pcd_set(self.page_cache_disable),
+    |                                          -----------------------
+...
+100 |     page_cache_disable: PageCacheDisableFlag,
+    |     ----------------------------------------
+...
+110 |         cache_disabled: spec_pcd_set(page_cache_disable),
+    |                                      ------------------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:90:17
+    |
+ 90 |                 page_cache_disable,
+    |                 ------------------
+...
+101 |         page_cache_disable: PageCacheDisableFlag,
+    |         ----------------------------------------
+...
+111 |             page_cache_disable,
+    |             ------------------
+...
+238 |             page_cache_disable: PageCacheDisableFlag::from_raw_value(value),
+    |                                 -------------------------------------------
+...
+261 |         value |= self.page_cache_disable.into_raw_value();
+    |                  -----------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageCacheDisableFlag(crate::x86::mem::paging::flags::PageCacheDisableFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::AccessedFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:30:29
+    |
+ 30 | pub open spec fn spec_a_set(f: AccessedFlag) -> bool {
+    |                             ^^^^^^^^^^^^^^^
+ 31 |     f is Accessed
+    |     -
+...
+ 78 |             accessed: spec_a_set(self.accessed),
+    |                                  -------------
+...
+101 |     accessed: AccessedFlag,
+    |     ----------------------
+...
+111 |         accessed: spec_a_set(accessed),
+    |                              --------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:91:17
+    |
+ 91 |                 accessed,
+    |                 --------
+...
+102 |         accessed: AccessedFlag,
+    |         ----------------------
+...
+112 |             accessed,
+    |             --------
+...
+239 |             accessed: AccessedFlag::from_raw_value(value),
+    |                       -----------------------------------
+...
+262 |         value |= self.accessed.into_raw_value();
+    |                  -------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExAccessedFlag(crate::x86::mem::paging::flags::AccessedFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::DirtyFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:34:29
+    |
+ 34 | pub open spec fn spec_d_set(f: DirtyFlag) -> bool {
+    |                             ^^^^^^^^^^^^
+ 35 |     f is Dirty
+    |     -
+...
+ 79 |             dirty: spec_d_set(self.dirty),
+    |                               ----------
+...
+102 |     dirty: DirtyFlag,
+    |     ----------------
+...
+112 |         dirty: spec_d_set(dirty),
+    |                           -----
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:92:17
+    |
+ 92 |                 dirty,
+    |                 -----
+...
+103 |         dirty: DirtyFlag,
+    |         ----------------
+...
+113 |             dirty,
+    |             -----
+...
+240 |             dirty: DirtyFlag::from_raw_value(value),
+    |                    --------------------------------
+...
+263 |         value |= self.dirty.into_raw_value();
+    |                  ----------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExDirtyFlag(crate::x86::mem::paging::flags::DirtyFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::PageSizeFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:38:30
+    |
+ 38 | pub open spec fn spec_ps_set(f: PageSizeFlag) -> bool {
+    |                              ^^^^^^^^^^^^^^^
+ 39 |     f is Large
+    |     -
+...
+ 80 |             large_page: spec_ps_set(self.page_size),
+    |                                     --------------
+...
+103 |     page_size: PageSizeFlag,
+    |     -----------------------
+...
+113 |         large_page: spec_ps_set(page_size),
+    |                                 ---------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:93:17
+    |
+ 93 |                 page_size,
+    |                 ---------
+...
+104 |         page_size: PageSizeFlag,
+    |         -----------------------
+...
+114 |             page_size,
+    |             ---------
+...
+202 |         matches!(self.page_size, PageSizeFlag::Large)
+    |         ---------------------------------------------
+...
+215 |     pub fn set_page_size(&mut self, page_size: PageSizeFlag) {
+    |                                     -----------------------
+216 |         self.page_size = page_size;
+    |         --------------   ---------
+...
+241 |             page_size: PageSizeFlag::from_raw_value(value),
+    |                        -----------------------------------
+...
+264 |         value |= self.page_size.into_raw_value();
+    |                  --------------
+...
+439 |     pub fn set_page_size(&mut self, page_size: PageSizeFlag) {
+    |                                     -----------------------
+440 |         self.flags.set_page_size(page_size);
+    |                                  ---------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageSizeFlag(crate::x86::mem::paging::flags::PageSizeFlag);
+
+error: cannot use type `arch::x86::mem::paging::pde::PageDirectoryEntryFlags` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:71:25
+    |
+ 68 | /   impl View for PageDirectoryEntryFlags {
+ 69 | |       type V = PdeFlagsView;
+    | |       ----------------------
+ 70 | |
+ 71 | |       closed spec fn view(&self) -> PdeFlagsView {
+    | |                           ^^^^^
+ 72 | |           PdeFlagsView {
+ 73 | |               present: spec_present_set(self.present),
+    | |                                         ------------
+ 74 | |               writable: spec_rw_set(self.read_write),
+    | |                                     ---------------
+ 75 | |               user: spec_us_set(self.user_supervisor),
+    | |                                 --------------------
+ 76 | |               write_through: spec_pwt_set(self.page_write_through),
+    | |                                           -----------------------
+ 77 | |               cache_disabled: spec_pcd_set(self.page_cache_disable),
+    | |                                            -----------------------
+ 78 | |               accessed: spec_a_set(self.accessed),
+    | |                                    -------------
+ 79 | |               dirty: spec_d_set(self.dirty),
+    | |                                 ----------
+ 80 | |               large_page: spec_ps_set(self.page_size),
+    | |                                       --------------
+...   |
+ 83 | |   }
+    | |___-
+...
+ 88 |         pub open spec fn inv(&self) -> bool {
+    |                              -----
+...
+135 |             PdeView { flags: self.flags@, frame: self.frame@ }
+    |                              -----------
+...
+145 |             &&& self.flags.inv()
+    |                 ----------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:85:13
+    |
+ 85 |                 result@ == spec_pde_flags_new(
+    |                 -------
+...
+105 |         ) -> Self {
+    |  ____________----_-
+106 | | /         Self {
+107 | | |             present,
+108 | | |             read_write,
+109 | | |             user_supervisor,
+...   | |
+114 | | |             page_size,
+115 | | |         }
+    | | |_________-
+116 | |       }
+    | |_______-
+...
+129 |             ensures result == self@.present,
+    |                               -----
+130 |         )]
+131 |         pub fn is_present(&self) -> bool {
+    |                           -----
+132 |             matches!(self.present, PresentFlag::Present)
+    |                      ------------
+...
+145 |         pub fn is_user(&self) -> bool {
+    |                        -----
+146 |             matches!(self.user_supervisor, UserSupervisorFlag::User)
+    |                      --------------------
+...
+159 |         pub fn is_writable(&self) -> bool {
+    |                            -----
+160 |             matches!(self.read_write, ReadWriteFlag::ReadWrite)
+    |                      ---------------
+...
+173 |         pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+    |                               ---------
+174 |             self.read_write = read_write;
+    |             ---------------
+...
+187 |         pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
+    |                                    ---------
+188 |             self.user_supervisor = user_supervisor;
+    |             --------------------
+...
+201 |         pub fn is_large_page(&self) -> bool {
+    |                              -----
+202 |             matches!(self.page_size, PageSizeFlag::Large)
+    |                      --------------
+...
+215 |         pub fn set_page_size(&mut self, page_size: PageSizeFlag) {
+    |                              ---------
+216 |             self.page_size = page_size;
+    |             --------------
+...
+232 |         fn from_raw_value(value: PteWord) -> Self {
+    |    __________________________________________----_-
+233 |   /         Self {
+234 |   |             present: PresentFlag::from_raw_value(value),
+235 |   |             read_write: ReadWriteFlag::from_raw_value(value),
+236 |   |             user_supervisor: UserSupervisorFlag::from_raw_value(value),
+...     |
+241 |   |             page_size: PageSizeFlag::from_raw_value(value),
+242 |   |         }
+    |   |_________-
+    |   |_________|
+    |
+243 |   |     }
+    |   |_____-
+...
+254 |         fn into_raw_value(self) -> PteWord {
+    |                           ----
+...
+257 |             value |= self.present.into_raw_value();
+    |                      ------------
+258 |             value |= self.read_write.into_raw_value();
+    |                      ---------------
+259 |             value |= self.user_supervisor.into_raw_value();
+    |                      --------------------
+260 |             value |= self.page_write_through.into_raw_value();
+    |                      -----------------------
+261 |             value |= self.page_cache_disable.into_raw_value();
+    |                      -----------------------
+262 |             value |= self.accessed.into_raw_value();
+    |                      -------------
+263 |             value |= self.dirty.into_raw_value();
+    |                      ----------
+264 |             value |= self.page_size.into_raw_value();
+    |                      --------------
+...
+308 |                 result@ == spec_pde_new(flags@, frame@),
+    |                                         ------
+...
+311 |         pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+    |                    ------------------------------
+312 |             proof! { use_type_invariant(frame); }
+313 |             Self { flags, frame }
+    |                    -----
+...
+332 |                 flags: PageDirectoryEntryFlags::from_raw_value(value),
+    |                        ----------------------------------------------
+...
+349 |             value |= self.flags.into_raw_value();
+    |                      ----------
+...
+364 |         pub fn flags(&self) -> PageDirectoryEntryFlags {
+    |    ____________________________-----------------------_-
+365 |   |         self.flags
+    |   |         ----------
+366 |   |     }
+    |   |_____-
+...
+382 |             self.flags.is_present()
+    |             ----------
+...
+427 |             self.flags.is_large_page()
+    |             ----------
+...
+440 |             self.flags.set_page_size(page_size);
+    |             ----------
+...
+453 |             self.flags.set_read_write(read_write);
+    |             ----------
+...
+466 |             self.flags.set_user_supervisor(user_supervisor);
+    |             ----------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageDirectoryEntryFlags(crate::x86::mem::paging::pde::PageDirectoryEntryFlags);
+
+error: cannot use type `arch::x86::mem::paging::pde::PageDirectoryEntry` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:134:25
+    |
+131 | / impl View for PageDirectoryEntry {
+132 | |     type V = PdeView;
+    | |     -----------------
+133 | |
+134 | |     closed spec fn view(&self) -> PdeView {
+    | |                         ^^^^^
+135 | |         PdeView { flags: self.flags@, frame: self.frame@ }
+    | |                          ----------          ----------
+136 | |     }
+137 | | }
+    | |_-
+...
+143 |       pub open spec fn inv(&self) -> bool {
+    |                            -----
+144 |           &&& 0 <= self@.frame <= FrameNumber::spec_max()
+    |                    -----
+145 |           &&& self.flags.inv()
+    |               ----------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:308:13
+    |
+308 |               result@ == spec_pde_new(flags@, frame@),
+    |               -------
+309 |               result.inv(),
+    |               ------
+310 |       )]
+311 |       pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+    |  _______________________________________________________________________----_-
+312 | |         proof! { use_type_invariant(frame); }
+313 | |         Self { flags, frame }
+    | |         ---------------------
+314 | |     }
+    | |_____-
+...
+330 |       pub fn from_raw_value(value: PteWord) -> Option<Self> {
+    |  ______________________________________________------------_-
+331 |           Some(Self {
+    |  _________-____-
+    |  _________|____|
+    |  _________|
+    | |
+332 | |             flags: PageDirectoryEntryFlags::from_raw_value(value),
+333 | |             frame: FrameNumber::from_raw_value(value as usize >> crate::mem::FRAME_SHIFT)?,
+    | |                    -----------------------------------------------------------------------
+334 | |         })
+    | |_________--
+    | |_________|
+    | |_________|
+    |
+335 | |     }
+    | |_____-
+...
+346 |       pub fn into_raw_value(self) -> PteWord {
+    |                             ----
+...
+349 |           value |= self.flags.into_raw_value();
+    |                    ----------
+350 |           value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
+    |                     ----------
+...
+364 |       pub fn flags(&self) -> PageDirectoryEntryFlags {
+    |                    -----
+365 |           self.flags
+    |           ----------
+...
+379 |           ensures result == self@.flags.present,
+    |                             -----
+380 |       )]
+381 |       pub fn is_present(&self) -> bool {
+    |                         -----
+382 |           self.flags.is_present()
+    |           ----------
+...
+394 |       pub fn frame_number(&self) -> FrameNumber {
+    |                           -----
+395 |           self.frame
+    |           ----------
+...
+409 |               result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
+    |                                -----
+...
+412 |       pub fn frame_address(&self) -> usize {
+    |                            -----
+413 |           proof! { admit(); }
+414 |           self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+    |           ----------
+...
+426 |       pub fn is_large_page(&self) -> bool {
+    |                            -----
+427 |           self.flags.is_large_page()
+    |           ----------
+...
+439 |       pub fn set_page_size(&mut self, page_size: PageSizeFlag) {
+    |                            ---------
+440 |           self.flags.set_page_size(page_size);
+    |           ----------
+...
+452 |       pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
+    |                             ---------
+453 |           self.flags.set_read_write(read_write);
+    |           ----------
+...
+465 |       pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
+    |                                  ---------
+466 |           self.flags.set_user_supervisor(user_supervisor);
+    |           ----------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageDirectoryEntry(crate::x86::mem::paging::pde::PageDirectoryEntry);
+
+error: cannot use function `arch::x86::mem::paging::flags::PresentFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:234:22
+    |
+234 |             present: PresentFlag::from_raw_value(value),
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PresentFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::PresentFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::ReadWriteFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:235:25
+    |
+235 |             read_write: ReadWriteFlag::from_raw_value(value),
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::ReadWriteFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::ReadWriteFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::UserSupervisorFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:236:30
+    |
+236 |             user_supervisor: UserSupervisorFlag::from_raw_value(value),
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::UserSupervisorFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::UserSupervisorFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::PageWriteThroughFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:237:33
+    |
+237 |             page_write_through: PageWriteThroughFlag::from_raw_value(value),
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PageWriteThroughFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::PageWriteThroughFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::PageCacheDisableFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:238:33
+    |
+238 |             page_cache_disable: PageCacheDisableFlag::from_raw_value(value),
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PageCacheDisableFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::PageCacheDisableFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::AccessedFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:239:23
+    |
+239 |             accessed: AccessedFlag::from_raw_value(value),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::AccessedFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::AccessedFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::DirtyFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:240:20
+    |
+240 |             dirty: DirtyFlag::from_raw_value(value),
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::DirtyFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::DirtyFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::PageSizeFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:241:24
+    |
+241 |             page_size: PageSizeFlag::from_raw_value(value),
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PageSizeFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::PageSizeFlag;
+
+error: cannot use function `arch::x86::mem::paging::flags::PresentFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:257:18
+    |
+257 |         value |= self.present.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PresentFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::PresentFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::ReadWriteFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:258:18
+    |
+258 |         value |= self.read_write.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::ReadWriteFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::ReadWriteFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::UserSupervisorFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:259:18
+    |
+259 |         value |= self.user_supervisor.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::UserSupervisorFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::UserSupervisorFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::PageWriteThroughFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:260:18
+    |
+260 |         value |= self.page_write_through.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PageWriteThroughFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::PageWriteThroughFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::PageCacheDisableFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:261:18
+    |
+261 |         value |= self.page_cache_disable.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PageCacheDisableFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::PageCacheDisableFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::AccessedFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:262:18
+    |
+262 |         value |= self.accessed.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::AccessedFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::AccessedFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::DirtyFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:263:18
+    |
+263 |         value |= self.dirty.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::DirtyFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::DirtyFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::paging::flags::PageSizeFlag::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:264:18
+    |
+264 |         value |= self.page_size.into_raw_value();
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PageSizeFlag::into_raw_value] (_0: crate::x86::mem::paging::flags::PageSizeFlag) -> u32;
+
+error: cannot use function `arch::x86::mem::constants::FRAME_SHIFT` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:333:66
+    |
+333 |             frame: FrameNumber::from_raw_value(value as usize >> crate::mem::FRAME_SHIFT)?,
+    |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^
+...
+350 |         value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
+    |                                                  -----------------------
+...
+414 |         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+    |                                        -----------------------
+
+error: cannot use type `arch::x86::mem::paging::flags::PresentFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/libs/arch/src/x86/mem/paging/pde.spec.rs:10:35
+    |
+ 10 | pub open spec fn spec_present_set(p: PresentFlag) -> bool {
+    |                                   ^^^^^^^^^^^^^^
+ 11 |     p is Present
+    |     -
+...
+ 73 |             present: spec_present_set(self.present),
+    |                                       ------------
+...
+ 96 |     present: PresentFlag,
+    |     --------------------
+...
+106 |         present: spec_present_set(present),
+    |                                   -------
+    |
+   ::: src/libs/arch/src/x86/mem/paging/pde.rs:86:17
+    |
+ 86 |                 present,
+    |                 -------
+...
+ 97 |         present: PresentFlag,
+    |         --------------------
+...
+107 |             present,
+    |             -------
+...
+132 |         matches!(self.present, PresentFlag::Present)
+    |         --------------------------------------------
+...
+234 |             present: PresentFlag::from_raw_value(value),
+    |                      ----------------------------------
+...
+257 |         value |= self.present.into_raw_value();
+    |                  ------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPresentFlag(crate::x86::mem::paging::flags::PresentFlag);
+
+error: could not compile `arch` (lib) due to 27 previous errors

@@ -474,3 +474,123 @@ Turn 25
 ────────────────────────────────────────────────────────────
 Now let me run `make verify-arch`.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pde.rs:95:12
+   |
+95 |     pub fn new(
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:309:12
+    |
+309 |  ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Let me inspect the annotated `new` more closely — the error is unusual.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The `#[verus_spec]` macro seems to be misinterpreting the multi-line argument structure when there's a `result =>` clause, particularly when the function shares the same name. The error about not finding a `new` function suggests the macro is generating an unexpected call to `new` somewhere, likely from how it's parsing the `result => ensures` specification syntax. The impl blocks in pde.rs aren't annotated with `#[verus_verify]`, unlike the ones in table.rs and other files, which might be why the `#[verus_spec]` macro on the `new` methods is producing invalid code during the regular cargo build. The other annotated functions like `is_present` and `frame_address` didn't error, so it's something specific to how `new` is being transformed — possibly because it's a common method name or how it constructs `Self`.
+[RESULT ✓] view: 78.     /// # Returns
+79.     ///
+80.     /// A [`PageDirectoryEntryFlags`].
+81.     ///
+82.     #[verus_spec(result =>
+83.         ensures
+84.             result@ == spec_pde_flags_new(
+85.                 present,
+86.                 read_write,
+87.                 user_supervisor,
+88.            ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-arch/verus-logs/verus_*.log | head -1 | xargs grep -n "new\|pde.
+
+[THINKING] I'm seeing a compilation error about a missing `new` function at line 95, which is odd since this code worked before my changes. Let me think through whether the issue is related to missing `#[verus_verify]` attributes on the impl blocks or function definitions, or if something else entirely is causing the problem. Adding `#[verus_verify]` to the whole impl block is risky because it would pull all methods into verification, including out-of-scope functions that I can't modify—and some of them like the shift operations could fail verification. Let me reconsider what's actually causing the "cannot find function new" error.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+24:error[E0425]: cannot find function `new` in this scope
+25:  --> src/libs/arch/src/x86/mem/paging/pde.rs:95:12
+27:95 |     pub fn new(
+30:error[E0425]: cannot find function `new` in this scope
+31:   --> src/libs/arch/src/x86/mem/paging/pde.rs:309:12
+33...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+The working `new` examples sit inside `#[verus_verify]` impl blocks. Let me check whether a `#[verus_verify]` impl forces verification of unannotated methods (risky for out-of-scope fns).
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '120,230p' src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] The error is coming from the verus rustc frontend, not regular compilation — it's an E0425 "cannot find value" for the `new` function. The verus_spec macro likely generates code that references the original function, but when I test is_present without the #[verus_verify] attribute on the impl, it works fine, so the macro itself isn't broken. The issue seems to be specific to how the verus_spec macro handles the `new` functions in the verus build context.
+
+I'm wondering if the problem is actually in how the macro parses the ensures clause with nested function calls and their trailing commas — the tokenizer might be mishandling the comma-separated list when there are nested calls like `spec_pde_flags_new(present, read_write, ...)` with their own commas, potentially splitting the ensures clauses incorrectly. Though proc macros should handle balanced parentheses properly, so that might not be it either. Let me try simplifying the ensures clause to a single line to test if that's the culprit.
+
+Actually, I just realized something: `TableIndex::new` works fine with `#[verus_spec]` and it's a `const fn` inside an impl marked with `#[verus_verify]`. The difference might be that both impl blocks here are missing the `#[verus_verify]` attribute on the impl itself. When I add that, the associated function `new` should be properly recognized in the verification context, though I need to be careful about what happens to other methods in those impls that aren't explicitly annotated.
+
+Looking at the methods that would fall under verification: the simple ones like `is_user`, `is_writable`, and the setters are straightforward. The trickier ones are the conversions like `from_raw_value` and `into_raw_value` that call other unspecified functions. Those should still work since Verus treats unspecified functions with default specs, and the operations themselves (bit shifts, bitwise OR) are safe. The potential overflow concern with `into_raw_value` when shifting the frame number left by `FRAME_SHIFT` should be fine given the bounds on frame addresses.
+
+But I'm realizing I need to verify whether `#[verus_verify]` on an impl block actually forces verification of all methods, or if it only verifies those explicitly marked with `#[verus_spec]`. If it tries to verify everything, I'd hit issues proving the shift doesn't overflow. Let me search the codebase for an example of a verified impl that contains unspecified methods to see how Verus handles this.
+[RESULT ✓] bash: ensures
+        result@ == spec_pt_index(vaddr),
+        result@ < crate::mem::PAGE_TABLE_LENGTH,
+)]
+pub const fn pt_index(vaddr: usize) -> TableIndex {
+    proof! { assert(crate::mem::PAGE_TABLE_LENGTH == 1024) by (compute); }
+    // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Only the associated `new` functions (no receiver) error. Methods with `&self` worked. Let me try adding `#[verus_verify]` to just the two `new` functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "verus_verify\]" src/libs/arch/src/x86/mem/paging/frame/number.rs | head; echo "--
+
+[THINKING] Looking at the attribute patterns in this codebase, I notice that `Table::write` and `read` both have `#[verus_verify]` paired with `#[verus_spec]`, while the free functions like `pd_index` and `pt_index` only carry `#[verus_spec]` without the verify attribute.
+
+For methods inside an impl block, the pattern seems to be that the impl itself gets `#[verus_verify]` while individual methods get `#[verus_spec]`. So I should add `#[verus_verify]` to both impl blocks.
+
+The real concern is whether marking an impl with `#[verus_verify]` forces Verus to verify every method in it, even those without explicit specs. Looking at the `Table` impl, all the methods shown have specs or are marked `external_body`, so it's unclear what happens with unspecified methods like `into_raw_value` that contain potentially problematic operations. The safest approach is to test empirically by adding `#[verus_verify]` to both impl blocks and seeing if out-of-scope methods trigger verification errors—if they do, I'll need to be more selective about which methods get verified.
+
+Actually, thinking about this differently: the two `new` associated functions are what's failing, and they're different from regular methods because they have no receiver. But `from_address` is also an associated function returning `Self` and it works fine in a `#[verus_verify]` impl. So the issue might be specific to how `new` is handled. The least invasive fix would be to add `#[verus_verify]` directly to just the two `new` functions rather than marking the entire impl blocks, which minimizes the risk of accidentally triggering verification on methods I don't want verified.
+[RESULT ✓] bash: 26:#[verus_verify]
+34:#[verus_verify]
+---- does number.rs put verify on assoc fn or impl? ----
+
+#[verus_verify]
+impl FrameNumber {
+    /// The maximum frame number.
+    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+
+    #[verus_spec(ensures Self::NULL@ == 0)]
+    pub const NULL: Sel...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^impl PageDirectoryEntryFlags\|^impl PageDirectoryEntry\|^impl TableEntry for" src
+
+[THINKING] I need to add the `#[verus_verify]` attribute to the impl blocks and see how it handles unannotated methods. Looking at the number.rs implementation, I see it has a mix of items—some constants and methods with specs, others without—so I'm checking whether everything gets verified or if unannotated methods cause issues.
+[RESULT ✓] bash: 61:impl PageDirectoryEntryFlags {
+286:impl PageDirectoryEntry {
+468:impl TableEntry for PageDirectoryEntry {
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -45
