@@ -617,3 +617,15 @@ Turn 41
 ────────────────────────────────────────────────────────────
 Normal build passes. Now the module verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::aligned::page.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=13
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  1/18 exec functions have con...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
