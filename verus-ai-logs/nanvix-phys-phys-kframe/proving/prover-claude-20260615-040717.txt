@@ -185,3 +185,70 @@ Turn 3
 [THINKING] Looking at the three target functions I need to focus on: `KernelFrame::new`, `KernelFrame::drop`, and `KernelFrame::base`. I'm noticing something odd with the tcb-allowed list — it marks `KernelFrame::new` as having a cross-module dependency with `external_body`, but when I check the actual implementation, the `new` function doesn't have `external_body` at all; it's fully specified inline.
 
 The comment in the source suggests it should be marked `external_body` because it calls `identity_map_page` which lives in `mm::virt`, but the code as written doesn't reflect that. Let me run the verification to see what the current state actually is.
+[RESULT ✓] bash: - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me see the full log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\|
+
+[THINKING] There's a compilation error preventing verus from running—the exit code 101 indicates a build failure. Let me examine the full log to see what went wrong.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: Unsupported constant type
+33:   ::: src/kernel/src/mm/phys/kframe.rs:100:17
+35:100 |                   error!("frame base is not page-aligned: {e:?}");
+38:    = note: this error originates in the macro `write` which comes from the expansion of ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,40p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |     ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The `error!` macro fails Verus compilation. Let me see how sibling code handles this in verified functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "verus_keep_ghost\|error!\|map_err" src/kernel/src/mm/phys/frame.rs | head -
+
+[THINKING] The `error!` macro in the `new` function is causing Verus to fail with an "Unsupported constant type" error during the build. I notice that other functions like `drop` and `clear` handle this by either wrapping the `error!` macro with `#[cfg(not(verus_keep_ghost))]` to exclude it from the Verus build, or by marking them as `external_body`. The `drop` function specifically uses the cfg gate to prevent the error macro from being compiled in the Verus context.
+
+For `new`, the `error!` macros are embedded inside `.map_err(|e| { error!(...); e })` closures without any gating, which is why Verus is failing. The challenge is that `new` should be verified in-body rather than marked as `external_body` (since it's being verified as part of the kframe module now), but the ungated `error!` macro is blocking compilation. I need to figure out how to properly gate the error handling in these closures, or look at how similar code in UserFrame handles this pattern during verification.
+[RESULT ✓] bash: 49:#[cfg(verus_keep_ghost)]
+52:#[cfg(verus_keep_ghost)]
+141:                #[cfg(not(verus_keep_ghost))]
+142:                error!("{error:?}");
+147:        #[cfg(not(verus_keep_ghost))]
+154:                #[cfg(not(verus_keep_ghost))]
+155:                error!("{reason:?}");
+164:               ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The fix is to gate `error!` with `#[cfg(not(verus_keep_ghost))]` like the sibling code. Let me apply that to `new`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I need to refactor the `new` function to avoid embedding `error!` macros inside closures, since those can't be easily gated with the `#[cfg(not(verus_keep_ghost))]` attribute. The cleanest approach would be to restructure the error handling so the logging statements sit outside the closure context. I need to apply the cfg gating fix and then re-run to see what verification errors remain. Let me also verify that `FrameAddress` is `Copy` since `base` gets used both in `into_raw_value()` and then again in the struct initialization.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
