@@ -180,3 +180,65 @@ No cheating items present in the module files. Let me run the verification to co
 
 [THINKING] I see there's only a comment about "assumed" with no actual cheating items in the module, so I'm running the architecture verification to make sure everything checks out cleanly.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] The verification passed cleanly, and while the crate shows three external_body instances globally, they're all in the allowed list—table read/write operations and invlpg. Our frame/number module itself has zero violations, so I should confirm those three external calls match what's documented in tcb-allowed.md.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The 3 `external_body` are all in other modules (`invlpg`, `table::read`, `table::write`) — all explicitly listed in `tcb-allowed.md`. The target module `frame/number.rs` has **zero** cheating items, and no changes exist vs base (AST unchanged).
+
+Let me confirm the module's functions verify and check the coverage list includes them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -i "frame/number\|number.rs" verus-ai-logs/verify-arch/verus-logs/cove
+
+[THINKING] All three external_body references are documented in tcb-allowed.md and belong to other modules in the arch crate, not our target module `frame/number.rs`. The verification passes cleanly, confirming zero cheating in the arch-frame-number module, and the target functions `into_raw_value` and `from_raw_value` are verified with proper proofs using type invariants and Views. Since no source files were modified, there are no regressions to check, so I can proceed directly to writing the report.
+[RESULT ✓] bash: === not in unverified list (good - means verified or has contracts) ===
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The target functions are not in the unverified list, confirming they verify with contracts. The module is clean. Let me write the report.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination
+[RESULT ✓] bash: 
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md with 3148 characters
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+**Result: PASS** — zero cheating in `arch-frame-number`.
+
+Findings:
+- The target module (`number.rs` / `.spec.rs` / `.proof.rs`) contains **no** `admit`, `assume`, `external_body`, `assume_specification`, or cfg-gated exec code. The only grep hit is a prose comment.
+- `make verify-arch` → exit 0. `from_raw_value` and `into_raw_value` are proven from real bodies (type-invariant + `spec_max()`); they don't appear in the unverified list.
+- The crate-wide `external_body=3` (`invlpg`, `table::read`, `table::write`) are all outside scope and explicitly listed in `tcb-allowed.md` — not permitted to touch.
+- **AST consistency:** `git diff` vs base for the frame dir is empty — exec source is byte-identical, zero mismatches.
+
+No code changes were needed. Report written to `verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: c0446afa-006c-4c7c-b90d-507bb6c5d622
+Duration: 76.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/prover-claude-20260615-040255.jsonl
