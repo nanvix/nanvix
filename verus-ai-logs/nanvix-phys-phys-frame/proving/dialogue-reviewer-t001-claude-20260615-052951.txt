@@ -174,3 +174,282 @@ Turn 1
 11. 
 12. impl View for Inner {
 13. ...
+[RESULT ✓] bash: error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/mm/phys/frame.rs:561:44
+    |
+555 |         proof {
+    |         ----- while parsing this struct
+...
+561 |             lemma_alloc_contains(self, addr);
+    |                                            ^ expected one of `,`, `...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] There's a compilation error in the verus build—the syntax is failing in frame.rs around lines 449 and 561-563, where there's a `proof { ... }` block appearing inside a struct definition. Let me examine those specific sections to understand what's causing the parse failure.
+[RESULT ✓] view: 430.             self.inv(),
+431.         ensures
+432.             self.inv(),
+433.             match result {
+434.                 Ok(count) => {
+435.                     &&& self@.allocated_frames.contains(frame@)
+436.                     &&& self@.refcounts.contains_key(frame@)
+437.              ...
+[RESULT ✓] view: 540.         requires
+541.             self.inv(),
+542.             phys_addr.inv(),
+543.         ensures
+544.             self.inv(),
+545.             ret <==> (
+546.                 self@.allocated_frames.contains(phys_addr@)
+547.                 || self@.free_frames.contains(phys_addr@)
+548.     ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] grep: verus!|include!|proof\.rs|spec\.rs|verus_verify|verus_spec
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at a parsing error in the Verus macro where the proof block syntax is failing — the compiler is expecting a comma, colon, or closing brace but finding a closing parenthesis instead at line 561.
+
+The real issue is becoming clearer: the code is being parsed as plain Rust rather than Verus, which means the `proof { ... }` block is being interpreted as a struct literal, and the `@` operator syntax on line 449 is also failing because it's not recognized. This suggests the frame.rs file either isn't wrapped in a `verus!{}` macro or the macro isn't being applied correctly. I need to check how frame.rs is structured — whether it includes the spec and proof files via `include!` macros or has its own `verus!` block at the top.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:50:include!("frame.spec.rs");
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:53:include!("frame.proof.rs");
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:81:#[verus_verify]
+/home/ruize/nanvix-phy-specs/src/kern...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] grep: proof!|proof \{|proof_decl|@;|@\)|@ 
+
+[THINKING] I'm realizing this codebase uses the `verus_verify`/`verus_spec` attribute style rather than the `verus!{}` macro wrapper, so exec functions are plain Rust with attribute macros. That means `proof { ... }` blocks and `frame@` syntax need to live inside a `#[verus_spec]` body, or I should use the `proof!{}` macro instead.
+
+The errors suggest someone introduced bare `proof { ... }` blocks (which Rust parses as struct literals) and `frame@` expressions (which aren't valid in plain Rust) instead of using the proper `proof!` macro syntax. Let me look at how other proof blocks are written elsewhere in this file to understand the correct pattern.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:123:                    &&& old(self)@.free_frames.contains(frame@)
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:124:                    &&& final(self)@ == FrameAllocView {
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/ph...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm seeing that the working proof blocks use the `proof!` macro syntax, while the problematic lines at 448 and 555 have bare `proof {` which doesn't work in attribute-style Verus. The fix is straightforward—convert those bare blocks to use the macro form. I'm also noticing there's a nested situation at line 470 where a `proof {` block contains a `proof!` macro at line 472, so I need to examine that structure more carefully.
+[RESULT ✓] view: 468.         }
+469. 
+470.         proof {
+471.             let i = frame_number as int;
+472.             lemma_refcount_value(self, frame@);
+473.         }
+474.         Ok(self.refcount[frame_number])
+475.     }
+476. 
+477.     ///
+478.     /// # Description
+479.     ///
+480.     /// Books a frame so...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^error" /tmp/verify_kernel.log | head -40; echo "==="; grep -n "frame.rs:" /
+
+[THINKING] I'm double-checking which lines matched the grep pattern for `proof!` versus `proof {` — line 470 has the bare `proof {` syntax, and I need to verify what actually triggered the match on line 472 since it contains `lemma_refcount_value` with a frame parameter.
+
+Looking at the full error log, I'm seeing that bare `proof {` blocks appear at lines 448, 470, and 555, but the error output only reported 449, 561, 562, and 563 — which means line 470's bare proof block should also be generating an error. I need to check the complete verification log to understand all the errors and confirm that bare `proof {` needs to be changed to `proof! {`.
+[RESULT ✓] bash: 16:error: expected identifier, found keyword `let`
+24:error: expected one of `,`, `:`, or `}`, found `(`
+40:error: expected one of `,`, `:`, or `}`, found `)`
+49:error: expected one of `,`, `:`, or `}`, found `)`
+58:error: expected `;`, found keyword `if`
+67:error: expected identifier, found keyword...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail ===" && cat verus-ai-logs/verify-kernel/verus-logs/cheating
+
+[THINKING] All 14 errors trace back to three bare `proof {` blocks that need to be converted to `proof! { ... }` macros at lines 448, 470, and 555. The build won't even parse without fixing these, which means I can't proceed with verification — this is a hard blocker on the final checklist requirement.
+
+Since the parse errors prevent verification from running, I need to fix those first before I can meaningfully evaluate the other checklist items. But I should still gather the evidence for the remaining items by checking the cheating-detail.txt file and the TCB allow-list to see which violations are actually in frame.rs versus elsewhere in the kernel, since the cheating counts (assume=0, external_body=19, admit=19, cfg_gate=15) appear to be kernel-wide.
+[RESULT ✓] bash: === cheating-detail ===
+    - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== verus-ai.toml ===" && cat verus-ai.toml; echo; echo "=== find tcb / allow f
+
+[THINKING] The frame module is violating the checklist requirements significantly. The admit() function appears 3 times across different locations in frame.rs when it should have zero instances, and there are at least 10 functions with external_body violations scattered throughout the file, indicating systematic non-compliance with the coding standards.
+
+For assume_specification, I'm finding 2 instances in frame.spec.rs that reference an internal crate (crate::hal::mem::PageAligned) rather than external or standard library crates, which violates the trust boundary rules. I also need to verify the cfg-gated execution count specifically in frame.rs and investigate why the build is failing with 14 parse errors. Let me locate the TCB allowed file and check the relevant constraint skills to understand what exceptions might apply.
+[RESULT ✓] bash: === verus-ai.toml ===
+# Auto-generated from verification-plan-phys.json.
+# Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
+
+[project]
+background = """File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `I...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/tcb-allowed.md
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cfg in frame.rs ===" && grep -n "cfg" src/kernel/src/mm/phys/frame.rs; echo
+
+[THINKING] I'm checking whether all the external_body functions listed in frame.rs match up with the allowed list, and it looks like all 10 of them are accounted for—either explicitly allowed or marked as cross-module dependencies.
+
+Now I'm looking at the assume_specification items in frame.spec.rs for PageAligned. The checklist is strict: only std/external crates are allowed for assume_specification, but these are intra-crate (kernel hal::mem). The tcb-allowed.md does document them as workspace-internal and trusted-until-HAL-verified, which creates a tension between the strict rule and the project's documented policy.
+
+But the blocking issue is that the build doesn't compile, so I need to focus on the most critical checklist failures. The core problem is the three main allocation methods — Inner::alloc, Inner::alloc_contiguous, and Inner::alloc_range — all still have admit() calls in their proofs. These are the exact functions that need to be verified, so having admits here is a hard failure on the "zero remaining admit()" requirement. The proving phase is incomplete.
+
+On the assume() front, there are two intra-crate uses that technically violate the checklist's strict rule, though they're documented as a deferred part of the HAL layer verification. I'll flag this but acknowledge it's a known limitation. For the cfg-gated exec code, I need to check frame.rs for any cfg-gated branches or expressions beyond just the error macros. The build failure is the immediate blocker though, so I'll prioritize getting that working first before tackling the proof gaps.
+[RESULT ✓] bash: === cfg in frame.rs ===
+49:#[cfg(verus_keep_ghost)]
+52:#[cfg(verus_keep_ghost)]
+141:                #[cfg(not(verus_keep_ghost))]
+147:        #[cfg(not(verus_keep_ghost))]
+154:                #[cfg(not(verus_keep_ghost))]
+164:                #[cfg(not(verus_keep_ghost))]
+218:                #[cfg(no...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== proof blocks in manager.rs ===" && grep -n "proof! {\|proof {" src/kernel/s
+
+[THINKING] I'm examining whether those `#[cfg(not(verus_keep_ghost))]` annotations on error logging statements count as cfg-gated executable code. These are gating out logging macro calls during verification, which are technically executable statements rather than branches or match arms—so they might fall outside what the checklist is actually prohibiting.
+
+Looking at the git history, the prover's last commit shows the build is broken with compilation errors, and there are bare `proof {` blocks that don't parse. I need to check whether the prover added these incomplete proof blocks for the `refcount` and `is_covered` functions or if they were already present.
+[RESULT ✓] bash: === proof blocks in manager.rs ===
+201:        proof! {
+220:            proof! {
+228:        proof! {
+250:                    proof! {
+257:                    proof! {
+298:        proof! {
+389:        proof! {
+445:        proof! {
+474:            proof! {
+494:                        proof! {
+=== ls ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I've identified the root cause: frame.rs has three instances of bare `proof {` syntax at lines 448, 470, and 555 that should be `proof! {` instead. These missing exclamation marks are what's triggering all 14 parse errors and blocking Verus from running. Now I need to confirm the build command — the checklist references `{verus_cmd}` and `{build_cmd}`, where `make verify-kernel` is the Verus command, and the build command appears to be starting with `./z`.
+
+Going through the checklist systematically: the spec-drift check can't be verified until the build compiles, so that's blocked. There are 3 `admit()` calls in core proof targets (Inner::alloc, Inner::alloc_contiguous, Inner::alloc_range), which fails the zero-admit requirement. The external_body usage checks out — all 10 instances in frame.rs are properly listed in tcb-allowed.md. However, there are 2 `assume_specification` calls in frame.spec.rs for PageAligned that violate the rule since they're intra-crate kernel code, not standard library or external dependencies.
+
+For the cfg-gated exec code check, I need to evaluate whether the logging statements gated with `#[cfg(not(verus_keep_ghost))]` count as violations. These are error macro calls that get compiled out during verification, which is a standard pattern, but technically they're exec statements being conditionally compiled.
+
+Looking at the cheating audit, I'm counting three admit calls in frame.rs, ten external_body declarations (all listed in tcb-allowed.md), and two assume_specification calls in frame.spec.rs that violate the strict checklist rule since they're intra-crate. The cfg-gated logging is widespread but appears to be acceptable.
+
+For the Verus limitation reproducer requirement, the frame.rs deferrals are documented as design limitations around cross-module global tokens rather than actual Verus bugs needing isolated test cases, so that's more of a pass with a note.
+
+I'm also checking the semantic equivalence of the VERUS BUG FIX comments at lines 445 and 551 where `into_frame_number()` was replaced with manual division—need to verify those are truly equivalent transformations.
+
+Finally, the cross-module regression testing runs through `make verify-kernel` to catch any issues across the full codebase.
+
+The verification is currently failing with 14 parse errors because of bare `proof {` blocks that should be `proof! {` at three sites, plus three admits in core proof functions and intra-crate assume_specification calls. The build itself is broken, so that's the blocking prerequisite—I need to fix the parse errors first so verification can even run, then address the other failures in sequence.
+[RESULT ✓] view: 139.             Ok(index) => index,
+140.             Err(error) => {
+141.                 #[cfg(not(verus_keep_ghost))]
+142.                 error!("{error:?}");
+143.                 return Err(error);
+144.             },
+145.         };
+146.         // Newly allocated frames have a single owner.
+1...
+[RESULT ✓] view: 110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+113.     /// returned instead.
+114.     ///
+115.     #[verus_spec(result =>
+116.         requires
+117.             old(self).inv(),
+118.         ensures
+119.      ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+I have all the evidence. Build is broken (14 parse errors → Verus never ran), plus 3 `admit()`s in core proof targets. Writing the review.
+[TOOL] report_intent: Writing turn 1 review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md
+
+[THINKING] I'm seeing that the core allocation functions—`Inner::alloc`, `alloc_contiguous`, and `alloc_range`—all have full specifications but their implementations just use `admit()` to skip the proof, which means they're not actually verified. This is a critical failure for the zero-admit goal. The cfg-gated logging statements scattered throughout don't affect the spec, so they're not the real issue here.
+
+Now I'm compiling the full review findings: the build doesn't compile so I can't run the spec-drift check, the three allocation functions fail the admit requirement, all external bodies are properly listed in the TCB, but there are two intra-crate `assume_specification` calls in the frame spec that shouldn't be there, the cfg-gating is correctly applied to logging only without affecting control flow, and the frame deferrals are documented as a cross-module design pattern rather than a limitation.
+
+The verification itself failed with 14 parse errors before Verus could even run, which blocks items 9 and 10. My first actionable fix is to correct the bare `proof {` blocks to `proof! {` to unbreak the build, then tackle the three admits as the substantive failures. I'll write the full review in turn_001_driver.md and focus the fix request on these two priorities without creating a STOP file since multiple items remain unresolved.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md with 6649 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Turn 1 review complete. Wrote `turn_001_driver.md`. No STOP file created — multiple items FAIL.
+
+**Verdict: NOT RESOLVED.** `make verify-kernel` → 0 verified, 14 parse errors, *Verus never ran*.
+
+Checklist results:
+| Item | Status |
+|---|---|
+| No specs weakened | BLOCKED (build broken) |
+| Zero admit() | **FAIL** — 3 admits in `Inner::alloc`(137), `alloc_contiguous`(214), `alloc_range`(613) — all in-scope proof targets |
+| external_body in TCB | PASS — all 10 listed in `tcb-allowed.md` |
+| Zero assume_specification | **FAIL** — 2 intra-crate (`PageAligned::into_raw_value`/`deref`) in `frame.spec.rs:31,38`, not std/external |
+| No cfg-gated exec | PASS — logging-only gates |
+| Cheating audit | reported |
+| Limitation reproducer | PASS — documented cross-module token deferrals |
+| Exec rewrites minimal | BLOCKED |
+| Cross-module regression | **FAIL** — compilation error |
+| 0 errors / 0 warnings | **FAIL** — 14 parse errors |
+
+**Root cause of build break:** three in-body proof blocks use bare `proof {` instead of `proof! {` (frame.rs:448, 470, 555), parsed as struct literals.
+
+Fix order requested: (1) `proof {`→`proof! {` to unbreak build, (2) discharge the 3 `admit()`s with real proofs, (3) remove/justify the 2 intra-crate `assume_specification`s.
+
+[THINKING] I've completed my review pass and identified the issues that need fixing. The fixer will handle those on the next turn.
+
+
+=== Session End ===
+Session: abf38b00-df42-4e7d-9aa5-2c1e8c327874
+Duration: 229.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-reviewer-t001-claude-20260615-052951.jsonl
