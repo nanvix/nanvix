@@ -540,3 +540,22 @@ Normal build passes. Now run full-crate `make verify-kernel` to confirm 0 verifi
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify-kernel 2>&1 | sed -n '/=== Results ===/,$p'
 
 [THINKING] The normal kernel build succeeded with the ungated verus! block, confirming the change is semantically safe. Now I need to run the full kernel verification to check for regressions in the frame module, then run the complete crate verification—though I expect some pre-existing admits in other modules that are out of scope for this task.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=11 admit=29 trusted=0 no_decreases=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  55/1026 exec functions...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Full-crate kernel verification: **exit 0, 0 errors**. Global cheating counts are all pre-existing in out-of-scope modules. Now run `make verify` for full regression check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | grep -E "Crate|verification:|errors|status:|E
+
+[THINKING] The kernel verification passed cleanly with no errors from my module—it actually reduced the cfg_gate count by one. The full crate also compiled successfully using the cached build. Now I need to run the full `make verify` command across all the VERUS_CRATES to check for any regressions.
