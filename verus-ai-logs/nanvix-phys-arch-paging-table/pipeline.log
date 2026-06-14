@@ -21,3 +21,11 @@ Module: arch-paging-table
 [2026-06-14 09:50:11] [PROVER] Running caller-analysis...
 [2026-06-14 09:50:11] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 09:52:29]   ↳ prover done in 2m17s (exit=0)
+[2026-06-14 09:52:29] [PHASE] caller-analysis: no-review (2m18s)
+[2026-06-14 09:52:29] ✅ caller-analysis: PASS (0/0)
+[2026-06-14 09:52:29] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: arch-paging-table
+============================================================

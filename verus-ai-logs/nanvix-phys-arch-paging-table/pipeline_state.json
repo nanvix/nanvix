@@ -2,23 +2,52 @@
   "module_name": "arch-paging-table",
   "log_name": "nanvix-phys-arch-paging-table",
   "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 138.0,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "aa4a859b-200c-47ed-827a-6a09b5f53077",
   "completed": false,
   "base_branch": "verus-ai/virt-identity-map",
   "verus_branch": "verus-ai/arch-paging-table",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "16c877936600c4eb2dcd0225502eb9b15e9511e6"
+  },
   "phase_start_shas": {
-    "caller-analysis": "ee25c4d2568a9fc5921f401849b2aaf916674312"
+    "caller-analysis": "ee25c4d2568a9fc5921f401849b2aaf916674312",
+    "view-design": "16c877936600c4eb2dcd0225502eb9b15e9511e6"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "ee25c4d2568a9fc5921f401849b2aaf916674312",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "16c877936600c4eb2dcd0225502eb9b15e9511e6",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "16c877936600c4eb2dcd0225502eb9b15e9511e6",
       "rollback_iter": 0
     }
   ],
