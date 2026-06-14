@@ -541,3 +541,43 @@ admit=0 now. One `requires not satisfied` error. Let me see details:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -A25 "requires not satisfied" | 
 
 [THINKING] I'm checking the verification status—8 entries have been validated successfully, but one failed because a required dependency wasn't satisfied. Let me look at the full error details to understand what went wrong.
+[RESULT ✓] bash: error: requires not satisfied
+   --> src/kernel/src/mm/phys/mod.proof.rs:193:22
+    |
+193 |             requires spec_page_size() > 0, a == i * spec_page_size();
+    |                      ^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/mod....
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec_page_size\|fn spec_page_size\|lemma.*page_size\|PAGE_SIZE" src/kernel/src/ha
+
+[THINKING] I'm hitting an issue at line 193 where the assertion requires `spec_page_size() > 0`, but that constraint isn't established in the current scope. I need to figure out if there's a lemma or axiom that guarantees `spec_page_size()` is positive, or if I need to explicitly prove it within the FrameAllocView context before the assertion can go through.
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "fn spec_page_size\|spec_page_size() > 0\|page_size_positive\|axiom.*page" src/ker
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:34:pub uninterp spec fn spec_page_size() -> int;
+src/kernel/src/mm/phys/frame.proof.rs:49:        &&& spec_page_size() > 0
+src/kernel/src/mm/phys/mod.proof.rs:193:            requires spec_page_size() > 0, a == i * spec_page_size();
+<shellId: 17 complete...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+`spec_page_size()` positivity isn't a global axiom. Add it as a requires to the region lemma:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] I'm realizing that `spec_page_size` isn't interpreted as a positive value by default—the positivity constraint only exists within the internal invariant, so it's not available in my lemma. Since the region_frames alignment proof requires `spec_page_size() > 0`, I need to decide how to handle this gap. The most straightforward approach would be adding `spec_page_size() > 0` as a precondition to the lemma, which makes sense given the caller's context during initialization. The region lemma specifically needs the page size positivity requirement to prove that the frame addresses are properly aligned, since the alignment proof depends on showing `i*page % page == 0`. I'll add `requires spec_page_size() > 0` to the lemma's contract — it's a sound global invariant and the nonlinear arithmetic solver can use it to verify the alignment property.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|fail|verified|status|

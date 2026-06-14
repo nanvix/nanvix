@@ -170,6 +170,7 @@ pub proof fn lemma_book_region_reserves_region_frames(
     requires
         pre.inv(),
         pre.initialized,
+        spec_page_size() > 0,
         PhysMemView::region_frames(start, size).subset_of(pre.frames.free_frames),
         start % spec_page_size() == 0,
         size % spec_page_size() == 0,
