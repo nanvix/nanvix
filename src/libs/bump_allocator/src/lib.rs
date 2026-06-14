@@ -280,7 +280,7 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
                     &&& v.base <= a
                     &&& a + (N as int) <= v.base + (v.storage_size as int)
                 },
-                Err(_) => true,
+                Err(e) => e == BumpAllocError::Exhausted,
             },
     )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
@@ -359,9 +359,15 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
                     &&& v.base <= a
                     &&& a + (N as int) <= v.base + (v.storage_size as int)
                 },
-                Err(BumpAllocError::SizeMismatch) => vstd::layout::size_of::<T>() != N as nat,
-                Err(BumpAllocError::AlignmentMismatch) => vstd::layout::align_of::<T>() > A as nat,
-                Err(_) => true,
+                Err(e) => {
+                    &&& e == BumpAllocError::SizeMismatch
+                        || e == BumpAllocError::AlignmentMismatch
+                        || e == BumpAllocError::Exhausted
+                    &&& (e == BumpAllocError::SizeMismatch ==> vstd::layout::size_of::<T>()
+                        != N as nat)
+                    &&& (e == BumpAllocError::AlignmentMismatch ==> vstd::layout::align_of::<T>()
+                        > A as nat)
+                },
             },
     )]
     pub unsafe fn alloc_as<T>(&self) -> Result<&'static mut MaybeUninit<T>, BumpAllocError> {
