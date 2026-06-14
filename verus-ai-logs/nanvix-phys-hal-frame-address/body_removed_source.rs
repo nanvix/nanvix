@@ -19,7 +19,6 @@ use crate::hal::mem::types::address::{
 };
 use ::arch::mem::paging::FrameNumber;
 use ::sys::error::Error;
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -37,12 +36,13 @@ pub struct FrameAddress(PageAligned<PhysicalAddress>);
 #[cfg(verus_keep_ghost)]
 verus! {
 
-pub uninterp spec fn spec_page_size() -> int;
-
-pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
-    ensures
-        result == spec_page_size(),
-;
+// The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
+// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+// that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+// definition names the same concrete value the proofs already relied on.
+pub open spec fn spec_page_size() -> int {
+    ::arch::mem::PAGE_SIZE as int
+}
 
 impl View for FrameAddress
 {
@@ -73,22 +73,20 @@ impl FrameAddress {
     pub fn into_physical_address(self) -> PageAligned<PhysicalAddress> { ... }
 
     pub fn into_page_address(self) -> PageAddress { ... }
-
-    pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> { ... }
-
-    pub fn into_frame_number(self) -> FrameNumber { ... }
 }
 
-// Dependency contract for the manager layer: raw-value conversions of a frame address.
+// Raw-value and frame-number conversions of a frame address. The frame address denotes a single
+// page-aligned physical frame; these functions expose its two equivalent identities (raw physical
+// address and frame number) and the lossless, mutually-inverse mappings between them.
 #[verus_verify]
 impl FrameAddress {
-    // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()`.
-    // `external_body` until the address layer is verified.
-    #[verus_verify(external_body)]
+    // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()` and
+    // its abstract address equals the raw input. Verified against the `PhysicalAddress` /
+    // `PageAligned` dependency contracts.
     #[verus_spec(result =>
         ensures
             match result {
-                Ok(fa) => fa.inv(),
+                Ok(fa) => fa.inv() && fa@ == raw_addr as int,
                 Err(_) => true,
             },
     )]
@@ -103,14 +101,37 @@ impl FrameAddress {
     ///
     /// The raw value of the target [`FrameAddress`].
     ///
-    // Dependency contract: the raw value is the abstract frame address. `external_body` until the
-    // address layer is verified.
-    #[verus_verify(external_body)]
+    // Dependency contract: the raw value is the abstract frame address. Verified against the
+    // `PageAligned::into_raw_value` dependency contract.
     #[verus_spec(result =>
         ensures
             result as int == self@,
     )]
     pub fn into_raw_value(self) -> usize { ... }
+
+    // Constructs a frame address from a frame number. The frame's base address is
+    // `frame_number * PAGE_SIZE`, page-aligned by construction, so the call always succeeds and the
+    // result satisfies `inv()`.
+    #[verus_spec(result =>
+        ensures
+            result is Ok,
+            (result->Ok_0).inv(),
+            (result->Ok_0)@ == spec_from_number(spec_frame_raw_value(frame_number)),
+    )]
+    pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> { ... }
+
+    // Recovers the frame number of a frame address (`self@ / PAGE_SIZE`). Requires the address to
+    // be page-aligned and to have a representable frame number (so the underlying conversion does
+    // not overflow); the result is the exact inverse of `from_frame_number`.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+            spec_frame_number(self@) <= spec_max_frame_number(),
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+            spec_from_number(spec_frame_raw_value(result)) == self@,
+    )]
+    pub fn into_frame_number(self) -> FrameNumber { ... }
 }
 
 impl core::fmt::Debug for FrameAddress {
