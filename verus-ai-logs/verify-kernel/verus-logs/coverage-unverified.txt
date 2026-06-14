@@ -1,4 +1,4 @@
-# Unverified exec functions: 1007/1022
+# Unverified exec functions: 1001/1022
   do_debug
   debug
   do_evctrl
@@ -550,13 +550,7 @@
   deref
   deref_mut
   drop
-  init
   get_mut
-  alloc_many_user_frames
-  alloc_user_frame
-  check_user_watermark
-  alloc_kernel_frame
-  alloc_many_kernel_frames
   test
   new
   address
