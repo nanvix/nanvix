@@ -1448,3 +1448,175 @@ Turn 107
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "[verus-ai] phys-frame: prove alloc; strengthen intern
 
 [THINKING] The alloc module is looking good with 54 verified functions and only the two remaining admits flagged as expected. I should verify this builds on x86_64 to catch any regressions, then commit this progress before tackling alloc_contiguous and alloc_range. I need to be careful about the internal_inv modification I made and ensure it's properly documented before moving forward.
+[RESULT ✓] bash: done
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Now `alloc_contiguous`. Let me view the full body and the `bitmap.alloc_range` spec.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the `alloc_contiguous` function, it allocates a contiguous block of `count` frames using the bitmap's range allocation, sets the refcount for each frame in that range to 1, and constructs a FrameAddress from the starting index. I'm checking the full function body and its specification, including what `bitmap.alloc_range` guarantees about allocating contiguous frames.
+[RESULT ✓] view: 281.                     final(self)@ == old(self)@
+282.                 }
+283.             },
+284.     )]
+285.     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+286.         proof! { admit(); }
+287.         let frame_number: usize = match self.bitmap.alloc_range(coun...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.rs
+
+[THINKING] I'm working through the complexity of `alloc_contiguous`, which requires reserving a contiguous range of frames, updating their reference counts in a loop while tracking partial state, converting the starting position to a valid FrameNumber (which I can prove is within bounds through representability constraints), and then performing a range-based view transition.
+
+The error case is tricky: if `from_raw_value` returns None, the spec says the state should be unchanged, but I've already mutated the bitmap and refcounts. However, with the representability strengthening, the None case becomes unreachable since the starting position is guaranteed to be representable. I need to establish a multi-frame reserve transition lemma that describes how setting a contiguous range of bits and refcounts transforms the view, plus a loop invariant for the refcount updates, and I need to understand the full postcondition of `bitmap.alloc_range` to know exactly which bits were set and that they were previously unset.
+[RESULT ✓] view: 293.     #[verus_spec(result =>
+294.         requires
+295.             old(self).inv(),
+296.             size > 0,
+297.             size <= old(self)@.num_bits,
+298.         ensures
+299.             final(self).inv(),
+300.             match result {
+301.                 Ok(start) => {
+302.          ...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+`bitmap.alloc_range` requires `size <= num_bits`, but `alloc_contiguous` calls it with unguarded `count` — a missing bounds check (another latent bug). Both `alloc_contiguous` and `alloc_range` need a shared range-reserve transition lemma. Let me record the bugs found so far, then build the range lemma.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+
+[THINKING] I'm spotting a potential precondition violation here. The `alloc_range` method requires that `size` doesn't exceed the bitmap's `num_bits`, but `alloc_contiguous` is calling it with an arbitrary `count` value that only needs to be positive—there's no guarantee `count` stays within bounds.
+
+Looking at the actual implementation, `alloc_contiguous` directly invokes `self.bitmap.alloc_range(count)` without checking whether `count <= num_bits` first. This means if someone passes a `count` larger than the available bits, the precondition gets violated. The fix would be to add a guard that returns an error if `count` exceeds the bitmap's capacity, which is the correct behavior anyway since no contiguous range of that size could exist.
+
+Beyond that guard, the function needs to handle the loop that sets refcounts for the allocated range, establish the representability of the returned address, and prove the multi-frame reserve transition — that the view correctly reflects the newly allocated frames with their refcounts set to 1 and the free set updated accordingly.
+
+I could write a shared lemma for the range-reserve transition that both alloc_contiguous and alloc_range can use, since they both book a contiguous block of frames. That's more efficient than proving the same set equalities twice. Given the time constraints and verification overhead, I should focus on getting the core logic right and the key lemmas in place rather than getting bogged down in every detail. I need to define how the refcount sequence changes when setting a range to 1, then figure out whether to prove the range lemma inductively using the single-element case or directly via extensionality. Given the complexity and that I've already made progress on other parts, I should push through and complete all three proofs, though the loop invariants for the refcount updates will be tricky to formalize. I'm realizing that regardless of approach, I'll need a range lemma to connect the iterated single-reserve operations to the final union form stated in the function's postcondition. Even if I structure the loop invariant around partial reserves, at loop exit I still need to show that the accumulated state matches the expected union or difference form. So I should focus on getting that range lemma solid first, then use it to verify both alloc_range and alloc_contiguous.
+
+Given the complexity and verification latency, I'm going to be pragmatic here. I've already made real progress—FIX A is complete, the allocator is proven, and I've found an actual 32-bit soundness bug. If I can't reliably finish alloc_contiguous and alloc_range within a few more iterations, I'll document the remaining admits clearly and lay out the exact path forward rather than spinning on verification.
+
+Let me focus: I'll write the range-reserve lemma that characterizes how the refcount sequence evolves when reserving a contiguous block. The lemma models the final refcount state as a sequence where all indices in the target range are set to 1 and everything else preserves its original value, then I'll use this to prove both remaining allocation functions. I'm realizing the range lemma proof will be verbose but doable—I can map frame addresses over the range set analogously to the single-frame case. Given the time constraints and verification latency, I need to be strategic: I'll attempt the range lemma and alloc_contiguous proof since it's more self-contained, then tackle alloc_range if time permits. Let me start writing the range lemma with the spec_range_frames helper and work through the proof.
+
+Now I'm carefully working through the refcount invariant for the range case—checking that post.refcounts matches the expected map by verifying the domain and values align correctly for both newly-allocated frames in the range and existing frames outside it.
+
+I should write out the full proof now, being careful with the trigger conditions.
+[RESULT ✓] view: 1. # Bugs / Suspicious code — `mm::phys::frame`
+2. 
+3. ## [open] `Inner::alloc_range`: possible off-by-one between body and spec
+4. 
+5. - Body (frame.rs:588-589, 598, 626):
+6.   - `start_frame_number = region.start().into_frame_number().into_raw_value()`
+7.   - `end_frame_number = start_frame_number...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat >> verus-ai-logs/nanvix-phys-phys-frame/bugs.md <<'EOF'
+
+## [auto-fixed] `Inner::
+[RESULT ✓] bash: done
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+Now let me add the range-reserve lemma. Let me find the current location after `lemma_reserve_one_v`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^proof fn lemma_reserve_one_v\|^proof fn lemma_release_one_v\|^proof fn lemm
+
+[THINKING] I'm going to add the range-reserve lemma and the spec_range_frames helper to frame.proof.rs, then work through the proofs for alloc_contiguous and alloc_range. I need to locate where lemma_reserve_one_v ends so I can insert the new code in the right place.
+[RESULT ✓] bash: 272:proof fn lemma_reserve_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr: int)
+359:}
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 353. 
+354.     assert(post == FrameAllocView {
+355.         allocated_frames: pre.allocated_frames.insert(addr),
+356.         free_frames: pre.free_frames.remove(addr),
+357.         refcounts: pre.refcounts.insert(addr, 1int),
+358.     });
+359. }
+360. 
+361. /// Release one frame's last reference: cl...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm inserting a range-reserve lemma and helper function after line 359 that mirrors the single-frame reserve logic but works across a contiguous range of frames. The helper will define a set of addresses spanning from a starting frame across multiple pages, matching the pattern used in the alloc_contiguous specification.
+
+Now I'm realizing the two allocation specs express their frame sets differently—alloc_contiguous uses an existential formula over offsets while alloc_range uses a mapped integer range—but they're extensionally equivalent. My lemma will use the helper function, and at each call site I'll need to prove the equivalence between the spec's exact expression and my helper's form using set equality.
+
+For the lemma itself, I'll pass the frame set as a parameter with a precondition that it matches the helper, then model the reference count by a values characterization and the range as a bitmap view. The key proof obligation is showing that the allocated frames after the operation equal the pre-allocated frames unioned with the new range, which reduces to proving the helper function correctly captures the frame addresses for the integer range.
+
+Writing the lemma...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+Let me verify the range lemma proves before wiring it into the functions, and check the helper lemma signatures.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "proof fn lemma_frame_addr_div\|proof fn lemma_frame_addr_injective\b\|proof 
+
+[THINKING] I should verify that the lemma compiles and its proof is sound before moving on to the function proofs, since callers will rely on its ensures clause. Let me also double-check the signatures of the helper lemmas I'm using to make sure I'm invoking them correctly.
+[RESULT ✓] bash: 81:proof fn lemma_aligned_addr_index(a: int)
+93:proof fn lemma_frame_addr_injective(i: int, j: int)
+116:proof fn lemma_frame_addr_div(i: int)
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 93. proof fn lemma_frame_addr_injective(i: int, j: int)
+94.     requires
+95.         frame_addr_of(i) == frame_addr_of(j),
+96.         spec_page_size() > 0,
+97.     ensures
+98.         i == j,
+99. {
+100.     vstd::arithmetic::mul::lemma_mul_is_commutative(i, spec_page_size());
+101.     vstd::arithme...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "range_set\|all_bits_set_in_range\|all_bits_unset_in_range\|exists_contiguou
+
+[THINKING] I'm verifying that the frame address injectivity lemma applies here—I have `a == frame_addr_of(k)` and `a == frame_addr_of(i)`, which gives me the equality `frame_addr_of(k) == frame_addr_of(i)` that the lemma requires. The page size constraint also checks out.
+
+Now the ensures clause gives me `k == i`, and since `start <= k < start + count`, the range contains `k`. But I asserted earlier that the range doesn't contain `i`, which contradicts `k == i` and `range.contains(k)`. That's the contradiction I need. Let me verify the BitmapView::range_set definition to confirm it uses the half-open interval `start <= x < end`.
+[RESULT ✓] bash: 52:    pub open spec fn range_set(start: int, end: int) -> Set<int> {
+62:    pub open spec fn all_bits_set_in_range(&self, start: int, end: int) -> bool {
+67:    pub open spec fn all_bits_unset_in_range(&self, start: int, end: int) -> bool {
+75:        &&& self.all_bits_unset_in_range(start, start +...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] view: 52.     pub open spec fn range_set(start: int, end: int) -> Set<int> {
+53.         Set::new(|i: int| start <= i < end)
+54.     }
+55. 
+56.     /// Well-formedness: set_bits only contains valid indices.
+57.     pub open spec fn wf(&self) -> bool {
+58.         forall|i: int| self.set_bits.contains(i) =...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+Now let me run verification to confirm the new lemma proves (functions still have admits).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+
+[THINKING] I've defined range_set to use a half-open interval from start to start+count, which matches what my lemma needs. Now I'm running a verification to test whether the lemma holds—it's going to take a few minutes to complete.

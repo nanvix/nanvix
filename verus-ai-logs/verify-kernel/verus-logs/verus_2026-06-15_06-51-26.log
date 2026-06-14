@@ -1,0 +1,45 @@
+Timestamp: 2026-06-15_06-51-26
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=18
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0433]: cannot find type `BitmapView` in this scope
+   --> src/kernel/src/mm/phys/frame.proof.rs:393:26
+    |
+393 |         view_of(sb.union(BitmapView::range_set(start, start + count)), nb, rc2) == (FrameAllocView {
+    |                          ^^^^^^^^^^ use of undeclared type `BitmapView`
+    |
+help: consider importing this struct
+   --> src/kernel/src/mm/phys/frame.rs:17:1
+    |
+ 17 + use bitmap::BitmapView;
+    |
+
+error[E0433]: cannot find type `BitmapView` in this scope
+   --> src/kernel/src/mm/phys/frame.proof.rs:408:17
+    |
+408 |     let range = BitmapView::range_set(start, start + count);
+    |                 ^^^^^^^^^^ use of undeclared type `BitmapView`
+    |
+help: consider importing this struct
+   --> src/kernel/src/mm/phys/frame.rs:17:1
+    |
+ 17 + use bitmap::BitmapView;
+    |
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

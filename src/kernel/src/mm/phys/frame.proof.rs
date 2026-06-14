@@ -358,6 +358,159 @@ proof fn lemma_reserve_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
     });
 }
 
+/// The set of frame addresses of a contiguous index range `[start, start + count)`.
+closed spec fn spec_range_frames(start: int, count: int) -> Set<int> {
+    Set::new(|addr: int| exists|i: int| start <= i < start + count && addr == #[trigger] frame_addr_of(i))
+}
+
+/// Reserve a contiguous range of frames: setting previously-clear, in-range bits
+/// `[start, start + count)` and writing each of their refcounts to 1 moves the whole range from
+/// `free` to `allocated` with refcount 1. The range analogue of `lemma_reserve_one_v`.
+proof fn lemma_reserve_range_v(
+    sb: Set<int>,
+    nb: int,
+    rc: Seq<u8>,
+    rc2: Seq<u8>,
+    start: int,
+    count: int,
+)
+    requires
+        spec_page_size() > 0,
+        0 <= start,
+        count > 0,
+        start + count <= nb,
+        nb <= rc.len(),
+        rc2.len() == rc.len(),
+        forall|k: int|
+            0 <= k < rc.len() ==> #[trigger] rc2[k] == (if start <= k < start + count {
+                1u8
+            } else {
+                rc[k]
+            }),
+        forall|i: int| sb.contains(i) ==> 0 <= i < nb,
+        forall|j: int| start <= j < start + count ==> !sb.contains(j),
+    ensures
+        view_of(sb.union(BitmapView::range_set(start, start + count)), nb, rc2) == (FrameAllocView {
+            allocated_frames: view_of(sb, nb, rc).allocated_frames.union(
+                spec_range_frames(start, count),
+            ),
+            free_frames: view_of(sb, nb, rc).free_frames.difference(
+                spec_range_frames(start, count),
+            ),
+            refcounts: view_of(sb, nb, rc).refcounts.union_prefer_right(
+                Map::new(
+                    |addr: int| spec_range_frames(start, count).contains(addr),
+                    |addr: int| 1int,
+                ),
+            ),
+        }),
+{
+    let range = BitmapView::range_set(start, start + count);
+    let frames = spec_range_frames(start, count);
+    let pre = view_of(sb, nb, rc);
+    let post = view_of(sb.union(range), nb, rc2);
+
+    // Every range index is in `[0, nb)`, so range frame addresses are valid frame addresses.
+    assert forall|i: int| range.contains(i) implies 0 <= i < nb by {}
+
+    assert(post.allocated_frames =~= pre.allocated_frames.union(frames)) by {
+        assert forall|a: int| post.allocated_frames.contains(a) implies pre.allocated_frames.union(
+            frames,
+        ).contains(a) by {
+            let i = choose|i: int| #[trigger] sb.union(range).contains(i) && a == frame_addr_of(i);
+            assert(sb.union(range).contains(i) && a == frame_addr_of(i));
+            if range.contains(i) {
+                assert(start <= i < start + count && a == frame_addr_of(i));
+            } else {
+                assert(sb.contains(i));
+            }
+        }
+        assert forall|a: int| pre.allocated_frames.union(frames).contains(a)
+            implies post.allocated_frames.contains(a) by {
+            if frames.contains(a) {
+                let i = choose|i: int|
+                    start <= i < start + count && a == #[trigger] frame_addr_of(i);
+                assert(range.contains(i));
+                assert(sb.union(range).contains(i) && a == frame_addr_of(i));
+            } else {
+                let i = choose|i: int| #[trigger] sb.contains(i) && a == frame_addr_of(i);
+                assert(sb.union(range).contains(i) && a == frame_addr_of(i));
+            }
+        }
+    }
+
+    assert(post.free_frames =~= pre.free_frames.difference(frames)) by {
+        assert forall|a: int| post.free_frames.contains(a) implies pre.free_frames.difference(
+            frames,
+        ).contains(a) by {
+            let i = choose|i: int|
+                0 <= i < nb && !(#[trigger] sb.union(range).contains(i)) && a == frame_addr_of(i);
+            assert(0 <= i < nb && !sb.union(range).contains(i) && a == frame_addr_of(i));
+            assert(!range.contains(i));
+            assert(!sb.contains(i));
+            assert(!frames.contains(a)) by {
+                if frames.contains(a) {
+                    let k = choose|k: int|
+                        start <= k < start + count && a == #[trigger] frame_addr_of(k);
+                    lemma_frame_addr_injective(k, i);
+                    assert(range.contains(k));
+                }
+            }
+        }
+        assert forall|a: int| pre.free_frames.difference(frames).contains(a)
+            implies post.free_frames.contains(a) by {
+            let i = choose|i: int|
+                0 <= i < nb && !(#[trigger] sb.contains(i)) && a == frame_addr_of(i);
+            assert(0 <= i < nb && !sb.contains(i) && a == frame_addr_of(i));
+            assert(!range.contains(i)) by {
+                if range.contains(i) {
+                    assert(start <= i < start + count && a == frame_addr_of(i));
+                    assert(frames.contains(a));
+                }
+            }
+            assert(!sb.union(range).contains(i));
+        }
+    }
+
+    assert(post.refcounts =~= pre.refcounts.union_prefer_right(
+        Map::new(|addr: int| frames.contains(addr), |addr: int| 1int),
+    )) by {
+        let expected = pre.refcounts.union_prefer_right(
+            Map::new(|addr: int| frames.contains(addr), |addr: int| 1int),
+        );
+        assert(post.refcounts.dom() =~= expected.dom()) by {
+            assert(post.allocated_frames =~= pre.allocated_frames.union(frames));
+        }
+        assert forall|a: int| post.refcounts.dom().contains(a) implies #[trigger] post.refcounts[a]
+            == expected[a] by {
+            let i = choose|i: int| #[trigger] sb.union(range).contains(i) && a == frame_addr_of(i);
+            assert(sb.union(range).contains(i) && a == frame_addr_of(i));
+            lemma_frame_addr_div(i);
+            assert(a / spec_page_size() == i);
+            if frames.contains(a) {
+                let k = choose|k: int|
+                    start <= k < start + count && a == #[trigger] frame_addr_of(k);
+                lemma_frame_addr_div(k);
+                assert(k == i);
+                assert(start <= i < start + count);
+                assert(rc2[i] == 1u8);
+            } else {
+                assert(sb.contains(i));
+                assert(!range.contains(i));
+                assert(rc2[i] == rc[i]);
+            }
+        }
+    }
+
+    assert(post == FrameAllocView {
+        allocated_frames: pre.allocated_frames.union(frames),
+        free_frames: pre.free_frames.difference(frames),
+        refcounts: pre.refcounts.union_prefer_right(
+            Map::new(|addr: int| frames.contains(addr), |addr: int| 1int),
+        ),
+    });
+}
+
 /// Release one frame's last reference: clearing a previously-set, in-range bit and writing its
 /// refcount to 0 moves the frame from `allocated` back to `free` and drops its refcount entry.
 proof fn lemma_release_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr: int)
