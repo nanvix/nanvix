@@ -414,3 +414,46 @@ The issue is that nonlinear_arith operates in isolation and won't automatically 
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-bump-allocator 2>&1 | tail -22
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 1.25s
+
+=== Results ===
+  12 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheati...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+12 verified, 0 errors, admit=0, assume=0. The `external_body=2` flags `alloc`/`alloc_as`, which are both explicitly allowed in `tcb-allowed.md`. Let me confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt 2>/d
+
+[THINKING] I'm seeing 12 verified entries with no errors, but the "CHEATING_DETECTED" flag is triggering because of 2 external body references—though both `alloc` and `alloc_as` are actually listed as allowed in the tcb-allowed.md file. Let me check the cheating-detail output to confirm it's flagging exactly those two functions.
+[RESULT ✓] bash: - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: external_body
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt 
+
+[THINKING] The coverage report shows 3 out of 6 exec functions have contracts, so I need to identify which ones are still missing verification—specifically alloc_as, alloc, align_up, and as_mut_ptr—and check the coverage details to see what's needed.
+[RESULT ✓] bash: # Unverified exec functions: 3/6
+  fmt
+  new
+  default
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+All targets handled (`align_up` verified, `as_mut_ptr` trait spec verified, `alloc`/`alloc_as` are allowed `external_body`). The unverified `fmt`/`new`/`default` are out of scope. Now run full `make verify` for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | tail -40
+
+[THINKING] The three unverified functions—`fmt`, `new`, and `default`—aren't on my target list and fall outside scope, so they don't need attention. My four targets are all accounted for: `align_up` is verified, `as_mut_ptr` meets the trait spec requirement, and both `alloc` and `alloc_as` use external_body which is permitted. The "CHEATING_DETECTED" status is just a side effect of the allowed external_body usage, which is expected and fine according to the guidelines.
+
+All success criteria are met: zero errors, zero admits, zero assumes. Now I'm running the full verification suite to make sure nothing broke.
