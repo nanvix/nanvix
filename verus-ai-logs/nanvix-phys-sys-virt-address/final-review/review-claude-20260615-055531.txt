@@ -975,3 +975,106 @@ src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
 ────────────────────────────────────────────────────────────
 Turn 17
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Cached. Let me get the actual verified/errors line from the log and force-confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -t verus-ai-logs/verify-sys/verus-logs/*.log | head -1 | xargs grep -iE 
+[RESULT ✓] bash: 
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[RESULT ✓] bash: ⚠️  3 mismatched (16 functions match)
+---
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+Virtual...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && L=$(ls -t verus-ai-logs/verify-sys/verus-logs/verus_*.log | head -1); echo 
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_06-00-14.log
+Timestamp: 2026-06-15_06-00-14
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+---...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE "no.?cache|clean|force|CARGO_INCREMENTAL|cache" scripts/verify.sh 
+[RESULT ✓] bash: #   1. VERUS_EXIT == 0: genuine cache hit — Verus skipped re-verification.
+# Only case 1 is a true cache hit; case 2 is a failure.
+        CACHED_BUILD=true
+        VERIFIED="cached (no recompilation)"
+        CACHED_BUILD=false
+    CACHED_BUILD=false
+# a stale cargo cache that silently returns exit...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] rg: #\[verus_spec\(|fn\s+new\(|fn\s+from_raw_value\(|fn\s+into_raw_value\(
+[TOOL] rg: #\[verus_spec\(|fn\s+into_raw_value\(
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs:54:    #[verus_spec(result =>
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs:63:    #[verus_spec(result =>
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs:67:   ...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:48:    #[verus_spec(result =>
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:52:    pub const fn new(value: usize) -> Self {
+/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/a...
+[RESULT ✓] view: 315. //==================================================================================================
+316. // Material for verification
+317. //==================================================================================================
+318. 
+319. verus! {
+320. 
+321. impl View for VirtualAd...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 1
+- **Contract drift (⚠ review required): 1**
+  - Ensures removed: 1
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each item below is a potential sp...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/virt.rs && timeout 1200 make verify-s
