@@ -293,3 +293,47 @@ All crates pass (arch 47/0, kernel 76/0). Let me confirm exit status and arch ch
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify >/tmp/mv.log 2>&1;
 
 [THINKING] The verification results show all crates passing with no issues in the architecture module—the flagged items are pre-existing out-of-scope cases that the TCB already allows. I'm checking that the overall make verify command exits cleanly and confirming the architecture cheating counts are accurate.
+[RESULT ✓] bash: make verify exit: 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  cheating: assume=0 external_body=0 ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+`make verify` exits 0. Arch: external_body=3 (all TCB-allowed), cfg_gate=0. pde files contain zero cheating markers. Let me update the fix_report and write the fixer response.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/turn_001_fixer.md with 4364 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Fixed. I took the reviewer's **preferred route** — collapsing `frame_address` back to the original single-expression body, eliminating the AST mismatch entirely (rather than just documenting it).
+
+**Changes:**
+- `pde.rs::frame_address`: restored the exec body to the original `self.frame.into_raw_value() << crate::mem::FRAME_SHIFT`; the proof is now discharged by a stripped `proof! { broadcast use lemma_frame_address; }`.
+- `pde.proof.rs::lemma_frame_address`: made it a `broadcast` lemma with a `#![trigger (raw << FRAME_SHIFT)]`, so it applies to the inline shift without needing the result bound to a local.
+
+I empirically confirmed the two simpler collapses fail (postcondition-not-satisfied without the lemma; `cannot call ...with mode exec` for a positional lemma call), which is exactly why the broadcast-trigger approach is needed.
+
+**Verification:**
+- `make verify-arch` → exit 0, **47 verified, 0 errors**, cfg_gate=0.
+- AST consistency vs `dev` baseline → **matched=23, mismatched=0** (mismatch eliminated).
+- `./z build -- check-kernel` → builds clean (Verus erased).
+- `make verify` (full) → exit 0; arch 47/0, kernel 76/0.
+
+Result: **FIXED**.
+
+
+=== Session End ===
+Session: 59d018d8-eb57-4086-b516-a11772186786
+Duration: 291.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue-fixer-t001-claude-20260615-015941.jsonl

@@ -65,13 +65,16 @@ cfg_gate=0, admit=0, assume=0.
 
 ## AST Consistency
 
-- Tool: `scripts/ast_consistency.py` (ran from `verus-ai-improve` copy) against the
-  START baseline `git show 39e930c91:…/pde.rs`.
+- Tool: `scripts/ast_consistency.py` against the original pre-verification baseline
+  `git show dev:…/pde.rs`.
 - Result: `Consistent: ✅ YES (matched=23 mismatched=0 missing=0 extra=0)`.
 - Zero mismatches confirmed: YES.
-- The change adds only `#[verus_verify]` annotations and re-groups existing methods into
-  separate impl blocks; no exec function body or signature changed (semantics, time, and
-  space complexity preserved). `#[verus_verify]` is `cfg_erase()`-based and is erased in
-  normal `cargo build`.
+- `frame_address` is now byte-identical to the original single-expression body
+  (`self.frame.into_raw_value() << crate::mem::FRAME_SHIFT`); the proof obligation is
+  discharged by a stripped `proof! { broadcast use lemma_frame_address; }` block plus a
+  `broadcast` trigger on `(raw << FRAME_SHIFT)` in `pde.proof.rs`. No exec function body
+  or signature changed (semantics, time, and space complexity preserved). `#[verus_verify]`
+  and `proof!` are `cfg_erase()`-based and are erased in normal `cargo build`
+  (confirmed via `./z build -- check-kernel`).
 
 ## Result: PASS
