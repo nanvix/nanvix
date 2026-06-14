@@ -340,3 +340,507 @@ b4268b00e [verus] verify PASS (c...
 ────────────────────────────────────────────────────────────
 Turn 6
 ────────────────────────────────────────────────────────────
+Verification running. Now let me launch the two review sub-agents in parallel with full context.
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 5}
+[RESULT ✓] read_bash: Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covere...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+I'll start by reading the skills that define the review criteria, then the target files.
+[TOOL] report_intent: Reading review skills and criteria
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, 0 errors, admit=0, assume=0). Let me confirm the cfg-gate locations aren't in manager.rs and that manager's 6 external_body all match the TCB.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===cfg_gate detail===" && grep -iE "cfg_gate|cfg-gate" verus-ai-logs/verify-kernel/ve
+
+[THINKING] The canonical verification passed with no errors, and all six external body references in manager.rs are pre-approved in the TCB allowlist. I'm also tracking that there are nine configuration gates to account for.
+
+Now I need to verify that none of those nine cfg_gate instances are actually in manager.rs itself, and check the cheating-detail.txt file to confirm their locations.
+[RESULT ✓] bash: ===cfg_gate detail===
+===manager cfg in source===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+97:    #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
+291:    #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+I'll read the remaining skills and start examining the target files in parallel.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing verification artifacts
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-completeness/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && head -40 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '1,250p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-completeness/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/skills/*/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] glob: /home/ruize/verus-ai-exp/verus-ai/docs/skills/tcb-plan/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/review-methodology/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md
+/home/ruize/verus-ai-exp/ve...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me read the rest of spec-design and the target source files.
+[TOOL] bash: sed -n '250,600p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] bash: verified function with no additional logic.
+
+### Property Coverage Checklist
+
+When writing specs, systematically cover these four dimensions for each
+function and type. This ensures no important properties are missed.
+
+1. **Functional Correctness** — What does the code achieve?
+   - Preconditions (r...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] rg: name:\s*spec-completeness|spec completeness
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 261. 
+262. 2. **Safety** — What must never happen?
+263.    - Bounds, disjointness, uniqueness, conservation, injectivity, ordering, monotonicity
+264. 
+265. 3. **Liveness** — What good things must happen?
+266.    - Guaranteed success conditions, resource availability, recoverability
+267. 
+268. 4. **S...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Canonical results confirmed: verify PASS (exit 0, 0 errors), admit=0, assume=0, trusted=0. manager.rs has 6 `external_body` — all 6 match `tcb-allowed.md`. No cfg-gated exec (only `include!` gating + `allow` attrs) and no `// VERUS REWRITE` comments. Now waiting for the two review sub-agents to complete.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] Looking at the cfg usage in manager.rs, the include! macros on lines 9 and 11 are gating spec and proof code, which is standard and allowed. Lines 97 and 291 use cfg_attr for attributes only, not executable code. There are no cfg-gated execution paths in this module, and I don't see any VERUS REWRITE comments, so no exec rewrites have been applied here either.
+
+The verification results are clean: all 6 external_body declarations match the TCB allowlist, there are no assume_specification calls, and AST consistency passes trivially since there's nothing to check. Now I'm waiting for the sub-agents to report back.
+Now let me read the spec, proof, and analysis files in parallel.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // `PhysMemoryManager` is a *stateless* facade over the global frame allocator
+7. // (`Upool` carries no fields; kernel frames are drawn directly from `frame::*`)...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Proofs
+5. //
+6. // Abstract laws backing the caller-facing guarantees of the `PhysMemoryManager`
+7. // shim contracts in `manager.rs` (stated over `phys_view()` / `FrameAllocView`).
+8. /...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Inspecting module files
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // `PhysMemoryManager` is a *stateless* facade over the global frame allocator
+7. // (`Upool` carries no fields; kernel frames are drawn directly from `frame::*`)...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Proofs
+5. //
+6. // Abstract laws backing the caller-facing guarantees of the `PhysMemoryManager`
+7. // shim contracts in `manager.rs` (stated over `phys_view()` / `FrameAllocView`).
+8. /...
+[RESULT ✓] view: 1. # Bugs — nanvix phys::manager
+2. 
+3. None.
+4. 
+5. No code bugs were found while proving `src/kernel/src/mm/phys/manager.rs`.
+6. 
+7. ## Notes (not bugs)
+8. 
+9. The six target `PhysMemoryManager` methods (`init`, `alloc_user_frame`,
+10. `check_user_watermark`, `alloc_many_user_frames`, `alloc_kerne...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate `kernel`).
+6. 
+7. Module summary: 7 exec functions (6 pub / 1...
+[RESULT ✓] view: 1. # View Design: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. > **Implementation note (spec phase outcome).** A bespoke `self@` View on
+4. > `PhysMemoryManager` was found to be *unrealizable* and is **not** used by the
+5. > implemented specs. `PhysMemoryManager { upool: Upool }` and `Upool` car...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Now the analysis docs and TCB list, plus the do-not-modify view definitions.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate `kernel`).
+6. 
+7. Module summary: 7 exec functions (6 pub / 1...
+[RESULT ✓] view: 1. # Bugs — nanvix phys::manager
+2. 
+3. None.
+4. 
+5. No code bugs were found while proving `src/kernel/src/mm/phys/manager.rs`.
+6. 
+7. ## Notes (not bugs)
+8. 
+9. The six target `PhysMemoryManager` methods (`init`, `alloc_user_frame`,
+10. `check_user_watermark`, `alloc_many_user_frames`, `alloc_kerne...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Now the view_design doc and the do-not-modify view definitions.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[TOOL] bash: ls /home/ruize/nanvix-phy/src/kernel/src/mm/phys/
+[RESULT ✓] bash: frame.proof.rs
+frame.rs
+frame.spec.rs
+kframe.rs
+manager.proof.rs
+manager.rs
+manager.spec.rs
+mod.proof.rs
+mod.rs
+mod.spec.rs
+test.rs
+upool.rs
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] view: 1. # View Design: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. > **Implementation note (spec phase outcome).** A bespoke `self@` View on
+4. > `PhysMemoryManager` was found to be *unrealizable* and is **not** used by the
+5. > implemented specs. `PhysMemoryManager { upool: Upool }` and `Upool` car...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running static review checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && rg -n "admit!?\(|\bassume\(|external_body|assume_specification|cfg\(not\(verus_keep_ghost\)
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/manager.rs:11:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/manager.rs:97:    #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
+src/kernel/src/mm/phys/manager.rs:98:    #[verus_verify(external_body)]
+s...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me examine the do-not-modify view definitions (phys_view, FrameAllocView) and search for relevant spec functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; grep -n "phys_view\|FrameAllocView\|fn wf\|free_frames\|allocated_fram
+[RESULT ✓] bash: 10:use crate::hal::mem::spec_page_size;
+20:pub struct FrameAllocView
+22:    pub allocated_frames: Set<int>,
+23:    pub free_frames: Set<int>,
+29:impl FrameAllocView
+31:    pub open spec fn wf(&self) -> bool
+34:        &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr % spec_page_si...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 18. /// together with a per-frame reference count that models shared
+19. /// ownership (e.g. copy-on-write after `share()`).
+20. pub struct FrameAllocView
+21. {
+22.     pub allocated_frames: Set<int>,
+23.     pub free_frames: Set<int>,
+24.     /// Maps each allocated frame address to its reference c...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 14 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel/src/mm/phys/man
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/manager.rs`
+- **Verus file:** `src/kernel/src/mm/phys/manager.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 7 |
+| Ver...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager branch --show-current && git --no-pager status --short
+[RESULT ✓] bash: verus-ai/phys-manager
+ M verus-ai-logs/nanvix-phys-phys-manager/final-review/review-claude-20260615-042321.jsonl
+ M verus-ai-logs/nanvix-phys-phys-manager/final-review/review-claude-20260615-042321.txt
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/mm/phys
+[RESULT ✓] bash: ✅ Consistent: 7 functions, 1 structs match.
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/mm/phys
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MATCH                                
+PhysMemoryManager::alloc_many_kernel_frames MATCH...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running kernel verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys
+[RESULT ✓] report_intent: Intent logged
