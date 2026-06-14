@@ -182,3 +182,145 @@ No cheating items found by grep. Let me run the verification to see baseline.
 [THINKING] I'm seeing the trait definition in mod.rs has spec contracts on those three methods, and the implementation in virt.rs provides the actual code without the spec annotations—they just need to satisfy what the trait specifies. The verification scope is focused on those three trait methods, and mod.proof.rs is currently empty.
 
 Let me check the baseline verification state by running the build to see what passes and what needs work.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+
+[THINKING] The verification passed, but there's a `cfg_gate=1` flag that's been marked as cheating—let me dig into what that means.
+[RESULT ✓] bash: 
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/verify-sys/verus-logs/ && echo "===" && wc -l verus-ai
+[RESULT ✓] bash: total 552
+drwxrwxr-x 1 ruize ruize 8030 Jun 15 04:24 .
+drwxrwxr-x 1 ruize ruize   20 Jun 13 23:26 ..
+-rw-rw-r-- 1 ruize ruize    0 Jun 15 04:24 cheating-detail.txt
+-rw-rw-r-- 1 ruize ruize 3000 Jun 15 04:24 coverage-unverified.txt
+-rw-rw-r-- 1 ruize ruize  318 Jun 13 23:26 verus_2026-06-13_23-26-31....
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The detail file is empty but summary shows `cfg_gate=1`. Let me understand how it's counted.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "cfg_gate\|cfg-gate\|cfg_gated\|cheating-detail" scripts/verify.sh 
+
+[THINKING] The cheating-detail.txt file is empty even though the summary shows cfg_gate=1 as a flagged item, so I need to check the verify.sh script to understand how cfg_gate gets counted. Looking at mod.rs, I see it uses conditional compilation attributes like `#[cfg(verus_keep_ghost)]` for including spec and proof files, and `#[cfg(target_pointer_width = "32")]` for platform-specific code.
+
+These are standard cfg gates, but the task specifically flags "cfg-gated exec code" as a cheating type, so I need to examine the verify.sh script to see what criteria it's using to identify and count cfg_gate violations.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+576:        [[ $MOD_CFG_GATE -gt 0 ]] && ec...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "verus_keep_ghost" src/libs/sys/src/ | grep -v "include!" 
+
+[THINKING] I'm scanning through the sys crate to locate where the `cfg_gate` attribute appears—specifically looking for `#[cfg(verus_keep_ghost)]` or related variants on executable code. The count shows just one instance across the entire crate, so I need to search through the files to pinpoint which one contains it.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/alignmen...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] Looking at the alignment.rs file to identify which line is being counted — the logic filters out use, include!, extern, and mod statements, so I need to check what's actually on line 151 to see if it matches the exclusion criteria or if it's a different function that's being flagged.
+[RESULT ✓] view: 140. 
+141. impl From<Alignment> for usize {
+142.     fn from(align: Alignment) -> Self {
+143.         align as usize
+144.     }
+145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //============...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The cfg_gate=1 comes from `alignment.rs` (out of scope). Let me check git state and whether this is pre-existing vs introduced on this branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git status ===" && git status --short && echo "=== diff vs base f
+
+[THINKING] I'm noticing that the `#[cfg(verus_keep_ghost)]` gate before `verus! {` is being counted as a cfg_gate, even though this is a spec-only block with no executable code—a false positive in the counter. The issue is that this code is in alignment.rs, which falls outside the scope since we're only looking at address/mod.rs.
+
+The real question is whether this cfg_gate matters for the task at hand. The goal is to replace assumes, admits, and external_body calls in the address module functions (is_aligned, into_raw_value, from_raw_value), and the constraints are clear: don't touch unlisted functions or modify unrelated code paths. Since this cfg gate is gating a spec function in an out-of-scope file, it shouldn't be a blocker for the actual work. I need to figure out whether this task is actually complete within scope—the address module itself has no cheating, and the cfg_gate count of 1 is coming from alignment.rs which is outside my constraints. Let me check the git history to see what the baseline state is for both modules.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/prover-claude-20260615-042407.jsonl
+ M verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/prover-claude-20260615-042407.txt
+=== diff vs base for address module ===
+=== alignment.rs in base? ===
+151:#[cfg...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+No source changes vs base; the working tree is clean on the base branch. The cfg_gate is pre-existing in `alignment.rs`. Let me understand the module-scoped vs global gating logic.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+
+[THINKING] Looking at the git status, the source files in the address module haven't changed from the base branch, and that cfg gate in alignment.rs was already there. So this is just the current HEAD state with only log files modified.
+
+The cfg_gate=1 flag is the only cheating detected, coming from that `#[cfg(verus_keep_ghost)]` block in alignment.rs wrapping spec-only code. The real question is whether I should refactor it — moving those inline spec functions into a separate `.spec.rs` file and including them would eliminate the false positive while keeping the same semantics, but that means modifying alignment.rs which is outside the address module scope.
+
+Looking at the task constraints more carefully: the functions I need to verify are is_aligned, into_raw_value, and from_raw_value. The address module itself has zero cheating. The cfg_gate in alignment.rs is a dependency issue, and since I can't modify unrelated code paths, the address module functions should verify cleanly on their own.
+
+But I need to understand how the verification scope works—whether the module-scoped scan includes alignment.rs or if the whole-crate scan is what matters. Let me check the verify script to see how it determines pass/fail and whether module boundaries affect the cheating detection.
+[RESULT ✓] view: 536. CHEATING_AVAILABLE=false
+537. if echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if 'assume' in d else 1)" 2>/dev/null; then
+538.     CHEATING_AVAILABLE=true
+539.     ASSUME_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me run a module-scoped cheating scan on the address module to confirm it's clean, and double-check the global picture.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verify-sys\|verify-kernel\|MODULE" Makefile | head -20
+
+[THINKING] The verify-sys scan sets CHEATING_FOUND to true because cfg_gate is 1 in alignment.rs, so I need to set it to 0 to make the verification pass. The issue is that the address module's spec references a function from alignment.rs, which creates a dependency I need to resolve.
+
+But wait—alignment.rs is in the sys::mm::alignment module, not sys::mm::address, so it's technically out of scope for this task. The address module itself has zero cheating violations, which suggests the work there is already complete. The cfg_gate issue in alignment.rs appears to be a pre-existing problem in a sibling module that shouldn't block the address module's verification.
+
+However, the task requires `make verify-sys` to pass cleanly with zero cheating reported. The cfg gate on the spec block in alignment.rs is actually a false positive—it's gating a spec-only verus! block, which is necessary and correct (spec code doesn't exist in non-verus builds anyway), not genuine cheating. Moving the spec block to a .spec.rs file included via cfg gate would eliminate the false positive while preserving all semantics and exec code unchanged. This is a safe, established pattern in the codebase. The tension here is that verify-sys needs to pass cleanly at the crate level, but alignment.rs is technically out of scope for this task. Let me check if I can run the module-level verification specifically for the address module to confirm it's clean, and see whether the Makefile's verify-sys target accepts a MODULE parameter.
+[RESULT ✓] bash: 328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+624:verify-kernel: ensure-verus
+629:	$...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys MODULE=mm::address 2>&1 | tail -30
