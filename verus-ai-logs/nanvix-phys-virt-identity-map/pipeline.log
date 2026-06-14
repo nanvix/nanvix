@@ -284,3 +284,6 @@ PASS items (verified): zero assume, zero trusted, zero no_decreases, zero cfg-ga
 [2026-06-15 03:39:55] [CHEATING] ❌ Hard cheating detected (attempt 2), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating_report_2.md
 [2026-06-15 03:39:55] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 03:43:47]   ↳ cheating-fix done in 3m51s (exit=0)
+[2026-06-15 03:43:47] [CHEATING] admit: 3
+[2026-06-15 03:43:47] [CHEATING] ❌ Hard cheating detected (attempt 3), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating_report_3.md
+[2026-06-15 03:43:47] [COPILOT] Running: copilot --model claude-opus-4.8 ...
