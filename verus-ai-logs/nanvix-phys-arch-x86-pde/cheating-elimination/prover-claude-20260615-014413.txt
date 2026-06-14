@@ -662,3 +662,398 @@ Turn 34
 Turn 35
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | tail -
+[RESULT ✓] bash: Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trust...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "error" verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_01-49-3
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: cannot use function `arch::x86::mem::paging::flags::ReadWriteFlag::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+26:    = help: The following declaration may resolve this ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Adding `#[verus_verify]` to the whole impl forces verification of `from_raw_value`/`into_raw_value` which call external flag functions. pte.rs solves this by **splitting** the impl blocks. Let me examine pte.rs structure.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "^impl\|#\[verus_verify\]\|pub fn \|fn from_raw_value\|fn into_raw_va
+
+[THINKING] The issue is that adding `#[verus_verify]` to the entire impl block forces verus to verify all methods, including ones like `from_raw_value` and `into_raw_value` that call external un-verified functions. That's why pde.rs avoided putting the annotation on the whole impl — it would try to verify methods that depend on external code. The solution in pte.rs is to split the impl blocks so only the verifiable methods get the annotation.
+
+I'm weighing whether to split the impl blocks like pte.rs does (more idiomatic but invasive) or find another way to add the marker without triggering the cfg_gate detector. The original approach used `#[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]` on individual methods, which is minimal but the detector flags it as a cfg_gate. The marker itself needs to be conditional on verus since `verus_impl_method_marker` is verus-specific and would cause unknown lint warnings in a normal cargo build.
+
+The cleanest solution is to split the impl blocks so that `#[verus_verify]` on the impl automatically adds the marker, but that requires the impl to contain only verifiable methods. I should look at how pte.rs structures its impl blocks to replicate that pattern exactly.
+[RESULT ✓] bash: 44:#[verus_verify]
+65:#[verus_verify]
+66:impl PageTableEntryFlags {
+98:    pub fn new(
+120:impl PageTableEntryFlags {
+134:    fn from_raw_value(value: PteWord) -> Self {
+156:    fn into_raw_value(self) -> PteWord {
+184:    pub fn is_present(&self) -> bool {
+198:    pub fn is_user(&self) -> bool {
+21...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '500,540p' attr_rewrite.rs
+
+[THINKING] Looking at the pte.rs file structure, I'm noticing there are two separate impl blocks for PageTableEntryFlags — the first one marked with `#[verus_verify]` contains just the `new` method, while the second impl block (without the verification attribute) has all the accessor and setter methods like `from_raw_value`, `into_raw_value`, `is_present`, `is_user`, and `is_writable`. I'm wondering about the verification status of `is_present` specifically. Not sure why `is_present` in pde verified without the `verus_verify` impl block — maybe `#[verus_spec]` on individual methods works independently of the impl-level attribute. Let me reconsider the actual structure: in pde, the flags and entry methods with `#[verus_spec]` coexist in the same impl block as methods calling external functions like `from_raw_value` and `into_raw_value`, yet it still verified. That suggests the spec'd methods don't need the impl-level `verus_verify` to process, only the individual method attribute matters.
+[RESULT ✓] bash: verus_item_const.expr = None;
+        verus_item_const.semi_token = None;
+    }
+    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
+}
+
+pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
+    erase: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '540,610p' attr_rewrite.rs
+[RESULT ✓] bash: // Set return variable name
+                if let Some((verus_syn::Pat::Ident(pat_ident), _)) = &spec_attr.ret_pat {
+                    if let verus_syn::ReturnType::Type(_, _, opt_name, _) =
+                        &mut verus_fun.sig.output
+                    {
+                        *opt_name ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; grep -n "is_impl_fn" attr_rewrite.rs
+[RESULT ✓] bash: 529:            let is_impl_fn = fun.attrs.iter().any(&is_hidden_impl_marker);
+625:                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; grep -n "fn sig_specs_attr" syntax.rs; sed -n "$(g
+[RESULT ✓] bash: 5022:pub(crate) fn sig_specs_attr(
+pub(crate) fn sig_specs_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: SignatureSpecAttr,
+    sig: &mut syn::Signature,
+    is_impl_fn: bool,
+    is_closure: bool,
+) -> Vec<Stmt> {
+    let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
+    let mut spec_stm...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '5062,5110p' syntax.rs
+[RESULT ✓] bash: ret_ty.as_ref(),
+        sig_span,
+        is_impl_fn,
+        is_closure,
+        &sig.ident,
+        generic_to_tokens(&sig.generics),
+        inputs_to_tokens(&sig.inputs),
+        sig.asyncness.is_some(),
+    ));
+    spec_stmts
+}
+
+pub(crate) fn while_loop_spec_attr(
+    erase_ghost: EraseGhost,
+...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; grep -n "fn take_sig_specs" syntax.rs; sed -n "$(g
+[RESULT ✓] bash: 530:    fn take_sig_specs<TType: ToTokens>(
+1:    fn take_sig_specs<TType: ToTokens>(
+8:        is_impl_fn: bool,
+12:        fn_ident: &Ident,
+28:        // Either the single identifier in the return pattern, or a fresh identifier.
+29:        let ret_val_ident: &Ident = match ret_pat {
+30:          ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; awk 'NR>=530 && NR<=720 && /is_impl_fn/' syntax.rs
+[RESULT ✓] bash: is_impl_fn: bool,
+                                    match (is_impl_fn, self_token_op) {
+=== context ===
+537:        is_impl_fn: bool,
+712:                                    match (is_impl_fn, self_token_op) {
+866:        is_impl_fn: bool,
+1064:            is_impl_fn,
+5026:    is_impl_fn: bool,
+50...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src; sed -n '700,760p' syntax.rs
+[RESULT ✓] bash: ));
+                        } else {
+                            let constrain_type = {
+                                let generics_token = {
+                                    match generics {
+                                        Some(generics) => {
+                                            ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Now I fully understand: the `new` constructor (no `self` receiver) needs `is_impl_fn=true` (the marker) so the macro emits `Self::new` instead of a bare `new`. Self-receiver methods (`is_present`, `frame_address`) don't need it. pte.rs solves this by putting **only `new`** in a `#[verus_verify]` impl block, keeping `from_raw_value`/`into_raw_value` in a plain block. Let me revert and apply that clean split.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git checkout src/libs/arch/src/x86/mem/paging/pde.rs; grep -n "is_present\|ve
+
+[THINKING] The issue is with `constrain_type` — when a function has a `returns` clause or type constraint referencing itself through `Self::`, the macro needs to know whether it's an impl method or not. For impl methods, it generates `Self::new(...)`, but for standalone functions it tries a bare `new(...)` call, which fails because that function doesn't exist in scope. The `verus_impl_method_marker` tells the macro whether to use the `Self::` prefix.
+
+Methods like `is_present` and `frame_address` don't have this problem because they take `&self`, so the macro uses `#self_token.` prefix regardless. Only the no-self constructor `new` needs the marker to get the right `Self::` prefix.
+
+The real question is whether to split the impl blocks — putting `new` in a `#[verus_verify]` impl while leaving `from_raw_value` and `into_raw_value` in a plain impl, since verifying those other functions fails. I'm realizing the split approach is getting complex. The key insight is that `new` constructors need `#[verus_verify]`, but self-receiver methods like `is_present` and `frame_address` work fine in plain impl blocks even with `verus_spec`. So I should create separate `#[verus_verify]` impl blocks for just the `new` constructors in both `PageDirectoryEntryFlags` and `PageDirectoryEntry`, leaving everything else in plain blocks. But I'm wondering if there's a simpler alternative that avoids all this restructuring. Splitting the impl blocks shouldn't affect the AST consistency checker since it hashes per-function exec bodies, and the methods themselves remain identical — just reorganized into separate blocks. I'll verify this with the tool after restructuring. Let me revert the current edits first and then do a clean split.
+[RESULT ✓] bash: Updated 0 paths from the index
+86:    #[verus_spec(result =>
+98:    pub fn new(
+181:    #[verus_spec(result =>
+184:    pub fn is_present(&self) -> bool {
+312:    #[verus_spec(result =>
+317:    pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self {
+412:    #[verus_spec(result =>
+415:   ...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I see that `pte.rs` has `is_present` with a verus_spec in the second impl block without `#[verus_verify]`, and it still verifies successfully—this tells me that verus_spec methods with `self` don't require the attribute on the impl itself. Only the `new` constructor, which lacks a self receiver, needs that marker. For `pde.rs`, I should restructure each impl to isolate just the `new` method in its own `#[verus_verify]` impl block.
+
+Now I'm examining the exact structure of `pte.rs` to replicate it: `PageTableEntryFlags` has a first impl block with `#[verus_verify]` containing only `new`, then a second plain impl block with all the other methods like `from_raw_value`, `into_raw_value`, and `is_present`. For `PageTableEntry`, there's a similar pattern where `const SIZE` sits in one impl and the `new` constructor needs its own `#[verus_verify]` impl block.
+[RESULT ✓] view: 280. /// A type that represents a page table entry.
+281. ///
+282. #[verus_verify]
+283. #[derive(Debug, Clone, Copy)]
+284. pub struct PageTableEntry {
+285.     /// Flags.
+286.     flags: PageTableEntryFlags,
+287.     /// Physical address of the page frame.
+288.     frame: FrameNumber,
+289. }
+290. 
+29...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+I'll replicate the pte.rs pattern. Let me view the exact regions to split.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm applying the same pattern from pte.rs to pde.rs by splitting the impl block—keeping the `new()` function under `#[verus_verify]` and moving the remaining methods like `is_present` and `is_writable` into a separate unverified impl block.
+[RESULT ✓] view: 62. #[verus_verify]
+63. impl PageDirectoryEntryFlags {
+64.     ///
+65.     /// # Description
+66.     ///
+67.     /// Constructs a [`PageDirectoryEntryFlags`] with the given flags.
+68.     ///
+69.     /// # Parameters
+70.     ///
+71.     /// - `present`: The present flag.
+72.     /// - `read_write`: ...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff src/libs/arch/src/x86/mem/paging/pde.rs | head -60
+
+[THINKING] I'm noticing a discrepancy between what I remember from the original code and what's showing up now — the struct at line 41 has `#[verus_verify]`, but I need to double-check whether the impl block at line 62 originally had that attribute or not, since the current view seems to show it does.
+[RESULT ✓] bash: 
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "verus_verify\|^impl\|pub fn new\|cfg_attr" src/libs/arch/src/x86/mem
+
+[THINKING] I'm noticing a discrepancy — the diff shows no changes, yet the view displays `#[verus_verify]` at line 62, which suggests the base file already has that attribute on the impl block. Let me check the actual current state of the file to clarify what's really there.
+[RESULT ✓] bash: 41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+97:    pub fn new(
+280:#[verus_verify]
+289:#[verus_verify]
+290:impl PageDirectoryEntry {
+313:    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+473:impl TableEntry for PageDirectoryEntry {
+=== md5 vs ba...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== HEAD ==="; git show HEAD:src/libs/arch/src/x86/mem/paging/pde.rs | 
+
+[THINKING] I'm realizing there's a discrepancy—the current file matches HEAD with `#[verus_verify]` attributes on the impl blocks and no cfg_attr markers, but that contradicts what I saw earlier in the session when those cfg_attr lines were present. It looks like a git checkout reverted the file back to HEAD at some point.
+
+Let me check what HEAD actually contains by looking at the git history directly to understand what's really in the latest commit.
+[RESULT ✓] bash: === HEAD ===
+41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+97:    pub fn new(
+280:#[verus_verify]
+289:#[verus_verify]
+290:impl PageDirectoryEntry {
+313:    pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+473:impl TableEntry for PageDirectoryEntry {
+...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+The verify.sh auto-commits each run. My broken second attempt got committed to HEAD. Let me check the log and restore the true baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager log --oneline -8; echo "=== START commit 39e930c91 pde structu
+
+[THINKING] Ah, I see what happened—the verify.sh script automatically commits changes when it runs. Looking at the git log, the branch tip shows the failed verification commit from my second run, but HEAD is pointing to the version without the markers that I was working on.
+
+The original working state with the cfg_attr markers is back at the START commit. I need to check the git history to trace through the sequence and find the baseline version that actually compiled successfully.
+[RESULT ✓] bash: d6de54e0d [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+2d962e772 [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+46ead7ccb [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_b...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Let me restore the true baseline (START commit) and apply the clean impl-split fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git checkout 39e930c91 -- src/libs/arch/src/x86/mem/paging/pde.rs; grep -n "v
+
+[THINKING] I need to restore the baseline commit `39e930c91` which has the cfg_attr markers and impl without verus_verify that passed the tests, then apply the clean split from there. The verify.sh script auto-commits as part of the workflow, so I'll start by reverting pde.rs to that baseline state.
+[RESULT ✓] bash: 41:#[verus_verify]
+62:impl PageDirectoryEntryFlags {
+83:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+97:    pub fn new(
+280:#[verus_verify]
+289:impl PageDirectoryEntry {
+307:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+313:    pub fn new(fl...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Baseline restored. Now apply the clean split: put each `new` in its own `#[verus_verify]` impl block. First the flags impl.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I need to split the `PageDirectoryEntryFlags` impl block so the `new` method gets its own `#[verus_verify]` block while the rest stays in a plain impl, with the split happening right after the `new` method ends at line 117. I'll use the unique transition point with "Checks if the present flag is set" to anchor my edits and separate the two impl blocks cleanly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Actually pte.rs keeps `#[verus_verify]` on the struct too. Let me revert that and instead just add the impl split.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm reconsidering whether to keep the `#[verus_verify]` annotation on the struct itself—looking at how pte.rs handles it, the struct and its impl both retain the annotation, so I should leave mine as is rather than removing it.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Now apply the three edits for the flags impl: add `#[verus_verify]`, remove marker, split after `new`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I need to verify the order of the attributes in the baseline—checking my earlier grep results to confirm that cfg_attr appears on line 83 before verus_spec on line 84.
+[RESULT ✓] view: 83.     ///
+84.     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+85.     #[verus_spec(result =>
+86.         ensures
+87.             result@ == spec_pde_flags_new(
+88.                 present,
+89.                 read_write,
+90.                 user_supervisor,
+91.          ...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Now split the impl after `new` ends (before `is_present`):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Now the PageDirectoryEntry impl. Let me view it.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] Looking at the PageDirectoryEntry implementation structure around line 280.
+[RESULT ✓] view: 284. pub struct PageDirectoryEntry {
+285.     /// Flags.
+286.     flags: PageDirectoryEntryFlags,
+287.     /// Physical address of the page table (or large page).
+288.     frame: FrameNumber,
+289. }
+290. 
+291. impl PageDirectoryEntry {
+292.     /// Size in bytes of the hardware page directory entry ...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I need to reorganize the PageDirectoryEntry implementation to match the structure in pte.rs, separating the SIZE constant and new function into their own impl blocks with appropriate verification attributes, then replacing the existing code from lines 291 to 318. Reorganizing the impl blocks...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "verus_verify\|^impl\|cfg_attr\|pub fn new\|pub const SIZE" src/libs/
+[RESULT ✓] bash: 41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+97:    pub fn new(
+120:impl PageDirectoryEntryFlags {
+282:#[verus_verify]
+291:impl PageDirectoryEntry {
+293:    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+296:#[verus_verify]
+297:impl PageDirectoryEntry {
+317:   ...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+Structure now mirrors pte.rs exactly. Let me verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | tail -
