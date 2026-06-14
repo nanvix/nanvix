@@ -3378,3 +3378,79 @@ FIX A (done earlier) and FIX B (3 admits) are now both complete. Let me run the 
 [THINKING] FIX A and FIX B are both complete now—the transition lemmas and free/share operations were verified previously, and the three allocation functions (alloc, alloc_contiguous, alloc_range) all check out with no admits. The driver wants me to run the full kernel verification with zero admits across the board, but there are still 16 admits scattered through other modules like the manager proof, physical address space, and identity mapping that are outside the scope of what I'm working on.
 
 The frame module itself is clean—58 verified with 0 errors and 0 admits in frame.rs specifically. But I need to clarify whether those remaining 16 admits in manager.proof.rs and other files were pre-existing or if they're part of the mm::phys module that I should be addressing. Let me run the full kernel verification to give the driver the complete picture and confirm that the frame.rs work is done while being honest about what's still outstanding elsewhere.
+[RESULT ✓] bash: === Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 56/1026 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-0...
+
+────────────────────────────────────────────────────────────
+Turn 251
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit counts by file (out of scope for frame target) ==="; grep -rc "admit(
+
+[THINKING] The kernel verification passed and is cached, but the "CHEATING_DETECTED" flag is from 16 admits in other modules that are out of scope. I'm confirming that frame.rs, proof.rs, and spec.rs all have zero admits, and I need to identify which files contain those 16 admits to verify they're not in the frame module.
+[RESULT ✓] bash: === admit counts by file (out of scope for frame target) ===
+src/kernel/src/hal/mem/types/address/phys.proof.rs:2
+src/kernel/src/hal/mem/types/address/frame.proof.rs:3
+src/kernel/src/mm/phys/manager.proof.rs:4
+src/kernel/src/mm/virt/identity_map.rs:3
+src/kernel/src/mm/virt/identity_map.spec.rs:1
+src...
+
+────────────────────────────────────────────────────────────
+Turn 252
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff --stat HEAD; echo "=== verify the 8 target Inner specs unchanged 
+
+[THINKING] The file count adds up to 22, but the counter shows 16 because some files are conditionally compiled or the grep is picking up comments. The important thing is that all the admits are located in files outside of frame.rs, proof.rs, and spec.rs—the frame target itself is clean. Now I'm checking whether the 8 target functions actually verify.
+
+The mm::phys run came back with 58 verified. I need to make sure I haven't drifted the specs or weakened anything. The internal_inv strengthening is intentional and disclosed, so I should verify that the locked Inner::* specs remain unchanged. Let me run a quick git diff to see what's actually changed before writing up the response and committing.
+[RESULT ✓] bash: ...ialogue-fixer-t003-claude-20260615-062140.jsonl | 41 ++++++++++++++++++++++
+ .../dialogue-fixer-t003-claude-20260615-062140.txt | 30 ++++++++++++++++
+ 2 files changed, 71 insertions(+)
+=== verify the 8 target Inner specs unchanged (requires/ensures) ===
+<shellId: 128 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 253
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short | head -20
+
+[THINKING] I'm checking the git status to understand why the frame.rs and frame.proof.rs changes aren't showing up in the diff, especially since alloc_contiguous was already committed but the alloc_range modifications should still be uncommitted.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-fixer-t003-claude-20260615-062140.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-fixer-t003-claude-20260615-062140.txt
+<shellId: 129 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 254
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -8; echo "=== while loop present? ==="; grep -n "while i
+
+[THINKING] I'm noticing that only the log files show as modified, but my changes to frame.rs, frame.proof.rs, and bugs.md aren't appearing—which suggests they might already be committed, or there's an auto-commit happening. Let me check the recent git history and verify whether my edits actually made it into the files.
+[RESULT ✓] bash: 5249c603f [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=16 external_body=19 cfg_gate=19)
+1057db919 [verus] verify PASS (cheating detected): kernel::mm::phys (58 verified, 0 errors, admit=16 external_body=19 cfg_gate=19)
+77d87e204 [verus] verify FAIL: kerne...
+
+────────────────────────────────────────────────────────────
+Turn 255
+────────────────────────────────────────────────────────────
+Everything is auto-committed by the verify wrapper. Now let me write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_003_fixer.md 2>/dev
+
+[THINKING] The auto-commit hook has already captured my changes from the verify step, so everything's committed and the working directory is clean aside from the session log files. Now that verification is passing, I need to write out the turn_003_fixer.md response and check whether it already has any partial content from before.
+[RESULT ✓] bash: absent
+<shellId: 131 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 256
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_003_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_003_fixer.md with 5931 characters
+
+────────────────────────────────────────────────────────────
+Turn 257
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "Complete alloc_range proof; remove final admits in fr
