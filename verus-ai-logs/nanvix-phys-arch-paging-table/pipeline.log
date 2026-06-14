@@ -39,3 +39,6 @@ Module: arch-paging-table
 PHASE: specification
 Module: arch-paging-table
 ============================================================
+[2026-06-14 09:56:18] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+[2026-06-14 09:56:18] [PROVER] Running specification...
+[2026-06-14 09:56:18] [COPILOT] Running: copilot --model claude-opus-4.8 ...
