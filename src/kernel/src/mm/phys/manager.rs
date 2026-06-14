@@ -75,7 +75,6 @@ pub struct PhysMemoryManager {
 // Implementations
 //==================================================================================================
 
-#[verus_verify]
 impl PhysMemoryManager {
     ///
     /// # Description

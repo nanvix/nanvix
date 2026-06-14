@@ -1467,3 +1467,36 @@ Since `check_user_watermark` is marked external_body anyway, I don't need to pro
 Turn 86
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
+[RESULT ✓] bash: error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2313 ~ kernel[5062]::mm::phys::manager::PHYS_MEMORY_MANAGER))
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 veri...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+Down to 1 error: adding `#[verus_verify]` on the whole impl block made Verus try to verify unlisted functions that touch the `static mut`. Let me see what else is in the impl:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "fn \|PHYS_MEMORY_MANAGER\b" manager.rs | head -40
+
+[THINKING] I'm down to one remaining error involving a static mutable `PHYS_MEMORY_MANAGER` that Verus is trying to verify. Even though the functions are marked as `external_body`, the issue seems to stem from the `#[verus_verify]` attribute on the impl block causing Verus to inspect the static reference, and the error is pointing to `mm::phys::manager::PHYS_MEMORY_MANAGER`.
+
+The real culprit is likely that by adding `#[verus_verify]` to the entire `impl PhysMemoryManager` block, Verus is now attempting to verify all methods in it — including unlisted functions that aren't supposed to be touched, which reference the static. I need to check what other functions exist in that impl block that aren't in my target list.
+[RESULT ✓] bash: 55:static mut PHYS_MEMORY_MANAGER: MaybeUninit<PhysMemoryManager> = MaybeUninit::uninit();
+109:    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+118:        unsafe { PHYS_MEMORY_MANAGER.write(PhysMemoryManager { upool }) };
+143:    pub unsafe fn get_mut<'a>() -> &'a mut PhysMemoryManager {...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+The `impl`-block `#[verus_verify]` forces Verus to process unlisted `get_mut` (which touches the `static mut`). The struct-level `#[verus_verify]` should register the type; the per-method attributes handle the targets. Let me remove the impl-block attribute:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm realizing the issue is more subtle — `init` is marked as `external_body`, so its body shouldn't be verified, but `get_mut` at line 143 isn't marked that way and directly references `PHYS_MEMORY_MANAGER` with the `#[verus_verify]` attribute, which is causing the verification error.
+
+The core problem is that `get_mut` is listed in tcb-allowed.md as "skip," meaning it's allowed to be external, but adding `#[verus_verify]` to the entire impl block forces Verus to process it anyway. I need to either mark `get_mut` explicitly as `#[verifier::external]` (which is sanctioned by tcb-allowed.md but technically "touches" the function) or avoid putting `#[verus_verify]` on the whole impl block and instead handle registration differently, like how frame.rs manages its Inner type where all methods are already listed as external_body. The struct attribute alone likely fixed the "cannot use type" error, so the impl block attribute may be redundant. Let me test removing it and keeping just the struct-level `#[verus_verify]` while relying on per-method attributes to handle the individual functions.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
