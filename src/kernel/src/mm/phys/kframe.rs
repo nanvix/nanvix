@@ -87,7 +87,6 @@ impl KernelFrame {
                 Ok(frame) => frame@ == base@,
                 Err(_) => true,
             },
-            phys_view().inv(),
     )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
         // Ensure the frame is identity-mapped in the kernel address space so that

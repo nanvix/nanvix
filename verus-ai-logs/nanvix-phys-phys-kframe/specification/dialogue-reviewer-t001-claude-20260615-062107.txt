@@ -441,3 +441,66 @@ For item 4 on tautological ensures — `new` does have `Err(_) => true`, which i
 
 I've already traced through the logic, but to be truly rigorous and bulletproof, I should test empirically whether adding `phys_view().inv()` as a second ensures clause to `new` would verify. If it fails, that's concrete proof the Err path can't be strengthened that way. If it verifies, then it's a real fix the fixer should implement. Let me run this test by temporarily editing the source and running verify-kernel to see what happens.
 [RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+92 |     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+error: postcondition not satisfied
+error: postcondition not satisf...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Confirmed: `phys_view().inv()` on `new` **fails** verification ("postcondition not satisfied"). This proves `new` cannot establish a stronger fact from its dependencies. Reverting.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff --stat src/kernel/src/mm/phys/kframe.rs; echo "=== confirm clean revert ==="; grep
+
+[THINKING] Adding `phys_view().inv()` to the postcondition triggers a verification failure, which confirms that `new` can't establish this invariant from what it depends on. Let me revert back to the baseline to verify it passes again. So far the evidence is clear: the only abstract fact `new` can prove on the Ok path is `frame@ == base@`, and the Err path has no provable invariants.
+
+Looking at what's actually expressible for the error case, `phys_view().inv()` fails verification, `phys_view() == old(...)` isn't available without `&mut`, and ownership of base is just Copy with nothing meaningful to state. This means `Err(_) => true` is genuinely the strongest spec I can write for `new` given the current dependencies. Both the tautological ensures and the error handling align with what `alloc_kernel_frame` does, so items 4 and 6 pass—though with the understanding that this is the honest maximum given what's currently unverified. Now I'll revert the change.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+[RESULT ✓] bash: src/kernel/src/mm/phys/kframe.rs | 1 -
+ 1 file changed, 1 deletion(-)
+=== confirm clean revert ===
+185:            phys_view().inv(),
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm confused about the git diff output — it's showing 1 deletion when I reverted my test changes, so there should be no changes at all. The grep confirms line 185 still has the original `phys_view().inv()` in the DROP spec, but git diff --stat is reporting a deletion that shouldn't be there.
+
+Let me check if the spec files are even committed to HEAD, or if they're just uncommitted changes from this session.
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/phys/kframe.rs
+index 80779cb5e..595f8a47b 100644
+--- a/src/kernel/src/mm/phys/kframe.rs
++++ b/src/kernel/src/mm/phys/kframe.rs
+@@ -87,7 +87,6 @@ impl KernelFrame {
+                 Ok(frame) => frame@ == base@,
+                 Err(_)...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The diff reveals pre-existing uncommitted changes. Let me understand the git state and confirm the current working tree is the correct baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===git status==="; git status --short; echo "===git log oneline -5==="; git --no-page
+
+[THINKING] Looking at the git diff, I'm seeing that the working tree removed `phys_view().inv(),` from the new's ensures block compared to HEAD, which means the committed version actually has it. But when I first opened the file, that line wasn't there—so something's off with what I'm seeing versus what's actually committed.
+
+Let me trace through what happened: at the start, new's ensures only had the match block without `phys_view().inv()`. Then I added it, verification failed, and I removed it again. Now the diff shows HEAD contains it, which suggests either the working tree had uncommitted deletions before I started, or I'm misunderstanding the state. I need to check git log and status to figure out what's actually in the committed version versus what I'm working with. I need to verify the current working tree state actually passes verification, since there's a contradiction: if HEAD has `phys_view().inv()` on new and HEAD verifies, but I just showed that adding it causes verification to fail, then either HEAD doesn't actually verify or it's pointing to a different commit. Let me check git status to clarify what's committed versus uncommitted.
+[RESULT ✓] bash: ===git status===
+ M src/kernel/src/mm/phys/kframe.rs
+ M verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue-reviewer-t001-claude-20260615-062107.jsonl
+ M verus-ai-logs/nanvix-phys-phys-kframe/specification/dialogue-reviewer-t001-claude-20260615-062107.txt
+===git log oneline -5===
+ef65663da ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now clear: the auto-commit captured my failed test as HEAD `ef65663da`. My revert restored the correct baseline in the working tree. Let me re-run verification to confirm the baseline passes green.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE 'error:|verifying module|Exit code|verification:|status:
+
+[THINKING] Looking at the git history, I can see the verification runs are being auto-committed by the verify script. The first commit shows a passing verification from the initial session state, but then my test run created a new commit showing the failure with 22 verified items and 1 error when I added the phys_view().inv() call. The verify.sh script is capturing the source state at each run.
+
+My revert removed the phys_view().inv() from the working tree, so now the working directory has the correct baseline without it, while HEAD still points to that failed test commit. The working tree is in the right state now, but I should run the verification one more time to confirm the baseline passes and replace that failed commit with a clean passing one. The modified files showing up in the dialogue logs are just the reviewer session records being written, which is expected.
