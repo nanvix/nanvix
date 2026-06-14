@@ -4,37 +4,21 @@ verus! {
 // Flag projection helpers
 //==================================================================================================
 
-// Each paging-control enum is two-valued (`0` = clear, `1 << SHIFT` = set), i.e. isomorphic to
-// `bool`. These helpers project the "set" variant to its spec-world `bool` form. Pattern matching
-// is confined here so the View and the constructor transitions stay declarative.
-pub open spec fn spec_present_set(p: PresentFlag) -> bool {
-    p is Present
-}
+// The seven flag projections shared with the sibling `pde` module (`spec_present_set`,
+// `spec_rw_set`, `spec_us_set`, `spec_pwt_set`, `spec_pcd_set`, `spec_a_set`, `spec_d_set`) are
+// reused from there to avoid duplicate definitions colliding through the `paging` glob re-export.
+use crate::x86::mem::paging::{
+    spec_present_set,
+    spec_rw_set,
+    spec_us_set,
+    spec_pwt_set,
+    spec_pcd_set,
+    spec_a_set,
+    spec_d_set,
+};
 
-pub open spec fn spec_rw_set(f: ReadWriteFlag) -> bool {
-    f is ReadWrite
-}
-
-pub open spec fn spec_us_set(f: UserSupervisorFlag) -> bool {
-    f is User
-}
-
-pub open spec fn spec_pwt_set(f: PageWriteThroughFlag) -> bool {
-    f is WriteThrough
-}
-
-pub open spec fn spec_pcd_set(f: PageCacheDisableFlag) -> bool {
-    f is CacheDisabled
-}
-
-pub open spec fn spec_a_set(f: AccessedFlag) -> bool {
-    f is Accessed
-}
-
-pub open spec fn spec_d_set(f: DirtyFlag) -> bool {
-    f is Dirty
-}
-
+// The copy-on-write projection is PTE-specific (the PDE sibling has a page-size bit instead), so it
+// is defined here. The enum is two-valued (`0` = clear, `1 << SHIFT` = set), isomorphic to `bool`.
 pub open spec fn spec_cow_set(f: CopyOnWriteFlag) -> bool {
     f is CopyOnWrite
 }

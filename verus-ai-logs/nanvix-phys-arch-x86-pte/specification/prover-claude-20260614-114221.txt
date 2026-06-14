@@ -390,3 +390,39 @@ Now let me run verification:
 [THINKING] I'm working through the relationship between the `is_present` method and the view specification for PageTableEntry—the method delegates to `self.flags.is_present()` which has the spec `result == self.flags@.present`, and since the view maps `self@.flags` to `self.flags@`, the specs should align even though the view is closed, since the proof stays within the same module.
 
 Now I'm running the verification to check the architecture.
+[RESULT ✓] bash: 19 | pub use pde::*;
+   |         ^^^^^^ the name `spec_a_set` in the value namespace is first re-exported here
+20 | pub use pte::*;
+   |         ------ but the name `spec_a_set` in the value namespace is also re-exported here
+
+error: ambiguous glob re-exports
+  --> src/libs/arch/src/x86/mem/paging/...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Name collision: pde and pte both define the shared helpers, and `mod.rs` glob-re-exports both. Let me check `mod.rs`.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs
+
+[THINKING] There's a naming collision between the spec helper functions defined in both pde.spec.rs and pte.spec.rs—they're getting re-exported together through glob imports in mod.rs. Since pde already defines these shared helpers, I should avoid redefining them in pte.spec.rs and instead reference pde's versions. The challenge is that pte.spec.rs lives in the pte module while the helpers are in pde, but they're accessible through the glob re-exports. I need to figure out how the re-exports work in mod.rs so I can understand whether pte can reference pde's helper functions unqualified or if I need to use qualified paths or add explicit imports.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The shared helpers already exist in `pde`. I'll reuse them and only keep the new `spec_cow_set`. Let me update pte.spec.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pte.spec.rs
+
+[THINKING] I need to reuse the shared helper functions from the pde module rather than redefining them in pte. Since pte is a submodule of paging and those helpers are publicly exported from pde, I can access them through the module path using `super::` references.
+
+The cleanest approach is to remove the seven duplicate helper definitions from pte.spec.rs and keep only `spec_cow_set`, which is unique to pte. I'll add a use statement to import the shared helpers from the parent paging module, making them available without qualification. This avoids duplication while keeping the new cow-specific helper local where it belongs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pte.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40
