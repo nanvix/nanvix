@@ -219,3 +219,36 @@ Turn 9
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verifying module mm::p
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+verification results:: 42 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Exit code : 0
+  verification: 42 verified, 0 errors (exit 0)
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Removing `external_body` from the `Upool` struct works (42 verified, 0 errors) — count reduced 3→2. Now let me gather evidence on `Upool::new` and `Upool::alloc` by attempting to remove their `external_body`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/mm/phys/upool.rs /tmp/upool.rs.structonly && sed -n '237,250p' src/
+
+[THINKING] I can remove the `external_body` field from `Upool` since it's not needed for verification, which brings the external body count down from 3 to 2. The `View` implementation still works fine with an uninterpreted view. Now I'm trying to prove `Upool::new` and `Upool::alloc`, but the challenge is that I need a concrete interpretation of the view rather than leaving it uninterpreted—something that would let these methods actually be provable.
+
+The core problem is that `Upool` has no internal state; its state lives in the global frame allocator. If I map the view to `phys_view().frames`, then `new` would need to establish that the frames are well-formed (which isn't derivable without initialization), and `alloc` would require the frames to stay constant (which contradicts the allocator's transition). Both approaches fail. I could theoretically add a tracked ghost token to `Upool` to represent allocator state and thread it through the methods, but `frame::alloc` doesn't accept or return tokens—its contract is frozen against `phys_view`. So that won't work either.
+
+This means `new` and `alloc` are genuinely irreducible and need to stay external. Let me test this by removing `external_body` from just `Upool::new` while keeping it on `alloc` to see what error Verus produces.
+[RESULT ✓] bash: // Dependency contract: opaque pool facade whose real backing store is the global frame
+    // allocator. `external_body` (the `Upool` struct carries no spec-readable state) per
+    // `verus-ai-logs/tcb-allowed.md`. The pool introduces no frames of its own; `wf()` is the
+    // only fact its boot-t...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verifying module mm::p
