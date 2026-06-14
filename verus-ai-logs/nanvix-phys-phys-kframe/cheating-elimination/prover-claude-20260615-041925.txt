@@ -382,3 +382,90 @@ I should run a fresh verification to be certain, though the exit code 0 is alrea
 Since I made no source changes, running the full crate verification carries no regression risk, but I should do it anyway for completeness.
 
 Now I'm creating the output files. For the verification_todo.md, since kframe has no genuine proof gaps—only the TCB-allowed external_body on `new`—I'll document that there are no remaining proof gaps for this module. I'm also tallying the counts precisely: zero admit, zero assume, one external_body (TCB-allowed, so zero eliminable), zero assume_specification, and a few cfg-gated lines that are compile-time spec-inclusion guards plus the pre-approved logging gate. Let me write the fix_report.md and verification_todo.md with these counts.
+[RESULT ✓] bash: note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Full crate verifies cleanly (exit 0, no verification errors). No regressions — I made no source changes. Let me write the output files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination && ls verus-ai-lo
+
+[THINKING] The crate verification passed without errors and the kframe module checks out—the only exception is the TCB-approved `new` external_body call, which is allowed. Since I haven't made any source changes, there are no regressions to worry about. Now I need to write up the report and update the todo list.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/verification_todo.md with 1411 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/fix_report.md with 4411 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Done. Summary of findings for **phys-kframe**:
+
+## Result: PASS — zero eliminable cheating in scope
+
+**Cheating audit of the three target functions** (`new`, `drop`, `base`):
+
+| Item | In-scope count | Disposition |
+|------|------|------|
+| admit() | 0 | — |
+| assume() | 0 | — |
+| external_body | 1 (`new`) | **TCB-allowed** (explicitly in `tcb-allowed.md`) |
+| assume_specification | 0 | — |
+| cfg-gated exec | 1 (`drop` `error!`) | Pre-approved logging gate |
+
+Key points:
+- **`KernelFrame::new`'s `external_body` is explicitly authorized** in `verus-ai-logs/tcb-allowed.md` — its body calls `mm::virt::identity_map_page`, whose `requires` needs the global `identity_map_view().inv()` token not realizable in `mm::phys`. Removing it would only force a worse `admit`/`assume`.
+- **`base` and `drop` verify fully in-body** (no admit/assume).
+- The `drop` `#[cfg(not(verus_keep_ghost))]` on `error!` is the established, gate-neutral logging convention — byte-identical to the verified sibling `UserFrame::drop`.
+- `kframe.proof.rs` is empty; `kframe.spec.rs` has no cheating.
+
+**AST consistency:** `git diff verus-ai-prove` for all three kframe files is **empty** — zero source changes, so semantics/time/space trivially preserved.
+
+**Verification:** `make verify-kernel MODULE=mm::phys` and full `make verify` both exit 0 with no verification errors (the whole-crate `CHEATING_DETECTED` comes solely from out-of-scope modules: `frame`, `manager`, `mod`, `upool`, `mm::virt`, `hal`).
+
+Reports written to `cheating-elimination/fix_report.md` and `verification_todo.md`.
+
+
+=== Session End ===
+Session: da6bca2e-698c-4358-b010-966ea9ddc9bf
+Duration: 211.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/prover-claude-20260615-041925.jsonl
