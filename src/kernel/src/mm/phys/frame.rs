@@ -1242,6 +1242,11 @@ impl Inner {
             index = index + 1;
         }
         proof! {
+            // The loop ran to completion, so every index in `[start_fn, end_exclusive)` is
+            // covered and free; the coverage invariant therefore extends to the whole range.
+            assert(index == end_exclusive);
+            assert(start_fn <= start_fn + nfr - 1);
+            assert(start_fn + nfr - 1 < index as int);
             // Every requested index is in range and free; the range fits the bitmap.
             assert(start_fn + nfr <= pre_nb) by {
                 if nfr >= 1 {

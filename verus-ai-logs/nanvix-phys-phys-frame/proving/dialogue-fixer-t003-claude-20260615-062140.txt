@@ -3164,3 +3164,63 @@ Turn 231
 Turn 232
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
+[RESULT ✓] bash: cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-22-14.log
+make: *** [Makefile:625: verify-kernel] Error 101
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 233
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "verifie
+[RESULT ✓] bash: 30:error: assertion failed
+286:verification results:: 57 verified, 1 errors (partial verification with `--verify-*`)
+287:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== locs ===
+31:    --> src/kernel/src/mm/phys/frame.rs:1248:28
+233:    --> src/kernel/src/mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 234
+────────────────────────────────────────────────────────────
+57 verified, 1 error left — the while loop fixed the invariant. Now only the post-loop assertion at 1248. Let me view it.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Good progress—we're down to 57 verified with just one error left. The loop invariant issue is resolved now that the while loop is fixed, so I need to focus on that final post-loop assertion at line 1248.
+[RESULT ✓] view: 1244.         proof! {
+1245.             // Every requested index is in range and free; the range fits the bitmap.
+1246.             assert(start_fn + nfr <= pre_nb) by {
+1247.                 if nfr >= 1 {
+1248.                     assert(pre_sb.contains(start_fn + nfr - 1) == false
+1249.          ...
+
+────────────────────────────────────────────────────────────
+Turn 235
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '30,55p'
+
+[THINKING] After the while loop exits, the index equals the end_exclusive boundary, which means all elements from start_fn to start_fn+nfr-1 have been verified as not contained in the pre_sb set. Now I'm checking whether the proof block properly validates this coverage invariant. Verus should be able to derive that `index == end_exclusive` from the loop exit condition combined with the invariant, which would then instantiate the coverage forall to give `forall k < start_fn+nfr`. Let me check the actual error details to see if it's a trigger issue or something else preventing the assertion from going through.
+[RESULT ✓] bash: error: assertion failed
+    --> src/kernel/src/mm/phys/frame.rs:1248:28
+     |
+1248 |                       assert(pre_sb.contains(start_fn + nfr - 1) == false
+     |  ____________________________^
+1249 | |                         && start_fn + nfr - 1 < pre_nb);
+     | |____________________________...
+
+────────────────────────────────────────────────────────────
+Turn 236
+────────────────────────────────────────────────────────────
+Let me add explicit derivation of `index == end_exclusive` and the range bound to instantiate the coverage invariant.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The assert at line 1248 is failing, so I need to add intermediate assertions to help Verus connect the dots. I'll explicitly assert that `index == end_exclusive` and that the coverage forall is instantiated, since Verus might not be auto-deriving the relationship between index and the loop bounds. Adding these helper assertions right after the while loop should give the verifier the facts it needs to complete the proof.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 237
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
