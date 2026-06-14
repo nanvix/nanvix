@@ -1798,3 +1798,141 @@ Turn 125
 Turn 126
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -35
+[RESULT ✓] bash: Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_05-02-26
+
+    Checking kernel v0.16.17 (/home/ruize/nanvix-ph...
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+7 verified, 0 errors. The flagged `external_body: 1` (drop) is documented. Let me check the cfg-gated warning and the `new` coverage note.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | head -50
+
+[THINKING] Seven functions verified by Verus with no errors, though the coverage report flags one as unverified despite it having a `#[verus_spec]` annotation with requires and ensures clauses—I need to figure out why the coverage tool isn't recognizing the contract on that function.
+
+Looking at the eight exec functions, drop is marked as external_body so it's counted separately, leaving seven that should be verified. The coverage tool is reporting `new` as missing a contract, but there are actually two `new` functions: UserFrame::new has the spec, while Upool::new only has `#[verus_verify]` without any requires or ensures clauses. Since Upool is stateless with no View or invariant, I'm wondering if a contract is even meaningful for it.
+
+I should check the caller_analysis to see if Upool::new has any expectations that need to be captured in a spec. There's also that lingering "cfg-gated exec code: 1" warning I should investigate by looking at the cheating-detail.txt file.
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg-gated\|cfg_gate\|cfg(" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.
+[RESULT ✓] bash: ===
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "cfg-gated exec\|cfg_gate\|cfg-gated" /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null | head
+
+[THINKING] The cfg-gate detail is reported per-module rather than globally in this file. I need to find the script that generates the "cfg-gated exec code" flags and understand what it's detecting—likely the conditional compilation directives or included files gated by cfg attributes. Let me search through the verification script to trace where this is coming from.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py:471:    ``#[verus_verify(...)]``, ``#[verifier::...]``, the cfg-gated
+/home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh:470:# Count cfg-gated exec code (cheating indicator).
+/home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh:472:count_c...
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+[RESULT ✓] view: 470. # Count cfg-gated exec code (cheating indicator).
+471. # When MODULE is set, counts only for module files; otherwise whole crate.
+472. count_cfg_gates() {
+473.     local scan_dir="$1"
+474.     python3 -c "
+475. import re, sys
+476. from pathlib import Path
+477. 
+478. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+The 1 cfg-gate is the pre-existing `#[cfg(verus_keep_ghost)] verus!{}` wrapping `impl View for UserFrame` (ghost-only, correctly gated) — a heuristic false positive, not exec code. Let me confirm it's pre-existing and not something I introduced.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff --stat; echo "=== upool.rs cfg lines in HEAD ==="; git show HEAD:src/kernel/src/mm
+
+[THINKING] The cfg-gate check looks for `#[cfg(verus_keep_ghost)]` attributes followed by lines that aren't use/include!/mod/log macros. In upool.rs, the first two instances at lines 9 and 11 both have include! statements on the next line, so they get excluded from the check.
+
+At line 38, there's a `#[cfg(verus_keep_ghost)]` followed by `verus! {` wrapping an `impl View for UserFrame` block — this gets flagged as a cfg-gate since it's not one of the excluded patterns. But this is actually ghost-only code (a spec View implementation), so the flag is a false positive. The View impl legitimately needs to be cfg-gated since it's only needed in the verus build, and in the non-verus build its absence is correct. I'm wondering if other modules like frame.rs follow the same pattern with View impls wrapped in cfg-gated verus blocks, which would suggest this is the established convention and the warning is benign.
+
+Actually, looking back at the summary, it mentions the View impl at lines 45-51 as pre-existing and not to be modified, so this cfg-gate was already there before my changes. Let me verify with git that I didn't introduce it.
+[RESULT ✓] bash: .../prover-claude-20260615-044021.jsonl            | 104 +++++++++++++++++++++
+ .../prover-claude-20260615-044021.txt              |  67 +++++++++++++
+ 2 files changed, 171 insertions(+)
+=== upool.rs cfg lines in HEAD ===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+38:#[cfg(verus_keep_gho...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short; echo "=== recent log ==="; git --no-pager log --oneline -5
+
+[THINKING] I'm checking git status to understand what's actually changed — the diff output shows only the log files modified, not my source code edits. Let me verify by looking at the HEAD version of upool.rs to see if my changes are already committed or if they're not being tracked properly.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-upool/specification/prover-claude-20260615-044021.jsonl
+ M verus-ai-logs/nanvix-phys-phys-upool/specification/prover-claude-20260615-044021.txt
+=== recent log ===
+bf8a35b03 [verus] verify PASS (cheating detected): kernel::mm::phys::upool (7 verified, 0 errors, extern...
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+All source changes are committed (verify.sh auto-commits). Verus: 7 verified, 0 errors. The flagged `external_body` (drop) is documented and the cfg-gate is the pre-existing ghost `View` impl. Let me check caller_analysis for `Upool::new` to decide on the coverage note.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n -i "upool::new\|Upool::new\|new()\|pool" verus-ai-logs/nanvix-phys-phys-upool/calle
+
+[THINKING] The verify.sh script auto-commits after each run, and my latest commit (bf8a35b03) shows 7 verified with 0 errors, so all my changes are safely committed including the cfg_gate=9 and external_body=26 values. The cfg_gate=1 in upool is just the pre-existing View impl wrapper that was already there before my modifications.
+
+The "CHEATING_DETECTED" status is expected—it's just the documented external_body drop plus the benign cfg_gate wrapper, both acceptable per the task guidelines. Verus itself reports 7 verified, 0 errors, which is good. The coverage gap is `Upool::new` being unverified since it only has `#[verus_verify]` with no contract, but since it's a stateless constructor returning a Upool with no View or invariant, there's genuinely nothing meaningful to specify—adding a vacuous `ensures true` would just game the tool. Let me check the caller_analysis to see if this function actually needs a spec.
+[RESULT ✓] bash: 1:# Caller Analysis: `mm::phys::upool`
+4:See: `verus-ai-logs/nanvix-phys-phys-upool/find_callers_output.md`
+9:- 2 public types: `UserFrame` (19 refs), `Upool` (6 refs).
+13:`upool.rs` provides two types:
+21:- **`Upool`** — a zero-sized facade (`_private: ()`) that is the dedicated entry
+45:Callers: `...
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/caller_analysis.md
+[RESULT ✓] view: 96. ### `Upool::new() -> Self` `[pub(super)]`
+97. Caller: `phys/mod.rs:197` (then `PhysMemoryManager::init(upool)`).
+98. - Callers assume: constructs the allocation facade with **no allocation or
+99.   global-state mutation**; the value is immediately moved into the singleton.
+100. - Callers don't c...
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+All 8 functions handled: 7 verified by Verus, `drop` external_body (documented). `Upool::new` is verified (trivial pure constructor with no expressible postcondition — caller only needs "no global mutation", which holds since it's verified and calls no `frame::*`). The 7/8 coverage note is a best-effort heuristic; nothing meaningful to ensure for a stateless constructor.
+
+Let me write bugs.md, then run full `make verify` and `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-phys-upool/bugs.md 2>/dev/null | head; echo "=== exists? ==="
+
+[THINKING] Looking at the caller analysis for Upool::new, it assumes no allocation or global-state mutation happens. The analysis suggested using external_body, but I went with `#[verus_verify]` instead, which is better since it actually gets verified. Verus reported 7 verified functions total—UserFrame's five methods plus Upool::new and Upool::alloc—so Upool::new is indeed verified, just without an explicit contract.
+
+The "no mutation" expectation is trivially satisfied because phys_view() is a constant in the spec world, so mutation isn't even expressible there. Since Upool::new is verified and pure with no calls to frame functions, there's genuinely no way for it to mutate phys_view. Adding a contract wouldn't add value here—the coverage tool flags it as "unverified" because it lacks a contract, but that's just a heuristic; verified-but-no-contract is actually the right choice for a trivial pure constructor.
+
+I'm reconsidering the drop external_body decision one more time since it's the main judgment call, but I've already added it to tcb-allowed.md so it's listed and justified.  The write! macro in the format implementation is genuinely incompatible with Verus verification, and restructuring to avoid it would lose error detail in the logs, so external_body is the right call. Now I'll write bugs.md and run the full verify and build.
+[RESULT ✓] bash: === exists? ===
+<shellId: 69 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/bugs.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-upool/bugs.md with 1120 characters
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
