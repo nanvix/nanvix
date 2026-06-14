@@ -1,4 +1,4 @@
-# Unverified exec functions: 1001/1022
+# Unverified exec functions: 990/1022
   do_debug
   debug
   do_evctrl
@@ -538,12 +538,8 @@
   fmt
   drop
   instance
-  alloc
   alloc_contiguous
   free_count
-  free
-  share
-  refcount
   new
   base
   clear
@@ -553,13 +549,6 @@
   get_mut
   test
   new
-  address
-  leak
-  share
-  refcount
-  drop
-  new
-  alloc
   new
   size
   base
