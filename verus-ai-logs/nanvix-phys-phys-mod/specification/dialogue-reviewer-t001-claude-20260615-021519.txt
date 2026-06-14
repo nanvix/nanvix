@@ -224,3 +224,209 @@ Let me run the verification command and read context files in parallel.
 7. 
 8. The functions' logic is consistent with the caller expectations in
 9. `c...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me examine the cheating detail, coverage output, and available tools.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-kernel/verus-logs/cheating-d
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage tools ===" && find . -name "fn_coverage*.py" 2>/dev/null; find / -nam
+
+[THINKING] I need to dig into the cheating detection details — the verification passed but the status shows CHEATING_DETECTED with specific metrics around admit and external_body counts. The coverage is quite low with only 3 in-scope functions, so I should examine the cheating-detail.txt file to understand what's triggering this flag.
+
+Looking at the admits and external_body violations, all 7 admits appear to be in the proof file for lemmas like `lemma_spec_initialize_establishes_inv` and related invariant preservation proofs. The 2 external_body violations are in the module's own functions (`book_physical_memory_regions` and `book_mmio_regions`), with the remaining 15 scattered elsewhere. The critical issue is that during the specification phase, the module's own proof functions shouldn't be using admit — that's only temporarily allowed for external dependencies. The `init` function also has a tautological ensures clause that just returns true, which is problematic.
+
+Looking at the checklist violations more carefully: the in-scope exec functions lack proper requires/ensures contracts, the tautological ensures on `init` is a clear failure, error paths have no meaningful ensures clauses, and the module is cheating on its own functions with those 7 admits. The specs are essentially deferred with the binding to global state pushed to a later phase. I need to check the cheating detail file and verify the tools like fn_coverage.py and spec-completeness skill are available before writing the strict review.
+[RESULT ✓] bash: === cheating-detail.txt ===
+    - mm/phys/mod.proof.rs:19 lemma_spec_initialize_establishes_inv: admit
+    - mm/phys/mod.proof.rs:36 lemma_spec_book_frame_preserves_inv: admit
+    - mm/phys/mod.proof.rs:57 lemma_spec_book_frames_preserves_inv: admit
+    - mm/phys/mod.proof.rs:79 lemma_book_region_re...
+[RESULT ✓] bash: === fn_coverage tools ===
+/mnt/shared/verus-ai-improve4/scripts/fn_coverage.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/fn_coverage.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/fn_coverage.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/fn_coverage.py
+/mnt/shared/kheap-mas-...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null | grep -iE "coverage|drift|comple
+
+[THINKING] I need to run the coverage check script on this module, so I'm looking for fn_coverage.py in the verus-ai directory at /home/ruize/verus-ai-exp/verus-ai.
+[RESULT ✓] bash: fn_coverage.py
+refinement_coverage.py
+spec_drift.py
+---try fn_coverage---
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel/src/mm/phys/mod
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -30
+
+[THINKING] I need to figure out how to run fn_coverage since it typically needs an original source file and a Verus-compiled version to compare. In this case, mod.rs is the only file I have, so I'll just run the tool against mod.rs itself to see what coverage information it provides.
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/mod.rs`
+- **Verus file:** `src/kernel/src/mm/phys/mod.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 4 |
+| Verus exec ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check 2>&1 | head -40; echo
+
+[THINKING] I'm checking for spec drift in this module and reviewing the git diff to see what changes have been made in this phase.
+[RESULT ✓] bash: usage: spec_drift.py check [-h] [--phase PHASE] [--logs-dir LOGS_DIR]
+                           [--before BEFORE] [--after AFTER] [-o OUTPUT]
+                           [--json]
+                           module
+spec_drift.py check: error: the following arguments are required: module
+=== git status...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check nanvix-phys-phys-mod 
+[RESULT ✓] bash: Module:   nanvix-phys-phys-mod
+Phase:    specification
+Source:   /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+Baseline: 8e88a8ab919c
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires ad...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Let me examine frame.rs to understand whether the global state can be named in specs (relevant to whether real ensures are achievable in this phase).
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== instance / INSTANCE_INIT / singleton ===" && grep -n -E "INSTANCE_INIT|fn instanc
+
+[THINKING] I'm checking whether the spec-completeness skill is actually part of the project, and it doesn't appear to be listed—it might be a verus-ai skill. Looking at the broader pattern now, the specification phase has produced essentially placeholder specs: the `init` function just asserts `true`, and the memory booking functions are similarly incomplete, which suggests the actual verification work is being deferred.
+
+Now I'm going through the checklist systematically. The three in-scope exec functions are `init`, `book_physical_memory_regions`, and `book_mmio_regions`. The first one has a tautological ensures, while the other two have no requires or ensures at all—that's a clear failure on function coverage. The caller expectations around establishing invariants and reserving frames aren't met by an ensures of `true`. The View consistency also fails because the exec specs don't reference the PhysMemView fields or maintain the invariant. And the tautological ensures in `init` is exactly what the spec-completeness check is designed to catch.
+
+For the external dependencies, the `external_type_specification` for LinkedList is acceptable since it's from vstd, and that limitation is documented. The two `book_*` functions use `external_body` because of the LinkedList orphan-rule issue, which is the real constraint here—the question is whether that justification holds up under the checklist's scrutiny.
+
+The bigger problem is the admits in the module's own proof lemmas and the `external_body` on the module's own functions—that's circumventing verification rather than working within its constraints. The spec drift is clean at zero, and the cross-module regression shows all modules passing verification, though the cheating detection flags the overall status. The verus command exits successfully, but the cheating issue gates the final assessment.
+
+The real structural issue is that the specification phase deferred the hard work: the `init` ensures is just `true`, and the actual abstract effects are buried in proof lemmas with `admit()` that don't connect back to the exec functions. The view design explicitly notes that binding to global state is deferred because the functions take no `self` or ghost handle to name the post-state. This is a genuine design constraint—to write meaningful ensures that reference the PhysMemView post-state, you'd need a way to thread the global state through, likely via a ghost handle or tracked token. But that's a view-design change, and the specification phase should be pushing for real specs regardless. The question is whether the reviewer accepts this deferral or demands the structural changes needed to write proper ensures now. I need to check the frame.rs file to see if there's an `instance()` function that returns a viewable reference to the global state, which would let me write proper specifications for the free functions without requiring view-design changes.
+[RESULT ✓] bash: === instance / INSTANCE_INIT / singleton ===
+78:static mut REFCOUNT_STORAGE: [u8; NFRAMES] = [0; NFRAMES];
+100:    refcount: &'static mut [u8],
+116:    #[verus_spec(result =>
+124:                    &&& old(self)@.free_frames.contains(frame@)
+125:                    &&& final(self)@ == FrameAllocVie...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The `Inner` methods have full specifications on `self@` through FrameAllocView, but the free-function wrappers like `frame::init`, `frame::book`, `frame::is_covered`, and `frame::alloc_range` are marked as `external_body` and don't include specs. I need to look into how the global singleton instance is accessed.
+[RESULT ✓] view: 600.         }
+601. 
+602.         // Book all frames in the range.
+603.         for index in start_frame_number..=end_frame_number {
+604.             if let Err(error) = self.bitmap.set(index) {
+605.                 error!("{error:?} (region={region:?})");
+606.                 return Err(error);
+607...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+I now have complete evidence. Let me write the comprehensive strict review.
+[TOOL] report_intent: Writing turn 1 review
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue && grep -n "verus_spec\|
+
+[THINKING] I'm seeing that the global singleton is accessed through `instance()` returning a mutable static reference, and the free-function wrappers around it have no specifications. Since there's no ghost state threading through these external functions, I need to figure out how to write a meaningful postcondition on `init` that actually captures what's happening with the global state.
+
+The design doc acknowledges this exact gap — it defers threading the View through the free-function wrappers to a later phase. So right now the exec ensures on `init` is just `true` because there's no way to name the global's post-state in the spec. The real question is whether I can fix this at the specification level without redesigning the View itself, or if this is a fundamental blocker that requires rolling back the View design.
+
+The core issue is that Verus can't reason about `static mut` globals without either a tracked ghost token threaded through the API or a `spec fn` that exposes an abstract view of the global state. That's a specification-level decision, not necessarily a View struct change. My job as the reviewer is to walk through the checklist, mark this as a FAIL, and write a concrete fix request for the fixer — they'll need to add a `spec fn` that names the global post-state so the ensures clauses can actually reference it.
+
+I should also flag the admitted cheating and the disconnected proof lemmas, then write the full review with precise PASS/FAIL determinations. The Verus verification already passed, so I'll note that, but the cheating gate and missing contracts are the real blockers. Let me finalize the checklist assessment and create the driver document.
+
+Going through each item: exec functions lack proper requires/ensures contracts—`book_physical_memory_regions` and `book_mmio_regions` have no specs at all, and `init` only ensures `true`. Caller expectations aren't encoded anywhere, and the PhysMemView transitions exist only in proof files, completely disconnected from the exec specs. Error paths have no meaningful ensures, and the proof lemmas don't tie back to the actual postconditions that callers need. The contract is essentially empty where it matters most.
+
+Both `book_*` functions use `external_body` to sidestep loop verification—the outer LinkedList iterator is the blocker, but the inner `while` loop in `book_mmio_regions` could theoretically be verified separately and isn't. More critically, all seven admits in the proof file are for this phase's own lemmas and each one needs to be addressed individually. No spec drift detected, and the bugs are documented, but the core issue remains: the module's own exec functions and their proofs are full of gaps that can't be ignored.
+
+The cross-module regression check passed, but Verus reports `CHEATING_DETECTED` with 17 external bodies and 7 admits covering 9 of 1022 lines—the verification only succeeds because those admits trivialize the lemmas. The real blockers are items 1, 2, 3, 4, 6, 9, 12, 13, and 17. I need to write the driver document now with a full checklist walkthrough and a concrete, prioritized fix request targeting the cluster of related failures, starting with the ensures contracts and then the admits.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 134:#[verus_spec(ret =>
+135:    ensures
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Confirmed: only `init` has a `#[verus_spec]`, and it is `ensures true`. The two `book_*` functions have no contract at all. Writing the full review now.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue/turn_001_driver.md
+
+[THINKING] I've confirmed that only the `init` function has a spec annotation with a trivial postcondition, while the book functions lack any specifications. Now I'm ready to write up the review.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue/turn_001_driver.md with 9049 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Turn 1 review complete. I walked the entire checklist against actual code and tool output.
+
+**Verdict: 10 PASS-equivalent are not all clear — 10 items FAIL.**
+
+Key findings (evidence: `make verify-kernel` exit 0 but `CHEATING_DETECTED`; `fn_coverage.py`; `spec_drift.py`; `cheating-detail.txt`; grep):
+
+- **#1/#4/#6 FAIL** — Only `init` has a `#[verus_spec]`, and it's `ensures true` (tautology). `book_physical_memory_regions` and `book_mmio_regions` have no contract at all.
+- **#2/#3/#9 FAIL** — Zero exec ensures reference `PhysMemView`/`inv()`; documented caller expectations (establish `inv`, reserve RAM/MMIO frames, one-shot) are encoded nowhere. `true` is unusable in `kernel_vas::init`'s proof.
+- **#13 FAIL** — All **7** of this module's own proof lemmas in `mod.proof.rs` are `admit()` (lines 19/36/57/79/105/120/140), individually itemized.
+- **#12 FAIL** — Loops escaped via `external_body`. **#17** — verus exit 0 only because the admits trivially discharge.
+- **PASS:** #5(vacuous), #7, #8, #10, #14 (0 drift), #15, #16.
+
+The "deferred to a later phase" justification is rejected: `frame.rs` already proves the global state is nameable, so real `init` ensures are achievable in this phase without changing the View struct. Wrote a concrete 3-part fix request (A: real `init` postcondition via a `phys_view()` spec fn + thin specs on `frame::*` wrappers; B: real ensures on both `book_*`; C: discharge all 7 admits) to `turn_001_driver.md`.
+
+No STOP/ROLLBACK created — unresolved FAILs remain and local fixes haven't been attempted yet.
+
+[THINKING] I've finished the turn 1 review, walking through the entire checklist to identify what passes and what fails, then writing focused fix requests for each issue. I'm not creating a STOP since the failures are local and fixable in this phase—I haven't attempted the fixes yet, so there's no reason to halt progress.
+
+
+=== Session End ===
+Session: 42663e7c-3339-41e4-afdf-3c8630f16668
+Duration: 222.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue-reviewer-t001-claude-20260615-021519.jsonl
