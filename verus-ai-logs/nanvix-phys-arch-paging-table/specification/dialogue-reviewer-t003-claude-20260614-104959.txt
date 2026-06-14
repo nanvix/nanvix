@@ -183,3 +183,47 @@ The fixer removed the unsound `ensures`. Let me verify the full `write` block an
 246.     pub unsafe fn write(&self, index: TableIndex, entry: E) {
 247.         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
 248.  ...
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=1 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  9/525 exec functions have c...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The unsound `ensures` is removed; `write` now has only the sound `requires`. Let me confirm the exploit no longer verifies, and run the remaining tools plus a cross-module regression.
+[TOOL] report_intent: Verifying fix soundness and regression
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.p
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === fn_coverage ===
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 7 |
+| Verus exec fns | 7 |
+| Verus spec fns | 0 |
+| Verus proof fns | 0 |
+| Matched | 7 |
+| Missing | 0 |
+| Extra | 0 |
+=== spec_drift ===
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review re...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+All tools pass. Let me run the full cross-module regression (#16) and build (#17) to confirm no cascade, then independently confirm the exploit is gone.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | grep -iE 'verification results|error|verified' | tail -20
+
+[THINKING] The exploit can't work anymore since removing the ensures clause means callers have no information about spec_table_word to construct the contradiction. I should run a full cross-module verification to be thorough, then mark this as resolved.
