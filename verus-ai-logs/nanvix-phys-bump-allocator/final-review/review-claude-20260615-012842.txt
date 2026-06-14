@@ -717,3 +717,216 @@ Turn 2
 [RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:101:#[cfg(verus_keep_ghost)]
 /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:105:#[cfg(verus_keep_ghost)]
 /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:430:#[cfg(test)]
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking AST consistency
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager rev-parse --abbrev-ref HEAD && python3 scripts/ast_consistency.py --base-ref
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/repro/div_ceil_no_spec.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Minimal reproducer for the `align_up` exec rewrite in
+2. // `src/libs/bump_allocator/src/lib.rs`.
+3. //
+4. // This is the ORIGINAL `align_up` body, which uses the `usize::div_ceil`
+5. // intrinsic. Verus ships no specification for `div_ceil`, so the function
+6. // cannot be verified as written...
+[RESULT ✓] bash: verus-ai/bump-allocator
+python3: can't open file '/home/ruize/nanvix-phy/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 14 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/ast_consistency.py
+[RESULT ✓] glob: No files matched the pattern.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py && python3 /home/ruize/veru
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+ERROR: Cannot get original from git: fatal: invalid object name 'main'.
+<shellId: 15 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager branch -a && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consisten
+[RESULT ✓] bash: dev
+  exp
+* verus-ai/bump-allocator
+  remotes/origin/HEAD -> origin/dev
+  remotes/origin/auto/verus-update
+  remotes/origin/bitmap-integration
+  remotes/origin/bugfix-build-target_spec
+  remotes/origin/bugfix-build-windows
+  remotes/origin/bugfix-kernel-exit-guard-check
+  remotes/origin/bugfix-kerne...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref origin/dev 
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+BackendA::as_mut_ptr                     MATCH                                
+BackendB::as_mut_ptr                     MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref origin/dev 
+[RESULT ✓] bash: ## align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -2,5 +2,23 @@
+     if alignment == 0 {
+         return None;
+     }
+-    value.div_ceil(alignment).checked_mul(alignment)
++    // VERUS REWRITE: the original body was
++    //   `value.div_ceil(alignment).checked_mul(alignment)`.
++    // Veru...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/repro && /home/ruize/toolchain/v
+[RESULT ✓] bash: error: `core::num::impl&%11::div_ceil` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+  --> div_ceil_no_spec.rs:44:5
+   |
+44 ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-15_01-31-41.log
+[RESULT ✓] view: 1.     - lib.rs:318 alloc: external_body
+2.     - lib.rs:405 alloc_as: external_body
+3. 
+[RESULT ✓] view: 1. # Unverified exec functions: 3/6
+2.   fmt
+3.   new
+4.   default
+5. 
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_01-31-41
+2. Mode: cargo
+3. Crate: bump-allocator
+4. Directory: N/A
+5. Module: <all>
+6. Exit code: 0
+7. cached (no recompilation)
+8. —
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=2
+13.   admit=0
+14.   trusted=0
+15.   no_decreases=0
+16.   cfg_gate=0
+17. 
+18. ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+I have a thorough understanding of the files. Now let me run the verification, AST consistency check, and gather exact guardrail counts. Let me also compare against the raw-array pattern referenced.
+[TOOL] report_intent: Running verification and guardrail counts
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verify-bump-allocator" Makefile* 2>/dev/null; echo "---makefiles---"; ls Makefile*
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admit ==="; grep -rn "admit()" src/libs/bump_allocator/src/ ; echo "=== assume( (
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === admit ===
+src/libs/bump_allocator/src/lib.proof.rs:7:// (no `admit()`/`assume()`) and encodes a caller expectation from
+=== assume( (not assume_init / assume_specification) ===
+src/libs/bump_allocator/src/lib.proof.rs:7:// (no `admit()`/`assume()`) and encodes a caller expectation from
+=== assum...
+[RESULT ✓] bash: ---makefiles---
+Makefile
+---grep target in any mk---
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "bump" Makefile | head -30
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls src/libs/ | head; echo "---raw-array?---"; ls src/libs/ | grep -i raw; echo "---find raw
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+339:ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmi...
+[RESULT ✓] bash: arch
+bitmap
+build-utils
+bump_allocator
+cache
+cmdline
+config
+control-plane-api
+elf
+error
+---raw-array?---
+raw-array
+---find raw-array---
+./src/libs/raw-array
+./target/debug/.fingerprint/raw-array-f13dd7c14c3c282e
+./target/debug/.fingerprint/raw-array-bbbcb755a7321987
+./target/x86-kernel/debug/.finger...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verify" Makefile | head -40
+[TOOL] bash: cd /home/ruize/nanvix-phy && for f in src/libs/raw-array/src/*.spec.rs src/libs/raw-array/src/lib.rs; do echo "===== $f 
+[RESULT ✓] bash: 116:NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
+300:# List of crates to verify with Verus.
+323:	$(CARGO) verus verify --locked --no-default-features
+325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+548:	@echo "  ...
+[RESULT ✓] bash: ===== src/libs/raw-array/src/lib.spec.rs =====
+15:pub uninterp spec fn is_zero<T>(value: T) -> bool;
+19:    requires
+21:    ensures
+27:    requires
+29:    ensures
+69:    /// Abstract view of the array as a sequence (uninterpreted).
+70:    uninterp spec fn view(&self) -> Seq<T>;
+===== src/libs/raw-ar...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] rg: 0 errors|verified
+[RESULT ✓] rg: /home/ruize/nanvix-phy/verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt:1:# Unverified exec functions: 3/6
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 1. #!/bin/bash
+2. 
+3. # Generic Verus verification script with cheating detection and git tracking.
+4. #
+5. # Two modes:
+6. #   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+7. #   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+8. #
+9. # Cargo mode uses `cargo verus verify -p <crate>...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me run the verification and the AST consistency check.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-bump-allocator 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[0]}"
+[TOOL] report_intent: Re-running verifier
+[TOOL] bash: cd /home/ruize/nanvix-phy && cargo clean -p bump-allocator && make verify-bump-allocator
+[RESULT ✓] report_intent: Intent logged
