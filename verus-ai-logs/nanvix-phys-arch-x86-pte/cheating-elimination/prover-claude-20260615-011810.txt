@@ -563,3 +563,141 @@ Turn 29
 Turn 30
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pte.rs:97:12
+   |
+97 |     pub fn new(
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `new` in this scope
+   --> src/libs/arch/src/x86/mem/paging/pte.rs:311:12
+    |
+311 |  ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The marker is essential for the `new` associated functions. Let me try `#[verus_verify]` on just the `new` methods (per-function rather than per-impl):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/pte.rs.bak src/libs/arch/src/x86/mem/paging/pte.rs && echo reverted
+
+[THINKING] The `verus_impl_method_marker` attribute was actually critical — removing it broke the `verus_spec` macro's ability to recognize `new` as an impl method and properly handle its self-type. The allow directive was doing essential work behind the scenes, not just suppressing warnings.
+
+The real issue is that `new` is an associated function without `self`, so `verus_spec` needs the marker to generate the correct scoped call (`Self::new()` instead of a free function `new()`). The solution is to split the impl blocks — create a separate `#[verus_verify]` impl containing just the `new` constructors that need verification, while keeping the rest of the methods in the plain impl.
+
+Actually, I could try applying `#[verus_verify]` directly to the `new` function itself rather than the whole impl block, which might be cleaner. Let me test whether that works.
+[RESULT ✓] bash: reverted
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "verus_verify" /home/ruize/toolchain/verus/builtin_macros/src/lib.
+[RESULT ✓] bash: 224:        let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_verify_core) }.into();
+329:// If no #[verus_verify] on the item, it is verifier::external by default.
+331:// #[verus_verify] annotates the item with verifier::verify
+332:// #[verus_verify(external_body)] annotates the i...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "fn rewrite_verus_attribute\|visit_impl_item_fn_mut\|ImplItemFn\|It
+[RESULT ✓] bash: 109:pub(crate) fn rewrite_verus_attribute(
+191:    let mut visitor = VerusVerifyVisitor { verify_const: true };
+346:struct VerusVerifyVisitor {
+354:impl VerusVerifyVisitor {
+364:impl VisitMut for VerusVerifyVisitor {
+365:    fn visit_impl_item_fn_mut(&mut self, method: &mut syn::ImplItemFn) {
+366:  ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+[RESULT ✓] view: 109. pub(crate) fn rewrite_verus_attribute(
+110.     erase: &EraseGhost,
+111.     attr_args: proc_macro::TokenStream,
+112.     input: proc_macro::TokenStream,
+113. ) -> proc_macro::TokenStream {
+114.     if !erase.keep() {
+115.         return input;
+116.     }
+117. 
+118.     let mut item = syn::pars...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The marker is only auto-added by impl-level `#[verus_verify]`, but that over-verifies external-calling methods. The clean fix: split the two `new` associated functions into their own `#[verus_verify]` impl blocks (semantically identical in Rust). Let me implement:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] When `rewrite_verus_attribute` processes a standalone function with the `#[verus_verify]` macro, it first adds the `#[verifier::verify]` attribute since it's not external, then runs the visitor on the item. For a standalone `Item::Fn`, the visitor traverses through `visit_item_mut` which then dispatches to the appropriate handler for function items.
+
+The issue is that when applying `#[verus_verify]` directly to an impl method, the macro input parses as `Item::Fn` syntactically (since it's just a function), so the visitor treats it as a regular item function rather than an impl method. This means `visit_impl_item_fn_mut` never fires, so the `verus_impl_method_marker` attribute doesn't get added. The real problem is that the method needs that marker to compile in verus builds, but per-method `#[verus_verify]` won't add it—only applying the macro at the impl level would trigger the right visitor path. Since `new` already has `#[verus_spec]` making it verified, the actual blocker is getting the `allow(unused, verus_impl_method_marker)` attribute onto these methods in verus builds without a cfg gate, while avoiding errors in non-verus builds.
+
+The marker `verus_impl_method_marker` is a tool lint registered by verus, so in a normal rustc build it's unknown and triggers the `unknown_lints` warning—which becomes an error under `#![deny(warnings)]`. Using a different cfg condition to avoid the detector pattern would be dishonest and violate consistency rules. The real solution is to split the impl block and apply `#[verus_verify]` only to the portion containing methods that need verification.
+
+I should move just the `new` functions into separate `#[verus_verify]` impl blocks, leaving methods like `from_raw_value` and `into_raw_value` (which call external flag functions) in a plain impl block that verus ignores. The `new` functions have no external calls—just struct literals and enum variants—so they should verify cleanly against their spec ensures. Moving `new` into separate `#[verus_verify]` impl blocks is semantically identical in Rust since impl blocks merge, and it removes the cfg gates while preserving all semantics and complexity. The specs and invariants are already defined in the spec file, so this restructuring won't cause verification issues. Let me implement this by removing the cfg_attr lines and splitting out the two `new` functions into their own impl blocks.
+[RESULT ✓] view: 65. impl PageTableEntryFlags {
+66.     ///
+67.     /// # Description
+68.     ///
+69.     /// Constructs a [`PageTableEntryFlags`] with the given flags.
+70.     ///
+71.     /// # Parameters
+72.     ///
+73.     /// - `present`: The present flag.
+74.     /// - `read_write`: The read/write flag.
+75.    ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+I'll restructure both `new` functions into dedicated `#[verus_verify]` impl blocks. Starting with `PageTableEntryFlags::new`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I need to think through what happens when I split the impl blocks. The key question is whether a `#[verus_verify]` impl block verifies all methods or just those with verus_spec annotations. Looking at table.rs, the impl has both external_body methods and presumably others, and verus will verify everything in that block even without explicit specs. So moving just the `new` function out should be fine, but I need to consider what else might need to move with it.
+
+The cleanest approach is to create a separate `#[verus_verify]` impl block containing only `new`, then remove it from the existing impl. This means I'll need to extract the doc comment and function definition for `new` (around lines 65-118), create a new verus_verify impl before the current one, and then have the original impl start with `from_raw_value` instead.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Now `PageTableEntry::new`. Let me view its current context:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] view: 293.     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+294. 
+295.     ///
+296.     /// # Description
+297.     ///
+298.     /// Constructs a [`PageTableEntry`] with the given flags and frame.
+299.     ///
+300.     /// # Parameters
+301.     ///
+302.     /// - `flags`: The flags.
+303.     ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I need to reorganize the `PageTableEntry` implementation by moving the `new` method into a separate `verus_verify` impl block, while keeping the `SIZE` constant in the original impl.
+[RESULT ✓] view: 288.     frame: FrameNumber,
+289. }
+290. 
+291. impl PageTableEntry {
+292.     /// Size in bytes of the hardware page table entry representation.
+293.     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+294. 
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8

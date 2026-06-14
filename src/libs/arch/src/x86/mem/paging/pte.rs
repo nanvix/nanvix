@@ -62,6 +62,7 @@ pub struct PageTableEntryFlags {
     cow: CopyOnWriteFlag,
 }
 
+#[verus_verify]
 impl PageTableEntryFlags {
     ///
     /// # Description
@@ -114,7 +115,9 @@ impl PageTableEntryFlags {
             cow: CopyOnWriteFlag::NotCopyOnWrite,
         }
     }
+}
 
+impl PageTableEntryFlags {
     ///
     /// # Description
     ///
@@ -288,7 +291,10 @@ pub struct PageTableEntry {
 impl PageTableEntry {
     /// Size in bytes of the hardware page table entry representation.
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+}
 
+#[verus_verify]
+impl PageTableEntry {
     ///
     /// # Description
     ///
@@ -312,7 +318,9 @@ impl PageTableEntry {
         proof! { use_type_invariant(frame); }
         Self { flags, frame }
     }
+}
 
+impl PageTableEntry {
     ///
     /// # Description
     ///
