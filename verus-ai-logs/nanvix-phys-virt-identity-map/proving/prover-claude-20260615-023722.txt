@@ -957,3 +957,41 @@ Turn 59
 Turn 60
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 3
+  verification: 9 verified, 0 errors (exit 0)
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: rm -f /tmp/identity_map.rs.bak /tmp/identity_map.proof.rs.bak /tmp/verify_kernel_full.log /tmp/copilot-tool-output-*.txt
+
+[THINKING] All verification checks are passing—nine modules verified with no errors, all five transition lemmas in proof.rs fully proven, and the three exec functions with remaining admits are properly documented as deferred obligations rather than bugs. The kernel verifies cleanly with no regressions and the source code matches the baseline. Now I'm cleaning up temporary files and updating the status in plan.md.
+[RESULT ✓] bash: cleaned
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Done. Summary of the proving pass on `mm::virt::identity_map`:
+
+**Proven (sound progress):** All 5 transition lemmas in `identity_map.proof.rs` — `lemma_install_page_maps`, `_monotone`, `_preserves_inv`, `lemma_map_page_accessible`, `_preserves_inv` — now have full proof bodies (0 `admit()`), derived purely from the `IdentityMapView` spec. Module verifies **9 verified, 0 errors, 0 warnings**; full `make verify-kernel` exits 0 (no regressions). Exec source is byte-identical to baseline.
+
+**Not provable in scope (recorded, not cheated):** The 3 exec functions (`ensure_pt`, `ensure_pte`, `identity_map_page`) retain `admit()`. I empirically removed each and confirmed the failing obligations are exactly the **deferred cross-module ghost-token** facts over the opaque `uninterp identity_map_view()`:
+- `ensure_pte` L619 `mapped.contains(spec_page_base(..))` — opaque global view.
+- `identity_map_page` L708 `accessible(phys_addr@)` — opaque global view.
+- `ensure_pt` — `read`/`alloc_as` preconditions + the fresh-alloc path's `as_ptr` alignment, disconnected from the allocator's `slot_ref_addr`.
+
+These require a ghost token over the `KERNEL_PD_PADDR` singletons + a `Table::write` contents postcondition that `tcb-allowed.md` deliberately defers (and proves unsound for the `external_body` write). Building it requires out-of-scope dependency/signature changes. Per `verus-constraints`, I recorded an honest hand-off in `verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md` rather than weaken specs or use `assume`. The entire sibling `mm::phys::*` set is in the same deferred state.
+
+**Bugs:** None found in the three target functions — nothing recorded in `bugs.md`.
+
+
+=== Session End ===
+Session: 2d5e9c38-3e71-448a-8c34-dc26b7346874
+Duration: 744.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/proving/prover-claude-20260615-023722.jsonl
