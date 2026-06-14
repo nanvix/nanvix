@@ -1,0 +1,36 @@
+Timestamp: 2026-06-14_08-18-29
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: cannot use function `arch::x86::mem::constants::FRAME_SIZE` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:37:47
+   |
+37 |     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+   |                                               ^^^^^^^^^^^^^^^
+
+error: cannot use function `arch::x86::mem::constants::MAX_ADDRESS` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:37:28
+   |
+37 |     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+   |                            ^^^^^^^^^^^^^^^^
+
+error: could not compile `arch` (lib) due to 2 previous errors

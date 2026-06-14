@@ -36,7 +36,7 @@ impl FrameNumber {
     /// The maximum frame number.
     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
 
-    #[verus_spec(ensures NULL@ == 0)]
+    #[verus_spec(ensures Self::NULL@ == 0)]
     pub const NULL: Self = Self(0);
 
     ///

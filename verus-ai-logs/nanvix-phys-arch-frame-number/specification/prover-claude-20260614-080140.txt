@@ -1445,3 +1445,24 @@ Turn 84
 Turn 85
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error[E0425]: cannot find value `NULL` in this scope
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:39:26
+   |
+39 |     #[verus_spec(ensures NULL@ == 0)]
+   |                          ^^^^ not found in this scope
+   |
+help: consid...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] The const reference issue is resolved with `Self::NULL`, but I need to figure out how to reference it in the ensures clause without creating a self-referential cycle. Using `Self::NULL@ == 0` might work, though I'm concerned about potential circularity. Since consts don't have a straightforward result binding form, I'll try the direct reference approach.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
