@@ -1,0 +1,20 @@
+RESOLVED
+
+All 17 specification-phase checklist items are PASS or FIXED, verified by tool output:
+
+- Caller-coverage / Specs-usable-by-caller / Spec-completeness — FIXED (turn 1): the
+  kernel-watermark policy split is now caller-observable. `alloc_user_frame` and
+  `alloc_many_user_frames` carry `free_frames.finite()` + `spec_watermark_ok(phys_view().frames, 0)`
+  in their `Ok` arms; the kernel variants are deliberately unchanged.
+- Verification / dual compilation — FIXED (turn 2, re-verified turn 3): both `./z build -- all`
+  (EXIT 0, no errors) and `make verify-kernel` (Exit 0, all 5 modules) pass.
+- no-cheating-own-fns — PASS: all `external_body` (6 in manager.rs) are enumerated in
+  `verus-ai-logs/tcb-allowed.md`; the 2 `admit()` lemmas in manager.proof.rs are explicitly
+  deferred to the proving phase per the file header.
+- Cross-module regression — PASS: `make verify-kernel` verifies all modules, exit 0.
+- Two NOTE items (no-tautological-ensures, error-paths-meaningful): the `Err(_) => true` arms
+  match the verified `frame::book` / `frame::alloc_range` shim precedent and are unstrengthenable
+  without `old(phys_view())`, which a nullary `spec fn` cannot express. Not actionable.
+
+Evidence: turn_001_driver.md, turn_002_driver.md, turn_003_driver.md and the
+verus-logs/cheating-detail.txt under verus-ai-logs/verify-kernel.
