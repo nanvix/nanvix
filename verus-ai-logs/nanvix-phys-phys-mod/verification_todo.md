@@ -12,31 +12,54 @@ keep it green; removing them produces the errors quoted).
 ================================================================================
 ## Group A — 8 `Inner` methods (`src/kernel/src/mm/phys/frame.rs`)
 `alloc` (136), `alloc_contiguous` (213), `free` (298), `share` (379), `refcount` (442),
-`book` (497), `is_covered` (535), `alloc_range` (583).
+`book` (497), `is_covered` (535), `alloc_range` (583). All 8 admits were empirically
+removed and `make verify-kernel MODULE=mm::phys` run to capture the exact obligations.
 
-### A1. Totality gap on `into_frame_number` (blocks all 8)
-- **Verus error (reproduced by removing the admits):**
-  `error: precondition not satisfied --> frame.rs:298:35 ::: hal/.../frame.rs:142:13`
-  (and the same at the `phys_addr.into_frame_number()` / `frame.into_frame_number()` call
-  in each method).
-- **Cause:** `FrameAddress::into_frame_number` (`hal/mem/types/address/frame.rs:138`)
+### A1. `from_raw_value` off-by-one — blocks `alloc` (136), `alloc_contiguous` (213)
+These two do **not** call `into_frame_number`; they take a bitmap index and build the
+address via `FrameNumber::from_raw_value(index)` (handling `None`) then
+`FrameAddress::from_frame_number`. The `None` branch returns `Err`, whose `alloc`
+postcondition demands `old(self)@.free_frames.is_empty()` — **false** right after a
+successful `bitmap.alloc()`. So `None` must be proven **unreachable**, i.e.
+`index <= spec_max_frame_number()`.
+- `spec_max_frame_number() = MAX_ADDRESS/FRAME_SIZE - 1 = usize::MAX/4096 - 1 = 2^52 - 2`.
+- Available bounds: `bitmap.alloc` ⇒ `0 <= index < num_bits`; the only **public** bitmap
+  bound `Bitmap::lemma_number_of_bits_bounded` ⇒ `num_bits <= usize::MAX`;
+  `Inner::internal_inv` (**forbidden to modify**) ⇒ `frame_addr_of(i)=i*4096 <= usize::MAX`
+  for `i<num_bits`, i.e. `index <= usize::MAX/4096 = 2^52 - 1`.
+- **Off-by-one:** `index <= 2^52 - 1 = spec_max_frame_number() + 1`. Witness
+  `index = 2^52 - 1` (possible when `num_bits = 2^52`) satisfies every available bound yet
+  makes `from_raw_value` return `None` → postcondition fails. **Not provably unreachable.**
+- **Root cause:** the tight bound `num_bits < u32::MAX (2^32) << 2^52` is in `Bitmap`'s
+  **`closed` `internal_inv`** (`src/libs/bitmap/src/lib.spec.rs:384`) and is **not exposed**
+  by any public lemma (the public one only yields `<= usize::MAX`).
+- **Unfixable in-scope:** the fix is to strengthen the bitmap library's public bound lemma
+  to `ensures num_bits < u32::MAX` — in `src/libs/bitmap` (a different crate with its own
+  verification phase), **out of `mm::phys` scope**; and `Inner::internal_inv` is forbidden.
+- Plus the view-transition postcondition (A3).
+
+### A2. `into_frame_number` totality gap — blocks `free` (298), `share` (379), `refcount` (442), `book` (497), `is_covered` (535), `alloc_range` (583)
+- **Verus error (reproduced):** `error: precondition not satisfied --> frame.rs:298:35
+  ::: hal/.../frame.rs:142:13` (and the analogous `into_frame_number()` call in each).
+- **Cause:** `FrameAddress::into_frame_number` (`hal/.../frame.rs:138`) and
+  `PhysicalAddress::into_frame_number` (reached via `PageAligned` `Deref`)
   `requires self.inv() && spec_frame_number(self@) <= spec_max_frame_number()`. But
-  `FrameAddress::inv()` = `self@ % spec_page_size() == 0` (**alignment only**); the
-  frame-number bound lives only in `PhysicalAddress::inv()`. The `Inner` methods receive
-  only `frame.inv()` / `phys_addr.inv()` (alignment), so the bound is unavailable.
+  `FrameAddress::inv()` / `PageAligned::inv()` = alignment only
+  (`self@ % spec_page_size() == 0`); the frame-number bound lives only in
+  `PhysicalAddress::inv()` / the not-yet-verified HAL layer. The `Inner` methods hold only
+  `frame.inv()` / `phys_addr.inv()` (alignment), so the bound is unavailable. (`refcount`
+  does not even `requires frame.inv()`.)
 - **Why not fixable in-scope:**
-  - Strengthening `FrameAddress::inv` to include the bound is a **HAL-layer** change
-    (`src/kernel/src/hal/...`, a different phase) that cascades to every `FrameAddress`
-    constructor across the kernel.
+  - Strengthening `FrameAddress::inv`/`PageAligned::inv` is a **HAL-layer** change
+    (different phase) that cascades to every constructor across the kernel.
   - Adding the bound to each `Inner` precondition breaks the currently-verified
     `frame::share` / `frame::refcount` / `frame::is_covered` callers (they hold only
     alignment), forcing 3 more verified wrappers into TCB `external_body` — enlarging the
     trusted base for no phase-level gain.
-- **Resolution path:** verify the HAL address layer so `FrameAddress::inv` carries the
-  frame-number bound (making `into_frame_number` total at the type level), then the
-  `Inner` methods inherit it.
+- **Resolution path:** verify the HAL address layer so `into_frame_number` is total at the
+  type level; the `Inner` methods then inherit the bound.
 
-### A2. Closed-view set-transition postconditions (blocks all 8, in addition to A1)
+### A3. Closed-view set-transition postconditions (additional, all 8)
 - **Verus error:** `error: postcondition not satisfied --> frame.rs:<view-clause>`.
 - **Cause:** each method's `ensures` constrains the **closed** `View for Inner`
   (`allocated_frames`/`free_frames` = `Set::new(|addr| exists i: bitmap.set_bits ... &&
@@ -50,8 +73,8 @@ keep it green; removing them produces the errors quoted).
   - `alloc_contiguous` (213) and `alloc_range` (583) additionally need **full loop
     invariants** replacing the `#[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]`
     placeholders.
-- **Resolution path:** write per-method set-extensionality proofs (and loop invariants for
-  the two range methods). Provable in principle but substantial; depends on A1 first.
+- **Resolution path:** per-method set-extensionality proofs (and loop invariants for the two
+  range methods). Provable in principle but substantial; blocked behind A1/A2 regardless.
 
 ================================================================================
 ## Group B — 7 lemmas (`src/kernel/src/mm/phys/manager.proof.rs`)

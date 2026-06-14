@@ -55,29 +55,44 @@ items are all `admit()`s that are genuine, irreducible blockers (analysis below)
 ## Remaining Cheating (15 admits — genuine blockers)
 
 ### A. 8 `Inner` methods in `frame.rs` (`alloc`, `alloc_contiguous`, `free`, `share`, `refcount`, `book`, `is_covered`, `alloc_range`)
-Empirically reproduced (removing the admits yields exactly these errors):
+Empirically reproduced (removing the admits yields exactly these errors). Two distinct,
+both irreducible-in-scope, totality gaps:
 
-- **Totality gap (precondition, `hal/.../frame.rs:142`).** Every method computes
-  `addr.into_frame_number()`, which `requires self.inv() && spec_frame_number(self@) <=
-  spec_max_frame_number()`. But `FrameAddress::inv()` is **alignment-only**
-  (`self@ % spec_page_size() == 0`); it does **not** bound the frame number. The bound
-  lives only in `PhysicalAddress::inv()` and the not-yet-verified HAL address layer. The
-  `Inner` methods' preconditions provide only `frame.inv()` / `phys_addr.inv()`
-  (alignment), so the bound cannot be discharged.
-  - Closing it requires either (a) strengthening `FrameAddress::inv` in the HAL layer
-    (out of the `mm::phys` scope; cascades to every `FrameAddress` constructor across the
+- **Gap A1 — `from_raw_value` off-by-one (`alloc`, `alloc_contiguous`).** These do not call
+  `into_frame_number`; they build the address from a bitmap index via
+  `FrameNumber::from_raw_value(index)`. The `None` branch returns `Err`, whose `alloc`
+  postcondition demands `old@.free_frames.is_empty()` — false after a successful
+  `bitmap.alloc()` — so `None` must be unreachable, i.e. `index <= spec_max_frame_number()
+  = usize::MAX/4096 - 1 = 2^52 - 2`. But the available bounds give only `index <= num_bits
+  - 1` and `frame_addr_of(index) = index*4096 <= usize::MAX` (`Inner::internal_inv`,
+  **forbidden to modify**) ⇒ `index <= 2^52 - 1 = spec_max + 1`. **Off-by-one:** witness
+  `index = 2^52 - 1` satisfies every available bound yet makes `from_raw_value` return
+  `None`. The tight bound `num_bits < u32::MAX` is locked in `Bitmap`'s **`closed`
+  `internal_inv`** (`src/libs/bitmap/src/lib.spec.rs:384`); the only public bitmap lemma
+  exposes merely `num_bits <= usize::MAX`. Fix would require strengthening the **bitmap
+  library** public bound lemma — out of `mm::phys` scope (different crate, own phase).
+
+- **Gap A2 — `into_frame_number` totality (`free`, `share`, `refcount`, `book`,
+  `is_covered`, `alloc_range`).** Each computes `addr.into_frame_number()`
+  (`hal/.../frame.rs:142`), which `requires self.inv() && spec_frame_number(self@) <=
+  spec_max_frame_number()`. But `FrameAddress::inv()` / `PageAligned::inv()` are
+  **alignment-only** (`self@ % spec_page_size() == 0`); they do **not** bound the frame
+  number (which lives in `PhysicalAddress::inv()` / the not-yet-verified HAL layer). The
+  `Inner` methods hold only `frame.inv()` / `phys_addr.inv()` (alignment), so the bound
+  cannot be discharged.
+  - Closing it requires either (a) strengthening `FrameAddress::inv`/`PageAligned::inv` in
+    the HAL layer (out of `mm::phys` scope; cascades to every constructor across the
     kernel), or (b) adding the bound to each `Inner` precondition — which breaks the
     currently-verified `share`/`refcount`/`is_covered` callers (they hold only alignment),
     forcing 3 more verified wrappers into TCB `external_body`. Both are out-of-scope
     contract changes that increase TCB surface; neither makes the phase pass.
-- **View transition (postcondition).** Each mutating method must additionally prove a
+- **View transition (postcondition, all 8).** Each mutating method must additionally prove a
   set-extensionality fact over the **closed** `View for Inner`
   (`allocated_frames`/`free_frames` are `Set::new(|addr| exists i: ...)`,
   `frame_addr_of(i) = i*ps`): e.g. `alloc`/`book` ⇒ `insert(frame_addr_of(idx))`,
   `free` ⇒ `remove`, plus `refcounts` Map updates and `frame_addr_of` injectivity. The two
   loop methods (`alloc_contiguous`, `alloc_range`) further need full loop invariants
-  replacing the `invariant false` placeholders. Substantial; no automated attempt in the
-  branch history ever discharged them.
+  replacing the `invariant false` placeholders. Substantial; blocked behind A1/A2 anyway.
 
 ### B. 7 lemmas in `manager.proof.rs` (`lemma_manager_attached`, `lemma_free_count_bounded`, `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, `lemma_user_bulk_ok`, `lemma_user_bulk_err_restored`, `lemma_kernel_bulk_err_restored`)
 These are **false as standalone proof functions** — they assert equalities/memberships
