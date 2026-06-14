@@ -2189,3 +2189,39 @@ The real gap is establishing the internal invariant after the loop in the alloca
 Turn 161
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 55 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=19 admit=17 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-59-...
+
+────────────────────────────────────────────────────────────
+Turn 162
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error:"
+[RESULT ✓] bash: 30:error: assertion failed
+249:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+===
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:330:17
+    |
+330 |                 !pre_sb.contains(j) by {}
+    |                 ^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: c...
+
+────────────────────────────────────────────────────────────
+Turn 163
+────────────────────────────────────────────────────────────
+The `all_bits_unset` fact needs explicit bridging to `pre_sb`. Let me rewrite that assertion.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm down to one remaining assertion error at line 330, right after the alloc_range call. The issue is that the postcondition `old(self)@.all_bits_unset_in_range` isn't connecting properly to the state before the operation. I need to trace how this relates back to the pre_sb state, and it looks like Verus might not be instantiating the universal quantifier in the all_bits_unset predicate correctly. The issue is that the forall quantifier inside `all_bits_unset_in_range` uses a trigger on `is_bit_set(i)` or `set_bits.contains`, but my assertion references `pre_sb.contains(j)` which doesn't syntactically match that trigger, so Verus won't instantiate it. I need to either capture the bitmap state before the `alloc_range` call with a ghost snapshot, or reformulate the assertion to explicitly invoke the `all_bits_unset` predicate in a way that triggers the quantifier properly. Asserting the bitmap's all_bits_unset_in_range fact and bridging it to pre_sb by showing that set_bits equals pre_sb, then using the is_bit_set trigger to instantiate the forall and derive that pre_sb doesn't contain any bits in the range.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 164
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

@@ -326,8 +326,12 @@ impl Inner {
             assert(self.bitmap@.num_bits == pre_nb);
             assert(spec_refcount_seq(self) == pre_rc);
             // `alloc_range` Ok guarantees the booked range was entirely clear beforehand.
+            assert(old(self).bitmap@.all_bits_unset_in_range(start, start + count as int));
+            assert(old(self).bitmap@.set_bits == pre_sb);
             assert forall|j: int| start <= j < start + count as int implies
-                !pre_sb.contains(j) by {}
+                !pre_sb.contains(j) by {
+                assert(!old(self).bitmap@.is_bit_set(j));
+            }
         }
         // Newly allocated frames have a single owner.
         #[cfg_attr(verus_keep_ghost, verus_spec(
