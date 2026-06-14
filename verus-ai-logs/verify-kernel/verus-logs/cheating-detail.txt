@@ -14,6 +14,7 @@
     - mm/phys/frame.rs:844 alloc_range: external_body
     - mm/phys/frame.rs:869 share: external_body
     - mm/phys/frame.rs:894 refcount: external_body
+    - mm/phys/kframe.rs:140 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
     - mm/phys/manager.rs:267 alloc_user_frame: external_body

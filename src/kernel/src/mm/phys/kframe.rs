@@ -132,6 +132,11 @@ impl KernelFrame {
     /// This avoids a page fault when the current CR3 points to a user page directory that lacks
     /// the PDE for this frame's physical address.
     ///
+    // Trusted (TCB, out of verification scope): materializes a `*mut u8` from the
+    // frame's raw address (`usize as *mut u8`) and writes through the identity-map
+    // `memset` backend -- a raw-memory operation Verus cannot model. Listed in
+    // `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
     pub fn clear(&mut self) -> Result<(), Error> {
         let base: *mut u8 = self.base.into_raw_value() as *mut u8;
         crate::mm::virt::memset(base, 0, mem::PAGE_SIZE).map_err(|e| {

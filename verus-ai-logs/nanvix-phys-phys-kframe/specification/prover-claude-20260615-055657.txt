@@ -812,3 +812,54 @@ I accidentally dropped the `# Description` doc lines. Let me restore them:
 Turn 39
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[RESULT ✓] bash: - manager.rs:306 check_user_watermark: external_body
+    - manager.rs:352 alloc_kernel_frame: external_body
+    - manager.rs:409 alloc_many_kernel_frames: external_body
+    - mod.rs:82 book_physical_memory_regions: external_body
+    - mod.rs:117 book_mmio_regions: external_body
+    - mod.spec.rs:73 ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/Full output/,$p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-05-32.
+
+[THINKING] There's still a compilation error and the `new` keyword is showing as unverified—let me look at what the error is now.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: Verus does not support this cast: `usize` to `*mut u8`
+   --> src/kernel/src/mm/phys/kframe.rs:136:29
+    |
+136 |         let base: *mut u8 = self.base.into_raw_value() as *mut u8;
+    |                      ...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+`clear` is now translated by Verus (it's in the `#[verus_verify]` impl) and its pointer cast is unsupported. Since `clear` is listed in `tcb-allowed.md`, mark it `external_body`:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] The `clear` function is actually being verified since it's inside the `#[verus_verify]` block, and Verus is rejecting the pointer cast on line 136. This is different from `get_mut`, which seems to have been skipped during verification—possibly because it returns a mutable reference and failed to parse differently, though I'm still figuring out why it's marked as unverified. So the "unverified" functions in the coverage list aren't actually skipped — they're translated with default contracts. get_mut works fine because its body is compatible with Verus, but clear fails because it contains an unsupported cast. Since clear is in a `#[verus_verify]` impl block and is listed in tcb-allowed.md, I need to mark it with `#[verus_verify(external_body)]` to exclude it from translation. The deref functions don't have this problem because they're in a separate impl block that isn't Verus-processed. I'll add the attribute to clear right before its function definition.
+[RESULT ✓] view: 118.         ensures
+119.             // Pure read: the returned address is the handle's abstract value.
+120.             result@ == self@,
+121.     )]
+122.     pub fn base(&self) -> FrameAddress {
+123.         self.base
+124.     }
+125. 
+126.     ///
+127.     /// # Description
+128.     ///
+129.     ...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -30

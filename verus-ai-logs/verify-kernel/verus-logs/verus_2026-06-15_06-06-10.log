@@ -1,0 +1,49 @@
+Timestamp: 2026-06-15_06-06-10
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=26
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/kernel/src/mm/phys/kframe.rs:96:41
+   |
+96 |             PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
+   |                                         ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::into_raw_value] (_0: crate::hal::mem::types::address::frame::FrameAddress) -> usize;
+
+error: cannot use function `kernel::mm::virt::identity_map::identity_map_page` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/kframe.rs:100:9
+    |
+100 |         crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            assume_specification [crate::mm::virt::identity_map::identity_map_page] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>) -> core::result::Result<(), sys::error::Error>;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/kernel/src/mm/phys/kframe.rs:96:13
+   |
+96 |             PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::from_raw_value] (_0: usize) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<T>, sys::error::Error>
+           where
+           T: sys::mm::Address,;
+
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors
