@@ -218,7 +218,7 @@ impl PhysMemoryManager {
         // A zero-sized allocation is trivially satisfied.
         if count == 0 {
             proof! {
-                lemma_user_addr_set_empty();
+                lemma_user_addr_set_empty(frames@);
                 lemma_book_all_empty(g_old);
             }
             return Ok(());
@@ -227,7 +227,9 @@ impl PhysMemoryManager {
         Self::check_user_watermark(count)?;
         proof! {
             lemma_manager_attached(self);
-            lemma_user_bulk_base(g_old);
+            assert(self@ == g_old);
+            assert(g_old.user_alloc_ok(count as nat));
+            lemma_user_bulk_base(g_old, frames@);
         }
 
         #[cfg_attr(verus_keep_ghost, verus_spec(

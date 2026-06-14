@@ -855,3 +855,58 @@ Turn 43
 Turn 44
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+error: postcondition not satisfied
+error: invariant not satisfied before loop
+verification results:: 41 verified, 1 errors (partial verifi...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Good progress — 41 verified, 1 function failing. Let me see the detailed errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs grep -n -A
+
+[THINKING] Most of the verification checks are passing, but there's one function still throwing errors about postconditions and loop invariants—let me dig into what's actually failing.
+[RESULT ✓] bash: 40:error: postcondition not satisfied
+41-   --> src/kernel/src/mm/phys/manager.rs:180:17
+42-    |
+43-180 |                 Ok(()) => {
+44-    |                 ^^^^^^ failed this postcondition
+45-...
+46-224 |             return Ok(());
+47-    |             ------------- at this exit
+48-
+49:error: in...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Two issues: the `count==0` path and loop-base need `user_addr_set` of a length-0 `Vec` (not syntactic `Seq::empty()`). Let me generalize the helper lemmas to take the sequence.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm hitting a postcondition violation at the count==0 return path. The issue is that when count is zero, the frames list is empty, so I need to verify that user_addr_set applied to an empty list produces the right result to satisfy the final state assertion. Let me trace through what the postcondition requires when frames is empty and check if my lemmas about empty sets and books cover this case. Updating the lemma to accept any sequence with length zero rather than just the empty sequence, then I can apply it to frames@ directly. For the loop invariant, I need to establish that self@ remains unchanged through the static check_user_watermark call, so at loop entry self@ equals g_old and frames@ is empty, satisfying the base case of user_bulk_inv. I need to establish that `g_old.user_alloc_ok(count)` holds at the loop entry by connecting the check_user_watermark result to the invariant requirement. After lemma_manager_attached confirms `self@ == g_old == phys_view().frames`, I can assert that the free count condition from the Ok path satisfies the user_alloc_ok predicate, then use this as the invariant base before entering the loop.
+
+For the count==0 case, I'm restructuring the proof to explicitly show that when count is zero, the frames set is empty, which makes the postconditions vacuously true or trivially satisfied—the user_addr_set is empty so its length is zero, and all_free holds vacuously over an empty set.
+
+I'm also refining the lemma_user_addr_set_empty to directly ensure that the resulting set is empty, finite, and has length zero, so Verus can verify these properties without needing separate broadcasts. The key insight is that Set::empty() already has these properties via axioms, so bundling them into the lemma makes the proof cleaner.
+
+For the postcondition verification, I need to trace through what the loop invariant guarantees at exit: when the loop terminates with i==count, the invariant ensures user_bulk_inv holds and frames@ has the expected length, which should satisfy all the postcondition requirements about the final state matching the old state with all addresses booked.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Now update the call sites in `manager.rs`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error

@@ -80,11 +80,17 @@ pub proof fn lemma_contig_no_overflow(base_raw: usize, idx: usize, count: usize)
 // User bulk-path transitions
 //==================================================================================================
 
-/// The address set of an empty handle sequence is empty.
-pub proof fn lemma_user_addr_set_empty()
+/// The address set of a length-zero handle sequence is empty.
+pub proof fn lemma_user_addr_set_empty(frames: Seq<UserFrame>)
+    requires
+        frames.len() == 0,
     ensures
-        user_addr_set(Seq::<UserFrame>::empty()) =~= Set::<int>::empty(),
+        user_addr_set(frames) == Set::<int>::empty(),
+        user_addr_set(frames).finite(),
+        user_addr_set(frames).len() == 0,
 {
+    broadcast use vstd::set::group_set_axioms;
+    assert(user_addr_set(frames) =~= Set::<int>::empty());
 }
 
 /// Pushing a handle extends the owned-address set by exactly that handle's address.
@@ -149,11 +155,13 @@ pub open spec fn user_bulk_inv(
 }
 
 /// Base case: before any allocation the invariant holds with the partition untouched.
-pub proof fn lemma_user_bulk_base(g_old: FrameAllocView)
+pub proof fn lemma_user_bulk_base(g_old: FrameAllocView, frames: Seq<UserFrame>)
+    requires
+        frames.len() == 0,
     ensures
-        user_bulk_inv(g_old, g_old, Seq::<UserFrame>::empty()),
+        user_bulk_inv(g_old, g_old, frames),
 {
-    lemma_user_addr_set_empty();
+    lemma_user_addr_set_empty(frames);
     lemma_book_all_empty(g_old);
 }
 
