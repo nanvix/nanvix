@@ -670,3 +670,50 @@ Now let me read the skills files in parallel.
 ────────────────────────────────────────────────────────────
 Turn 3
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-b...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+All modules verify (exit 0, admit=0, assume=0 everywhere). bump-allocator: external_body=2 (both TCB-listed). Cross-module regression passes. Now waiting for the review agents.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] All modules pass verification with no assumptions or admissions needed. The "CHEATING_DETECTED" flags come from pre-existing external_body and cfg_gate entries in other modules that fall outside bump-allocator's scope—those are their own approved TCB components. For bump-allocator itself, I'm seeing two external_body references that are both TCB-listed, and the cross-module regression test is passing.
+
+The build is cached and up-to-date, which is expected. The external_body=2 status with the cheating-detected flag is acceptable since both entries are in the TCB-allowed list. Now I'm waiting to hear back from the sub-agents.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-bump-allocator
+[TOOL] rg: \badmit\s*\(
+[TOOL] rg: \bassume\s*\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: \#\[(cfg|cfg_attr)\b
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:142:    // `assume_specification`/`external_body`, both of which are unapproved cheating
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:142:    // `assume_specification`/`external_body`, both of which are unapproved cheating
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:298:    // SAFETY-SPEC: `external_body` because the success path materializes a
+/home/ruize/nan...
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs:7:// (no `admit()`/`assume()`) and encodes a caller expectation from
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs:7:// (no `admit()`/`assume()`) and encodes a caller expectation from
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:101:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:105:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs:430:#[cfg(test)]
