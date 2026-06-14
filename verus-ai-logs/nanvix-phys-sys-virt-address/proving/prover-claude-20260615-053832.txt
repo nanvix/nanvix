@@ -622,3 +622,34 @@ Turn 30
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | grep -A3 "^error" | head -30
 
 [THINKING] I'm looking at an error where applying `#[verus_verify]` to individual methods in a trait implementation isn't supported — the compiler error points to the entire impl block instead of the specific method.
+[RESULT ✓] bash: error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:167:1
+    |
+167 | / impl Address for VirtualAddress {
+--
+error: could not compile `sys` (lib) due to 1 previous...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Confirmed: Verus requires the *entire* trait impl to be verified together — individual methods can't be verified. The established codebase convention (identical in the already-verified `PageAligned` and `PhysicalAddress` modules) leaves the whole `Address` trait impl unverified/trusted. Reverting my probe.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I see that the trait impl verification requires checking the entire implementation against the spec, not just individual methods like `into_raw_value`. Since verifying `is_aligned` would need the `mm::is_aligned` spec which is out of scope, I should follow the established pattern where the `Address` trait impl remains unverified, just like in `PageAligned` and `PhysicalAddress`. I'll revert my change.
+
+The module is already complete — the in-scope targets are `new` and `from_raw_value` (the 2/255 verified contracts), which have their specs inline in virt.rs. The trait impl itself is trusted by convention, consistent with how other modules handle it. Let me revert my edit and run a final verify to confirm there are no regressions.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+The module is already in its complete state for the in-scope targets. Let me confirm with a clean verify and check the broader `make verify`.
+[TOOL] report_intent: Running final verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff --stat; echo "=== verify-sys ==="; timeout 600 make verify-sys 2>&
+
+[THINKING] I'm reconsidering whether verifying the entire implementation is actually feasible—the main blocker is that `mm::is_aligned` lacks a specification. But I could potentially work around this by adding assume specifications for `mm::is_aligned`, `mm::align_up`, and `mm::align_down` in virt.spec.rs. Before committing to that approach though, I need to step back and think about what the task is actually asking for.
+
+The real goal here is making `make verify` pass with strong specs for upstream callers. The `Address::into_raw_value` trait already carries its spec at the trait level, so generic callers using `T: Address` get the guarantee that the result equals `self@` regardless of whether the concrete VirtualAddress implementation is body-verified. This is the same pattern already accepted for PageAligned and PhysicalAddress.
+
+Looking at the constraints: the codebase pattern leaves trait impls unverified, Verus enforces all-or-nothing on trait implementations, and verifying the whole thing would require specifying out-of-scope functions that the design doc explicitly excludes. The design doc says these trait methods are intentionally left unspecified and out of scope. So the right move is to leave the trait impl trusted like its siblings, since the in-scope targets—`new`, the inherent `from_raw_value`, and the `View`—are already specced and verified with no admit() or assume() calls remaining. The module is complete, so I'll run the final verifications to confirm everything's clean.
+[RESULT ✓] report_intent: Intent logged
