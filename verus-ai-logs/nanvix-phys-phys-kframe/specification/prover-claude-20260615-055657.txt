@@ -1650,3 +1650,18 @@ Turn 95
 ────────────────────────────────────────────────────────────
 Normal build passes now. Let me confirm verus verification still passes (module + full) after the import change:
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+[RESULT ✓] bash: - mod.rs:117 book_mmio_regions: external_body
+    - mod.spec.rs:73 ExLinkedList (struct): external_type_spec
+  Global: assume=0 external_body=28 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  35/44 exec functions have co...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Module still verifies: 22 verified, 0 errors. Now the full verification suite to confirm no regressions:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -40
+
+[THINKING] All 22 checks passed without errors, so now I'll run the full verification suite to make sure nothing broke.
