@@ -2,17 +2,26 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/kernel/src/hal/mem/types/address/aligned/page.rs`
+background = """File: `src/kernel/src/mm/phys/frame.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`PageAligned::into_raw_value`, `PageAligned::from_address`, `PageAligned`
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
 
 
 Hard rules:
 - Do not touch unlisted functions.
-
-
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
 - Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
 - For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
-
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
 """
