@@ -1247,13 +1247,11 @@ impl Inner {
             assert(index == end_exclusive);
             assert(start_fn <= start_fn + nfr - 1);
             assert(start_fn + nfr - 1 < index as int);
+            // Instantiate the coverage invariant at the last index of the range.
+            assert(pre_sb.contains(start_fn + nfr - 1) == false);
+            assert(start_fn + nfr - 1 < pre_nb);
             // Every requested index is in range and free; the range fits the bitmap.
-            assert(start_fn + nfr <= pre_nb) by {
-                if nfr >= 1 {
-                    assert(pre_sb.contains(start_fn + nfr - 1) == false
-                        && start_fn + nfr - 1 < pre_nb);
-                }
-            }
+            assert(start_fn + nfr <= pre_nb);
             assert(pre_nb <= pre_rc.len());
             assert forall|j: int| start_fn <= j < start_fn + nfr implies
                 !pre_sb.contains(j) by {}

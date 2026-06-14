@@ -3224,3 +3224,35 @@ Let me add explicit derivation of `index == end_exclusive` and the range bound t
 Turn 237
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
+[RESULT ✓] bash: cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-22-58.log
+make: *** [Makefile:625: verify-kernel] Error 101
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 238
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "verifie
+[RESULT ✓] bash: 30:error: assertion failed
+286:verification results:: 57 verified, 1 errors (partial verification with `--verify-*`)
+287:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== locs ===
+31:    --> src/kernel/src/mm/phys/frame.rs:1253:28
+233:    --> src/kernel/src/mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 239
+────────────────────────────────────────────────────────────
+The trigger instantiation in the nested `by`/`if` isn't firing. Let me flatten the proof and instantiate the coverage invariant directly.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The error at line 1253 is the same inner assertion that shifted after my additions. My new assertions at line 1248 checking the index and end_exclusive values both passed, so the remaining failure is in the `by` block where it's asserting that `pre_sb.contains(start_fn+nfr-1)==false && start_fn+nfr-1 < pre_nb`. Since I've already verified that `start_fn + nfr - 1 < index` and `index == end_exclusive`, the issue must be with how these values relate to the pre_sb and pre_nb conditions in that specific block. After the loop, the coverage forall uses `index as int`, which equals `end_exclusive`, so instantiating at `k = start_fn + nfr - 1` should work since that value is less than `end_exclusive`. The forall trigger should fire when I mention `pre_sb.contains(start_fn + nfr - 1)` in the assert. Let me try being more explicit by asserting the conjunction directly at the outer level without the nested `if nfr >= 1` block, since the invariant guarantees `nfr >= 1` anyway. Restructuring the proof block with separate assertions instead of chained conditions, since the conjunction with triggers might be causing the instantiation issue — I'll break down the bounds checks individually to help Verus match them against the coverage forall.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 240
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
