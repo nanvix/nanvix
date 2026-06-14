@@ -220,3 +220,36 @@ But I keep hitting the same fundamental wall — the bump_allocator itself would
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+[RESULT ✓] bash: 19:   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+24:error: precondition not satisfied
+25:   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+33:    |             -------------------------------------- failed precondition
+35:error: precondition not satisfied
+36:   --> src/kernel/src/mm/virt/id...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Fresh confirmation matches: 6 verified, 3 errors. Now let me attempt to genuinely discharge the provable sub-parts. First, try the type invariant for the read precondition (`:534`).
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm reviewing the verification results after removing admits—six confirmed cases with three errors across seven underlying obligations. The errors cluster around index bounds in preconditions and a postcondition about page mapping, which aligns with what I found earlier. Now I'm working to actually prove what's provable.
+
+My strategy is to try invoking the type invariant before the problematic reads in ensure_pt to resolve those index bound preconditions at :534 and :631. I know this approach hit a "missing type invariant function" error before, so I'm testing whether that's a reproducible Verus limitation or something I can work around. Let me add the type invariant call and see what happens.
+[RESULT ✓] view: 531.         },
+532. )]
+533. fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+534.     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+535.         let reason: &str = "invalid PDE read from kernel PD";
+536.         #[cfg(not(verus_k...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
