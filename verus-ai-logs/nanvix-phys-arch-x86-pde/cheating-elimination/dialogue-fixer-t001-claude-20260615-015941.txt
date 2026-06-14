@@ -188,3 +188,91 @@ Turn 11
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | grep -
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+verification results:: 47 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.25s
+
+=== Results ===
+  47 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assum...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+47 verified, 0 errors. The exec body is now the original single expression (the `proof!` block is stripped). Let me confirm AST consistency now has zero mismatches vs the `dev` baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git show dev:src/libs/arch/src/x86/mem/paging/pde.rs > /tmp/pde_orig.rs; pyth
+
+[THINKING] All 47 checks passed with no errors, and I've stripped out the proof block from the exec body which now shifts the raw frame value by the frame offset. Let me verify this matches the original AST structure from the baseline.
+[RESULT ✓] bash: ## Structs
+
+Struct                                   Status              
+──────────────────────────────────────── ────────────────────
+PageDirectoryEntry                       MATCH               
+PageDirectoryEntryFlags                  MATCH               
+
+Consistent: ✅ YES (matched=23 mismatche...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Zero mismatches against the true `dev` baseline — `frame_address` rewrite fully eliminated. Now let me confirm the normal build compiles (Verus erased) and run full verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "^build:\|^build " Makefile | head; echo "=== try make build ==="; ti
+
+[THINKING] I've verified that the frame address mismatch is completely resolved against the dev baseline, so now I need to confirm the build process works and run the full verification suite. Let me check what the make build command actually does since the task specifies running it.
+[RESULT ✓] bash: === try make build ===
+make: Nothing to be done for 'build'.
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+`make build` is a no-op here. Let me run the real build (`./z build`) to confirm exec compiles with Verus erased, plus the full verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] I need to verify that the arch crate compiles correctly without Verus, so I'm going to run a cargo check on the arch library in normal mode to make sure the proof! block erases properly. The arch crate is no_std, so this should be a straightforward check.
+
+The key thing is that in a normal build without the verus_keep_ghost cfg flag, the proof! macro from Verus expands to nothing, and the include!("pde.proof.rs") is gated behind that same cfg, so the lemma doesn't exist in the normal build. Even though the proof! macro references lemma_frame_address which only exists under Verus, the entire macro call gets erased, so the reference disappears cleanly.
+
+Let me just try building the kernel, which depends on arch as a dependency, to verify this works end-to-end.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: buildk completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 60 ./z help 2>&1 | head -40; echo "=== build targets ==="; grep -n "^
+[RESULT ✓] bash: Main Build Targets
+  all          Build everything (default target)
+  clean        Remove build artifacts and intermediate files
+  distclean    Cleans everything
+  help         Show this help message
+  test         Run unit and system tests sequentially
+
+Development Targets
+  check           Run all...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The build target is `all-kernel`. Let me run `./z build -- check-kernel` to confirm the arch crate exec compiles cleanly without Verus.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "check-kernel\|^check:" Makefile | head; timeout 600 ./z build -- che
+[RESULT ✓] bash: 652:	rust-lint-check-kernel \
+753:	format-check-kernel
+820:check: \
+821:	check-kernel \
+827:check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
+829:check: check-nanvix-shim
+834:check: check-nanvix-bench
+{"reason":"compiler-artifact","package_id":"registry+https:/...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Normal build succeeds (`arch` and `kernel` checked, `proof!` block erased cleanly). Now the full `make verify` for regression confirmation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify 2>&1 | grep -E "ve
