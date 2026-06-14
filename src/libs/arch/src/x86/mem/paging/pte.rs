@@ -62,6 +62,7 @@ pub struct PageTableEntryFlags {
     cow: CopyOnWriteFlag,
 }
 
+#[verus_verify]
 impl PageTableEntryFlags {
     ///
     /// # Description
@@ -82,7 +83,6 @@ impl PageTableEntryFlags {
     ///
     /// A new [`PageTableEntryFlags`] with the given flags.
     ///
-    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pte_flags_new(
@@ -286,6 +286,7 @@ pub struct PageTableEntry {
     frame: FrameNumber,
 }
 
+#[verus_verify]
 impl PageTableEntry {
     /// Size in bytes of the hardware page table entry representation.
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
@@ -304,7 +305,6 @@ impl PageTableEntry {
     ///
     /// A [`PageTableEntry`].
     ///
-    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pte_new(flags@, frame@),

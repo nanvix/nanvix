@@ -296,3 +296,218 @@ Turn 11
 [THINKING] When MODULE is set, the verification becomes module-scoped, so I'm running the check specifically for the pte module at `x86::mem::paging::pte`. Now I'm counting the cfg_gate occurrences in pte.rs—there are `#[cfg(verus_keep_ghost)]` attributes on lines 9 and 11, plus `#[cfg_attr(verus_keep_ghost, ...)]` on lines 85 and 307.
 
 Let me just run the module-scoped verification to see what the pte module reports.
+[RESULT ✓] bash: cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module x86::mem::paging::pte:
+    ⚠️  cfg-gated exec code: 2
+  Global: assume=0 external_body=3 admit=0 trusted=0 cfg_gate=4
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/libs/arch/src/x86/mem/paging/ && echo "===PDE new===" && grep -n "cf
+
+[THINKING] I'm looking at the module-scoped check that's flagging 2 instances of cfg-gated exec code in the pte module. These are the problematic items I need to remove — they're `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` attributes on lines 85 and 307 that are gating the `new` functions.
+
+The counting works by finding the next non-attribute line after each cfg_attr: line 87 has `result@ == spec_pte_flags_new(` which doesn't start with `#[` and isn't empty, so that counts as 1; line 307 follows the same pattern, giving us the total of 2. But here's the issue — these cfg_attr gates are only adding compiler directives for the verus build, not actually changing the exec code itself between builds. The concern about ast-consistency is that exec code differs between verus and non-verus builds, but these attributes are just suppressing warnings in verus, not altering the actual function implementations.
+
+Now I'm wondering if I can just remove these cfg_attr lines entirely. They were presumably added during the speccing process, and while they're not in the base branch diff, they're still being counted as cheating. Let me check how other verified modules like pde handle this same situation.
+[RESULT ✓] bash: flags.rs
+frame
+mod.proof.rs
+mod.rs
+mod.spec.rs
+pde.proof.rs
+pde.rs
+pde.spec.rs
+pte.proof.rs
+pte.rs
+pte.spec.rs
+table.proof.rs
+table.rs
+table.spec.rs
+===PDE new===
+83:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+84:    #[verus_spec(result =>
+97:    pub fn new(
+129:    #[...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 -c "
+import re
+from pathlib import Path
+rs_file = Path('src/libs/ar
+
+[THINKING] I'm noticing the pde module has the same cfg_attr pattern, so if it was already verified as clean, these attributes shouldn't be flagged as cheating. Let me check what the actual cheating count is for the pde module to understand if the scanning logic is the issue here.
+
+The real question is whether the Python detector treats these cfg-gated attributes as executable code or not. I should run the detector directly on pte.rs to see exactly which lines are being counted toward the cheating score.
+[RESULT ✓] bash: COUNTED line 85 : #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))] => target: ensures
+COUNTED line 307 : #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))] => target: ensures
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline --all | grep -i "pde\|pte" | head; echo "===check report 
+
+[THINKING] I've identified the two `cfg_attr` lines that are causing the cfg-gate issue in the pte module. These lines apply the `allow(unused, verus_impl_method_marker)` lint suppression specifically for verus builds, where `verus_impl_method_marker` is a custom lint from the verus verifier.
+
+The challenge is that `verus_impl_method_marker` only exists in verus builds — a normal Rust compiler doesn't know about it, so an unconditional `#[allow(verus_impl_method_marker)]` would trigger a warning. I need to figure out whether I can remove these attributes entirely or find another way to handle the lint suppression without the cfg-gate. Let me check if the pde module already passes the cheating detector to understand what the expected pattern is.
+[RESULT ✓] bash: 0adb01fad [verus] verify PASS (cheating detected): arch::x86::mem::paging::pte (cached (no recompilation), —, external_body=3 cfg_gate=4)
+304d0725c [verus-ai] cheating-elimination START: arch-x86-pte
+9ad0f1ac9 [verus-ai] proving END: arch-x86-pte
+7a4e90642 [verus-ai] proving dialogue reviewer t1: ar...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-arch-x86-pde/ verus-ai-logs/arch-x86-pde/ 2>/d
+[RESULT ✓] bash: verus-ai-logs/arch-x86-pde/:
+crash.log
+
+verus-ai-logs/nanvix-phys-arch-x86-pde/:
+body_removed_source.rs
+caller-analysis
+caller_analysis.md
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+=== pde cheating-elim report ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "verus_impl_method_marker" /home/ruize/toolchain/verus/ /home/ruize/verus-ai-exp/ 2>/dev/null | head; echo "---
+
+[THINKING] Since pde hasn't been through the cheating-elimination process yet, I can't treat it as a reliable reference point. Let me try removing that cfg_attr annotation and see if verus still verifies the code and whether it compiles in a non-verus build. I need to figure out what verus_impl_method_marker actually does by searching through the verus codebase.
+[RESULT ✓] bash: /home/ruize/toolchain/verus/builtin_macros/src/attr_rewrite.rs:373:                quote_spanned! { span => (unused, verus_impl_method_marker)},
+/home/ruize/toolchain/verus/builtin_macros/src/attr_rewrite.rs:600:                        if meta_list.tokens.to_string().contains("verus_impl_method_mark...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+[RESULT ✓] view: 350. fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
+351.     attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
+352. }
+353. 
+354. impl VerusVerifyVisitor {
+355.     fn add_verus_spec_if_needed(&self, attrs: &mut Vec<syn::Attribute>,...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verus_verify\|^impl\|cfg_attr(verus_keep_ghost, allow" src/libs/ar
+
+[THINKING] I'm noticing something about how the `verus_verify` macro works — it automatically adds attribute annotations to impl methods marked with `#[verus_spec]` when the impl block itself has `#[verus_verify]`. But looking at these impl blocks for `PageTableEntryFlags` and `PageTableEntry`, they don't actually have that annotation, so this automatic behavior wouldn't apply here.
+
+That's why the code manually adds `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` — the `verus_spec` macro needs to know it's working with an impl method, and the marker lint needs to be suppressed. The cleaner solution would be to annotate the impl blocks themselves with `#[verus_verify]`, which would trigger the automatic allow attributes for any `#[verus_spec]` methods inside them, eliminating the need for the manual cfg_attr.
+
+But I should test empirically first — let me try removing those cfg_attr lines and see if the code still verifies and compiles. The real question is whether the `verus_impl_method_marker` lint is actually triggered as a hard error when `#[verus_spec]` is used on a method outside a `#[verus_verify]` impl block, or if removing the allow would break the verus build. I'll start by testing the simplest approach: just removing the cfg_attr annotations and running verus to see what happens.
+[RESULT ✓] bash: 30:#[verus_verify]
+53:#[verus_verify]
+57:#[verus_verify]
+58:impl TableIndex {
+153:#[verus_verify]
+162:#[verus_verify]
+163:impl<E: TableEntry> Table<E> {
+202:    #[verus_verify(external_body)]
+241:    #[verus_verify(external_body)]
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I see that the impl blocks in table.rs are marked with `#[verus_verify]` at lines 57 and 162, which automatically generates the necessary allow attributes for the methods inside them. So the pattern here is to annotate the impl block itself rather than individual methods, and I should verify that the methods use verus_spec without needing manual cfg_attr annotations.
+[RESULT ✓] view: 57. #[verus_verify]
+58. impl TableIndex {
+59.     ///
+60.     /// # Description
+61.     ///
+62.     /// Creates a [`TableIndex`] from a raw `usize`, returning `None` if the value is out of
+63.     /// bounds.
+64.     ///
+65.     #[verus_spec(result =>
+66.         ensures
+67.             match result...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+
+[THINKING] The pattern is clear now—I need to add `#[verus_verify]` to both impl blocks in pte.rs and strip out the manual `#[cfg_attr]` allow attributes, since the macro handles that automatically.
+
+I'm checking whether this approach affects non-spec methods in the impl. The verus_verify visitor only adds the allow marker to methods that already have `#[verus_spec]`, so regular methods like `from_raw_value` and `is_user` pass through unchanged. This is safe and consistent with how table.rs uses the pattern.
+
+The real concern is whether putting `#[verus_verify]` on the impl forces Verus to verify all methods, including those without contracts. In this attribute-style approach, Verus verifies all functions in the crate by default anyway, so adding the attribute doesn't change the verification scope — it's just making the intent explicit.
+
+My approach is straightforward: add `#[verus_verify]` to the two impl blocks for `PageTableEntryFlags` and `PageTableEntry`, then remove the manual `cfg_attr` allow lines. But I need to be careful about a subtle interaction: the `#[verus_verify]` macro might trigger const verification behavior that could affect how the constants are handled.
+
+Let me think about whether there's a more surgical fix that only touches the four in-scope functions without affecting anything else. I could try applying `#[verus_verify]` directly to individual methods instead of the impl block, but I need to understand how the macro dispatches when applied to a standalone function versus an impl block.
+[RESULT ✓] view: 404.     }
+405.     false
+406. }
+407. 
+408. // We need to replace some macros/attributes.
+409. // For example, panic, println, fmt macro is hard to support in verus.
+410. // We can replace them to enable the support.
+411. // TODO: when tracked/ghost is supported, we need to clear verus-related
+412. ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me try the established pattern from `table.rs` — `#[verus_verify]` on the impl blocks instead of the per-method cfg-gated allow:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp src/libs/arch/src/x86/mem/paging/pte.rs /tmp/pte.rs.bak
+
+[THINKING] I'm checking how `verus_spec` on a function handles the impl method marker—specifically whether the `VerusVerifyVisitor` that adds the marker for `#[verus_verify]` is also needed when `#[verus_spec]` is applied to a method, and whether `rewrite_verus_spec_on_fun_or_loop` requires this marker.
+
+Rather than trace through the code further, I should just test empirically. My first approach is to add `#[verus_verify]` to both impl blocks and remove the two cfg_attr lines, which mirrors the established pattern in table.rs in the same directory. The concern about "touching unlisted functions" doesn't really apply here—adding an impl-level attribute that follows the sibling convention doesn't change the exec semantics of other methods, and it's arguably required to match the established pattern. Let me just try this and run verus to see if it works.
+[RESULT ✓] bash: 
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
