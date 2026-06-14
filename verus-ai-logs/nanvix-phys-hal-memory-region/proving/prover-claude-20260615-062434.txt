@@ -201,3 +201,37 @@ crash.log
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unveri...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE "verified|error|fail" verus-ai-logs/verify-kernel/verus-logs/verus
+
+[THINKING] The verification status shows CLEAN with no recompilation needed, and while the global counts show 27 admitted and 11 external body functions across modules, this particular module has no cheating detected with 4 out of 28 functions having contracts that are all verified. I'm trying to understand the distinction between these global metrics and what's actually happening in this specific module.
+[RESULT ✓] bash: 
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/verify-kernel/verus-logs/ | tail; echo "===LATEST===";
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize   371 Jun 15 06:10 verus_2026-06-15_06-10-21.log
+-rw-rw-r-- 1 ruize ruize   388 Jun 15 06:10 verus_2026-06-15_06-10-53.log
+-rw-rw-r-- 1 ruize ruize   388 Jun 15 06:12 verus_2026-06-15_06-12-01.log
+-rw-rw-r-- 1 ruize ruize   371 Jun 15 06:13 verus_2026-06-15_06-13-10.log
+-rw-...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/region.rs src/kernel/src/hal/mem/types/r
+
+[THINKING] The cached result is stale—it's showing "verifying module hal::platform::microvm" but didn't actually recompile. I need to force a clean verification to see the real output. The global admit=27 is concerning, so I should check if the region module functions actually require proofs or if they're passing trivially. The cheating check reported no issues in hal::mem::types::region, but I'll touch the region.rs file and re-run to make sure I'm getting accurate results.
