@@ -2,11 +2,12 @@
   "module_name": "bump-allocator",
   "log_name": "nanvix-phys-bump-allocator",
   "source_path": "/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "3b7e25cc23aac07166334c70d3847bdf17635de0",
     "view-design": "ada62e719f6f617f6219123bd5a674880946bc75",
-    "specification": "2de51c9d673afecc1a5a158daeefaedc4e5d667d"
+    "specification": "2de51c9d673afecc1a5a158daeefaedc4e5d667d",
+    "proving": "f89cb681eda6b98954a9544e259bd4fd9e9b3288"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "2315c1794e2ee472b7b0434c6ecc0cc127de22da",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "f89cb681eda6b98954a9544e259bd4fd9e9b3288",
       "rollback_iter": 0
     }
   ],

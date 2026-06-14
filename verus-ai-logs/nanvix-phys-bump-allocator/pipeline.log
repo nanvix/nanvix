@@ -105,3 +105,9 @@ Module: bump-allocator
 [2026-06-15 01:04:29] ✅ specification: PASS (0/0)
 [2026-06-15 01:04:29] [GATE] Running build: make build
 [2026-06-15 01:04:29] [GATE] Running verify: make verify
+[2026-06-15 01:04:38] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PHASE: proving
+Module: bump-allocator
+============================================================
