@@ -254,3 +254,40 @@ Turn 8
 ────────────────────────────────────────────────────────────
 Now let me run the baseline verification for this module.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && time make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -40
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unveri...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Module check is CLEAN with zero cheating. Let me confirm none of the global cheating items belong to region, and verify the in-scope functions actually pass.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating detail (region?) ==="; grep -i "region" verus-ai-logs/ve
+
+[THINKING] The module-scoped check shows the region module is clean with no cheating detected, and my earlier grep search confirmed there are no cheating items in the region files themselves. The global counts I'm seeing are from other modules, not this one. But I'm still working through what the verification status means in this context.
+
+Let me verify that the four in-scope functions with contracts are actually being verified properly, not just that contracts exist. The module check passed with exit 0 and shows 4 out of 28 functions have contracts. I should double-check the cheating-detail file to confirm none of those items belong to region.rs, and then run the full verify-kernel to ensure the whole crate passes cleanly as the task requires.
+[RESULT ✓] bash: === cheating detail (region?) ===
+    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+exit: 0
+=== any region in detail file ===
+0
+<shellId: 6 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The only "region" cheats are in `mm/phys/mod.rs` (out of scope). The hal-memory-region module is clean. Let me run full verify-kernel to confirm 0 verification errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && time make verify-kernel 2>&1 | tail -25
+
+[THINKING] The region matches are only in the physical module, not in the hal-memory-region types, so that module has no verification shortcuts. The four in-scope functions all have proper specifications and pass verification—the module status shows CLEAN with exit 0, and those four functions are the start and size getters. Let me check what else needs examining.
+
+The proof file is empty, but the specs are straightforward: start returns `self@.start` and size returns `self@.size as int`. The MemoryRegion view is closed spec with those fields, and the exec implementations just clone the address and return the size directly. These verify trivially given that clone_address has the right spec. The module is genuinely clean and verified.
+
+Now I need to run the full verify-kernel to confirm there are no verification errors across the crate, though other modules' existing admits are out of scope and won't affect this module's cleanliness.
