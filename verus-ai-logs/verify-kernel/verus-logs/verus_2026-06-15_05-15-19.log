@@ -1,0 +1,37 @@
+Timestamp: 2026-06-15_05-15-19
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error[E0252]: the name `pow2` is defined multiple times
+ --> src/kernel/src/hal/mem/types/address/phys.proof.rs:8:32
+  |
+8 | use vstd::arithmetic::power2::{pow2, lemma_pow2_pos};
+  |                                ^^^^--
+  |                                |
+  |                                `pow2` reimported here
+  |                                help: remove unnecessary import
+  |
+ ::: src/kernel/src/hal/mem/types/address/phys.spec.rs:2:5
+  |
+2 | use vstd::arithmetic::power2::pow2;
+  |     ------------------------------ previous import of the value `pow2` here
+  |
+  = note: `pow2` must be defined only once in the value namespace of this module
+
+For more information about this error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
