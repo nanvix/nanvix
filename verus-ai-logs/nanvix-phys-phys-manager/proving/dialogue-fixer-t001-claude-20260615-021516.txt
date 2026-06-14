@@ -253,3 +253,44 @@ Turn 13
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: postcondition|m
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/manager.proof.rs:27:1
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:31:9
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:32:9
+   |     ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Confirmed unprovable: free parameters `pre`/`post`/`addr` have no relating hypothesis. Now the key reproducer — let me show *why* the crutch is needed: remove the lemma call from `alloc_kernel_frame` and observe Verus can only derive `final(self)@ == old(self)@` (self is never modified by the free-function `frame::alloc`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs && cp src/kernel
+
+[THINKING] I'm realizing that these lemmas can't be proven in isolation because the universally-quantified parameters have no constraints linking them together — the postconditions about `free_frames` and `alloc_one` don't actually follow from just the `pre.wf()` requirement. The only way to make them provable would be to add preconditions that establish the relationship between these parameters, but that relationship is actually defined in `frame::alloc`'s postcondition, not available here.
+
+Now I want to demonstrate the fundamental inconsistency more directly: if I remove the `lemma_kernel_alloc_one` call from `alloc_kernel_frame` and try to verify it without that lemma crutch, the verification should fail because Verus can't derive that `self` has been modified in the expected way — it can only see that `self` remains unchanged, so the postcondition requiring `final(self)@ == old(self)@.alloc_one(kf@)` becomes impossible to satisfy.
+[RESULT ✓] bash: restored
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 376.     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+377.         proof_decl! {
+378.             let ghost g_old = self@;
+379.         }
+380.         let frame_addr: FrameAddress = frame::alloc()?;
+381.         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: |assertion|post

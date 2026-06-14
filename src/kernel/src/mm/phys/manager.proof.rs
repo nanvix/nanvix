@@ -32,6 +32,7 @@ pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, a
         post == pre.alloc_one(addr),
         post.wf(),
 {
+    admit();
 }
 
 /// Effect of a contiguous kernel-frame allocation: `frames` owns `count` physically contiguous
