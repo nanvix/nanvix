@@ -168,7 +168,7 @@ proof fn lemma_alloc_iff_key(inner: &Inner, addr: int)
 /// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
 /// (which Verus rejects in an `ensures`); reading the field in a spec-fn body is the same context
 /// `view()`/`internal_inv()` already use.
-open spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
+closed spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
     inner.refcount@[i] as int
 }
 

@@ -303,3 +303,36 @@ All uses are within the `frame` module. Drop `pub` from the agent's helpers so t
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:797 alloc: external_body
+    - frame.rs:827 alloc_contiguous: external_body
+    - frame.rs:848 free_count: external_body
+    - frame.rs:866 free: external_body
+    - frame.rs:908 book: external_body
+    - frame.rs:929 alloc_range: external_body
+    - frame.rs:949 share: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,70p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible
+   --> src/kernel/src/mm/phys/frame.proof.rs:171:11
+    |
+171 | open sp...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+`open` requires `pub`. Use `closed` (body still visible within this module):
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm working through the visibility rules for a spec function in Verus — it needs to reference a private field but remain module-private, so I'm figuring out whether `pub(self)` or `closed` is the right approach. The key insight is that `closed` hides the body from outside the module but keeps it visible within the module itself, which might be what I need here. I'm settling on making `spec_refcount_slot` a `closed spec fn` without the `pub` modifier — that way the body stays hidden outside the module but remains visible and unfoldable within it, where the exec `refcount` method can use it. The key insight is that the caller just needs to unfold the spec function to get `count == self.refcount@[frame@/PS] as int`, which should satisfy the obligation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
