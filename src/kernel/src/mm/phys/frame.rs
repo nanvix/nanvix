@@ -390,7 +390,8 @@ impl Inner {
                         assert forall|addr: int| frames.contains(addr) implies
                             spec_range_frames(start, count as int).contains(addr) by {
                             let j = choose|j: int|
-                                0 <= j < count as int && addr == base + j * spec_page_size();
+                                0 <= j < count as int
+                                    && addr == #[trigger] (base + j * spec_page_size());
                             lemma_frame_addr_split(start, j);
                             assert(start <= start + j < start + count as int
                                 && addr == frame_addr_of(start + j));
