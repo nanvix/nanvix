@@ -1060,3 +1060,34 @@ Turn 71
 Turn 72
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "^error|cannot|warning:|verified|Exit code|status:|cheating
+[RESULT ✓] bash: verification results:: 39 verified, 0 errors
+  39 verified
+  Exit code : 0
+  cheating: assume=0 external_body=2 admit=2 trusted=0 no_decreases=0 cfg_gate=0
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: 39 verified, 0 errors (exit ...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+Verification passes: **39 verified, 0 errors**. The `CHEATING_DETECTED` status is from `admit()`/`external_body`, which is expected in the spec phase. Let me confirm the admits are only the expected ones.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | head -40
+
+[THINKING] I'm seeing 39 verified entries with no errors, but the status is flagged as CHEATING_DETECTED because the admit count is 2 — one from my frame_address and one from the table, plus an external_body value of 2. Let me trace back through the cheating detection logic to understand where this is coming from, since the baseline run also showed admit=2 before my changes.
+[RESULT ✓] bash: - x86/mem/paging/pde.rs:414 frame_address: admit
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+Confirmed — only the expected placeholder `admit()` in `frame_address` (to be discharged in the proving phase). Now let me check for regressions with `make verify` (the critical cross-module check, given I modeled the flag enums).
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -45
+
+[THINKING] So my admit count of 2 comes from two sources: the frame_address admit I added for the shift-to-multiply proof, plus a pre-existing admit from the table lemma. The cheating check scanned the source files regardless of compilation status, which is why both showed up in the baseline run.
+
+The task explicitly says admit in proof bodies is acceptable during the specification phase, and the proving phase is meant to fill in those bodies later. Even though I could potentially prove the frame_address property (that left-shifting by 12 equals multiplying by 4096 without overflow), the instructions are clear that I should leave it as admit for now. The CHEATING_DETECTED flag is expected and not a concern at this stage.
+
+Now I need to run the full verification suite to check for any regressions in the kernel modules.
