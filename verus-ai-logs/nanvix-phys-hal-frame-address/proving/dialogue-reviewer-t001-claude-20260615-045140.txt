@@ -366,3 +366,198 @@ Looking at the checklist strictly though—it says "only external-bottom trust b
 [RESULT ✓] bash: === admit/external_body/assume/REWRITE in frame files ===
 src/kernel/src/hal/mem/types/address/frame.rs:40:// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
 src/kernel/src/hal/mem/types/address/frame.spec.rs:20:pub assume_specification[ <PhysicalAddre...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' .github/skills/build/SKILL.md
+
+[THINKING] I'm noticing that the `make verify-kernel` command shows "Module: <all>" but the verification output only displays one module being verified. The exit code is 0, so verification passed, but I'm uncertain whether that single module note represents the final step of verifying all modules or if something else is happening with the caching.
+
+The global cheating counts (admit=29, external_body=11, cfg_gate=15) are pre-existing across the kernel crate and not relevant to the frame module review. For the frame module specifically, there are 0 admits, 0 external_body calls, 0 assumes, 1 assume_specification, and 1 cfg-gate in ghost code. The checklist requires all verified modules to pass (which they did with exit 0) and a cheating audit reporting counts for our module.
+
+Now I need to run the build command to check for warnings. Let me look up what the build command is — it's either `./z build` or `make` based on the build skill, so I should check the build skill documentation to confirm.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build -- kernel 2>&1 | tail -40
+
+[THINKING] I'm running the build command to compile the kernel and check for any errors or warnings. Since the verification step already compiles it, this is likely just a standard kernel build, so I'll run it in the background.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build_kernel completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^[a-zA-Z_-]+:" Makefile | grep -iE "build|kernel|all" | head -30
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "kernel" Makefile | grep -iE "build-kernel|^build|kernel:" | head;
+[RESULT ✓] bash: 624:verify-kernel: ensure-verus
+=== z build targets ===
+=== look for build-kernel ===
+420:	all-kernel \
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "all-kernel" Makefile | head; sed -n '411,440p' Makefile
+[RESULT ✓] bash: 420:	all-kernel \
+all: all-nanvix
+	@$(MAKE_QUIET) update-sysroot-link
+	@$(MAKE_QUIET) dump-sccache-stats
+
+# Builds all Nanvix components.
+all-nanvix: \
+	init \
+	all-guest-staticlibs \
+	all-guest-binaries \
+	all-kernel \
+	all-snapshot
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+all-nanvix: all-ho...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build -- all-kernel 2>&1 | tail -40
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/bin
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/lib
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo bu...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager log --oneline -- src/kernel/src/hal/mem/types/address/frame.
+
+[THINKING] The build completed successfully with no errors or warnings. Now I need to check for spec drift by comparing the original contract specifications against the current ones to ensure nothing has been weakened, though I don't see a dedicated spec-drift script available so I'll need to manually review the baseline specs and current implementation.
+
+To do this properly, I should look at the git history to find where the specification phase ended and compare those committed versions of the spec files against what's currently in the proving phase.
+[RESULT ✓] bash: da1067352 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+4047753dd [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::frame (6 verified, 0 errors, admit=28 external_body=12 cfg_gate=15)
+18128c03d [verus] verify PASS (cheating d...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff frame.rs from proving START parent to HEAD ==="; git --no-pa
+
+[THINKING] I need to establish a baseline by comparing the current frame.rs contracts against the specification phase endpoint. The specification phase ended at commit b7a988312, and the proving phase started at 316396206, so I should diff the spec-bearing files between those two states to see what's changed. The cleanest reference point for detecting any weakened contracts would be the #[verus_spec] annotations that were finalized at the end of the specification phase.
+[RESULT ✓] bash: === diff frame.rs from proving START parent to HEAD ===
+=== END DIFF ===
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec.rs diff ==="; git --no-pager diff 316396206^ HEAD -- src/ker
+
+[THINKING] The exec file and its contracts remain unchanged during proving, which is reassuring since it means there's no spec weakening happening. Now I'm checking the diffs in spec.rs and proof.rs to see if there are any other changes.
+[RESULT ✓] bash: === spec.rs diff ===
+=== proof.rs diff ===
+diff --git a/src/kernel/src/hal/mem/types/address/frame.proof.rs b/src/kernel/src/hal/mem/types/address/frame.proof.rs
+index 4f5c62167..b51cc3add 100644
+--- a/src/kernel/src/hal/mem/types/address/frame.proof.rs
++++ b/src/kernel/src/hal/mem/types/address/fra...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All checks run. Let me verify there are no other `assume`/`assume_specification` reachable and confirm the tcb-allowed coverage, then write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== is the hal frame.spec.rs assume_spec recorded in tcb-allowed.md? 
+
+[THINKING] I've replaced the `admit()` placeholders in the proof with actual proofs, and the lemma confirms the clauses remain unchanged with no spec weakening. The exec contracts and spec definitions are untouched, so there's no spec drift. Now I'm checking the `spec_page_size` definition change in frame.rs around line 43-45 where it was modified from an uninterpreted function.
+
+Actually, looking at the diff more carefully, that concrete definition was already present before the proving phase started, so it's not a proving-phase change—it happened during specification and represents a strengthening rather than weakening. The lemma proofs work fine with the concrete value since Verus can verify that the architecture's PAGE_SIZE is positive.
+
+Now I need to reconsider the `assume_specification` item more carefully. The checklist requires zero assume/assume_specification except for external-bottom trust boundaries with std/external crates. The one here is for `PhysicalAddress`'s `from_raw_value` trait implementation, where `PhysicalAddress` is kernel-internal but the trait comes from the external `sys` crate workspace.
+
+However, the actual implementation being assumed is the kernel's own code in phys.rs, making this an intra-crate bottom-up placeholder rather than an external boundary. The project convention allows intra-crate assume_specifications as temporary placeholders during bottom-up verification, but they must be recorded in tcb-allowed.md. Since this one isn't recorded there, it's a violation of the checklist requirements.
+
+The fix is straightforward: add this assume_specification to tcb-allowed.md with justification, following the existing convention. I can't mark this as STOP since the item needs to be fixed before all checklist items pass.
+
+Let me verify there are no other assume calls lurking elsewhere — the grep confirms just this one assume_specification in frame.spec.rs. The Verus limitation reproducer item is N/A since there's no verus-unsupported.md reference. The exec rewrite check passes because there are no VERUS REWRITE comments and the exec file stayed unchanged during proving.
+
+For the cfg-gate flagged at line 36, it's actually a false positive — the block contains only ghost code (spec functions and View impl), so that's a pass. I'll note this as a heuristic limitation of the scanning tool.
+
+Now I'm ready to write turn_001_driver.md with each checklist item marked PASS or FAIL with evidence, and a focused fix request for the assume_specification violation. I'm running through the final checklist items: the assume_specification violation at frame.spec.rs:20 is the only failure since it's an intra-crate call that isn't a standard/external boundary and isn't listed in tcb-allowed.md. Everything else passes — no admits in the frame module, no external_body calls, no cfg-gated exec code, no exec rewrites, and the full verification suite runs clean with zero errors and warnings. I need to write up a fix request for that one assume_specification violation. The established convention in tcb-allowed.md is to document intra-crate assume_specification placeholders as not-yet-verified-callee boundaries, so I'll require that the fix be recorded there with verification that the module scope constraint is respected and the build still passes. Now I'll draft the dialogue file.
+[RESULT ✓] bash: === is the hal frame.spec.rs assume_spec recorded in tcb-allowed.md? ===
+112:- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::from_raw_value` — succeeds only
+135:layer is verified" rationale already used for `FrameAddress::from_raw_value`/`into_raw_value`.
+140:  - `::arch::mem::paging...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Evidence gathered. The only failing item is the undocumented intra-crate `assume_specification`. Writing the review.
+[TOOL] report_intent: Writing turn 1 review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_001_driver.md
+
+[THINKING] Looking at the tcb-allowed.md grep results, I can see that `frame.rs::FrameAddress::from_raw_value` is listed as an external cross-module dependency in the mm/phys context, but the corresponding assume_specification for `PhysicalAddress::from_raw_value` in `frame.spec.rs` isn't showing up in the allowed list. The intra-crate assume_specification declarations I need to check are the ones recorded in `mm/phys/frame.spec.rs` around line 140.
+
+The key issue is that `phys`'s `from_raw_value` has no `#[verus_spec]` annotation, which means it's a genuine unverified callee and the assume_specification serves as a real bottom-up placeholder. The assume_specification in `hal/mem/types/address/frame.spec.rs:20` is undocumented, which fails checklist item 4. Now I'm going to write up the review file.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_001_driver.md with 6573 characters
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Turn 1 review complete. I walked the entire checklist with tool evidence.
+
+**Results (target module = `frame.rs` / `frame.spec.rs` / `frame.proof.rs`):**
+
+| Item | Status |
+|---|---|
+| No specs weakened | ✅ PASS — contracts byte-identical across proving; only `admit()` bodies discharged |
+| Zero `admit()` | ✅ PASS — 0 in module |
+| Zero `external_body` | ✅ PASS — 0 in module |
+| Zero assume/assume_specification | ❌ **FAIL** — see below |
+| No cfg-gated exec code | ✅ PASS — the 1 flagged cfg-gate is a ghost-only `verus!` block |
+| Cheating audit | ✅ reported: admit=0, ext_body=0, assume()=0, assume_spec=1, cfg=1(ghost) |
+| Verus-limitation reproducer | ✅ N/A |
+| Exec rewrites minimal | ✅ PASS — `frame.rs` unchanged, no rewrites |
+| Cross-module regression | ✅ PASS — `make verify-kernel` exit 0 |
+| Verification + build | ✅ PASS — verify exit 0; `./z build -- all-kernel` 0 errors/0 warnings |
+
+**FAIL:** `frame.spec.rs:20` has `assume_specification[<PhysicalAddress as ::sys::mm::Address>::from_raw_value]`. `PhysicalAddress` is an **intra-crate** kernel type (impl at `phys.rs:185`, no `#[verus_spec]`), not a std/external boundary, and it is **not recorded** in `tcb-allowed.md`. Fix request written: either supersede it with a real `#[verus_spec]` on `phys.rs` and delete the block, or document the bottom-up placeholder in `tcb-allowed.md`.
+
+No `STOP` file created — one checklist item remains unresolved.
+
+[THINKING] I've completed the review and found an outstanding failure, so I won't be creating the STOP file since not all items have passed or been fixed.
+
+
+=== Session End ===
+Session: 552c107b-3f35-43b5-a630-8f85f4c3370e
+Duration: 306.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-reviewer-t001-claude-20260615-045140.jsonl
