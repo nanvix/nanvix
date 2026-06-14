@@ -1078,3 +1078,381 @@ Each item below is a potential sp...
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/virt.rs && timeout 1200 make verify-s
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/255 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  ve...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Fresh verify: 6 verified, 0 errors, no cheating. Now checking tcb-allowed and bugs.md.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== bugs.md ==="; ls -la verus-ai-logs/nanvix-phys-sys-virt-address/b
+[RESULT ✓] bash: === bugs.md ===
+ls: cannot access 'verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md': No such file or directory
+=== tcb-allowed (virt mentions) ===
+3:Any `external_body` outside this list must be removed.
+5:## Allowed `external_body`
+25:## `external_body` introduced while speccing `arch::x86::mem:...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 183s, total_turns: 0, model: claude-opus-4.8, current_intent: "Running make verify-sys", tool_calls_completed: 25, (timed out wai...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Both review agents are running. I'll wait for their completion notifications.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 120, 'wait': True}
+bugs.md doesn't exist; target has 0 external_body (TCB YES). I have all evidence. Let me verify the output directory and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ 2>&1; echo 
+[RESULT ✓] bash: total 1400
+drwxrwxr-x 1 ruize ruize     156 Jun 15 05:59 .
+drwxrwxr-x 1 ruize ruize     484 Jun 15 05:55 ..
+drwxrwxr-x 1 ruize ruize      46 Jun 15 05:59 ast-report
+-rw-rw-r-- 1 ruize ruize 1355877 Jun 15 06:01 review-claude-20260615-055531.jsonl
+-rw-rw-r-- 1 ruize ruize   72414 Jun 15 06:01 review-...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/final-review && cat > v
+[RESULT ✓] bash: 
+<shellId: 50 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.gpt5codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review (gpt-5.3-codex): sys-virt-address
+2. 
+3. ## Checklist
+4. - [x] Caller Analysis — Reviewed `caller_analysis.md` expectations for `new`/inherent `from_raw_value`/`into_raw_value` and callsites (`mmio.rs`, `pm/sync.rs`) (caller_analysis.md:37-80).
+5. - [ ] View Design — ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Review complete. I wrote the full raw report to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.gpt5codex.md`
+
+**Final Result: FAIL**
+
+Top issues:
+1. **AST consistency failed** (`count/summary` report mismatches).
+2. **Spec drift failed** (reports `VirtualAddress::from_raw_value` ensures removed).
+3. **Type-level spec gap**: `VirtualAddress` has `View` but no explicit `inv()` in target files.
+
+Other checks:
+- `make verify-sys`: exit 0, status CLEAN.
+- Guardrails: `admit=0, assume=0, external_body=0, assume_specification=0`.
+- `bugs.md` is absent (noted).
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 226s, total_turns: 0, model: gpt-5.3-codex, duration: 226s
+
+Review complete. I wrote the full raw report to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Codex returned FAIL with some contentious findings (AST mismatch, spec drift). I need to verify these independently — they may be false positives from wrong base-ref. Let me read codex's full report and independently check while claude finishes.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.gpt5codex.md
+
+[THINKING] Codex came back with failures, and there are some concerning results that need closer inspection. The AST consistency check failed, but I'm not confident the test ran correctly—I should verify this independently. There's also a spec drift issue around `from_raw_value` that might be a false positive since it could be conflating the Address trait's implementation with an inherent method. And then there's the `inv()` function, which the view_design documentation claims is intentionally marked as `true`, but looking at the actual source code, it doesn't seem to be there at all.
+
+Let me double-check the virt.rs file around lines 319-330 to confirm whether `inv()` is actually missing or if I'm looking in the wrong place. The view_design shows a proposed `inv()` returning true, but if the implementation doesn't have it, that's a real gap—though whether it's actually needed is debatable for a total newtype. I should wait for the full codex report and then independently verify these contentious findings before consolidating everything.
+[RESULT ✓] view: 1. # Final Comprehensive Review (gpt-5.3-codex): sys-virt-address
+2. 
+3. ## Checklist
+4. - [x] Caller Analysis — Reviewed `caller_analysis.md` expectations for `new`/inherent `from_raw_value`/`into_raw_value` and callsites (`mmio.rs`, `pm/sync.rs`) (caller_analysis.md:37-80).
+5. - [ ] View Design — ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Codex flagged contentious items. Let me independently verify them — especially the trait-level `into_raw_value` spec, the AST mismatches, and spec-drift — since these could be false positives from a wrong base-ref.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "===== address/mod.rs (trait Address) ====="
+sed -n '1,140p' src/libs/sys
+
+[THINKING] I need to verify whether these AST mismatches are actually false positives by checking if those functions were modified in the git diff against the base branch, since the consistency check compares current code against the base reference and these out-of-scope functions might have been changed there.
+
+More importantly, I realize I may have been wrong about `into_raw_value` being unspecified — the trait declaration in address/mod.rs carries a spec at the trait level that would apply to the virt.rs implementation, so I need to check that file to confirm the spec is actually there.
+[RESULT ✓] bash: ===== address/mod.rs (trait Address) =====
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+`git diff HEAD` for the address module is **empty** — the verification work is already committed at HEAD. This means spec-drift and AST checks depend heavily on the correct base ref. Let me run them myself to adjudicate codex's contentious findings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "===== branches / base detection ====="
+git --no-pager log --oneline -3
+e
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "===== AST consistency: auto-detect ====="
+python3 /home/ruize/verus-ai-e
+
+[THINKING] Wait, I'm realizing something important here. The git diff command shows no changes in the address module at HEAD, which means the verification work is already committed. So when spec_drift runs a comparison between HEAD and the working tree, there shouldn't be any drift detected since the working tree matches HEAD. But Codex is reporting drift on `from_raw_value`, which suggests something's off with how the comparison is being done.
+
+I need to think through what the actual baseline is. The branch `verus-ai-prove-bottom-up` is both the current branch and supposedly the base branch, which is confusing. The real question is whether the verification changes are being compared against the original pre-verification code or against something else entirely. Let me check what the AST diff actually shows for those functions that are supposedly out of scope.
+[RESULT ✓] bash: ===== branches / base detection =====
+392b1d9ae [verus] verify PASS: sys::all (6 verified, 0 errors)
+be285dcde [verus] verify PASS: sys::all (cached (no recompilation), —)
+357b25dc4 [verus] verify PASS: sys::all (cached (no recompilation), —)
+--- find original virt.rs: search merge-base with likely ...
+[RESULT ✓] bash: ===== AST consistency: auto-detect =====
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualA...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+All evidence gathered. Writing the final review.
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md with 11098 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+With auto-detect, the real AST result is: **1 MISMATCH** (`from_raw_value`) and **1 EXTRA_IN_VERUS** (`clone_address`) — not the 3 codex reported (its base-ref was wrong). Let me inspect the actual diffs to judge whether these are real exec changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "===== AST diff: from_raw_value ====="
+python3 /home/ruize/verus-ai-exp/v
+
+[THINKING] With auto-detect enabled, the AST comparison shows that `from_raw_value` is the only real mismatch, while `clone_address` appears extra in Verus but everything else aligns. The earlier Codex run had incorrect base detection, which is why it flagged `align_up`, `align_down`, and `is_aligned` as mismatches—those actually match with the correct baseline.
+
+Now I need to dig into these two discrepancies: `from_raw_value` has two definitions (an inherent impl at line 69 and a trait impl at line 181), so the AST checker might be conflating them or one changed between versions. For `clone_address`, it's marked as extra in Verus, meaning it was added during verification—there's an implementation in the Address impl block at line 257 that wraps the trait's spec version, so I need to check if this was in the original code or newly introduced.
+[RESULT ✓] bash: ===== AST diff: from_raw_value =====
+✅ VirtualAddress::from_raw_value: MATCH
+
+===== AST diff: clone_address =====
+## VirtualAddress::clone_address (full): EXTRA_IN_VERUS
+
+--- Verus (extra, not in source) ---
+    fn clone_address(&self) -> Self {
+        VirtualAddress(self.0)
+    }
+<shellId: 54 comp...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Review written to `verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md`.
+
+## Result: **FAIL**
+
+### Top issue (BLOCKER — coverage gap)
+The in-scope function **`VirtualAddress::into_raw_value`** (i.e. `Address::into_raw_value`, virt.rs:253) has **no `#[verus_spec]` ensures**; its enclosing `impl Address for VirtualAddress` (virt.rs:167) isn't even `#[verus_verify]`-annotated. It has 3 external callers (mmio.rs:67, sync.rs:37/65) that depend on it as the inverse of construction. Without `ensures result == self@`, the module's **key round-trip-identity invariant is unprovable by callers**. Caller coverage = **3/4** → Specification checklist item unchecked → FAIL.
+
+### Everything else passes cleanly
+- **Verification:** fresh non-cached `make verify-sys` → **6 verified, 0 errors, exit 0**, `status: CLEAN`.
+- **Guardrails/Cheating:** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated-exec(cheating)=0.
+- **Proof completeness:** 0 admit, 0 external_body in target files.
+- **TCB:** YES (nothing to list).
+- **AST consistency:** the 3 reported mismatches (and spec_drift's "ensures removed") are **false positives from inherent-vs-trait name collisions** (align_up/down, is_aligned, from_raw_value each defined twice). Proven via `git diff ca7e88be8 HEAD`: only spec annotations added, **no exec body changed**, no `// VERUS REWRITE`. No spec weakened (baseline had empty specs).
+- **Bugs:** none; `bugs.md` correctly absent. The missing spec is a coverage gap, not a bug.
+
+No source/spec/proof files were modified (only an mtime `touch` to bust the verify cache).
+`from_raw_value` "MISMATCH" is a **name-collision false positive** (there are two `from_raw_value` — inherent `-> Self` and trait `-> Result`; `diff --name` shows MATCH). `clone_address` is **EXTRA_IN_VERUS** — possibly added during verification. Let me find the pre-verification baseline to determine if `clone_address` is a real exec addition.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "=== find sys-virt-address phase commits ==="
+git --no-pager log --onelin
+
+[THINKING] I see the issue now — there are two `from_raw_value` functions with the same name, one from the inherent impl and one from the trait impl, and the checker is getting confused when it dedupes them by name. When I query for the specific name diff, it correctly shows the matching one, but the summary reports a mismatch because it's merging both functions together.
+
+For `clone_address`, it's marked as EXTRA_IN_VERUS because it was added during the verification effort to provide a view-preserving clone with a contract, which the bare Clone trait can't offer. But this function is out of scope for the current analysis.
+
+The real question is whether `clone_address` was added in this verification phase or earlier — I need to check the git history to find when the sys-virt-address verification started and compare the original virt.rs against the current version.
+[RESULT ✓] bash: === find sys-virt-address phase commits ===
+abf7abec8 [verus-ai] cheating-elimination scaffold END: sys-virt-address
+dd1195f77 [verus-ai] cheating-elimination prover END: sys-virt-address
+c5e50a356 [verus-ai] cheating-elimination START: sys-virt-address
+e020f3b54 [verus-ai] proving END: sys-virt-add...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Claude review finished. Let me read it and check the pre-verification baseline for `clone_address` in parallel.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': False}
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "=== virt.rs at caller-analysis START (pre-verification baseline ca7e88be
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 318s, total_turns: 0, model: claude-opus-4.8, duration: 290s
+
+Review written to `verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.cla...
+[RESULT ✓] bash: === virt.rs at caller-analysis START (pre-verification baseline ca7e88be8) ===
+55:    pub fn from_raw_value(raw_addr: usize) -> Self {
+151:impl Address for VirtualAddress {
+165:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+237:    fn into_raw_value(self) -> usize {
+241:    fn clone...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Key reconciliation point: claude says `into_raw_value` is uncovered (impl block lacks `#[verus_verify]`, no inline spec → 3/4, FAIL); codex says it's covered via the **trait-level** spec in `mod.rs:63`. Also confirmed `clone_address` existed pre-verification (EXTRA_IN_VERUS is a false positive). Let me decisively determine whether the trait spec actually verifies the impl body.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "=== verus log: list verified functions ==="
+ls -t verus-ai-logs/verify-s
+
+[THINKING] I'm realizing that `clone_address` was already present in the baseline at both locations, so this isn't a new addition—the EXTRA_IN_VERUS flag is likely a false positive from the AST checker using an incorrect base commit or hitting a name-collision dedup issue.
+
+The real divergence between the two reviews hinges on whether the trait-level `#[verus_spec]` on `Address::into_raw_value` in mod.rs actually verifies the implementation in virt.rs. In Verus, trait specs do apply to implementations—the impl must satisfy the trait's ensures clause. So `into_raw_value`'s body `{ self.0 }` should be checked against `ensures result as int == self@`. However, the critical issue is that the `impl Address for VirtualAddress` block itself isn't annotated with `#[verus_verify]`, which raises the question of whether verification actually happens at all.
+
+Since the trait `Address` is marked `#[verus_verify]` at mod.rs:35, I need to determine empirically whether the impl gets verified. The fresh run reported "6 verified" functions, so I should check which functions those are—if `into_raw_value`'s impl is among them, then Codex's assessment holds. The coverage report showing only "2/255 exec functions have contracts" suggests trait-spec'd impls might not be counted by the heuristic, which would support Claude's position that the impl isn't actually verified. I need to look at the verification log or check how other trait impls in the codebase are handled to resolve this.
+[RESULT ✓] bash: === verus log: list verified functions ===
+6 verified
+verification results:: 6 verified, 0 errors
+
+=== how do sibling verified modules annotate 'impl Address for'? ===
+src/kernel/src/hal/mem/types/address/pd.rs:35:impl From<PageDirectoryAddress> for usize {
+src/kernel/src/hal/mem/types/address/phys....
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "=== is into_raw_value / VirtualAddress listed as UNVERIFIED? ==="
+grep -
+
+[THINKING] I need to check whether the sibling implementation in phys.rs has the `#[verus_verify]` attribute to understand the repo's convention, and I also need to identify which specific 6 functions are verified since the log only shows a summary count. Let me get the detailed function list to see exactly what's been verified.
+[RESULT ✓] bash: === is into_raw_value / VirtualAddress listed as UNVERIFIED? ===
+11:  into_raw
+170:  into_raw_value
+--- total unverified count incl virt module ---
+0
+
+=== phys.rs impl Address annotation (sibling convention) ===
+        FrameNumber::from_raw_value(frame_number).unwrap()
+    }
+}
+
+impl Address for Phy...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`into_raw_value` appears in the **unverified** list (line 170). Let me confirm it's `VirtualAddress`'s and check what the 6 verified functions are.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+echo "=== context around line 170 of coverage-unverified.txt ==="
+sed -n '160,
+
+[THINKING] I'm checking the coverage-unverified.txt file to verify that line 170 actually refers to VirtualAddress's `into_raw_value` method and not something from another module. The indentation pattern suggests these entries might be nested under module definitions, so I need to look at the surrounding context to confirm.
+[RESULT ✓] bash: === context around line 170 of coverage-unverified.txt ===
+  align_up
+  align_down
+  is_aligned
+  checked_add
+  checked_sub
+  from_raw_value
+  align_up
+  align_down
+  is_aligned
+  max_addr
+  into_raw_value
+  clone_address
+  as_ptr
+  as_mut_ptr
+  fmt
+  add
+  add_assign
+  from
+  from
+=== header lines ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Decisive: the unverified-functions list contains the `impl Address for VirtualAddress` cluster (`into_raw_value`, `clone_address`, etc.). Combined with the impl block at `virt.rs:167` lacking `#[verus_verify]` (vs. the inherent block at line 46 which has it), this confirms **`into_raw_value`'s impl body is NOT verified** against the trait contract. Claude's finding is correct; codex conflated "trait contract exists" with "impl verified." Let me confirm both raw reviews are saved, then write the consolidation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+ls -la verus-ai-logs/nanvix-phys-sys-virt-address/final-review/*.md
+echo "=== 
+
+[THINKING] Looking at the unverified list around line 170, I can see it contains the methods from the `impl Address for VirtualAddress` block along with other trait implementations like Debug, Add, and From — and notably, `into_raw_value` and `clone_address` are both present in that list. This is the key evidence I needed.
+
+So `VirtualAddress::into_raw_value` is actually NOT verified, even though the trait `Address::into_raw_value` carries a `#[verus_spec]` ensures clause. The reason is that the entire `impl Address for VirtualAddress` block lacks `#[verus_verify]`, so the implementation bodies aren't checked against the trait contracts — the impl is treated as external and unverified.
+
+This means I was right and codex was partially wrong. Codex assumed that a trait-level spec automatically covers all implementations, but here the impl itself is unverified. However, there's a nuance: when callers invoke `VirtualAddress::into_raw_value()` through the trait, Verus uses the trait's spec `ensures result as int == self@` as an assumption at the call site, regardless of whether the impl was actually verified. So callers can rely on the round-trip property, but the impl body itself was never proven to satisfy it — creating a soundness gap where the contract is assumed but not proven for this specific implementation.
+
+For the `inv()` question codex raised: the view_design proposed `inv()` returning `true`, but it's intentionally trivial. The actual source has no `inv()` at all. Since a total newtype has no real constraints, a missing or trivial `inv()` is acceptable per the view_design rationale — not a real blocker, just a minor finding.
+
+Now I need to clarify which functions are actually verified. The "6 verified" count likely includes spec and proof functions. The inherent `new` and `from_raw_value` have inline specs and are verified, but the trait method `from_raw_value` (the one returning `Result`) is in the unverified list.
+
+So the consolidated verdict: **FAIL**. The primary blocker is `VirtualAddress::into_raw_value` — it's in-scope but not specified or verified. The impl block in virt.rs lacks `#[verus_verify]`, so even though the trait declares the ensures clause, the VirtualAddress implementation is never verified against it. Callers in mmio.rs and sync.rs depend on this round-trip identity invariant, but it's not established. The AST "mismatches" are false positives from inherent-vs-trait name collisions, and the missing `inv()` is acceptable for a total newtype. Guardrails are clean across the board.
+
+Now I'm reconsidering whether the impl is actually unverified or if Verus auto-verifies trait impls regardless of the annotation. The coverage heuristic might just be checking for inline attributes and not understanding trait-inherited specs. I need to determine decisively whether Verus verifies impl blocks against trait specs when the impl itself lacks `#[verus_verify]`. The cleanest test would be checking if Verus complains when an impl body violates the trait spec, but I can't modify code since this is a review task. Looking at the repo pattern — the impl block at line 46 does have `#[verus_verify]` for its inherent methods, so the question becomes whether that same attribute is needed for trait impl verification.
+
+The coverage data strongly suggests it is: the script reports exactly 2 verified methods (new and inherent from_raw_value, both in the annotated impl block), while into_raw_value's impl lacks the annotation and appears unverified. The structural evidence aligns with the heuristic — without `#[verus_verify]` on the impl block, the methods aren't checked, even though the trait-level spec exists. So into_raw_value's impl is genuinely unverified, which is the real blocker. I should now consolidate both reviews into a final assessment.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 11168 Jun 15 06:02 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  5236 Jun 15 06:01 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.gpt5codex.md
+=== confirm impl block annotations ===
+35:#[verus_v...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Both raw reviews are saved. Findings reconciled. The decisive blocker is confirmed: `into_raw_value` (in-scope) lives in the `impl Address for VirtualAddress` block at line 167 which **lacks `#[verus_verify]`** and has no verified contract — it appears in the unverified-functions list. Now writing the consolidated review.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.md
+
+[THINKING] I'm mapping out which implementations have verification enabled: the first `impl VirtualAddress` block at line 46 with the `#[verus_verify]` attribute includes `new` and `from_raw_value`, while the second block starting at line 74 handling alignment and checked operations lacks verification. The trait implementation for `Address` at line 167 also isn't verified, though it contains `into_raw_value` and `from_raw_value` which are relevant to the scope.
+
+Now I'm consolidating both reviewer findings into the final report—both agree this is a failure. I'm working through the checklist reconciliation: caller analysis, view design, and the invariant question. For the invariant item, since this is a total newtype with no real constraints, there's no meaningful invariant to encode, which is acceptable per the spec design principle of minimality. I'll mark it satisfied with that justification.
+
+Moving into the specification section, the critical blockers are clear: `into_raw_value` lacks a verified implementation and spec, and the Address trait obligation for that method remains unchecked. The caller coverage is incomplete because the round-trip expectation isn't established by verified code. I'm marking the error paths as N/A since all functions are infallible, and confirming no cheating (no admits, assumes, or external bodies). The specs haven't drifted—only additive changes from the git diff.
+
+For verification, `make verify-sys` passed cleanly, though the full `make verify` across modules wasn't run (other modules have pre-existing issues per the log). That's not the blocker here—the failure is unambiguous due to the `into_raw_value` gap.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.md with 9635 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Review complete. Three artifacts written to `verus-ai-logs/nanvix-phys-sys-virt-address/final-review/`:
+- `final_review.claude.md` (claude-opus-4.8)
+- `final_review.gpt5codex.md` (gpt-5.3-codex)
+- `final_review.md` (consolidated)
+
+## Result: **FAIL**
+
+**Blocker:** The in-scope target `VirtualAddress::into_raw_value` has **no verified contract**. Its block `impl Address for VirtualAddress` (virt.rs:167) lacks `#[verus_verify]`, so although the `Address` trait declares `ensures result as int == self@` (mod.rs:63), the impl body is unverified (it's in `coverage-unverified.txt`; coverage 2/255). Caller round-trip identity (mmio.rs, sync.rs) is unproven → caller coverage 3/4, trait obligation unmet.
+
+**Adjudicated the two reviewers' disagreements against tool output:**
+- claude was correct on the blocker; codex wrongly treated "trait contract exists" as "impl verified."
+- AST "mismatches" + spec_drift "ensures removed" = **false positives** (inherent-vs-trait `from_raw_value` name collision; `clone_address` pre-existed identically). `git diff` confirms no exec body changed.
+- Absent trivial `inv()` is intentional for a total newtype — not a blocker.
+
+**Clean:** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0; `make verify-sys` exit 0 / CLEAN; no bugs. No code modified (review only).
+
+**Fix:** add `#[verus_verify]` to the `impl Address for VirtualAddress` block so `into_raw_value` verifies against the trait ensures.
+
+[THINKING] I've finished the consolidated review and verified all three files are in place. Now I'll wrap up with a summary for the user.
+
+
+=== Session End ===
+Session: 7874856d-23ba-4c97-ab4c-abdda210f342
+Duration: 627.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-055531.jsonl
