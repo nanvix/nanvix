@@ -65,11 +65,11 @@ pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::int
         result as int == addr@,
 ;
 
-pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
-    ensures
-        result < 32,
-        spec_page_size() == pow2(result as nat),
-;
+// Note: `arch::mem::FRAME_SHIFT` now carries its own verified modeling in the `arch` crate
+// (`#[verus_verify]` on the constant, transparently `PAGE_SHIFT`), so its placeholder
+// `assume_specification` was removed — the real definition supersedes it. The facts the proofs
+// relied on (`FRAME_SHIFT < 32` and `spec_page_size() == pow2(FRAME_SHIFT)`) now follow from the
+// transparent constant values together with `vstd`'s `lemma2_to64` (see `into_frame_number`).
 
 // Note: `FrameNumber::from_raw_value` / `into_raw_value` now carry their own verified `#[verus_spec]`
 // contracts in the `arch` crate, so their placeholder `assume_specification`s were removed — the

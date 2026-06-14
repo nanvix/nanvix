@@ -1416,3 +1416,69 @@ Turn 96
 ────────────────────────────────────────────────────────────
 Now confirm arch verifies with FRAME_SHIFT modeled (no ensures):
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|verified|Exit code" | head -20
+[RESULT ✓] bash: verification results:: 39 verified, 0 errors
+  39 verified
+  0 errors
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: 39 verified, 0 errors (exit 0)
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Arch passes. Now handle the kernel placeholder. Let me check `spec_page_size` and the pow2 import usage.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] Arch verification passed with no errors for the FRAME_SHIFT model, so now I need to tackle the kernel side. I'm checking the frame.rs spec_page_size and kernel imports, then updating the phys.spec.rs and phys.rs files accordingly.
+[RESULT ✓] view: 38. 
+39. // The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
+40. // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+41. // that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superse...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "pow2" src/kernel/src/hal/mem/types/address/
+
+[THINKING] I'm checking the `spec_page_size()` function which transparently returns the modeled PAGE_SIZE constant of 4096 bytes. Now I need to trace where `pow2` is imported in the kernel spec and locate how `lemma_frame_index` is being used, since the assume_spec relies on pow2.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.spec.rs:2:use vstd::arithmetic::power2::pow2;
+src/kernel/src/hal/mem/types/address/phys.spec.rs:71:        spec_page_size() == pow2(result as nat),
+src/kernel/src/hal/mem/types/address/phys.proof.rs:26:        spec_page_size() == pow2(shift as nat),
+<shellId...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm checking where `pow2` is actually used across the codebase—it appears in phys.spec.rs at line 71 within the assume_spec block, and also in phys.proof.rs at line 26 for the lemma_frame_index requirement. If I remove the assume_spec, the import in phys.spec.rs would become unused, but I need to verify whether phys.proof.rs has its own import or depends on the one in phys.spec.rs.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+The pow2 import is still needed by phys.proof.rs, so I'll keep it. Let me remove the conflicting placeholder and add an explanatory note.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] Since phys.spec.rs is included in phys.rs, the `pow2` import at the top of phys.spec.rs is available throughout the module scope, including in phys.proof.rs where it's actually used. I need to keep that import even after removing the assume_spec, since phys.proof.rs depends on it. Now I'm planning to replace the assume_spec in phys.spec.rs.
+
+rs with an explanatory comment, then add a broadcast use statement in the into_frame_number proof block to make the lemma2_to64 available so the frame size requirement can be satisfied. Actually, let me first just remove the assume_spec and run verification to see what actually breaks, then add the broadcast only if needed.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+Now add the broadcast lemma to `into_frame_number` so `pow2(12)` evaluates:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
