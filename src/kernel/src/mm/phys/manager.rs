@@ -255,7 +255,8 @@ impl PhysMemoryManager {
                 Err(error) => {
                     frames.clear();
                     proof! {
-                        lemma_user_bulk_err_restored(self, g_old);
+                        // REPRODUCER: lemma call removed to expose the underlying obligation.
+                        assert(self@ == g_old);
                     }
                     return Err(error);
                 },
@@ -388,8 +389,7 @@ impl PhysMemoryManager {
         });
         proof! {
             if result is Ok {
-                // REPRODUCER: lemma call removed to expose the underlying obligation.
-                assert(self@ == g_old);
+                lemma_kernel_alloc_one(g_old, self@, result->Ok_0@);
             }
         }
         result

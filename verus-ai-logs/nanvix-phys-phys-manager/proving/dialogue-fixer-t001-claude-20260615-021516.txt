@@ -294,3 +294,47 @@ Turn 17
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: |assertion|post
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.rs:369:17
+    |                   ^^^^^^ failed this postcondition
+376 |       pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+verification results:: 41 verified, 1 errors (partial verification with `--veri...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The reproducer is definitive: `assert(self@ == g_old)` **passes** (self is unmodified), yet the postcondition `final(self)@ == old(self)@.alloc_one(kf@)` **fails**. The lemma is the only crutch and it injects a false equation. Let me restore and capture the analogous user-bulk-error reproducer.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.rs.bak src/kernel/src/mm/phys/manager.rs && echo restored
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The assertion that `self@` remains unchanged passes, but the postcondition fails because it expects `self@` to equal the old state with one allocation added—revealing a fundamental mismatch between what the code actually does and what the specification claims it should do.
+
+The lemma `lemma_kernel_alloc_one` masks this by asserting a false equation where the old state somehow equals itself after an allocation, which only works through `admit`. I should verify the assertion passed by confirming there's no assertion-failed error, then apply the same analysis to the user bulk error path and contiguous case to build a complete picture of the unsoundness before writing this up.
+[RESULT ✓] view: 222.                 lemma_book_all_empty(g_old);
+223.             }
+224.             return Ok(());
+225.         }
+226. 
+227.         Self::check_user_watermark(count)?;
+228.         proof! {
+229.             lemma_manager_attached(self);
+230.             assert(self@ == g_old);
+231.             as...
+[RESULT ✓] bash: restored
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+At line 256, `frames.clear()` drops taken `UserFrame`s but doesn't restore `self.upool@` (which the loop mutated via `alloc_one`). Let me capture that reproducer.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm noticing there's an assertion at line 230 that checks `self@ == g_old` right after `lemma_manager_attached(self)`, which is trivially true since self hasn't been modified yet. But the error path is more interesting — after clearing frames and calling `lemma_user_bulk_err_restored`, we get `self@ == g_old`, yet the loop body has already modified self through `self.upool.alloc()`, so there's a disconnect between what the lemma claims and what actually happened.
+
+The issue is that `frames.clear()` only empties the Vec parameter, not self.upool@. So after even one successful allocation in the loop, self@ becomes `g_old.book_all(some set)`, which is not equal to g_old. If the error occurs on iteration i ≥ 1, then self@ ≠ g_old, making the lemma's assertion false. I should test this by removing the lemma call and replacing it with a direct assertion to see where it fails.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: |assertion|mana
