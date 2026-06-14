@@ -181,3 +181,24 @@ Module: hal-page-aligned
 [2026-06-15 07:46:45] [DIALOGUE] Reviewer turn 1 (remaining: 3600s)...
 [2026-06-15 07:46:45] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 07:50:49]   ↳ dialogue-reviewer-t1 done in 4m03s (exit=0)
+[2026-06-15 07:50:49] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 07:50:49] [DIALOGUE] STOP detail:
+RESOLVED
+
+All 12 cheating-elimination checklist items PASS for module
+kernel::hal::mem::types::address::aligned::page with tool evidence:
+
+- admit=0, assume=0, trusted=0, no_decreases=0, external_body=0, cfg-gated-exec=0
+  in page.rs / page.spec.rs / page.proof.rs (verified by marker grep and by
+  inspecting cheating-detail.txt — all 38 global cheating entries are in
+  mm/phys/* and mm/virt/*, none in this module).
+- AST consistency: matched=18, mismatched=0 (exec code unchanged vs phase-start
+  baseline ed53de1afa0c).
+- Spec drift: 0 contract drift (no ensures removed, no requires added).
+- The only diff since phase start is relocation of the ghost `inv()` spec fn from
+  an inline cfg-gated block in page.rs into the included page.spec.rs (identical
+  definition) — a cfg-gate reduction, no exec/spec change.
+- make verify-kernel (forced fresh): 77 verified, 0 errors, 0 warnings, exit 0.
+
+See turn_001_driver.md for full evidence.
+[2026-06-15 07:50:49] [DIALOGUE] cheating-elimination ended after 1 turns: RESOLVED (244s)
