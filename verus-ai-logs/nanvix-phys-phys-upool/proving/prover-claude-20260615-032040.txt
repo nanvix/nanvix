@@ -372,3 +372,68 @@ Turn 16
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
 
 [THINKING] Since `Upool::alloc` is marked as external_body, Verus won't verify its implementation even though it still compiles—the body calling `frame::alloc()` and `UserFrame::new` is fine for compilation purposes. Let me check the verification status of UserFrame now.
+[RESULT ✓] bash: - frame.rs:379 share: admit
+    - frame.rs:442 refcount: admit
+    - frame.rs:497 book: admit
+    - frame.rs:535 is_covered: admit
+    - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+All upool UserFrame functions verified automatically (42 verified, 0 errors). The remaining admits/external_body are in **other modules** (frame.rs, manager.rs, mod.rs, kframe.rs) — out of scope. Let me confirm upool itself is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit/assume in upool ==="; grep -rn "admit\|assume" src/kernel/src/mm/phys
+
+[THINKING] All the UserFrame functions passed verification with no errors, which means the task is complete for the upool module. The other functions that need admits or external_body declarations are in different modules outside the scope of this work, so I'm leaving those untouched as instructed. The target functions I needed to handle were just UserFrame::new and address.
+[RESULT ✓] bash: === admit/assume in upool ===
+none
+=== external_body in upool ===
+54:/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
+55:/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+220:#[verus_verify(external_body)]
+238:    // a...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The upool module is clean — no `admit`/`assume`, and the only `external_body` are the three tcb-allowed items (struct, `new`, `alloc`). All 6 `UserFrame` functions verified genuinely. Let me record the proving-phase outcome in bugs.md.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/bugs.md
+
+[THINKING] Upool checks out cleanly with no admit or assume statements, and all three external_body annotations are in the tcb-allowed list. I'm reconsidering whether Upool::alloc should be external_body or if it could be genuinely verified—but since the view is uninterpreted, I can't derive the transition from frame::alloc because that operates on phys_view rather than the uninterp view, and there's no axiom connecting them. So external_body is the right choice here and it's already approved in tcb-allowed.
+
+The other modules' admits are pre-existing and out of scope for this task, and I can't modify them anyway per the "do not touch unlisted functions" rule. The upool functions all verified cleanly with no errors, including the six UserFrame functions which aren't in the unverified or external_body lists. I should update bugs.md to note that no bugs were found during the proving phase, though the share/drop refcount-transition deferral is already documented there. The real question is whether I should strengthen the ensures on share/drop now that I'm in the proving phase—but since phys_view is a no-arg uninterpreted function, I can't express before/after transitions anyway.  The current ensures are already the strongest expressible, and they're sufficient for callers as designed. The proving is complete, and while I could run the full make verify to check for regressions, the module-scoped verify already passed with 42 verified and 0 errors, and my changes only added external_body attributes to two already-listed functions, so there shouldn't be any new issues elsewhere.
+
+Now I need to verify the formatting is correct and update bugs.md to document the proving phase outcome.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/bugs.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+All upool proofs are complete. Final state confirmed by the last run: **42 verified, 0 errors**; upool files contain **0 `admit`, 0 `assume`**.
+
+## Summary
+
+The six in-scope `UserFrame` methods — `new`, `address`, `leak`, `share`, `refcount`, `drop` — **all verify against their existing contracts with no proof body needed**. The key reason: `UserFrame::inv()` (`self@ % spec_page_size() == 0`) is definitionally equivalent to `FrameAddress::inv()`, so the frame-layer preconditions (`frame.inv()`) on `frame::share`/`refcount`/`free` are discharged automatically, and the snapshot ensures pass through directly.
+
+`Upool::new` and `Upool::alloc` are marked `#[verus_verify(external_body)]` — both explicitly listed in `tcb-allowed.md`. This was **necessary, not a weakening**:
+- `Upool::new` constructs the opaque (`external_body`) `Upool` struct, which Verus forbids in a checked body (the original "constructor for an opaque datatype" compile error).
+- `Upool::alloc`'s `alloc_one` transition is over the `uninterp` `Upool::view`, which has no axiom linking it to the global `phys_view()` that `frame::alloc` mutates — not derivable in a checked body.
+
+**No spec was weakened**: all `requires`/`ensures` are unchanged. I only added the tcb-permitted `external_body` attributes.
+
+**No bugs found** — recorded the proving-phase outcome in `verus-ai-logs/nanvix-phys-phys-upool/bugs.md`.
+
+The remaining `admit`/`external_body` counts in the run are all in **out-of-scope modules** (`frame.rs`, `manager.rs`, `mod.rs`, `kframe.rs`), which are separate verification targets I was instructed not to touch.
+
+[THINKING] Running a final verification to confirm all 42 modules are still consistent after the bugs.md update, and checking that I haven't inadvertently weakened any specs—I only added external_body attributes to functions that were already designated as external_body in the allowed list, leaving all contracts unchanged.
+
+
+=== Session End ===
+Session: d9bc25fa-0924-4d9c-b6f3-60389f5c0be8
+Duration: 226.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/proving/prover-claude-20260615-032040.jsonl
