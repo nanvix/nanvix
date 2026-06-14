@@ -97,3 +97,64 @@ One of:
    after which all four lemmas verify in-body and the admits are removed.
 
 Both are outside the phys-frame phase's authority and scope.
+
+---
+
+## DECISIVE cross-reference (third review pass): these admits are owned by the phys-manager phase and are UNSOUND to convert
+
+The four admits are **already owned and documented** by the separate
+`nanvix-phys-phys-manager` phase:
+`verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md`. That phase's
+harness-generated analysis (with **committed isolated reproducers** under
+`verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/reproducers/`)
+established the following, which forbids any "elimination" in the phys-frame
+phase:
+
+1. **The postconditions are provably FALSE in editable scope, not merely
+   unproven.** `View for PhysMemoryManager` (do-not-modify, `manager.spec.rs`)
+   fixes `self@ == self.upool@`, and the kernel-alloc bodies call only the free
+   functions `frame::alloc`/`alloc_contiguous`/`free` (none take `self.upool`),
+   so Verus derives `final(self)@ == old(self)@`. The lemma goals then reduce to
+   `v == v.alloc_one(a)` / `v == v.book_all(S)` — **false**. The admits bridge a
+   goal with no model in the manager's editable scope.
+
+2. **Converting 3 of the 4 to `external_body`/axiom is UNSOUND — proven by
+   reproducers.** `alloc_one_unsound.rs` and `others_unsound.rs` show that
+   `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, and
+   `lemma_user_bulk_err_restored` as free-standing axioms let a caller prove
+   `false` (`exploit() ensures false` → `1 verified, 0 errors`). Authoring such
+   axioms would make the **entire** verification unsound — a strictly worse
+   violation than the admit. Per **verus-constraints**/**spec-design**, axioms
+   require human approval and must be sound; these are neither. I therefore must
+   NOT convert them.
+
+3. **The only sound resolution is out-of-scope for this phase.** It requires a
+   *versioned/tracked global-partition token* threaded through the `frame`
+   free-function layer (`frame::alloc`/`alloc_contiguous`/`free`) plus a
+   singleton-attachment token produced by `init`/`Upool::new`. That is an **exec
+   signature change** to the frame wrappers (forbidden by the source-integrity /
+   ast-consistency rules and by "Do not change function signatures"), and those
+   wrappers are `external_body` TCB-allowed precisely because the singleton's
+   post-mutation `phys_view()` transition is deferred to this token. It is a
+   coordinated cross-module design step, owned jointly by the frame
+   proving/token-instrumentation work and the phys-manager phase — not by a
+   phys-frame *cheating-elimination* pass that must preserve exec code and author
+   no axioms.
+
+4. **Hard-rule conflict.** The phys-frame task's hard rules state "Do not touch
+   unlisted functions." All four lemmas (`lemma_manager_attached`,
+   `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`,
+   `lemma_user_bulk_err_restored`) are in `manager.proof.rs` and are **unlisted**.
+   The verified manager functions that depend on them
+   (`alloc_user_frame`, `alloc_many_user_frames`, `alloc_kernel_frame`,
+   `alloc_many_kernel_frames` — all verified in-body) mean the lemmas are
+   load-bearing and cannot be deleted without breaking verified, out-of-scope
+   manager code.
+
+**Conclusion:** within the phys-frame cheating-elimination phase's authority,
+these four admits can be neither (a) proven (unsatisfiable in editable scope),
+(b) soundly converted (reproducers show axiom form is unsound), (c) deleted
+(load-bearing for verified manager code), nor (d) touched at all (unlisted
+functions). The sound fix is the §8 tracked-token instrumentation of the frame
+free-function layer, which is an exec-signature change outside this phase's
+mandate. This is a genuine architectural hand-off, not a skipped proof.

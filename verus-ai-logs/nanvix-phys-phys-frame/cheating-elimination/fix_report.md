@@ -110,12 +110,46 @@ realization in the phys-manager proving phase).
 `make verify-kernel MODULE=mm::phys`: **58 verified, 0 errors** (exit 0). The
 module verifies; the cheating gate reports the 4 pre-existing manager admits.
 
+## Decisive finding (third review pass): the 4 admits are owned by the phys-manager phase and are UNSOUND to convert
+
+The four admits are already owned and documented by the separate
+`nanvix-phys-phys-manager` phase
+(`verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md`), whose
+harness-generated analysis — backed by **committed isolated reproducers**
+(`.../phys-manager/cheating-elimination/reproducers/`) — establishes:
+
+1. **Postconditions are provably FALSE in editable scope.** `View for
+   PhysMemoryManager` fixes `self@ == self.upool@`; kernel-alloc bodies call only
+   `frame::alloc`/`alloc_contiguous`/`free` (which don't take `self.upool`), so
+   Verus derives `final(self)@ == old(self)@`. The lemma goals reduce to
+   `v == v.alloc_one(a)` / `v == v.book_all(S)` — false. No model exists in
+   editable scope.
+2. **Axiom conversion is UNSOUND (proven).** As `external_body` axioms, 3 of the
+   4 lemmas let a caller derive `false` (`exploit() ensures false` →
+   `1 verified, 0 errors`). Authoring them would make the entire verification
+   unsound — strictly worse than the admit. So conversion is prohibited.
+3. **Sound fix is out of scope.** Requires a versioned/tracked global-partition
+   token threaded through the `frame` free-function layer + a singleton-
+   attachment token from `init`/`Upool::new` — an **exec signature change** to
+   the TCB-allowed `external_body` frame wrappers, forbidden by source-integrity
+   / ast-consistency, and a coordinated cross-phase design step.
+4. **Hard-rule conflict.** All four are in `manager.proof.rs`, **unlisted** for
+   this phase ("Do not touch unlisted functions"), and load-bearing for verified
+   in-body manager functions (`alloc_user_frame`, `alloc_many_user_frames`,
+   `alloc_kernel_frame`, `alloc_many_kernel_frames`) — so they cannot be deleted
+   either.
+
 ## Result: BLOCKER
 
-The phys-frame target file itself carries **zero** eliminable cheating. The 4
-`admit()`s that trip the module-wide gate are pre-existing **phys-manager**
-external-bottom obligations (§8 global ghost-token attachment + unmodeled
-`Drop` restoration), out of the phys-frame target scope, empirically unprovable
-in-module, and eliminable only via human-approved external-bottom axioms or the
-phys-manager §8-token proving work — neither within this phase's authority.
-Honest hand-off recorded in `verification_todo.md`.
+The phys-frame target file (`frame.rs`/`frame.proof.rs`/`frame.spec.rs`) carries
+**zero** eliminable cheating — it is clean and verifies in-body (58 verified, 0
+errors). The 4 `admit()`s that trip the module-wide `mm::phys` gate are
+pre-existing **phys-manager** obligations that, within the phys-frame phase's
+authority, can be neither proven (postconditions unsatisfiable in editable
+scope), soundly converted (reproducers prove the axiom form injects `false`),
+deleted (load-bearing for verified manager code), nor touched (unlisted
+functions). The sound resolution is the §8 tracked-token instrumentation of the
+frame free-function layer — an exec-signature change outside a cheating-
+elimination phase's mandate, owned by the phys-manager phase. Honest,
+cross-referenced hand-off recorded in
+`verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md`.
