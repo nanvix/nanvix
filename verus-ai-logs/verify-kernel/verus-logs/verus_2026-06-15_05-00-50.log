@@ -1,0 +1,55 @@
+Timestamp: 2026-06-15_05-00-50
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=23
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.proof.rs:48:26
+   |
+48 |         crate::hal::mem::types::address::phys::spec_frame_number(a)
+   |                          ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this function through its public re-export instead
+   |
+48 -         crate::hal::mem::types::address::phys::spec_frame_number(a)
+48 +         crate::hal::mem::spec_frame_number(a)
+   |
+
+error[E0603]: module `types` is private
+  --> src/kernel/src/mm/phys/frame.proof.rs:49:33
+   |
+49 |             <= crate::hal::mem::types::address::phys::spec_max_frame_number(),
+   |                                 ^^^^^ private module
+   |
+note: the module `types` is defined here
+  --> src/kernel/src/hal/mem/mod.rs:8:1
+   |
+ 8 | mod types;
+   | ^^^^^^^^^^
+help: consider importing this function through its public re-export instead
+   |
+49 -             <= crate::hal::mem::types::address::phys::spec_max_frame_number(),
+49 +             <= crate::hal::mem::spec_max_frame_number(),
+   |
+
+For more information about this error, try `rustc --explain E0603`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
