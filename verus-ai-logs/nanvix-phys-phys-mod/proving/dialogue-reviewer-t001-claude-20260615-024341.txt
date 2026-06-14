@@ -406,3 +406,17 @@ Turn 10
 [THINKING] Looking at the cfg-gated code in the phys module, there's actually no exec code behind cfg gates there—the gates only wrap use/include and mod statements. The five global cfg gates are all external to phys, sitting in hal/mem and macros.rs as standard verus markers around spec blocks, which are pre-existing and outside the scope of this work.
 
 Now I need to verify the actual verification results. The previous run showed 9 verified with 0 errors and exited cleanly, but let me re-run the verification to capture that output clearly and confirm the build command used.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate kernel --module mm::phys --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Module    : mm::phys
+note: verifying module mm::phys
+note: verifying module mm::phys::frame
+note: verifying module mm::phys::manager
+note: verifyi...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "verified|errors|warning" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_
+
+[THINKING] I need to check the verus log to find the "verified, errors" line and examine the module section more carefully.
