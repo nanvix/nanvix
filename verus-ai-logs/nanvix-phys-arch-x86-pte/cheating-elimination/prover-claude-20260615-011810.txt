@@ -1021,3 +1021,36 @@ Turn 64
 ────────────────────────────────────────────────────────────
 Let me do a final clean-module verification to confirm the end state, and clean up temp files:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
+[RESULT ✓] bash: ✅ No cheating detected in module x86::mem::paging::pte.
+  Unverified functions:
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  status: CLEAN
+cleaned
+<shellId: 48 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+Done. **Result: PASS** — module `x86::mem::paging::pte` is clean.
+
+## Summary
+
+**Cheating found (module-scoped):** 2 cfg-gated exec items — `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` on `PageTableEntryFlags::new` and `PageTableEntry::new`. No admit/assume/external_body in scope.
+
+**Fix:** The marker allow is required for `#[verus_spec]` on associated functions (no `&self`) whose impl isn't `#[verus_verify]`; removing it outright breaks the build. I adopted the established in-directory idiom (`table.rs`): moved each `new` into its own `#[verus_verify] impl` block so the marker is auto-generated, while leaving the external-calling methods (`from_raw_value`, etc.) in plain impl blocks so Verus keeps ignoring them. Splitting impl blocks is semantically identical in Rust (they merge).
+
+**Verification:**
+- Module `pte`: ✅ No cheating, 6 verified, 0 errors, status CLEAN.
+- AST consistency vs true original: ✅ 23 functions, 2 structs match (exec-invisible).
+- Full `make verify`: all crates exit 0, no regressions (arch cfg_gate dropped 4→2).
+
+**Out-of-scope residuals (untouched):** 3 `external_body` (all in `tcb-allowed.md`), 2 cfg-gates in `pde.rs` (sibling task). No verification TODOs — zero proof gaps.
+
+Report written to `verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: 2369ca0a-4fb9-45c1-96ff-cafb4b66d784
+Duration: 627.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/prover-claude-20260615-011810.jsonl
