@@ -308,3 +308,67 @@ For `Upool::alloc`, there's a disconnect: it mutates self and needs to prove tra
 [RESULT ✓] bash: src/kernel/src/mm/phys/upool.rs:54:/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
 src/kernel/src/mm/phys/upool.rs:55:/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
 src/kernel/src/mm/phys/upool.rs:220:#[verus_verif...
+[RESULT ✓] bash: ⚠️  admit: 12
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:298 free: admit
+    - frame.rs:379 share: admit
+    - frame.rs:442 refcount: admit
+    - frame.rs:497 book: admit
+    - frame.rs:535 is_covere...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me see the actual verus log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\|
+
+[THINKING] I'm seeing a compilation error where verus didn't run properly. The module-scoped verification is trying to compile the whole kernel, but there are admits in other files like frame.rs that are outside the scope of what I'm checking. Let me look at the actual error message to understand what's failing.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: disallowed: constructor for an opaque datatype
+21:   --> src/kernel/src/mm/phys/upool.rs:246:9
+32:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '15,35p'
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: disallowed: constructor for an opaque datatype
+   --> src/kernel/src/mm/phys/upool.rs:246:9
+    |
+221 | / pub struct Upool {
+222 | |     /// Private field prevents external...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The constructor error confirms `Upool::new` needs `external_body` (it's in tcb-allowed). Let me mark `Upool::new` and `Upool::alloc` as `external_body`, then run to see remaining UserFrame errors.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm realizing that `Upool::new` constructs an opaque type but isn't marked as `external_body` itself, which violates the rules—it should be added to the tcb-allowed list. For `Upool::alloc`, it doesn't directly construct Upool but returns a UserFrame through `UserFrame::new`, though it takes a mutable reference and the thought cuts off mid-analysis.
+
+Looking at the tcb-allowed list, both `Upool::new` and `Upool::alloc` should be marked `external_body` since they're trusted functions. I need to add the `#[verus_verify(external_body)]` attribute to these methods—this will bypass verification and treat their ensures as assumed, which is appropriate for trusted code. The UserFrame functions should remain verifiable since they don't construct opaque types.
+
+Now I'm working through the UserFrame proofs. The `view` function is closed but visible within the module, so the specs should be transparent. For `UserFrame::new`, the proof is straightforward: constructing `Self { addr }` means the result's address field equals the input, and since both `FrameAddress::inv` and `UserFrame::inv` are open specs, the invariants should unfold automatically. Similarly, `UserFrame::address` just returns the address field, so the ensures should be immediate.
+
+For `UserFrame::leak`, I need to check how Verus handles `ManuallyDrop` — it might require special handling or might not be modeled in vstd. The `UserFrame::share` function calls `frame::share(self.addr)`, which requires `self.addr.inv()`, but that follows from `self.inv()` since both are open specs. The `refcount` and `drop` functions are straightforward pass-throughs to the frame module.
+
+I should mark `Upool::new` and `alloc` as `external_body` and run verification to see what errors remain with UserFrame.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+
+[THINKING] Since `Upool::alloc` is marked as external_body, Verus won't verify its implementation even though it still compiles—the body calling `frame::alloc()` and `UserFrame::new` is fine for compilation purposes. Let me check the verification status of UserFrame now.
