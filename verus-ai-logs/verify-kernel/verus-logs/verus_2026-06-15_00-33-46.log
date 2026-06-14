@@ -1,0 +1,246 @@
+Timestamp: 2026-06-15_00-33-46
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=10
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: `alloc::collections::linked_list::impl&%8::iter` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/mod.rs:78:19
+    |
+ 78 |     for region in physical_memory_regions.iter() {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+107 |     for region in mmio_regions.iter() {
+    |                   -------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::iter] (_0: &alloc::collections::LinkedList<T, A>) -> alloc::collections::linked_list::Iter<'_, T>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::Iter` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/mod.rs:78:5
+    |
+ 78 |       for region in physical_memory_regions.iter() {
+    |  _____^             ------------------------------
+ 79 | |         info!("booking: {:?}", region);
+ 80 | |         frame::alloc_range(region)?;
+ 81 | |     }
+    | |_____^
+...
+107 |       for region in mmio_regions.iter() {
+    |  _____-             -------------------
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    | |
+108 | |         info!("booking: {:?}", region);
+109 | |         let mut start: usize = region.start().into_raw_value();
+110 | |         let end: usize = start + (region.size() - 1);
+...   |
+127 | |     }
+    | |_____-
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    |
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExIter<'a, T>(alloc::collections::linked_list::Iter<'a, T>);
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
