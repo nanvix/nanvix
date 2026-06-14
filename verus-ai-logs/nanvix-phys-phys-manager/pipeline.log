@@ -113,3 +113,4 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: phys-manager
 ============================================================
+[2026-06-15 01:47:41] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs

@@ -93,7 +93,6 @@ impl PhysMemoryManager {
     // `AtomicBool` flag — raw-memory/atomics operations outside Verus's model. On success the
     // manager layer becomes ready (`phys_view().manager_ready`); the frame partition is
     // untouched. Listed in `verus-ai-logs/tcb-allowed.md`.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
@@ -507,7 +506,6 @@ impl PhysMemoryManager {
 // crate's `build.rs` (from `kernel_config.toml`) and lives in a non-Verus dependency crate, so
 // Verus cannot resolve its value. This accessor ties the runtime constant to the abstract
 // `spec_kernel_watermark()`. Listed in `verus-ai-logs/tcb-allowed.md`.
-#[verus_verify(external_body)]
 #[verus_spec(ret =>
     ensures
         ret as nat == spec_kernel_watermark(),
