@@ -286,3 +286,80 @@ Let me write the report now while running verification in the background, and I'
 ────────────────────────────────────────────────────────────
 Turn 9
 ────────────────────────────────────────────────────────────
+While the full verify runs, I'll prepare the report. First, the directory and a check of the verification_todo path.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination && ls verus-ai-log
+
+[THINKING] The core issue is that `view` is uninterpreted, so I can't establish the `wf()` property that `Upool::new` guarantees within the function body itself—this is exactly why `external_body` is the right approach here, and I've validated that it's feasible. Now I'm working on documenting this in the report and updating the verification todo.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_lsp.out
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+--- existing todo? ---
+NONE
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'fullverify', 'delay': 5}
+[RESULT ✓] read_bash: note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.22s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=18 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  Detail:...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Full-crate verify passes (exit 0). The crate-wide cheating counts (admit=24, external_body=18) are all in **other** modules outside scope, unchanged from base. The upool module is fully clean. Now writing the report and TODO.
+[TOOL] report_intent: Writing fix report
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+
+[THINKING] Verification passed with zero errors—the cheating counts are all in other modules outside my scope, so the upool module itself is clean. Now I'm documenting the specific counts for upool: admit and assume both stayed at zero, external_body remained at three with all entries authorized in tcb-allowed.md, and I'm tallying up the remaining metrics.
+
+Since there are no genuinely-stuck proofs and all three external_body references are authorized exceptions rather than proof gaps, I'll write the verification_todo file noting that no remaining proof gaps exist, and document the rationale for the authorized external_body calls for completeness.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md with 1596 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md with 3756 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Done. Summary of findings for the **phys-upool** module:
+
+**Result: PASS** — zero unauthorized cheating.
+
+- **`make verify-kernel MODULE=mm::phys`**: 42 verified, 0 errors (forced, non-cached). `make verify` full crate: exit 0.
+- **No `admit`/`assume`** anywhere in `upool.rs`/`.spec.rs`/`.proof.rs` (proof file is empty).
+- **3 `external_body`** — `Upool` struct, `Upool::new`, `Upool::alloc` — all explicitly listed in `tcb-allowed.md`, so authorized. They are structurally impossible to verify in-body because `View for Upool` is `uninterp`, so no body can establish post-state facts (`result@.wf()`, `alloc_one(..)`) about an uninterpreted view; eliminating them would require redefining the view (out of scope) and threading ghost state from the global frame allocator.
+- **All 8 target functions verify** with real contracts; `UserFrame::*` discharge directly from `UserFrame::inv` plus the authorized `frame` free-function contracts.
+- **AST consistency**: upool files are byte-identical to base (`git diff verus-ai-prove` empty); no exec changes, no introduced workarounds.
+
+Reports written:
+- `verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md`
+- `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md` (no remaining proof gaps)
+
+
+=== Session End ===
+Session: a5065bc8-88fb-46f5-8463-c635060c37b6
+Duration: 213.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/prover-claude-20260615-032949.jsonl
