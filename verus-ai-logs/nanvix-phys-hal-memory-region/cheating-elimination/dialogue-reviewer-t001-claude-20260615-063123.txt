@@ -141,3 +141,252 @@ src/kernel/src/hal/mem/types/region.rs:65:#[verus_verify(external_derive)]
 src/kernel/src/hal/mem/types/region.rs:143:#[verus_verify(external_derive)]
 src/kernel/src/hal/mem/types/region.rs:298:#[verus_verify(external_derive)]
 === t...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The cheating counts are global. Let me confirm the region module specifically is clean and check the skills/tooling.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail region grep ===" ; grep -i "region" verus-ai-logs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls .github/skills/ 2>/dev/null; echo "---tcb---"; find . -iname "*tcb*" 2>/
+
+[THINKING] The verification passes, but the cheating pattern check shows global counts across the entire kernel rather than just this region module—assume=0, external_body=11, admit=27, trusted=0, no_decreases=0, cfg_gate=14. Within the region module itself, all those metrics are zero except for the two cfg gates from the `#[cfg(verus_keep_ghost)]` directives, which are permitted.
+
+I need to verify that none of those 11 external_body or 27 admit violations are actually in the region files by checking the cheating-detail.txt output. The `external_derive` attributes on the structs are allowed since they're part of the derive system, not external_body violations. I should also look at the actual command placeholders in the checklist—tcb_allowed_file, spec_drift_cmd, verus_cmd_all, verus_cmd, and build_cmd—to understand what the verification pipeline is actually running.
+[RESULT ✓] bash: === cheating-detail region grep ===
+=== full detail head ===
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - mm/phys/frame.rs:497...
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+---tcb---
+./verus-ai-logs/tcb-allowed.md
+---ast skill---
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Region module is clean (all admit/external_body are in other modules). Let me check the TCB file and the ast-consistency/spec-drift tooling.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== tcb-allowed.md ===" ; cat verus-ai-logs/tcb-allowed.md 2>/dev/nul
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai 2>/dev/null; echo "---skills---"; find /home/ruize/verus-ai-exp -iname "SKILL.md" 2
+
+[THINKING] The cheating-detail.txt file confirms that the region module is clean—none of the problematic entries are located there, with all the admit/external_body references living in other modules instead. Now I'm looking for the ast-consistency and spec-drift skills, checking both the GitHub skills directory and the VERUS_AI_DIR to locate their tooling and commands in tcb-allowed.md.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+---skills---
+/home/ru...
+[RESULT ✓] bash: === tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` single...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me read the ast-consistency and spec-drift-check skills to run them.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+
+[THINKING] The TCB allowed file confirms there are no region functions to list since the region has no external body, so I can move forward with running the ast-consistency and spec-drift-check skills.
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me locate the AST/spec-drift scripts and pipeline state, then run them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find /home/ruize/verus-ai-exp/verus-ai/scripts -name "ast_consistency.py" -
+
+[THINKING] I need to locate the AST consistency and spec drift tools in the verus-ai scripts directory, then check the pipeline state and base reference to run them.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+---pipeline state---
+./verus-ai-logs/nanvix-phys-hal-memory-region/pipeline_state.json
+---git branch---
+verus-ai-prove-bottom-up
+bae537532 [verus] verify PASS (cheating detected): ker...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-hal-memory-region/pipeline_state.json 2>/dev/
+[RESULT ✓] bash: {
+    "module_name": "hal-memory-region",
+    "log_name": "nanvix-phys-hal-memory-region",
+    "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/region.rs",
+    "current_phase": "cheating-elimination",
+    "current_phase_idx": 4,
+    "completed_phases": [
+        "p...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Now let me run the AST consistency and spec-drift checks.
+[TOOL] report_intent: Running AST and spec-drift checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== AST consistency (vs phase start a3ff01f) ===" ; python3 /home/rui
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec drift check ===" ; python3 /home/ruize/verus-ai-exp/verus-ai
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === AST consistency (vs phase start a3ff01f) ===
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+MemoryRegion::cache_policy               MATCH                                
+MemoryRegion::...
+[RESULT ✓] bash: === spec drift check ===
+Module:   hal-memory-region
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/region.rs
+Baseline: a3ff01f85366
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+All automated checks pass. Let me confirm the build produces 0 warnings and verify the cfg-gate detail isn't in the region module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cfg_gate detail (region?) ===" ; grep -i "cfg" verus-ai-logs/veri
+
+[THINKING] The AST consistency checks are passing with all 28 entries matched and no drift detected. I've confirmed that the cfg_gate references are global and not in the region module, with only the two allowed `#[cfg(verus_keep_ghost)]` import directives showing up in my earlier search. Now I'm moving on to verify the cross-module regression tests.
+[RESULT ✓] bash: === cfg_gate detail (region?) ===
+(empty above = region not flagged for cfg)
+=== build skill cmd ===
+./z build -- all
+./z build -- kernel
+./z build -- all-nanvixd
+./z build -- all-uservm
+./z build -- all RELEASE=yes LOG_LEVEL=error
+./z build -- all
+./z build -- all RELEASE=yes LOG_LEVEL=panic
+./z bu...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Building kernel to check warnings
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build -- kernel 2>&1 | tail -30
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build -- 2>&1 | head -30; echo "---makefile targets---"; grep -E "^[a-z
+
+[THINKING] I'm trying to figure out the correct build target since `./z build -- kernel` didn't work. Let me explore what targets are actually available instead of guessing between `all` and `kernel`.
+[RESULT ✓] bash: [INFO]  Build parameters: 
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/bin
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/lib
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/logs
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All checks pass. The kernel compiled cleanly with no warnings. Every checklist item is verified PASS. Let me write the review and STOP file.
+[TOOL] report_intent: Writing review and STOP file
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogu
+
+[THINKING] The kernel compiled successfully without any warnings or errors. I'm going through the verification checklist and most items are passing—no admit statements, no assume statements, no trusted functions, and no exec_allows_no_decreases_clause issues detected. Still checking the remaining items on the list.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/STOP with 9 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/turn_001_driver.md with 3121 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Review complete — **all checklist items PASS**. Verdict: **RESOLVED**.
+
+Evidence summary for `hal::mem::types::region`:
+- `make verify-kernel` → exit 0; all flagged cheating patterns (admit=27, external_body=11, cfg=14) are in **other** modules (`mm/phys`, `mm/virt`, `libs/arch`), confirmed via `cheating-detail.txt`.
+- Grep over `region.rs`/`region.spec.rs`/`region.proof.rs`: zero admit, assume, external_body, trusted, no_decreases. Only cfg uses are the `verus_keep_ghost` spec/proof `include!` imports.
+- AST consistency: `✅ YES (matched=28 mismatched=0)` vs phase-start `a3ff01f` — no exec rewrites.
+- Spec drift: exit 0, 0 contract changes.
+- Cross-module regression: verify-kernel exit 0 (all modules).
+- Build: `kernel v0.16.17` compiled, 0 errors / 0 warnings.
+
+Wrote `turn_001_driver.md` and `STOP` (`RESOLVED`).
+
+
+=== Session End ===
+Session: e7409643-cbcf-4fbb-a581-c75740c1e233
+Duration: 115.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue-reviewer-t001-claude-20260615-063123.jsonl
