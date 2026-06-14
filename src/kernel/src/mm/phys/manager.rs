@@ -95,6 +95,7 @@ impl PhysMemoryManager {
     // the contract therefore states the caller-relevant guarantee: the global
     // frame allocator stays initialized and well-formed across this call.
     #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             phys_view().initialized,
@@ -173,6 +174,7 @@ impl PhysMemoryManager {
     // stated over `phys_view()` and `frames@`: on success exactly `count` frames
     // are handed out (each now allocated); on error the vector is emptied
     // (all-or-nothing). Frames are not claimed contiguous.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             phys_view().initialized,
@@ -244,6 +246,7 @@ impl PhysMemoryManager {
     // Trusted shim: applies the watermark gate then delegates to the global
     // `Upool::alloc`. On success the returned frame's physical address is now in
     // the allocator's `allocated_frames` and is page-aligned.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             phys_view().initialized,
@@ -286,6 +289,7 @@ impl PhysMemoryManager {
     // captures the watermark policy: at least `KERNEL_WATERMARK` frames remain free
     // after servicing `count`. `Err` covers both the overflow guard and a breach.
     #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             phys_view().initialized,
@@ -329,6 +333,7 @@ impl PhysMemoryManager {
     // Trusted shim: allocates one frame from the global allocator (bypassing the
     // watermark) and wraps it, freeing the raw frame if wrapping fails. On success
     // the returned frame's base address is now allocated and page-aligned.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             phys_view().initialized,
@@ -380,6 +385,7 @@ impl PhysMemoryManager {
     // editing exec code. On success exactly `count` frames are handed out, each now
     // allocated, and their base addresses form an ascending page-stride run
     // (contiguity is load-bearing for kernel stacks). On error the vector is emptied.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             phys_view().initialized,

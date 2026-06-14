@@ -253,3 +253,187 @@ Let me run a baseline verification to understand current state.
 [THINKING] I'm noticing that the manager.rs functions currently use `#[verus_spec]` attributes for verification, but tcb-allowed.md lists them as candidates for external_body. Since they're explicitly listed as allowed, I could add external_body if the function bodies can't be verified through normal means, though I need to think through whether that's actually necessary for proving the specifications.
 
 Let me run the baseline verification to see what the current state is and whether these functions are already being handled correctly.
+[RESULT ✓] bash: ⚠️  external_body: 16
+    ⚠️  admit: 2
+    ⚠️  cfg-gated exec code: 4
+  Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me look at the full log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -nE "error\[|erro
+
+[THINKING] I need to check the full compilation log to see what went wrong with the verus setup.
+[RESULT ✓] bash: 20:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2312 ~ kernel[5062]::mm::phys::manager::PHYS_MEMORY_MANAGER))
+26:error: Unsupported constant type
+46:error: Unsupported constant type
+66:error: Unsupporte...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '15,110p'
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2312 ~ kernel[5062]::mm::phys::manager::PHY...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+These functions hit true Verus limitations (`static mut`, `error!`/`warn!` macro "Unsupported constant type"). The TCB list explicitly authorizes `external_body` for all 6. Let me check how the existing `frame.rs` shims apply `external_body` with attribute-style.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '125,145p' src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "external_body\|verus_verify\|verus_spec" src/kernel/src/mm/phys/frame.rs | head
+
+[THINKING] The manager.rs functions can't be body-verified because `PHYS_MEMORY_MANAGER` is a static mutable variable that Verus doesn't support, and the error and warning macros generate unsupported constant types—both issues are already documented in the TCB.
+
+The intended approach is to mark these functions as `external_body` since they're explicitly allowed in the TCB list, keep their `#[verus_spec]` contracts, and prove the two lemmas in manager.proof.rs instead. So these functions form a trust boundary. I'm checking whether `alloc_user_frame` might actually be body-verifiable since it doesn't use static mut or macros directly—it just calls `check_user_watermark` and `upool.alloc`—but it depends on whether those dependencies can be verified. The real constraint is that the functions with macros and static mut genuinely can't be body-verified due to Verus limitations, so the design calls for marking all six as `external_body`.
+
+Now I need to figure out the correct syntax for marking these as `external_body` when using the attribute-style `#[verus_spec]` approach, so I'm looking at how frame.rs handles this pattern.
+[RESULT ✓] bash: &&& final(self)@ == FrameAllocView {
+                        allocated_frames: old(self)@.allocated_frames.insert(frame@),
+                        free_frames: old(self)@.free_frames.remove(frame@),
+                        refcounts: old(self)@.refcounts.insert(frame@, 1int),
+                    }
+ ...
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+254:    #[verus_verify(external_body)]
+255:    #[verus_spec(result =>
+339:    #[verus_verify(external_body)]
+340:    #[ve...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The functions hit genuine Verus limitations and are all authorized for `external_body` in the TCB list. This matches the sibling `frame.rs` shims. Let me record the design decision and apply the `external_body` marker, then prove the two abstract lemmas. First let me verify the vstd lemma names I'll need.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd 2>/dev/null && grep -rn "pub proof fn lemma_mul_is_zero\|pub broadcast proof f
+
+[THINKING] I see the pattern now—the frame.rs shims use `#[verus_verify(external_body)]` before `#[verus_spec(...)]`, and the manager.rs functions need the same decorator since they hit actual Verus limitations like static mut and the error! macro. My plan is to add this attribute to all six manager.rs functions, which are already authorized in tcb-allowed.md.
+
+Now I'm checking whether each function truly needs external_body: `init` has static mut, `alloc_many_user_frames` and `check_user_watermark` use error!, `alloc_kernel_frame` uses warn!, and `alloc_many_kernel_frames` uses both. The `alloc_user_frame` function has no blocking constructs itself, but its callees are external_body, and the design treats it consistently as external_body too. However, I need to reconsider the actual task—it's asking me to complete all proofs and eliminate every admit() placeholder, and the instruction says not to add external_body unless necessary.
+
+Let me think through whether I can body-verify `alloc_user_frame` instead. The contract requires proving that after calling `check_user_watermark(1)` and then `upool.alloc()`, the post-state satisfies the ensures clause. The key is whether the specs of those two callees compose correctly to establish the final watermark condition—specifically, whether the frame count after allocation still satisfies the watermark invariant.
+
+But here's the fundamental issue: `upool.alloc()` mutates the global `phys_view()`, and the verification framework has no `old(phys_view())` form to express the relationship between pre- and post-state free frames. This is exactly why these are designed as trusted shims—the global mutation cannot be witnessed within the body verification framework. So all six functions must be marked `external_body`, which is explicitly authorized by `tcb-allowed.md`.
+
+This keeps the contracts unchanged and matches the design intent perfectly. Now I need to focus on proving the two lemmas that currently have `admit()` placeholders.
+
+For the first lemma, I'm checking that if the watermark condition holds for some count ≥ 1, it also holds for count = 1. The arithmetic is straightforward: if `free_frames.len() >= watermark + count` and `count >= 1`, then `free_frames.len() >= watermark + 1`. Z3 should handle this directly.
+
+For the second lemma, I need to show that a contiguous run produces distinct addresses. If `addrs[i] == base + i * page_size` and `addrs[j] == base + j * page_size` with `i != j`, then the difference is `(i - j) * page_size`, which is nonzero when `page_size > 0`. This requires nonlinear arithmetic reasoning to complete.
+
+I'm working through how to structure the proof to help Z3 derive that `i == j` from `i * page_size == j * page_size` when `page_size > 0`. The key is using the lemma that `x * y == 0` if and only if `x == 0` or `y == 0`, applied to `(i - j) * page_size == 0`.
+[RESULT ✓] bash: 290:pub broadcast proof fn lemma_mul_is_distributive_sub(x: int, y: int, z: int)
+301:pub broadcast proof fn lemma_mul_is_distributive_sub_other_way(x: int, y: int, z: int)
+305:    lemma_mul_is_distributive_sub(x, y, z);
+314:    lemma_mul_is_distributive_sub,
+315:    lemma_mul_is_distributive_sub_oth...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -n "lemma_mul_nonzero\|fn lemma_mul_unequal\|is_zero\|lemma_mul_strict
+[RESULT ✓] bash: 102:pub broadcast proof fn lemma_mul_nonzero(x: int, y: int)
+106:    MulINL::lemma_mul_nonzero(x, y);
+110:pub broadcast proof fn lemma_mul_by_zero_is_zero(x: int)
+175:pub broadcast proof fn lemma_mul_strict_inequality(x: int, y: int, z: int)
+182:    MulINL::lemma_mul_strict_inequality(x, y, z);
+422:...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && sed -n '100,110p' arithmetic/mul.rs
+[RESULT ✓] bash: /// Proof that `x * y` is nonzero if and only if both `x` and `y` are nonzero.
+pub broadcast proof fn lemma_mul_nonzero(x: int, y: int)
+    ensures
+        #[trigger] (x * y) != 0 <==> x != 0 && y != 0,
+{
+    MulINL::lemma_mul_nonzero(x, y);
+}
+
+/// Proof that any integer multiplied by 0 results in a...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Let me confirm the commutativity lemma exists and check the bug-reporting skill format.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -n "fn lemma_mul_is_commutative\b\|fn lemma_mul_is_distributive_sub\b"
+[TOOL] bash: sed -n '1,80p' /home/ruize/verus-ai-improve/docs/skills/bug-reporting/SKILL.md 2>/dev/null
+
+[THINKING] I'm working through two key lemmas: one establishing that a product is nonzero if and only if both factors are nonzero, and another showing that multiplication distributes over subtraction. For the second part, I'm proving that if two addresses at different indices are equal, then their index difference times the page size must equal zero, which I'm deriving using the distributive property.
+
+Now I'm writing the formal proof in Verus, setting up the lemma that shows all addresses in a contiguous run are distinct by asserting that for any two different indices within bounds, their addresses must differ.
+
+Writing the proof structure... I'm working through the contradiction: if `i*ps == j*ps` but `i != j` and `ps > 0`, then multiplying out gives `ps*(i-j) == 0`, which contradicts the fact that both factors are nonzero. I could either chain together commutativity lemmas to convert between `i*ps` and `ps*i`, or rely on Verus's `nonlinear_arith` tactic to handle the multiplication reasoning directly—that's probably cleaner than manually invoking each lemma. I'm reconsidering whether nonlinear arithmetic will reliably prove that distinct integers multiplied by a positive page size give different results — it might time out or fail unpredictably. Instead, I'll use a more robust approach with multiplication lemmas from the standard library to avoid flakiness, leveraging distributive properties to show that if the addresses were equal, we'd have a contradiction.
+
+Writing proof with mul lemmas... Completing the watermark lemma proof...
+
+The `spec_watermark_ok` condition requires the free frames length to be at least the kernel watermark plus a count value. Since count is at least 1, the watermark plus count is at least watermark plus 1, and by transitivity with the length constraint, the property holds for count equals 1. The type mismatch between `len()` returning a nat and the int comparison is fine. The empty proof body should work since this is just linear arithmetic that Z3 can handle automatically.
+
+These lemmas are abstract laws that won't be directly called since the manager functions use external_body, but proving them eliminates the admits. Now I need to apply the external_body markers to the six manager functions and verify that `lemma_mul_is_commutative` exists in the library.
+[RESULT ✓] bash: 134:pub broadcast proof fn lemma_mul_is_commutative(x: int, y: int)
+290:pub broadcast proof fn lemma_mul_is_distributive_sub(x: int, y: int, z: int)
+<shellId: 17 completed with exit code 0>
+[RESULT ✓] bash: ---
+name: bug-reporting
+description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+---
+
+# Bug Reporting
+
+Finding real code bugs is a high-value outcome ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+No code bugs — these are documented true Verus limitations. Now I'll apply the `external_body` trust-boundary marker to the 6 manager functions (authorized in TCB), matching the `frame.rs` sibling shims, and keep all contracts unchanged.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I've confirmed these are genuine Verus limitations rather than bugs, so now I'm ready to make the updates. I need to add the `#[verus_verify(external_body)]` attribute to those six manager functions, and I'm checking how to properly combine it with the existing `#[verus_spec(...)]` annotations—I can see from frame.rs that the external_body attribute goes first. I need to find a unique anchor point for each edit so I can insert the `#[verus_verify(external_body)]` marker before each `#[verus_spec(result =>` block. Since the function signatures are unique, I'll use those as anchors to match the full context around each attribute block and insert the marker in the right place. I need to place the `#[verus_verify(external_body)]` attribute right after the `cfg_attr` line and before `verus_spec` for all six functions. Since the opening `#[verus_spec(result =>` is identical across all of them, I'll need to match the full attribute block down to each function's unique name to disambiguate, then insert the marker at the top of the attribute stack.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now let me prove the two lemmas in the proof file.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45

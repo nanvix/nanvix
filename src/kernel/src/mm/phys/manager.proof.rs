@@ -21,7 +21,6 @@ pub proof fn lemma_watermark_monotone(v: FrameAllocView, count: int)
     ensures
         spec_watermark_ok(v, 1),
 {
-    admit();
 }
 
 /// A contiguous run with a positive page stride has pairwise-distinct addresses:
@@ -38,7 +37,24 @@ pub proof fn lemma_contiguous_run_distinct(addrs: Seq<int>, base: int)
         forall|i: int, j: int|
             0 <= i < addrs.len() && 0 <= j < addrs.len() && i != j ==> addrs[i] != addrs[j],
 {
-    admit();
+    let ps = spec_page_size();
+    assert forall|i: int, j: int|
+        0 <= i < addrs.len() && 0 <= j < addrs.len() && i != j implies addrs[i]
+        != addrs[j] by {
+        assert(addrs[i] == base + i * ps);
+        assert(addrs[j] == base + j * ps);
+        if addrs[i] == addrs[j] {
+            // From the equal addresses: i * ps == j * ps.
+            vstd::arithmetic::mul::lemma_mul_is_commutative(i, ps);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(j, ps);
+            // ps * (i - j) == ps * i - ps * j == 0.
+            vstd::arithmetic::mul::lemma_mul_is_distributive_sub(ps, i, j);
+            assert(ps * (i - j) == 0);
+            // A nonzero stride times a nonzero difference cannot be zero.
+            vstd::arithmetic::mul::lemma_mul_nonzero(ps, i - j);
+            assert(false);
+        }
+    }
 }
 
 } // verus!
