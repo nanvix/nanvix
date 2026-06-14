@@ -510,3 +510,112 @@ The result was cached. Let me force a fresh verification to see the real output.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/address/aligned/page.rs && export VERUS_
 
 [THINKING] The cached result is masking the actual verification output, so I need to force a fresh rebuild by touching the source file and re-running the verify script to see the real results—how many functions were actually verified and whether there are any errors.
+[RESULT ✓] bash: verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+  2 verified
+  0 errors
+  Exit code : 0
+  Unverified functions:
+  verification: 2 verified, 0 errors (exit 0)
+---tail full output---
+  trusted=0
+  no_decreases=0
+  cfg_gate=14
+
+--- Full output ---
+    Checking kerne...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "admit\|assume\|external_body\|external(" src/kernel/src/hal/mem/t
+
+[THINKING] The verification passed with 2 functions confirmed — `from_address` and `into_raw_value` — where the latter gets verified through its trait implementation. The View and inv are specification-only functions, and the PageAligned struct itself has no executable functions, so the verification target is just the reference to PageAligned.
+
+Let me verify there are no `admit()` or `assume()` calls lurking in the page module files, since it looks like the verification is already complete with zero errors.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:7:pub assume_specification[ ::arch::mem::PAGE_ALIGNMENT ] -> (result: Alignment)
+exit: 0
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===tcb-allowed==="; grep -in "page_alignment\|PAGE_ALIGNMENT\|page_si
+
+[THINKING] I'm noticing there's an `assume_specification` applied to `::arch::mem::PAGE_ALIGNMENT`, which is an external constant from the arch crate. I need to verify whether this is allowed according to the TCB rules—`assume_specification` should only be used on functions in the allowed list. Let me check the tcb-allowed.md file to see if this constant is permitted and whether it has a proper verified specification, since the comments in the code seem to indicate it's an external arch-crate constant.
+[RESULT ✓] bash: ===tcb-allowed===
+64:  `pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);` (no
+138:  - `::arch::mem::paging::FrameNumber` — `external_type_specification` (`ExFrameNumber`).
+139:  - `::arch::mem::FRAME_SIZE` — `ensures result == spec_page_size()`.
+140:  - `::arch::mem::paging::Fr...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The module verifies (2 verified, 0 errors) but uses `assume_specification[PAGE_ALIGNMENT]`, which isn't in the TCB list. Let me investigate whether this can be eliminated by resolving the constant directly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] PAGE_ALIGNMENT is defined as a constant with a value of 4096, but the assume_specification is treating it as if it were a parameterless function. Looking at the TCB allowed list, I see FRAME_SIZE, FrameNumber, and invlpg are included, but PAGE_ALIGNMENT isn't there, so using it in assume_specification would violate the allowed list constraints.
+
+However, since PAGE_ALIGNMENT is a concrete constant that Verus can evaluate directly, I should be able to prove the equality without needing assume_specification — both spec_align_value(PAGE_ALIGNMENT) and spec_page_size() should resolve to 4096. The real question is whether Verus can resolve the constant across crate boundaries, which depends on whether the arch crate's constant definition is properly annotated with #[verus_verify]. I'm realizing the core issue: PAGE_ALIGNMENT has an assume_specification but isn't in the TCB allowlist, which violates the constraints. Looking at how FRAME_SIZE was handled—it's in the TCB list and likely has a proper verified spec—I should check whether PAGE_ALIGNMENT can be resolved directly by Verus if the arch constants module is properly annotated for verification, or if I need to follow the same pattern FRAME_SIZE uses.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use sys...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] view: 105. pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+106. 
+107. ///
+108. /// # Description
+109. ///
+110. /// Alias for `PAGE_SIZE`.
+111. ///
+112. #[verus_verify]
+113. pub const FRAME_SIZE: usize = PAGE_SIZE;
+114. 
+115. ///
+116. /// # Description
+117. ///
+118. /// Alignment for a page.
+119. ///
+120. pub c...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+`PAGE_SIZE`/`FRAME_SIZE` use `#[verus_verify]` (Verus resolves their concrete value), but `PAGE_ALIGNMENT` does not — so it was modeled via `assume_specification`, an unlisted trust boundary. Since `PAGE_ALIGNMENT` is a concrete constant (`Align4096`), I can eliminate the trust boundary by making it Verus-visible. Let me test this.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp src/libs/arch/src/x86/mem/constants.rs /tmp/constants.bak && cp src/kern
+
+[THINKING] I'm noticing that `PAGE_SIZE` and `FRAME_SIZE` are marked with `#[verus_verify]`, but `PAGE_ALIGNMENT` isn't. Looking at how `FRAME_SIZE` works—it has the verification attribute and there's a TCB entry that specifies it ensures the result equals `spec_page_size()`. I'm trying to figure out how that specification guarantee is actually provided, whether through an `assume_specification` for `FRAME_SIZE` or some other mechanism.
+
+Actually, I think I see it now: when a const has `#[verus_verify]` and a concrete value like `4096`, Verus just knows the value directly and inlines it. So `FRAME_SIZE as int == 4096 == PAGE_SIZE as int == spec_page_size()` without needing an explicit assumption. The TCB entry might be describing where it's used rather than how it's verified.
+
+If I added `#[verus_verify]` to `PAGE_ALIGNMENT` in the arch crate, Verus would see it as `Alignment::Align4096` directly, and then `spec_align_value(PAGE_ALIGNMENT)` would equal `4096`, matching `spec_page_size()`. But I'm wondering if modifying an arch constant is even in scope for this task—the instructions say not to touch unlisted functions, and the target functions are in page.rs. Let me reconsider whether the `assume_specification` is actually something I need to fix or if it's acceptable as-is.
+
+The task's completion criteria are specifically about `admit()` and `assume()` statement-level calls, plus no `external_body` on unlisted functions. The `assume_specification` is a different construct and isn't counted by the cheating checker. So technically the module already passes. But the verus-constraints skill says `assume_specification` should only appear on TCB-listed functions, and `PAGE_ALIGNMENT` isn't listed. Since this assumption was already present before I started, the real question is whether eliminating it falls under my proving task. Given the principle about not introducing new trust boundaries, the cleanest approach would be to add `#[verus_verify]` to `PAGE_ALIGNMENT` in arch to make it Verus-visible, matching how other constants are handled. I'm convinced that adding `#[verus_verify]` to PAGE_ALIGNMENT in the arch crate is the right move—it's consistent with how PAGE_SIZE and FRAME_SIZE are already handled, and it eliminates the trust boundary without expanding scope. The key question is whether Verus can automatically prove the alignment equivalence once the constant is visible, which it should since both sides reduce to 4096. Let me test this cleaner approach by making the change and re-verifying.
+[RESULT ✓] bash: 
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=

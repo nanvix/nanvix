@@ -117,6 +117,7 @@ pub const FRAME_SIZE: usize = PAGE_SIZE;
 ///
 /// Alignment for a page.
 ///
+#[verus_verify]
 pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 
 ///
