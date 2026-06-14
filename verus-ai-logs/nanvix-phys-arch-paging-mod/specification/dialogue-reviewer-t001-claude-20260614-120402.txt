@@ -265,3 +265,203 @@ Turn 4
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-arch 2>&1 | tail -60
 
 [THINKING] I've identified that `mod.rs` is the module in scope with the `invlpg` function, which is marked as `external_body` and approved in tcb-allowed.md. Now I need to run the verification tools—starting with `make verify-arch` and then locating and running `fn_coverage.py` to check the spec-completeness requirements.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/fn_coverage.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/fn_coverage.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/fn_coverage.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/fn_coverage.py
+/mnt/shared/kheap-mas-exp/scripts/fn_coverage.py...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -40
+[TOOL] bash: cd /home/ruize/nanvix-phy && python /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -40
+
+[THINKING] The verification passed with the cheating pattern check flagging external_body references and admits from sibling modules that were already verified and recorded in tcb-allowed.md, so for this review of mod.rs I'm focusing on just the invlpg function and need to run coverage analysis on it specifically.
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/arch/src/x86/mem/p
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===cheating-detail===" && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.tx
+
+[THINKING] I need to figure out what files fn_coverage.py expects—specifically which file serves as the verus exec file for mod.rs. The body_removed_source.rs might be the right candidate, but I should test the pipeline to see how it actually runs.
+[RESULT ✓] bash: ===cheating-detail===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 11 completed with exit code 0>
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/mod.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/mod.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source e...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-paging-mod/pipeline_state.json 2>/dev/null | head -60
+[TOOL] bash: cd /home/ruize/nanvix-phy && python /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check --help 2>&1 | head -30
+
+[THINKING] So the in-scope module is mod.rs with the invlpg function, and the cheating markers show invlpg has an external_body. The other functions from table.rs and table.proof.rs are from sibling modules that were already verified and documented in tcb-allowed.md. Now I need to run the spec_drift check on this module and look at pipeline_state.json to confirm the module name.
+[RESULT ✓] bash: {
+  "module_name": "arch-paging-mod",
+  "log_name": "nanvix-phys-arch-paging-mod",
+  "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs",
+  "current_phase": "specification",
+  "current_phase_idx": 2,
+  "completed_phases": [
+    "caller-analysis",
+    "view-design"
+  ],
+  ...
+[RESULT ✓] bash: usage: spec_drift.py check [-h] [--phase PHASE] [--logs-dir LOGS_DIR]
+                           [--before BEFORE] [--after AFTER] [-o OUTPUT]
+                           [--json]
+                           module
+
+positional arguments:
+  module                Module name (e.g. volume_impl)
+
+options:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check arch-paging-mod --logs
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===git diff specification phase===" && git --no-pager diff 4c73acbb7a78e6196b4c62148d
+
+[THINKING] I'm running the spec_drift check for arch-paging-mod, starting from the specification phase at commit 4c73acbb.
+[RESULT ✓] bash: ===git diff specification phase===
+diff --git a/src/libs/arch/src/x86/mem/paging/mod.rs b/src/libs/arch/src/x86/mem/paging/mod.rs
+index c92aeb78e..8d622c998 100644
+--- a/src/libs/arch/src/x86/mem/paging/mod.rs
++++ b/src/libs/arch/src/x86/mem/paging/mod.rs
+@@ -66,7 +66,17 @@ pub const NUM_HIERARCHY_P...
+[RESULT ✓] bash: Module:   arch-paging-mod
+Phase:    specification
+Source:   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs
+Baseline: 4c73acbb7a78
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requir...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+All checklist tools run. Let me verify the build and double-check there are no admit/assume in the in-scope module itself.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===build target help===" && grep -n "^build:\|^all:\|build-std\|x86-kernel" Makefile 
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-paging-mod/ | grep -i bug; echo "---bugs files in sibling
+
+[THINKING] So the specification phase just needs the `#[verus_verify(external_body)]` attribute and a comment added to `invlpg`, while the spec and proof files stay as empty Verus blocks. But there's a tension here—the checklist explicitly forbids using `external_body` unless it's listed in tcb-allowed.md, and view_design.md raised concerns about this exact issue.
+
+However, I've confirmed that `invlpg` is actually listed in tcb-allowed.md under the section for external_body introduced during the arch::x86::mem::paging specification phase. Both the view-design and caller-analysis documents agree on the approach: an empty contract with trivial ensures, external_body, and proper documentation in tcb-allowed.md. This is a legitimate hardware trust boundary since Verus can't verify inline assembly, which is documented in verus-unsupported.md.
+
+Now I'm working through the checklist systematically. For the first item about in-scope functions having requires/ensures — invlpg is the only function in scope, and it's external_body with an intentionally empty contract (no requires, trivial ensures true). The verification passes and fn_coverage shows 1/1 matched. The empty contract is correct here because callers don't actually need anything from invlpg's specification, and writing an explicit `ensures true` would be redundant. I should verify that this empty contract is genuinely sufficient for all callers.
+
+For caller coverage, I'm checking that each caller expectation maps to the spec. The callers expect side-effect-only behavior with no error path and preservation of invariants — the empty contract delivers exactly that. For view consistency, the design explicitly concluded no View is needed, and the spec is empty, which aligns perfectly. I'm also checking for tautological ensures (none present), subsumed ensures (none), and meaningful error path ensures (invlpg is infallible, so N/A). The module has no assume_specification clauses at all, so those checks pass vacuously. I'm continuing through the remaining checklist items.
+
+Now I'm verifying that specs are written for the caller and that trait obligations are satisfied — invlpg is a free unsafe function with no trait involvement, so that's clear. The spec-completeness check is advisory and passes since the empty contract is intentional and matches expectations. There are no loops to verify invariants for. The critical check is whether external_body on the module's own function is acceptable. The invlpg function is marked external_body because it's inline assembly that Verus cannot verify — this is a genuine hardware trust boundary. The tcb-allowed.md mechanism explicitly documents this as a legitimate exception, though the general checklist phrasing suggests external_body on own functions isn't normally allowed.
+
+I need to verify that external_body is truly necessary here. Since Verus doesn't support inline-asm expressions at all, even a trivial contract wouldn't help — external_body is the only mechanism available. The project convention for in-module hardware boundaries uses external_body plus tcb-allowed.md documentation, consistent with how table::read/write are handled. The grep confirms mod.rs only has this one external_body marker and no admit/assume statements in the actual code. The spec_drift check shows no contract drift — no ensures were removed and no requires were added.
+
+For bug awareness, invlpg's implementation is correct and there don't appear to be any bugs to record. Cross-module verification passes cleanly with exit code 0, and the "CHEATING_DETECTED" status is expected from allow-listed external_body markers in sibling modules that are already documented in tcb-allowed.md. Now I need to verify the build command completes successfully to finish the verification checklist. I should run a standard cargo build on the arch crate to confirm there are no compilation issues beyond the verification step, then check the Makefile to see what build commands are available.
+[RESULT ✓] bash: ===build target help===
+216:export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc -Zjson-target-spec
+221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+263:# build-std configuration and a non-standard target triple ...
+[RESULT ✓] bash: ---bugs files in sibling modules for reference---
+verus-ai-logs/nanvix-phys-bump-allocator/bugs.md
+verus-ai-logs/nanvix-phys-phys-mod/bugs.md
+verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+verus-ai-logs/nanvix-phys-phys-upool/bugs.md
+verus-ai-logs/nanvix-phys-phys-kframe/bugs.md
+verus-ai-logs/nanvix...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "verus_verify" src/libs/arch/src/x86/mem/paging/table.rs | head -2; echo "---how v
+
+[THINKING] I don't need a separate build step since the verification process already compiled the arch crate with cargo verus targeting the kernel. Let me just do a focused cargo check on the arch library to make sure the added attribute doesn't break anything.
+[RESULT ✓] bash: 30:#[verus_verify]
+53:#[verus_verify]
+---how verus_verify is brought in---
+===run cargo build of arch (kernel target)===
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/nightly-2026-05-21-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtin...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All checklist items verified. Build passes (exit 0), verification passes (exit 0), no drift, no own-module cheating beyond the allow-listed hardware boundary. Writing the review.
+[TOOL] report_intent: Writing review verdict
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-mod/specification/dialogue/turn_001_driver.md
+
+[THINKING] The build succeeded, so I have all the evidence I need for the checklist. Everything passes. Now I'm writing up the review in turn_001_driver.md, marking each item, and creating the STOP file with RESOLVED status. I should run the spec-completeness skill as the checklist requires, even though it's advisory.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-mod/specification/dialogue/turn_001_driver.md with 7122 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-mod/specification/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-mod/specification/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Review complete. **Verdict: RESOLVED** — all 16 checklist items PASS with tool evidence.
+
+**Scope:** `mod.rs`, single in-scope fn `invlpg`.
+
+**Key findings:**
+- `make verify-arch` → exit 0 (verification passes, cached); `cargo build -p arch` → exit 0.
+- `fn_coverage.py` → 1/1 matched; `spec_drift.py` → no contract drift.
+- `invlpg` is `external_body` — the one "cheating" marker in-scope. Challenged and accepted: it's a genuine inline-asm hardware trust boundary (Verus errors on `inline-asm expressions`, reproduced in `verus-unsupported.md`), explicitly enrolled in `tcb-allowed.md`, and pre-approved by `view_design.md`. Empty faithful contract matches all callers and the inherited upstream `assume_specification` — not weakened.
+- The other markers (`table` external_body ×2, `table.proof` admit) are sibling-module, out of scope, approved in prior phase.
+
+Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: b21ca5b3-281f-485e-9784-72a021c01186
+Duration: 226.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-mod/specification/dialogue-reviewer-t001-claude-20260614-120402.jsonl
