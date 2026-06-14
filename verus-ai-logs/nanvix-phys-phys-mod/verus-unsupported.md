@@ -51,3 +51,20 @@ Remove the `external_body` markers on `book_physical_memory_regions` /
 `book_mmio_regions` once either:
 - `vstd` gains `LinkedList` ghost-iterator support, or
 - the regions are passed as a slice/`Vec` (which `vstd` already supports).
+
+## Update (turn 1 fix): boundary contracts now stated over `phys_view()`
+
+The global subsystem state is now named by an uninterpreted `spec fn phys_view()
+-> PhysMemView` (mod.spec.rs). The `frame::*` free-function wrappers
+(`init`/`is_covered`/`book`/`alloc_range`) and the two `book_*` helpers carry
+`#[verus_spec]` contracts over it, and `init` is genuinely verified with a real
+postcondition (`phys_view().inv()`; on `Ok`: `initialized` and
+`allocated_frames` disjoint from `free_frames`).
+
+Because the precise *which-frames* set booked by each `book_*` helper is the
+contents of the un-viewable `LinkedList`, the helper boundary contracts express
+the LinkedList-content-independent guarantee (invariant preserved + allocator
+stays initialized). The exact frame-set transition is captured and **proven**
+(no `admit`) at the abstract level by the `PhysMemView` lemmas in mod.proof.rs
+(`lemma_spec_book_frames_preserves_inv`, `lemma_book_region_reserves_region_frames`,
+`lemma_book_mmio_*`, `lemma_init_establishes_and_reserves`).
