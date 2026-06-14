@@ -124,3 +124,4 @@ See turn_001_driver.md for the per-item walkthrough.
 PHASE: proving
 Module: phys-kframe
 ============================================================
+[2026-06-15 06:28:09] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
