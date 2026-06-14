@@ -1,0 +1,503 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T04:45:11.340948
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are proving the specifications for /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs using Verus.
+Do NOT weaken contracts (requires/ensures/invariants) to make proofs easier.
+If a proof fails, distinguish:
+- **Proof gap**: strengthen the proof (add lemmas, invariants, assertions)
+- **Code bug**: the code is wrong — if it's an auto-fixable bug (overflow, off-by-one, missing bounds check, unchecked cast), fix it directly following the **bug-reporting** skill's auto-fix procedure and record in /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/bugs.md. For complex bugs, record only (do not fix).
+Your job is to complete all proofs — fill proof bodies, write loop invariants,
+add lemmas, and eliminate every `admit()` placeholder.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
+
+
+Source file: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+Spec file:  /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow these skills strictly:
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **verification-order** — MUST follow: verify functions in dependency order
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **spec-drift-check** — reference when checking for spec weakening
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any proofs, read all functions in the module
+and create a verification plan: list each function that needs proving,
+its dependencies, and the order to verify them (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy-specs/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy-specs/verus-ai-logs/verification-plan.json
+```
+
+**Proving**: Follow your plan. For each function, write the proof body,
+remove any `admit()` and `external_body`, and run `make verify-kernel` to confirm.
+
+Prove all specifications: fill proof bodies, write loop invariants, add
+intermediate assertions and lemmas, until `make verify-kernel` passes with 0 errors
+and 0 remaining `admit()` calls and 0 `assume()`.
+
+Critical rules:
+- Do NOT add `external_body` to any function (see verus-constraints).
+- Do NOT weaken specs to make a proof easier.
+  Weakening means: adding `requires` (restricts callers), or removing/loosening `ensures` (loses guarantees).
+  If verification fails, follow the proof gap / code bug classification above.
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Specs must be strong enough for upstream callers to verify against.
+If a spec is hard to prove, strengthen the proof strategy — do NOT weaken the spec.
+Weakened specs will be automatically detected by spec drift analysis and rejected.
+
+After all functions verify, run `make verify` to confirm no regressions
+in other modules.
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills, the verification plan, and the source files.
+[TOOL] report_intent: Reading skills and source files
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/ 2>/dev/null && echo "---PLAN---" && python3 /home/ruize/verus-ai-ex
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm starting by reviewing the project structure and examining the relevant files to understand the skills and verification plan.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (35.0 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: arch-frame-number
+arch-paging-mod
+arch-paging-table
+arch-x86-pde
+arch-x86-pte
+bump-allocator
+hal-frame-address
+hal-memory-region
+hal-page-aligned
+hal-phys-address
+hal-platform-microvm
+nanvix-phys-arch-frame-number
+nanvix-phys-arch-paging-mod
+nanvix-phys-arch-paging-table
+nanvix-phys-arch-x86-pde
+nan...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/veri
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && wc -l src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.spec.rs src/kernel
+
+[THINKING] The plan is there but the function didn't produce any output, so I need to try a different approach and read through the source file in smaller sections.
+[RESULT ✓] bash: 934 src/kernel/src/mm/phys/frame.rs
+   45 src/kernel/src/mm/phys/frame.spec.rs
+   74 src/kernel/src/mm/phys/frame.proof.rs
+ 1053 total
+<shellId: 2 completed with exit code 0>
+[RESULT ✓] bash: No matching modules found.
+EXIT: 0
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "import json; d=json.load(open('verus-ai-logs/verification-plan.json')); p
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. // =================================================================================================
+12. // Dependency contracts for...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use vstd::map::*;
+6. 
+7. /// Helper: convert a bitmap index to a frame (physical) address.
+8. pub open spec fn frame_addr_of(i: int) -> int {
+9.     i * spec_page_size()
+10. }
+11. 
+12. impl View for Inner {
+13. ...
+[RESULT ✓] bash: {
+ "target": "src/kernel/src/mm/phys/frame.rs",
+ "entries": [
+  "src/kernel/src/mm/phys/frame.rs:Inner::alloc",
+  "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
+  "src/kernel/src/mm/phys/frame.rs:Inner::free",
+  "src/kernel/src/mm/phys/frame.rs:Inner::share",
+  "src/kernel/src/mm/phys/fr...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me read the main frame.rs file in sections.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "admit()\|assume(\|external_body\|fn \|requires\|ensures\|invariant" src/kern
+
+[THINKING] I'm going to work through the main frame.rs file in chunks since it's quite large.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+[RESULT ✓] bash: 116:        requires
+118:        ensures
+136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+137:        proof! { admit(); }
+186:        requires
+189:        ensures
+213:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+214:        proof! { admit(); }
+224:   ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noticing there are admit() placeholders scattered throughout the Inner methods, so I need to examine the full file more carefully. Let me start by reviewing a larger section to get a complete picture of what's there.
+[RESULT ✓] view: 103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+113.     /// returned inst...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 320.         if self.refcount[frame_number] == 0 {
+321.             match self.bitmap.clear(frame_number) {
+322.                 Ok(()) => Ok(()),
+323.                 Err(error) => {
+324.                     #[cfg(not(verus_keep_ghost))]
+325.                     error!("{error:?} (frame={frame:?})"...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 540. 
+541.     ///
+542.     /// # Description
+543.     ///
+544.     /// Allocates all frames in the given region.
+545.     ///
+546.     /// # Parameters
+547.     ///
+548.     /// - `region`: Physical memory region whose frames should be booked.
+549.     ///
+550.     /// # Returns
+551.     ///
+552.  ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 700. // other free function relies on before it runs.
+701. #[verus_spec(result =>
+702.     ensures
+703.         match result {
+704.             Ok(_) => {
+705.                 &&& crate::mm::phys::phys_view().initialized
+706.                 &&& crate::mm::phys::phys_view().frames.wf()
+707.         ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Let me read the key skill files and check the TCB-allowed list.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -60; echo "===SKILLS==="; ls .git
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for s in verus-constraints proving-guide verification-order spec-design bug-reporting
+
+[THINKING] I need to understand the structure of this file by examining the key skill files first—verus-constraints, proving-guide, and spec-design—to grasp the conventions and constraints I'm working with. Then I'll trace through the dependencies like Bitmap, FrameAddress, FrameNumber, and PageAligned to see how they're defined and used.
+[RESULT ✓] bash: ===== verus-constraints =====
+===== proving-guide =====
+===== verification-order =====
+===== spec-design =====
+===== bug-reporting =====
+<shellId: 5 completed with exit code 1>
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find / -iname "*.md" -path "*verus-constraints*" 2>/dev/null; find / -type d -iname "
+
+[THINKING] I need to locate where these skills are actually defined since they're not in the expected directory.
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/docs/skills/verus-constraints/SKILL.md
+/mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/verus-constraints/SKILL.md
+/mnt/shared/view-design-exp/kheap-worker7-clean/docs/skills/verus-constraints/SKILL.md
+/mnt/shared/verus-ai-improve5-kheap-claw/docs/skills/verus-const...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && wc -l verus-constraints/SKILL.md proving-guide/SKILL.md verification
+[RESULT ✓] bash: 239 verus-constraints/SKILL.md
+   91 proving-guide/SKILL.md
+   68 verification-order/SKILL.md
+  467 spec-design/SKILL.md
+   89 bug-reporting/SKILL.md
+  133 spec-drift-check/SKILL.md
+ 1087 total
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && cat verus-constraints/SKILL.md
+[RESULT ✓] bash: ---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+
+# Verus Constraints
+
+## A...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && cat proving-guide/SKILL.md verification-order/SKILL.md
+[RESULT ✓] bash: ---
+name: proving-guide
+description: "Proving methodology and mindset for Verus verification: function-by-function approach, persistence through failures, clean verification, and bug reporting. Use when writing proofs or resolving verification failures."
+---
+
+# Proving Guide
+
+Read `verus-constraints...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me examine the dependency specs: `Bitmap` methods and the address types. Let me find their specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -path ./target -prune -o -name "*.rs" -print | xargs grep -l "impl Bitmap\|str
+
+[THINKING] I need to verify the dependencies for the Bitmap type and its methods, along with the FrameAddress and related types that should already be defined elsewhere. Looking at the proof file to confirm the implementation order for frame.rs, which starts with Inner::alloc, then alloc_contiguous, free, share, refcount, and book.
+
+The task specifies a different verification order that pairs each free function with its Inner method counterpart, starting with the simpler read-only operations like is_covered and refcount, then moving to book and free, followed by share and alloc, and finally the more complex alloc_contiguous and alloc_range. I should prioritize by complexity and dependency order rather than the JSON listing. The key blocker is finding the Bitmap spec to understand what methods are available.
+[RESULT ✓] bash: ./src/libs/bitmap/src/lib.rs
+./src/libs/bitmap/src/lib.proof.rs
+./src/libs/bitmap/src/lib.spec.rs
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verus_spec\|fn alloc\|fn alloc_range\|fn clear\|fn set\|fn test\|fn number_o
+[RESULT ✓] bash: 5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+89:    #[verus_spec(result =>
+93:                &&& bitmap@.num_bits == number_of_bits as int
+153:    #[verus_spec(result =>
+163:                &&& bitmap@.num_bits == array@.len() * (u8::BITS as int)
+165:     ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.rs
+
+[THINKING] I need to review the complete specifications for the Bitmap methods to understand their exact behavior and parameters.
+[RESULT ✓] view: 203.     #[verus_spec(result =>
+204.         requires
+205.             self.inv(),
+206.         ensures
+207.             result as int == self@.num_bits,
+208.             result > 0,
+209.             result < u32::MAX as usize,
+210.     )]
+211.     pub fn number_of_bits(&self) -> usize {
+212.       ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.rs
+
+[THINKING] I'm examining the bitmap view specification functions like `is_bit_set`, `set_bits`, `usage()`, and `num_bits`, along with checking the full specs for `test`, `set`, and `clear` operations.
+[RESULT ✓] view: 516.     #[verus_spec(result =>
+517.         requires
+518.             old(self).inv(),
+519.         ensures
+520.             final(self).inv(),
+521.             match result {
+522.                 Ok(()) => {
+523.                     &&& index < final(self)@.num_bits
+524.                     &&& fi...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "spec fn\|pub open spec\|struct BitmapView\|set_bits\|num_bits" src/libs/bitm
+
+[THINKING] Now I need to examine the `BitmapView` spec functions like `is_bit_set`, `set_bits`, `usage()`, `num_bits`, `is_full`, and the range-based operations to understand how they work together.
+[RESULT ✓] bash: 16:pub struct BitmapView {
+18:    pub num_bits: int,
+20:    /// Invariant: all elements are in [0, num_bits).
+21:    pub set_bits: Set<int>,
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+27:    pub open spec fn usage(&self) -> int {
+28:        self.set_bits.len() as int
+32: ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Let me find the address-type specs that the frame methods depend on.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn into_frame_number\|fn from_frame_number\|fn from_raw_value\|fn into_raw_
+
+[THINKING] I'm diving into the address-side type system here—understanding how `FrameAddress`, `FrameNumber`, and `PageAligned` relate to each other, and tracing through the conversion methods like `from_frame_number`, `into_frame_number`, and `from_raw_value`. I need to look at the actual specs and type definitions to see how these pieces fit together, particularly around `FrameAddress::inv` and the page size handling.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:40:    fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:62:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:187:    closed spec fn view(&...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 40. // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+41. // that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+42. // definition names the same concrete value the proofs already relied on.
+43. pub open s...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I need to examine the frame number specifications and related conversion methods to understand how raw values map to frame numbers and what the maximum frame value is.
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. use vstd::arithmetic::power2::pow2;
+3. 
+4. verus! {
+5. 
+6. // =================================================================================================
+7. // Abstract models of frame-number quantities, realized by the verified `arch` crate.
+8. //
+9....
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm checking the implementation details for converting physical addresses and page-aligned values into frame numbers, specifically looking at the relevant code sections in phys.rs.
+[RESULT ✓] view: 100.     ///
+101.     /// # Return Values
+102.     ///
+103.     /// Upon success, a physical address associated with the given memory-mapped I/O address is
+104.     /// returned. Upon failure, an error is returned instead.
+105.     ///
+106.     /// # Safety
+107.     ///
+108.     /// Behavior is unde...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn into_frame_number\|verus_spec\|fn into_raw_value\|spec_max\|from_raw_valu
+
+[THINKING] I need to examine how `PageAligned::into_frame_number` works when used with `PhysicalAddress` in the book and `alloc_range`, then check the related `FrameNumber` methods in the arch crate to understand the conversion logic.
+[RESULT ✓] bash: 42:    #[verus_spec(ret =>
+64:    fn into_raw_value(self) -> usize {
+86:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+87:        Self::from_address(T::from_raw_value(raw_addr)?)
+202:        PageAligned::from_address(PhysicalAddress::from_raw_value(self.into_raw_value())?)
+225:    p...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] view: 95.     ///
+96.     /// # Parameters
+97.     ///
+98.     /// - `alignment`: The alignment to align the target address to.
+99.     ///
+100.     /// # Returns
+101.     ///
+102.     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
+103.     ///
+104.     fn a...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me establish a baseline by running the module verification with the existing `admit()`s.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+
+[THINKING] I'm tracing through how `into_frame_number` works for `PageAligned<PhysicalAddress>`. When calling `phys_addr.into_frame_number()`, it goes through the Deref implementation to reach `PhysicalAddress::into_frame_number`, but since that method takes `self` by value, it consumes the value in the process.
+
+The issue is that `book` only requires `phys_addr.inv()` (which checks alignment for PageAligned), but `into_frame_number` on PhysicalAddress has its own precondition requiring the frame number to be representable. There's a gap between what's being checked at the call site and what the method actually requires. Now I'm working through the relationship between frame addresses and bitmap indices. When a FrameAddress is page-aligned, its frame number equals its physical address divided by page size, which matches the bitmap index used to track allocated frames. I need to establish helper lemmas in the proof file that connect bitmap operations to the Inner view, then run the verification to see the current state with the admits in place.
