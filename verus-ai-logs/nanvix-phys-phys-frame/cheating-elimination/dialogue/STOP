@@ -1,0 +1,22 @@
+RESOLVED
+
+All 12 cheating-elimination checklist items PASS with concrete evidence (see
+turn_001_driver.md). Summary:
+
+- admit / assume / trusted / no_decreases in target files (frame.rs,
+  frame.spec.rs, frame.proof.rs): all zero. `make verify-kernel` reports
+  assume=0, trusted=0, no_decreases=0 kernel-wide; the kernel-wide admit=16 /
+  external_body=19 / cfg_gate=19 counters are from OUT-OF-SCOPE modules.
+- 10 external_body in frame.rs (instance, init, alloc, alloc_contiguous,
+  free_count, free, book, alloc_range, share, refcount): every one listed in
+  verus-ai-logs/tcb-allowed.md.
+- All cfg(not(verus_keep_ghost)) blocks are logging (error!), debug_assert, or
+  diagnostic-only let-bindings consumed solely by error! — no exec logic hidden
+  from Verus; state mutations and control flow are ungated.
+- 8 `// VERUS BUG FIX:` exec rewrites are uniform (non-divergent) and documented
+  with reproducer command in bugs.md → no AST mismatch, no spec drift.
+- Specs not weakened: only redundant placeholder assume_specifications removed
+  (superseded by real verified contracts); Inner::inv + all Inner method
+  contracts intact.
+- make verify-kernel: exit 0, 0 errors, 0 warnings (cross-module regression
+  green).
