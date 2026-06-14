@@ -1,0 +1,26 @@
+Timestamp: 2026-06-15_02-01-29
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+error: cannot call function `arch::x86::mem::paging::frame::number::FrameNumber::into_raw_value` with mode exec
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:421:38
+    |
+421 |         proof! { lemma_frame_address(self.frame.into_raw_value()); }
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `arch` (lib) due to 1 previous error

@@ -418,6 +418,7 @@ impl PageDirectoryEntry {
             result as int % (crate::mem::FRAME_SIZE as int) == 0,
     )]
     pub fn frame_address(&self) -> usize {
+        proof! { lemma_frame_address(self.frame.into_raw_value()); }
         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
     }
 

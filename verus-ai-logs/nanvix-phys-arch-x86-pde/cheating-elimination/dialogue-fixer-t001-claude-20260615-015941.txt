@@ -122,3 +122,26 @@ The reviewer offers two routes; route 2 (collapse to original single expression,
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | grep -
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:420:5
+    |
+420 |     pub fn frame_address(&self) -> usize {
+    |     ^^^^^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Route 2 without the lemma fails (postconditions can't be proven). The lemma must receive the runtime value. Let me verify the reviewer's reproducer claim (exec call inside `proof!`) to document accurately, then restore the working body with the documenting comment.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The lemma requires the runtime value `raw`, but I can't pass `self.frame.into_raw_value()` directly from proof mode since exec functions aren't callable there. I need to either restructure how the lemma gets applied or find a way to reference the value through the type invariant before entering the proof block.
+
+One option is to make the lemma a broadcast proof function that triggers automatically on shift operations matching the pattern, which would let the proof discharge without explicitly naming the intermediate value. The broadcast would need to quantify over valid raw values and establish the relationship between the shifted result and the frame size multiplication.
+
+But this approach requires modifying the proof file structure significantly. Given that the reviewer already said the documented comment approach is acceptable and the broadcast method is proving empirically difficult, I should verify whether exec calls actually fail inside proof blocks, then decide whether to go with the simpler documented route or push forward with the broadcast approach. I'm going to go with route 1 — the binding approach with a documented comment. The reviewer explicitly accepts it, it's already verified, and it matches the pre-approved deviation pattern. Let me restore the working version and add the VERUS REWRITE comment, then quickly test the reviewer's claim about why the exec call fails in the proof to document it accurately.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-arch 2>&1 | grep -
