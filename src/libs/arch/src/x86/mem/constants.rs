@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use sys::mm::Alignment;
+use vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -44,6 +45,7 @@ pub const PAGE_SHIFT: usize = 12;
 ///
 /// Number of bytes in a page.
 ///
+#[verus_verify]
 pub const PAGE_SIZE: usize = 4096;
 ::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
 
@@ -87,6 +89,7 @@ pub const PGTAB_MASK: usize = !(PGTAB_SIZE - 1);
 ///
 /// Maximum addressable memory.
 ///
+#[verus_verify]
 pub const MAX_ADDRESS: usize = usize::MAX;
 
 ///
@@ -101,6 +104,7 @@ pub const FRAME_SHIFT: usize = PAGE_SHIFT;
 ///
 /// Alias for `PAGE_SIZE`.
 ///
+#[verus_verify]
 pub const FRAME_SIZE: usize = PAGE_SIZE;
 
 ///

@@ -1466,3 +1466,113 @@ Turn 86
 Turn 87
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: cannot use function `arch::x86::mem::constants::FRAME_SIZE` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:37:47
+   |
+37...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+MAX's body references constants outside `verus!`. Let me check the constant dependency chain.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] The NULL const is now verified and its error cleared. The MAX const, which calculates the maximum frame count using `mem::MAX_ADDRESS` and `mem::FRAME_SIZE`, is being verified as part of the impl block, but it's hitting an issue because those constants are defined outside the verus! macro and marked as external. Since MAX is now a verified const, it needs to handle these external references properly.
+
+I'm weighing two approaches: making MAX an exec const so it skips spec-checking (but that breaks spec_max_frame_number() which reads MAX in spec context), or adding #[verus_verify] to the constants module so MAX_ADDRESS and FRAME_SIZE become Verus-visible. The second option seems right—I need to mark those constants and their dependencies (PAGE_SIZE, PAGE_SHIFT) with #[verus_verify] so the verification can resolve them. But I'm also wondering whether Verus actually needs to evaluate these constants symbolically for the spec to be meaningful, or if there's a simpler path forward. I'm realizing that moving MAX out of the `#[verus_verify]` impl block won't solve this—spec still can't reference external functions. So MAX needs to stay Verus-visible, which means its body must be interpretable by Verus, which requires MAX_ADDRESS and FRAME_SIZE to also be Verus-visible. I need to trace through constants.rs to see what dependencies need the `#[verus_verify]` annotation.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+MAX needs its referenced constants Verus-visible. Let me annotate the constant chain in `constants.rs`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "use \|^use" src/libs/arch/src/x86/mem/constants.rs | head
+
+[THINKING] I'm setting up constants for memory management: MAX_ADDRESS as the maximum addressable value, FRAME_SIZE as a fixed 4096-byte page size, and MAX derived from dividing these two. The challenge is making MAX_ADDRESS and FRAME_SIZE visible to Verus while keeping FRAME_SIZE tied to the literal PAGE_SIZE value.
+
+I'm going to annotate PAGE_SIZE, FRAME_SIZE, and MAX_ADDRESS with `#[verus_verify]` in constants.rs to make them spec-visible without invasively restructuring the code. So the real insight is that Verus doesn't actually need to know MAX's concrete value — it just needs to recognize that `Self::MAX` in the exec code refers to the same constant as `FrameNumber::MAX` in the spec, which it can do symbolically. The actual problem is just that MAX needs to be readable as a spec constant.
+
+The cleanest approach is to annotate the referenced constants in constants.rs with Verus markers so they become spec-visible. I need PAGE_SIZE (4096), FRAME_SIZE (which equals PAGE_SIZE), and MAX_ADDRESS (usize::MAX), then MAX can be defined as MAX_ADDRESS / FRAME_SIZE - 1. There's a static assertion macro at module level that might interfere, so I need to be careful about how Verus handles it. Adding annotations to constants...
+[RESULT ✓] bash: 8:use sys::mm::Alignment;
+<shellId: 62 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp
+cat > vtest7.rs <<'EOF'
+use vstd::prelude::*;
+
+#[verus_verify]
+pub const MAX_ADDRESS: usize = usize::MAX;
+#[veru
+
+[THINKING] I'm reconsidering the approach to avoid modifying constants.rs and the static_assert complications. Instead of making MAX's body transparent to Verus, I could define `spec_max_frame_number()` independently without requiring MAX to be interpretable within the verus_verify block. The challenge is that this function references FrameN, which creates a dependency I need to work around.
+
+The core issue is that MAX lives in a verus_verify impl, so its body gets verified, but it references external constants that Verus can't see. Rather than trying to make those constants opaque, I think the cleaner path is to annotate the necessary constants in constants.rs directly — MAX_ADDRESS, FRAME_SIZE, and PAGE_SIZE. This is reasonable infrastructure work, and since only annotated items get verified, adding `#[verus_verify]` to just those three constants means the rest of the file (static_assert, WORD_SHIFT, etc.) stays untouched and ignored by Verus. I'll need to add `use vstd::prelude::*;` to constants.rs, which might conflict with existing imports like `sys::mm::Alignment`, but that should be manageable. Let me test whether `#[verus_verify]` even works on const declarations first to avoid unnecessary churn.
+[RESULT ✓] bash: === verus_verify on const ===
+error: visibility `pub` is not followed by an item
+  --> vtest7.rs:21:5
+   |
+21 |     pub open spec fn inv(&self) -> bool { 0 <= self@ <= FrameNumber::MAX as int }
+   |     ^^^ the visibility
+   |
+   = help: you likely meant to define an item, e.g., `pub fn foo() {}`
+
+e...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp
+cat > vtest7.rs <<'EOF'
+use vstd::prelude::*;
+
+#[verus_verify]
+pub const MAX_ADDRESS: usize = usize::MAX;
+#[veru
+
+[THINKING] I see the issue — I had `spec fn` syntax in a `#[verus_verify]` impl block outside of `verus!{}`, but that only works inside the verus macro. My actual code has `inv()` correctly placed in a separate `verus!{}` block in spec.rs, so I just need to fix the test to match that structure and focus on what I was really testing: the `#[verus_verify]` attribute on const.
+[RESULT ✓] bash: === test ===
+verification results:: 4 verified, 0 errors
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+`#[verus_verify]` on consts works. Let me annotate the constant chain (`PAGE_SIZE`, `FRAME_SIZE`, `MAX_ADDRESS`) in the real file.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] The `#[verus_verify]` annotation works on constants and everything verifies successfully. I need to apply this to MAX_ADDRESS, FRAME_SIZE, and PAGE_SIZE in the actual code, along with importing vstd in constants.rs. Since FRAME_SIZE equals PAGE_SIZE in the real implementation rather than the literal 4096 I used in testing, I'll need to make sure PAGE_SIZE gets annotated as well.
+
+Now I'm updating constants.rs with these annotations.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
