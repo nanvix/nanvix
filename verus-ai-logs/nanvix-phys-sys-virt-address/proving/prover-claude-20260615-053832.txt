@@ -678,3 +678,41 @@ Clean: 6 verified, 0 errors, 0 admit/assume/external_body. The file is identical
 [THINKING] The diff is now clean with virt.rs matching HEAD exactly. The verification shows 6 items confirmed with no errors, including the View impl and related trait implementations, though only 2 of those have execution contracts for coverage tracking.
 
 Since the file is unchanged from HEAD (which was already verified), running `make verify` won't reveal any regressions from my work, but I should run it anyway to confirm the end goal is met. Let me check the timing and then execute it.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+===
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap)
+verification results:: 47 verified, 0 errors
+verification results:: 70 verified, 0 errors
+    Checking ...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Verification complete. Summary:
+
+**Target module** `sys::sys::mm::address::virt` — **CLEAN, 0 errors**.
+
+**Findings:**
+- The in-scope targets `VirtualAddress::new`, the inherent `VirtualAddress::from_raw_value`, and the `VirtualAddress` `View` are already specced inline (`result@ == value as int`, `closed view = self.0 as int`) and **verify** (6 verified, 0 errors). The `virt.spec.rs`/`virt.proof.rs` files are empty by design — no lemmas/invariants needed for these identity wrappers.
+- **No `admit()`, `assume()`, or `external_body`** anywhere in the `sys` crate.
+- `VirtualAddress::into_raw_value` lives in `impl Address for VirtualAddress`. I empirically confirmed Verus forbids verifying a single trait-impl method (*"the entire impl must be verified"*). Verifying the whole impl would force proving the out-of-scope `is_aligned`/`align_up`/`align_down` against the trait spec, which depends on the intentionally-unspecified `mm::is_aligned`/`align_up`/`align_down` helpers. The established, already-accepted convention in the sibling modules (`PageAligned`, `PhysicalAddress`) leaves the entire `Address` trait impl trusted — the spec lives on the trait (`ensures result as int == self@`), so upstream generic `T: Address` callers still get the guarantee. I followed that convention rather than touching unlisted functions.
+
+**No code bugs found** (nothing to record in `bugs.md`).
+
+**Validation:**
+- `make verify-sys` → 6 verified, 0 errors, status CLEAN.
+- `make verify` → all crates 0 errors. The kernel's residual `admit/external_body/cfg_gate` counts are pre-existing in other not-yet-proven modules (unchanged by this work); the `sys` crate is clean.
+
+The probe edit I made was reverted — `git diff` on `virt.rs` is empty, so no source was changed.
+
+[THINKING] Running `make verify` shows all crates passing with zero errors, though the kernel reports some pre-existing unverified modules (admit=27/external_body=11/cfg_gate=14) from other parts of the codebase that haven't been proven yet. My sys crate itself is completely clean with no admits, assumes, or external bodies.
+
+The `sys::sys::mm::address::virt` module is verified and unchanged from HEAD, confirming no regressions. All in-scope targets are proven: the `new` constructor, the inherent `from_raw_value` method, and the `View`/`VirtualAddress` types. The `into_raw_value` method is part of the `Address` trait implementation, which follows the established codebase convention (like `PageAligned` and `PhysicalAddress`) of trusting trait-level specs with the ensures clause that upstream callers depend on. Since no bugs were found during verification, there's nothing to record in bugs.md. The only modified files are auto-generated prover session logs, so the actual codebase changes are complete.
+
+
+=== Session End ===
+Session: d11bacbf-1581-4351-be19-dbc5409bb203
+Duration: 415.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/proving/prover-claude-20260615-053832.jsonl
