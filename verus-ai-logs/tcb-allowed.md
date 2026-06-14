@@ -36,13 +36,16 @@ Any `external_body` outside this list must be removed.
   change).
 - `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::write` — writes a `TableEntry` into a
   page-table slot through a raw pointer materialized from `self.base` (`usize as *mut E::Word`).
-  Same int-to-ptr / volatile externally-owned-memory limitation as `read`. Carries a full
-  `#[verus_spec]`: `requires index@ < PAGE_TABLE_LENGTH`, `ensures spec_table_word(self@.addr,
-  index@) == spec_entry_raw(entry)`. Because the global ghost is a pure function, every other
-  slot/page is preserved across the call (frame condition), and `read`-after-`write` decodes back
-  to `Some(entry)` via the `lemma_entry_roundtrip` broadcast law (`table.proof.rs`). The
-  cross-call write transition is realized in the proving phase by a ghost token over the
-  page-table pages — the same `phys_view()` "transition realized in the proving phase" placeholder.
+  Same int-to-ptr / volatile externally-owned-memory limitation as `read`. Carries only the sound
+  `requires index@ < PAGE_TABLE_LENGTH` (auto from `TableIndex::inv`); it has **no** contents
+  `ensures`. A contents postcondition pinning the *pure* global ghost `spec_table_word(self@.addr,
+  index@)` to the caller-chosen `entry` would be unsound for an `external_body` (assumed)
+  contract: two writes of distinct entries to the same slot would assume
+  `spec_entry_raw(e1) == spec_entry_raw(e2)`, which with `lemma_entry_roundtrip` derives
+  `e1 == e2`, i.e. `false` (Turn 2 review #2/#3/#15; exploit reproduced). The genuine `old@ -> @`
+  slot-update transition (`self@.entries[index@] == Some(entry)`, other slots framed) is therefore
+  **deferred to the proving-phase page-table permission token**, exactly the `identity_map_view()`
+  `v -> v'` deferral convention in `identity_map.spec.rs`.
 
 ## Skip / exclude from current proof target
 

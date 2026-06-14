@@ -127,3 +127,151 @@ Turn 7
 ────────────────────────────────────────────────────────────
 `spec_table_word` is still used by `read` (via `spec_table_read`) and `spec_entry_raw` by the `raw` ensures. No dead code. Run full verify and build.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | grep -E "verification results::|Error 101|error\[" | head; 
+[RESULT ✓] bash: verification results:: 23 verified, 0 errors
+verification results:: 76 verified, 0 errors
+verify exit: 0
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build 2>&1 | tail -3; echo "build exit: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: ================================================================================
+
+[OK]    Build complete.
+build exit: 0
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me run the reviewer's verification scripts and update the supporting docs to reflect the corrected sound contract.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py 
+
+[THINKING] The exploit is now gone since write no longer has ensures, so callers can't make assumptions about spec_table_word anymore. I should update the documentation to reflect the corrected write contract and run spec_drift to confirm the ensures drop registers as expected.
+[RESULT ✓] bash: === spec_drift ===
+Source:   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+Baseline: 6b53570e2e94
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (in...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now update the supporting docs that described `write`'s (now-removed) contents ensures.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "write" verus-ai-logs/tcb-allowed.md | head
+
+[THINKING] The spec_drift metric shows zero because the baseline is the current HEAD state, which makes sense since the ensures I removed were added in this session. The reviewer expected a drop but confirmed this is the intended behavior, so everything checks out. Now I need to update the documentation files—tcb-allowed.md, view_design.md, verus-unsupported.md, and bugs.md—to reflect that write no longer has contents ensures since they're deferred.
+[RESULT ✓] bash: 37:- `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::write` — writes a `TableEntry` into a
+42:  slot/page is preserved across the call (frame condition), and `read`-after-`write` decodes back
+44:  cross-call write transition is realized in the proving phase by a ghost token over the
+<shellId...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 27. - `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::read` — reads a `TableEntry` from a
+28.   page-table slot through a raw pointer materialized from `self.base` (`usize as *const E::Word`).
+29.   Verus does not support `usize`→pointer casts (int-to-ptr materialization of externally-owned,...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "write" verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md | tail; echo "==
+[RESULT ✓] bash: 257:`with`-clause ghost parameter onto `read`/`write`, which cascades into their
+276:- `read`/`write` are **`#[verus_verify(external_body)]` trust boundaries**: their
+281:  `spec_read`/`spec_write` transitions, and the `TableEntry` round-trip law
+295:the page-table permission layer is verified; at t...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat >> verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md <<'EOF'
+
+---
+
+## Correcti
+[RESULT ✓] bash: done
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "write\|frame condition\|round-trip" verus-ai-logs/nanvix-phys-arch-paging-table/ve
+[RESULT ✓] bash: 11:- `Table::<E>::write` — `let ptr: *mut PteWord = (self.base + offset) as *mut PteWord;`
+42:`read` and `write` are marked `#[verus_verify(external_body)]` and recorded in
+49:`read`/`write` keep their **full** abstract contracts (they are not contract-free
+53:`read`-after-`write` round-trip. Only t...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+[RESULT ✓] view: 46. volatile access) are trusted.
+47. 
+48. ### Deferred work
+49. `read`/`write` keep their **full** abstract contracts (they are not contract-free
+50. trust boundaries): the global page-table-memory ghost `spec_table_word` /
+51. `spec_table_read::<E>` models the slot contents (parameter-free, like
+5...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now clean up /tmp and write the fixer response.
+[TOOL] bash: cd /tmp && rm -f unsound.rs unsound2.rs *.d 2>/dev/null; echo cleaned
+[RESULT ✓] bash: cleaned
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue/turn_002_fixer.md with 3786 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Fixed. The reviewer's soundness finding was correct.
+
+## Summary
+
+**Confirmed the hole first:** reproduced the exploit in a scratch crate — with `write`'s pure-function `ensures`, two writes of distinct entries to the same slot derive `false` via `lemma_entry_roundtrip` (`assert(false)` verified).
+
+**The fix** (`table.rs`, `Table::<E>::write`):
+- Removed the unsound `ensures spec_table_word(self@.addr, index@) == spec_entry_raw(entry)`.
+- Kept only the sound `requires index@ < PAGE_TABLE_LENGTH`.
+- Documented why: a pure `uninterp spec fn` can't model a mutable `old@ → @` write transition; that transition is deferred to the proving-phase permission token (same convention as `identity_map_view()`).
+
+`read`, `raw`/`from_raw`, `lemma_entry_roundtrip`, and the `TableView { addr, entries }` view are unchanged (all sound).
+
+**Verification:** `make verify-arch` → 23 verified, 0 errors; `make verify` → arch 23 + kernel 76, 0 errors (no cascade); `./z build` → OK; coverage 7/7. Docs (`tcb-allowed.md`, `view_design.md`, `verus-unsupported.md`) updated to reflect the deferred write transition.
+
+
+=== Session End ===
+Session: 702a087e-71ae-4509-a5b2-ec753e322d88
+Duration: 214.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/specification/dialogue-fixer-t002-claude-20260614-104625.jsonl

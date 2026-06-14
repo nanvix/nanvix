@@ -46,13 +46,18 @@ used by `bump_allocator::alloc` (`usize as *mut`) and `frame::instance`. Their
 volatile access) are trusted.
 
 ### Deferred work
-`read`/`write` keep their **full** abstract contracts (they are not contract-free
-trust boundaries): the global page-table-memory ghost `spec_table_word` /
-`spec_table_read::<E>` models the slot contents (parameter-free, like
-`phys_view()`), and the `lemma_entry_roundtrip` broadcast law gives callers the
-`read`-after-`write` round-trip. Only the *body* (the `usize`→pointer cast + the
-volatile access) is trusted via `external_body`. The cross-call write transition
-and same-slot-write consistency are realized in the proving phase by a ghost
-token over the page-table pages — the same `phys_view()` placeholder rationale —
-without any exec signature change, so the out-of-scope `admit()` callers in
-`identity_map.rs` (`ensure_pt`, `ensure_pte`, `identity_map_page`) do not cascade.
+`read` carries its **full** abstract contract: the global page-table-memory ghost
+`spec_table_word` / `spec_table_read::<E>` models the slot contents
+(parameter-free, like `phys_view()`), so `read` ensures
+`result == spec_table_read::<E>(self@.addr, index@)`. `write` carries only the
+sound `requires index@ < PAGE_TABLE_LENGTH` and **no** contents `ensures`: pinning
+the *pure* `spec_table_word` cell to the caller-chosen `entry` in an assumed
+(`external_body`) postcondition is unsound — two writes of distinct entries to the
+same slot derive `spec_entry_raw(e1) == spec_entry_raw(e2)`, and with
+`lemma_entry_roundtrip` that gives `e1 == e2`, i.e. `false` (Turn 2 review). The
+genuine `old@ -> @` write transition (and its same-slot consistency) is therefore
+deferred to a proving-phase ghost token over the page-table pages — the same
+`phys_view()` / `identity_map_view()` placeholder rationale. Only the *body* (the
+`usize`→pointer cast + the volatile access) is trusted via `external_body`. No exec
+signature changed, so the out-of-scope `admit()` callers in `identity_map.rs`
+(`ensure_pt`, `ensure_pte`, `identity_map_page`) do not cascade.

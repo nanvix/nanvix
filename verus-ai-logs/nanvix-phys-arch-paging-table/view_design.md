@@ -338,3 +338,32 @@ genuine Verus `usize`→pointer limitation (`verus-unsupported.md`); they are no
 longer contract-free. No exec signature changed, so the out-of-scope `admit()`
 callers (`identity_map::ensure_pt`/`ensure_pte`/`identity_map_page`) do not
 cascade — confirmed by `make verify` (kernel: 76 verified, 0 errors).
+
+---
+
+## Correction (Turn 2 review) — `write` must NOT pin the pure ghost
+
+The Turn 1 revision gave `write` the contents postcondition
+`ensures spec_table_word(self@.addr, index@) == spec_entry_raw(entry)`. The Turn 2
+review correctly flagged this as **unsound** (#2/#3/#15):
+
+`spec_table_word` is a *pure* `uninterp spec fn` — one fixed value per
+`(addr, index)`. Because `write` is `external_body`, the `ensures` is *assumed*
+at every call site. Two writes of distinct entries to the same slot then assume
+`spec_table_word(a,i) == spec_entry_raw(e1)` **and** `== spec_entry_raw(e2)`, so
+`spec_entry_raw(e1) == spec_entry_raw(e2)`; with `lemma_entry_roundtrip` this
+gives `Some(e1) == Some(e2)`, i.e. `e1 == e2` — `false` whenever `e1 != e2`.
+(Reproduced in a scratch Verus client: `assert(false)` verified.)
+
+**Fix (applied):** `write` keeps only the sound `requires index@ < PAGE_TABLE_LENGTH`
+and carries **no** contents `ensures`. The slot-update transition
+(`self@.entries[index@] == Some(entry)` after the call, other slots framed) is a
+genuine mutable `old@ -> @` state change, which a pure function cannot express;
+it is therefore **deferred to the proving-phase page-table permission token** —
+the same convention `identity_map.spec.rs` uses to defer `identity_map_view()`'s
+`v -> v'`.
+
+Unchanged and sound: `read`'s `ensures result == spec_table_read::<E>(self@.addr,
+index@)` (reading a pure accessor is sound — two reads agree), the `raw`/`from_raw`
+ensures, `lemma_entry_roundtrip`, and the `TableView<E> { addr, entries }` view.
+Reading remains fully specified; only the *write transition* is deferred.
