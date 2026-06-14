@@ -507,6 +507,7 @@ impl PhysMemoryManager {
 // crate's `build.rs` (from `kernel_config.toml`) and lives in a non-Verus dependency crate, so
 // Verus cannot resolve its value. This accessor ties the runtime constant to the abstract
 // `spec_kernel_watermark()`. Listed in `verus-ai-logs/tcb-allowed.md`.
+#[verus_verify(external_body)]
 #[verus_spec(ret =>
     ensures
         ret as nat == spec_kernel_watermark(),

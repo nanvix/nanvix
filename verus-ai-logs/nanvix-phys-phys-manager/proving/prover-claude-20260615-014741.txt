@@ -280,3 +280,37 @@ Turn 9
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: - frame.rs:535 is_covered: admit
+    - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs sed -n '15
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: `config::kernel::KERNEL_WATERMARK` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+`kernel_watermark` accesses an external config constant and is listed in tcb-allowed.md as `external_body`. Adding the attribute.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The `kernel_watermark()` function needs to be marked as `external_body` since it accesses an external constant, and I'm checking the current annotations to see if it has the proper `#[verus_spec]` attribute with the correct ensures clause.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -A30 "Full output\|error\|
