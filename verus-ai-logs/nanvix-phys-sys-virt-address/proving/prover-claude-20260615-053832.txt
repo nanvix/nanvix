@@ -653,3 +653,28 @@ The real goal here is making `make verify` pass with strong specs for upstream c
 
 Looking at the constraints: the codebase pattern leaves trait impls unverified, Verus enforces all-or-nothing on trait implementations, and verifying the whole thing would require specifying out-of-scope functions that the design doc explicitly excludes. The design doc says these trait methods are intentionally left unspecified and out of scope. So the right move is to leave the trait impl trusted like its siblings, since the in-scope targets—`new`, the inherent `from_raw_value`, and the `View`—are already specced and verified with no admit() or assume() calls remaining. The module is complete, so I'll run the final verifications to confirm everything's clean.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/virt.rs            |  1 -
+ .../proving/prover-claude-20260615-053832.jsonl    | 56 ++++++++++++++++++++++
+ .../proving/prover-claude-20260615-053832.txt      | 31 ++++++++++++
+ 3 files changed, 87 insertions(+), 1 deletion(-)
+=== verify-sys ===
+verification results:: ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm noticing the git diff shows a net deletion of one line in virt.rs compared to HEAD, which is puzzling since I only added and then removed the `#[verus_verify]` attribute on `into_raw_value`. Let me check the actual diff to see what's causing this discrepancy.
+[RESULT ✓] bash: 
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Clean: 6 verified, 0 errors, 0 admit/assume/external_body. The file is identical to HEAD. Let me confirm the broader build has no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verify:" Makefile | head; echo "==="; timeout 900 make verify 2>&1
+
+[THINKING] The diff is now clean with virt.rs matching HEAD exactly. The verification shows 6 items confirmed with no errors, including the View impl and related trait implementations, though only 2 of those have execution contracts for coverage tracking.
+
+Since the file is unchanged from HEAD (which was already verified), running `make verify` won't reveal any regressions from my work, but I should run it anyway to confirm the end goal is met. Let me check the timing and then execute it.
