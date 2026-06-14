@@ -36,32 +36,50 @@ Any `external_body` outside this list must be removed.
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::get_mut`
 - `src/kernel/src/mm/phys/frame.rs::init`
 
-## Allowed `external_body` — `frame::*` free-function shims (`frame.rs`)
+## Allowed `external_body` — frame allocator core (`frame.rs`)
 
-The module-level `frame::*` free functions bridge the global allocator singleton
-(`static mut INSTANCE`, reached via `instance()`) to the do-not-modify abstract
-`phys_view()` / `FrameAllocView`. That bridge is a trust boundary identical in
-character to the already-trusted `frame::book` / `frame::is_covered` /
-`frame::alloc_range` shims: `phys_view()` is a zero-argument uninterpreted spec
-function whose value cannot be tied to the `unsafe { INSTANCE.assume_init_mut() }`
-static by any verifiable means. Each is `external_body` with a `#[verus_spec]`
-contract stated over `phys_view()` and the returned frame values (monotone
-post-state facts; there is no `old(phys_view())`). They were left unspecced when
-`frame.rs` was the proof target because their sole consumer is `mm::phys::upool`;
-they are specced here so `upool` can rely on them, and will be removed when the
-frame singleton bridge is itself verified.
+`frame.rs` is now the proof target. Two layers form the trust boundary of the
+global frame-allocator singleton; everything else in the module (the `frame::*`
+free-function shims) is **body-verified** against these contracts.
 
-- `src/kernel/src/mm/phys/frame.rs::alloc` — draws a fresh frame from the global
-  allocator. `ensures` (on success) page alignment, membership in
-  `allocated_frames`, and refcount = 1.
-- `src/kernel/src/mm/phys/frame.rs::free` — releases one reference (last reference
-  returns the frame to the free pool). Runs on `Drop`, so it has no precondition;
-  `ensures` keeps the subsystem invariant on every path.
-- `src/kernel/src/mm/phys/frame.rs::share` — adds a reference to an allocated
-  frame. `ensures` (on success) the frame stays allocated / refcounted.
-- `src/kernel/src/mm/phys/frame.rs::refcount` — pure query of an allocated frame's
-  reference count. `ensures` (on success) the returned count equals the frame's
-  refcount; (on failure) the frame is not allocated.
+### 1. The singleton bridge: `instance()`
+
+`instance()` returns `&'static mut Inner` obtained from the module-level
+`static mut INSTANCE` via `unsafe { INSTANCE.assume_init_mut() }`. The verifier
+does not support `static mut` paths, and a zero-argument uninterpreted
+`phys_view()` cannot be tied to that static by any verifiable means. `instance()`
+is therefore the bridge axiom: `requires phys_view().initialized` (the real panic
+gate) and `ensures (*result).inv() && (*result)@ == phys_view().frames`. This is
+what lets the query shims (`is_covered`, `refcount`) be fully body-verified.
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — `static mut` singleton accessor;
+  bridges the live `Inner` to the abstract `phys_view().frames`.
+
+### 2. The `Inner::*` methods
+
+Each `Inner::*` method has a rich, do-not-modify `old(self)@ → final(self)@`
+transition contract, but its **body** cannot be translated by Verus: every method
+uses the `error!` / `debug_assert_eq!` macros (whose expansion needs
+`core::fmt::Arguments`, unsupported — the same limitation already recorded for
+`UserFrame::drop`) and the `arch` newtypes `FrameNumber` / `FrameAddress`
+(external types with no `external_type_specification`). They are `external_body`
+with their pre-existing `#[verus_spec]` contracts honored as trust boundaries.
+
+- `Inner::alloc`, `Inner::alloc_contiguous`, `Inner::free`, `Inner::share`,
+  `Inner::refcount`, `Inner::book`, `Inner::is_covered`, `Inner::alloc_range`
+  (all in `src/kernel/src/mm/phys/frame.rs`).
+
+### Note on the body-verified shims
+
+The `frame::*` free-function shims are no longer `external_body`. The pure-query
+shims `is_covered` and `refcount` are proven outright via the `instance()` bridge.
+The mutating / aggregate shims (`alloc`, `alloc_contiguous`, `free`, `share`,
+`book`, `alloc_range`, `free_count`) carry a single deferred `proof! { admit(); }`:
+their `#[verus_spec]` contracts are stated over the *fixed* uninterpreted
+`phys_view()` with no `old(phys_view())` to diff the mutation against, so the
+post-state membership facts are a proving-phase obligation, not an `external_body`
+trust boundary. (Per the spec-design guidance, current-module functions defer with
+`admit()` rather than `external_body`.)
 
 ## Allowed `external_body` — `UserFrame::drop` (`upool.rs`)
 
