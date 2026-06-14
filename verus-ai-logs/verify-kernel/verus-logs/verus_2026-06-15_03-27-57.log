@@ -1,0 +1,122 @@
+Timestamp: 2026-06-15_03-27-57
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+6 verified
+3 errors
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=28
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::virt::identity_map
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+    |
+533 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+    |
+534 |     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+    |                                            ^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/arch/src/x86/mem/paging/table.rs:205:13
+    |
+205 |             index@ < crate::mem::PAGE_TABLE_LENGTH,
+    |             -------------------------------------- failed precondition
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:549:9
+    |
+549 | /         PAGE_TABLE_ALLOCATOR
+550 | |             .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+    | |_______________________________________________________^
+    |
+   ::: src/libs/bump_allocator/src/lib.rs:350:18
+    |
+350 |           requires bump_view(self).inv(),
+    |                    --------------------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:626:1
+    |
+626 | / fn ensure_pte(
+627 | |     pt: Table<PageTableEntry>,
+628 | |     pte_idx: TableIndex,
+629 | |     phys_addr: usize,
+630 | | ) -> Result<(), Error> {
+    | |______________________^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:618:13
+    |
+618 |             Ok(_) => identity_map_view().mapped.contains(spec_page_base(phys_addr as int)),
+    |             ^^^^^ failed this postcondition
+...
+639 |         return Ok(());
+    |         ------------- at this exit
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:631:40
+    |
+631 |     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
+    |                                        ^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/arch/src/x86/mem/paging/table.rs:205:13
+    |
+205 |             index@ < crate::mem::PAGE_TABLE_LENGTH,
+    |             -------------------------------------- failed precondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:716:1
+    |
+716 | pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:706:13
+    |
+706 |             Ok(_) => identity_map_view().accessible(phys_addr@),
+    |             ^^^^^ failed this postcondition
+...
+730 |     let pt_paddr: usize = ensure_pt(pd, pde_idx)?;
+    |                                                 - at this exit
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:706:13
+    |
+706 |               Ok(_) => identity_map_view().accessible(phys_addr@),
+    |               ^^^^^ failed this postcondition
+...
+716 |   pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    |  _______________________________________________________________________________________________-
+717 | |     let phys_addr: usize = phys_addr.into_raw_value();
+718 | |
+719 | |     let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
+...   |
+734 | |     ensure_pte(pt, pte_idx, phys_addr)
+735 | | }
+    | |_- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:706:13
+    |
+706 |             Ok(_) => identity_map_view().accessible(phys_addr@),
+    |             ^^^^^ failed this postcondition
+...
+722 |         return Ok(());
+    |         ------------- at this exit
+
+verification results:: 6 verified, 3 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 7 previous errors
