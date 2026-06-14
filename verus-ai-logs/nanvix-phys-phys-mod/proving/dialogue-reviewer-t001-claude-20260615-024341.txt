@@ -303,3 +303,106 @@ Turn 4
 318:# merely *mentioned* `external_body`, `admit()`, or `assume(...)`.
 326:#   external_body  : an attribute_item node whose text contains both a
 3...
+[RESULT ✓] bash: - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - f...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | head -80
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg" src/kernel/src/mm/phys/mod.rs src/kernel/src/mm/phys/mod.spec.rs src/kernel/
+
+[THINKING] The verification came back cached with no recompilation errors, but the cheating detection is flagging a lot of issues across the entire kernel crate—external_body and cfg_gate violations scattered throughout frame.rs, manager.rs, and upool.rs. The problem is that most of these violations aren't actually in scope for the phys-mod module, which only covers init, book_mmio_regions, and book_physical_memory_regions. I need to figure out whether the audit is counting violations across the whole crate or just the relevant functions.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.rs:15:#[cfg(feature = "test")]
+src/kernel/src/mm/phys/mod.rs:36:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:40:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:42:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:210:#[cfg(feature = "test")]
+<shellId:...
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "===full fil
+
+[THINKING] I need to locate where those five cfg gates are used in the kernel crate, and the cheating-detail file might have that information. The key constraint is that I'm focusing on the mm::phys module and its init function, which shouldn't have any cfg-gated branches or expressions.
+[RESULT ✓] bash: ===full file line count===
+17 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+===tail===
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg_gate\|cfg-gate\|cfg_gated\|cfg(" scripts/verify.sh | head -30
+
+[THINKING] I need to dig into the verify.sh script to see how cfg_gate is actually being counted, since the cheating-detail.txt file only shows the external_body breakdown without the location-specific cfg_gate details that would explain where that global count of 5 is coming from.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg_attr(verus_keep_ghost\|cfg(verus_keep_ghost\|cfg(not(verus_keep_ghost" src/ke
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs:249:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:49:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:52:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:36:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:40:#[cfg(verus_kee...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/kernel/src/mm/phys')
+cf
+
+[THINKING] I'm checking which of the five global statements are counted by the cfg_gate counter, which tracks `#[cfg(verus_keep_ghost)]` attributes while excluding use, mod, include, extern, and log statements. Looking at the specific lines in mod.rs, the first one at line 36 is a use statement with the cfg attribute, so it gets excluded from the count.
+
+Now I need to determine the module-scoped cfg gate count for the phys module specifically, since the global count of 5 might include statements from other modules like hal or mem. Let me trace through the phys directory to get an accurate count for just that module.
+[RESULT ✓] bash: === full-crate count breakdown ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs:201: gate -> verus! {
+src/kernel/src/hal/mem/types/address/frame.rs:31: gate -> verus! {
+src/kernel/src/hal/mem/types/address/phys.rs:249: gate -> verus! {
+src/kernel/src/hal/mem/types/region.rs:447: gate -> veru...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verif|error|warn|module|status|PASS|FAI
+
+[THINKING] Looking at the cfg-gated code in the phys module, there's actually no exec code behind cfg gates there—the gates only wrap use/include and mod statements. The five global cfg gates are all external to phys, sitting in hal/mem and macros.rs as standard verus markers around spec blocks, which are pre-existing and outside the scope of this work.
+
+Now I need to verify the actual verification results. The previous run showed 9 verified with 0 errors and exited cleanly, but let me re-run the verification to capture that output clearly and confirm the build command used.
