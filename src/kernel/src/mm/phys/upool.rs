@@ -52,6 +52,7 @@ impl View for UserFrame {
 
 } // verus!
 
+#[verus_verify]
 impl UserFrame {
     ///
     /// # Description
@@ -197,6 +198,7 @@ impl UserFrame {
     }
 }
 
+#[verus_verify]
 impl Drop for UserFrame {
     #[verus_spec(
         ensures
@@ -233,6 +235,7 @@ pub struct Upool {
     _private: (),
 }
 
+#[verus_verify]
 impl Upool {
     ///
     /// # Description

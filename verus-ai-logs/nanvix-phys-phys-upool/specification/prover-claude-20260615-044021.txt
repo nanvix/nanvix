@@ -1380,3 +1380,310 @@ Now let me run module-scoped verification for upool.
 Turn 95
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -60
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm hitting a Rust compilation error where the `verus_spec` macro expansion is trying to call a `new` function that doesn't exist in scope. The issue seems to be with how the `ret =>` syntax in the macro is handling the return value binding with the `requires` clause, possibly generating an unexpected helper function call.
+[RESULT ✓] view: 55. impl UserFrame {
+56.     ///
+57.     /// # Description
+58.     ///
+59.     /// Instantiates a user frame.
+60.     ///
+61.     /// # Parameters
+62.     ///
+63.     /// - `addr`: Frame address.
+64.     ///
+65.     /// # Returns
+66.     ///
+67.     /// A user frame.
+68.     ///
+69.     #[verus_spec...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Let me check the full compile error context in the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "new\|E0425\|err
+
+[THINKING] I'm seeing an error about a missing `new` function at line 80 in the verus_spec macro. The issue might be that line comments inside the attribute macro's token stream are causing problems — Rust attributes handle comments differently than regular code, and the `//` syntax could be breaking the token parsing. I'm digging through the full error log to understand what's happening with the `new` function specifically. The `verus_spec` macro generates a proxy function that should handle the requires/ensures, and since similar patterns work in other parts of the codebase like `init` in mod.rs, there's something particular about how `new` is being resolved that's causing the issue.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error[E0425]: cannot find function `new` in this scope
+23:80 |     pub fn new(addr: FrameAddress) -> Self {
+26:For more information about this error, try `rustc --explain E0425`.
+27:error: could not compile `kernel` (bin "kernel") due to 1 previous er...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+Let me examine how the verus_spec macro handles normal (verified) functions to understand the `new` error.
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+
+[THINKING] I'm wondering why `new` specifically fails in the generated proxy function. Since `UserFrame::new` returns `Self` and the verus_spec uses a named return with `ret =>` and `ensures ret@ == addr@`, the macro generates a proxy that needs to express this spec. The issue might be that the generated proxy is placed at module level outside the impl block, so when it tries to call `new` without qualification, it can't find it — whereas `init`, being a free function at module level, works fine.
+
+But wait, that doesn't fully explain it. Other methods in the same impl block like `address`, `leak`, `share`, and `refcount` all have verus_spec too, yet only `new` fails. The key difference is that `new` is an associated function with no `self` receiver, while the others all take `self` in some form. For associated functions without `self`, the verus_spec proxy might generate a free function that references `new`, and that's where the lookup fails. I should check what the macro actually generates to understand how it handles `Self` in the return type when placed outside the impl context. The macro likely generates a separate proxy function for verified functions with named returns, which would explain why it's trying to call `new` as a free function. Let me check the macro's handling of normal functions versus those with named return patterns to understand if that's the actual issue, or if something else in the attribute parsing is causing the problem.
+[RESULT ✓] view: 680.                         )));
+681.                     }
+682.                 }
+683. 
+684.                 crate::rustdoc::process_item_fn(&mut verus_fun);
+685. 
+686.                 for attr in &verus_fun.attrs {
+687.                     if attr.path().is_ident("doc")
+688.                      ...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+Let me reproduce the issue in isolation to diagnose quickly rather than guess.
+[TOOL] bash: cd /mnt/toolchain/verus; grep -n "fn sig_specs_attr\|ret_pat\|ensures_ret\|proxy\|fn new\|unwrap_or" builtin_macros/src/
+
+[THINKING] For normal functions, the `sig_specs_attr` macro injects `requires` and `ensures` specifications directly into the function body rather than creating a separate `new` function. The body itself becomes `Self { addr }` with those spec statements inserted, and the `ensures` clause references the return value through `ret@`. The "cannot find function `new`" error likely stems from how the macro handles the named return binding with `ret =>` — the ensures clause is being processed with that return binding in mind.
+
+Looking at where this error actually originates, it's happening during macro expansion in the normal `cargo build` path, not in Verus verification mode. The error is a plain rustc E0425, which suggests the issue might be related to how the macro processes the function or its documentation comment, rather than the spec injection itself. Let me consider whether the doc comment structure or the attribute ordering is triggering something unexpected in the macro's rustdoc processing. Maybe the macro is generating a proxy function for cases with named return values, and that proxy is calling the original `new` function by an unqualified name, which would explain why the compiler can't find it in scope. Let me check the `sig_specs_attr` logic to see if named-return patterns trigger this kind of proxy generation.
+[RESULT ✓] bash: 533:        ret_pat: Option<&Pat>,
+558:        let ret_val_ident: &Ident = match ret_pat {
+563:        fn wrap_with_ret_binding_pat(expr: &mut Expr, ret_val_ident: &Ident, ret_pat: &Pat) {
+564:            if let Pat::Ident(pat) = ret_pat {
+574:                parse_quote_spanned!(expr_span => { let ...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/syntax.rs
+
+[THINKING] I'm reconsidering the named return pattern with `ret =>` as a plain identifier pattern. Looking at how `wrap_with_ret_binding_pat` handles `Pat::Ident` cases and tracing through the logic around line 558, I'm starting to think the actual issue might be something simpler than I initially thought.
+
+The `requires`/`ensures` injection seems fine, but I'm wondering if the problem is that `new` returns `Self` and constructs it with `Self { addr }`, while the macro-injected closure for `ensures` captures `addr` as a moved value — though that would trigger a borrow error, not E0425. Let me look more carefully at the `#[verus_spec]` proxy handling for named returns in the syntax.rs file around lines 555-600 to see if there's something about how the binding is set up that I'm missing.
+[RESULT ✓] view: 529. 
+530.     fn take_sig_specs<TType: ToTokens>(
+531.         &mut self,
+532.         spec: &mut SignatureSpec,
+533.         ret_pat: Option<&Pat>,
+534.         ret_ty: Option<&TType>,
+535.         _span: Span,
+536.         // is the function a ImplItemFn or TraitImplFn
+537.         is_impl_fn: bo...
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/rust_verify_test/tests; grep -rln "verus_spec"
+
+[THINKING] I'm looking at the logic for determining which identifier to use for the return value. If the return pattern is a simple identifier and it's different from the function name, I'll use that identifier; otherwise I need a fresh one. In the `new` function case, since the return pattern is `ret` and the function name is `new`, they're different, so `ret_val_ident` becomes `ret`.
+
+But I'm wondering if the real issue is something else entirely — maybe the `#[verus_spec]` annotation on `new` is causing the original function to be renamed or replaced by a proxy, which would break calls to `UserFrame::new(addr)` in the `alloc` method. The error message points to the definition line itself, which suggests the function might not be visible to callers anymore. Let me try removing the named return binding and the `ret.inv()` call to see if that's the culprit, or if the problem is actually in how the macro handles associated functions that call each other.
+[RESULT ✓] bash: ./consts.rs
+./nested_items.rs
+./syntax_attr.rs
+=== associated fn new with ensures in attr tests ===
+33:                ensures i == 10, ret == 10
+52:            ensures
+76:            ensures
+141:            #[verus_spec(ret =>
+143:                ensures ret
+163:                ensures
+195:    #[te...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/rust_verify_test/tests/syntax_attr.rs
+[RESULT ✓] view: 355. test_verify_one_file! {
+356.     #[test] test_proof_decl_reject_exec_local code!{
+357.         #[verus_spec]
+358.         fn test() {
+359.             proof_decl!{
+360.                 let x = true;
+361.             }
+362.         }
+363.     } => Err(e) => assert_vir_error_msg(e, "Exec local is...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+Let me look at how the macro handles the return type/proxy for impl functions (around lines 1040-1075).
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/syntax.rs
+
+[THINKING] I'm realizing the error happens during the initial Rust macro expansion, before Verus even processes it—rustc is seeing the expanded code and complaining. The issue might be that when `new` gets expanded with a body calling `ret.inv()`, where `inv` is a spec function taking `&Self`, there's a type mismatch or borrow checker problem in the generated code.
+
+Let me trace through how the ensures clause actually binds `ret`: the macro wraps the ensures expressions in a closure `|ret: RetTy| [...]`, so `ret` should be properly bound there. I need to look at how the return pattern and type are actually applied to the ensures expressions in the macro implementation. So the error span points to the definition of `new` itself at line 80, which means the macro is generating an unqualified call to `new` and attributing it to that location. That's the real issue — somewhere in the macro expansion, `new(...)` is being called without proper qualification, likely from within the `alloc` function's macro body.
+
+Let me check the return type handling in syntax.rs around lines 1040-1075 where impl functions and proxy returns are processed — that's probably where the issue originates.
+[RESULT ✓] view: 890.             // Check for Ghost(x) or Tracked(x) argument
+891.             unwrap_ghost_tracked.extend(rewrite_args_unwrap_ghost_tracked(&self.erase_ghost, arg));
+892. 
+893.             arg.tracked = None;
+894.         }
+895.         let (ret_pat, ret_ty) = match &mut sig.output {
+896.          ...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus; grep -n "fn sig_specs_attr\|pub fn sig_specs_attr" builtin_macros/src/syntax.rs
+
+[THINKING] I'm looking at the wrong macro path here—this is the `verus!` macro implementation, not the attribute macro path. I need to check `sig_specs_attr` instead to find what I'm looking for.
+[RESULT ✓] bash: 5153:pub(crate) fn sig_specs_attr(
+<shellId: 54 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/syntax.rs
+[RESULT ✓] view: 5153. pub(crate) fn sig_specs_attr(
+5154.     erase_ghost: EraseGhost,
+5155.     spec_attr: SignatureSpecAttr,
+5156.     sig: &mut syn::Signature,
+5157.     is_impl_fn: bool,
+5158.     is_closure: bool,
+5159. ) -> Vec<Stmt> {
+5160.     let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
+5161.  ...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/syntax.rs
+
+[THINKING] I'm checking whether the return identifier pattern conflicts with the function inputs, but this approach is taking too long. Let me just test this empirically by making all the potential fixes at once and rebuilding, or better yet, get the macro-expanded source to see what's actually happening.
+
+Actually, wait — the error "cannot find function `new` in this scope" might be simpler than I thought. If `take_sig_specs` generates a verification stub for an associated function with a named return, that stub might be calling the function itself. Let me look at the ensures handling section around lines 620-720 to see how it builds the closure and whether it references the function identifier.
+[RESULT ✓] view: 620.                     Some(Semi { spans: [token.span] }),
+621.                 ));
+622.             }
+623.         }
+624.         if let Some(Recommends { token, mut exprs, via }) = recommends {
+625.             if exprs.exprs.len() > 0 {
+626.                 for expr in exprs.exprs.iter_mut() {
+...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/syntax.rs
+[RESULT ✓] view: 720.                                         }
+721.                                     }
+722.                                 };
+723.                                 if is_async_fn {
+724.                                     quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constra...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Found it. Line 711-726: for an impl associated fn (no `self`), the macro emits `constrain_type(ret, Self::new(args))` only if `is_impl_fn=true`; if `is_impl_fn=false` it emits a bare `new(args)` → "cannot find function `new`". So `is_impl_fn` is being detected as false. Let me see how `is_impl_fn` is set.
+[TOOL] bash: cd /mnt/toolchain/verus; grep -n "is_impl_fn\|VERUS_IMPL\|impl_fn\|marker\|verus_verify_impl\|add_verus_verify_to" built
+
+[THINKING] I found the issue in the `constrain_type` function around lines 711-727. When dealing with an associated function that has no self receiver, it sets `receiver_token = Some(Self::)`, then constructs a call like `Self::new(addr)` to constrain the return value type.
+
+But here's the problem: if `is_impl_fn` is being passed as FALSE for `UserFrame::new` (which would happen at line 717 when both conditions are false), then `receiver_token` becomes None instead, generating a bare `new(addr)` call with no qualifier. That's why it can't find the function.
+
+The root cause is likely that the `#[verus_spec]` attribute on the method isn't providing enough context for the macro to recognize it's an impl function. In contrast, manager.rs methods use `external_body` which bypasses this path entirely, and the `init` function in mod.rs is a free function at module level, so `is_impl_fn=false` is correct there. So this is actually the first time a non-external_body impl method with a non-Result return type has been verified in this codebase — that's why the issue is surfacing now. The macro has special handling for impl blocks that mark methods when `#[verus_verify]` is applied to the block itself, but when the attribute is on individual methods, it's not detecting that it's an impl function. I need to trace through attr_rewrite.rs to see how `is_impl_fn` gets determined in that case.
+[RESULT ✓] bash: 190:    // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
+373:                quote_spanned! { span => (unused, verus_impl_method_marker)},
+596:            let is_hidden_impl_marker = |attr: &syn::Attribute| {
+600:                        if meta_list.token...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+[RESULT ✓] view: 185.     }
+186.     if !contains_external {
+187.         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+188.     }
+189. 
+190.     // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
+191.     let mut visitor = VerusVerifyVisitor { verify...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/builtin_macros/src/attr_rewrite.rs
+
+[THINKING] The `verus_impl_method_marker` gets added when `#[verus_verify]` is applied to an `impl` block, and the visitor traverses through the impl to mark each method individually. So the pattern is either applying the attribute directly to the `impl` block itself, or marking the methods through some other mechanism. Let me look at the VerusVerifyVisitor implementation around line 373 to understand how this works.
+[RESULT ✓] view: 350. fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
+351.     attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
+352. }
+353. 
+354. impl VerusVerifyVisitor {
+355.     fn add_verus_spec_if_needed(&self, attrs: &mut Vec<syn::Attribute>,...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+The marker is only added when `#[verus_verify]` visits the enclosing `impl` block. So the `impl UserFrame` block must carry `#[verus_verify]` for its `#[verus_spec]` methods to be recognized as impl fns. Let me check current upool.rs.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The `verus_impl_method_marker` only gets added to methods with `#[verus_spec]` when the `VerusVerifyVisitor` processes the enclosing impl block, which means the impl block itself needs to carry `#[verus_verify]` for the visitor to run. The fix is to add `#[verus_verify]` to the `impl UserFrame` block.
+
+Now I need to check how the impl blocks and annotations are currently structured in upool.rs to see if `#[verus_verify]` is actually on the impl blocks containing the `#[verus_spec]` methods.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+The fix: add `#[verus_verify]` to the `impl` blocks so the visitor tags each `#[verus_spec]` method as an impl fn. Let me confirm the existing pattern and check whether any impl block in the repo already uses it.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel; grep -rn "verus_verify" --include=*.rs src/ | grep -i "impl" ; echo "---methods ex
+
+[THINKING] I need to add the `#[verus_verify]` attribute to the impl blocks for `UserFrame`, `Drop for UserFrame`, and `Upool` so the visitor can walk through their methods and mark the spec functions appropriately. But I'm wondering whether the macro actually supports being applied to impl blocks in the first place.
+
+Looking at how the existing code handles this — the frame.rs and manager.rs files use `#[verus_verify(external_body)]` on individual methods rather than on the impl block itself, which works because external_body methods skip the body generation path entirely. My non-external methods need the impl-block marker though, so I should check if there are any existing examples of `#[verus_verify]` applied to impl blocks in the codebase to confirm this approach is valid.
+[RESULT ✓] bash: ---methods external---
+<shellId: 56 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel; grep -n "impl Inner\|impl FrameAllocator\|#\[verus_verify\|#\[verus_spec\|fn book\
+
+[THINKING] I need to check how the Inner methods are structured in frame.rs to see if there's an existing impl-block for verus_verify and understand the annotation patterns used.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+104:impl Inner {
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+137:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+210:    fn alloc_contiguous(&mut self, coun...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+`impl Inner` at line 103 carries `#[verus_verify]`. That's the marker-enabling pattern. Let me add `#[verus_verify]` to the three impl blocks in upool.rs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I found the pattern in frame.rs—the `#[verus_verify]` attribute is applied directly to impl blocks, which is what enables the marker. I need to add this same attribute to my impl blocks in upool.rs, specifically the UserFrame implementation and its Drop trait implementation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+Now let me re-run the module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys::upool 2>&1 | tail -40
