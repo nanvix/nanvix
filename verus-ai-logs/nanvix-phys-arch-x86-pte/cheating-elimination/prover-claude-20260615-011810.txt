@@ -701,3 +701,122 @@ Turn 39
 Turn 40
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch MODULE=x8
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  6 verified
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module x86::mem::paging::pte.
+  Global: assume=0 external_body=3 admit=0 trusted=0 cfg_gate=2
+  Unverified functions:
+=== Summary ===
+  verific...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Module is now CLEAN. Let me confirm the remaining global cheating is all out-of-scope (pde + tcb-allowed):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 -c "
+import re
+from pathlib import Path
+cfg_pat = re.compile(r'#\[c
+
+[THINKING] The pte module is now verified with no issues detected—6 checks passed and no errors. The remaining global configuration gates and external body references are outside my scope since they're located in other modules like pde.rs, so I'm confirming those don't need to be addressed here.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs 83 => ensures
+src/libs/arch/src/x86/mem/paging/pde.rs 307 => ensures
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Module is clean; remaining items are out-of-scope (pde.rs cfg-gates and tcb-allowed external_body). Now let me run the AST consistency check per the skill:
+[TOOL] skill: ast-consistency
+
+[THINKING] The remaining cfg gates are in other files outside my scope, so my module is clean. Now I'm running the AST consistency check to compare my changes against the base — I removed some cfg_attr lines and split a couple impl blocks, but the execution semantics stay the same. Let me look up the exact procedure for this check.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . -path ./build -prune -o -name "*.md" -print 2>/dev/null | grep -iE "
+[RESULT ✓] bash: ---
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+<shellId: 29 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -iname "*ast-consistency*" -o -iname "*verus-constraints*" 2>/dev/null | grep -v proc | head
+[RESULT ✓] bash: /mnt/shared/nanvix/verus-ai-history/ast-consistency
+/mnt/shared/nanvix/verus-ai-history/ast-consistency2
+/mnt/shared/nanvix/verus-ai-history/ast-consistency3
+/mnt/shared/nanvix/verus-ai-history/ast-consistency4
+/mnt/shared/verus-ai-improve4/docs/skills/ast-consistency
+/mnt/shared/verus-ai-improve4/d...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/ast-consistency/ && echo "===" && cat /mnt/shared/verus-ai-impro
+[RESULT ✓] bash: SKILL.md
+===
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+fo...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls scripts/ast_consistency.py 2>/dev/null && python3 scripts/ast_consistenc
+[RESULT ✓] bash: 
+<shellId: 32 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls scripts/ | grep -i ast; echo "exit prev: check"; python3 scripts/ast_con
+[RESULT ✓] bash: exit prev: check
+python3: can't open file '/home/ruize/nanvix-phy-specs-bottom-up/scripts/ast_consistency.py': [Errno 2] No such file or directory
+rc=2
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /mnt/shared/verus-ai-improve5-argus-exp2 -name "ast_consistency.py" 2>/dev/null | head; echo "---verus-ai-dir---"; 
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+---verus-ai-dir---
+
+/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/backup/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-property-analysis-0416/scripts/ast_consisten...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git show verus-ai-prove-bottom-up:src/libs/arch/src/x86/mem/paging/pte.rs >
+[RESULT ✓] bash: ✅ Consistent: 23 functions, 2 structs match.
+rc=0
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+AST consistency passes (exec-invisible). Now full-crate verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch 2>&1 | gr
+
+[THINKING] The AST consistency checks are passing with all 23 functions and 2 structs matching, and my refactoring changes—splitting the impl blocks and removing the cfg_attr—don't affect the executable output. Now I'm running the full architecture verification to make sure there are no regressions.
