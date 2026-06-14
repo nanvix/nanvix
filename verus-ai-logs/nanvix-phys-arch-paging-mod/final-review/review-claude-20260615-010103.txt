@@ -796,3 +796,310 @@ Turn 13
 ────────────────────────────────────────────────────────────
 AST consistency PASS. Now run the verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] rg: assume_specification\[\s*::arch::mem::paging::invlpg
+[RESULT ✓] rg: Output too large to read at once (1.2 MB). Saved to: /tmp/copilot-tool-output-1781456640904-dot7jr.txt
+Consider using tools like rg (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first 50...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Exit 0. Let me confirm the verified counts and cheating detail locations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail ==="; cat verus-ai-logs/verify-arch/verus-logs/ch
+[RESULT ✓] bash: === cheating-detail ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+
+=== verified/errors line ===
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] rg: assume_specification\[\s*::arch::mem::paging::invlpg
+[RESULT ✓] rg: Output too large to read at once (845.5 KB). Saved to: /tmp/copilot-tool-output-1781456645019-svkq1s.txt
+Consider using tools like rg (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] rg: assume_specification\[\s*::arch::mem::paging::invlpg
+[TOOL] rg: assume_specification\[\s*::arch::mem::paging::invlpg
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:77:// `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md:97:  pub assume_specification[ ::a...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:77:// `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE 'verified|error' verus-ai-logs/verify-arch/verus-logs/*.log 2>/dev
+[RESULT ✓] bash: verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_00-42-50.log:verification results:: 48 verified, 0 errors
+verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_00-46-00.log:48 verified
+verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_00-46-00.log:0 errors
+verus-ai-logs/verify-arch/verus-l...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] view: 46. ## Caller Expectations
+47. 
+48. ### `pub unsafe fn invlpg(vaddr: usize)`
+49. 
+50. All call sites follow the same pattern: **after** writing or clearing a page
+51. table entry (PTE) or page directory entry (PDE) for a given address, the caller
+52. calls `invlpg(addr)` to flush the corresponding T...
+[RESULT ✓] view: 50. ## `external_body` introduced while speccing `arch::x86::mem::paging` (`mod.rs`)
+51. 
+52. - `src/libs/arch/src/x86/mem/paging/mod.rs::invlpg` — the body is a single
+53.   `core::arch::asm!` block issuing the `invlpg` instruction, which flushes the CPU TLB
+54.   entry for `vaddr`. Verus does not ...
+[RESULT ✓] view: 149. // --- TLB maintenance ---
+150. 
+151. // `invlpg` is specified in `arch::…::paging` (`mod.rs`) — an external-bottom
+152. // hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB flush),
+153. // recorded in `verus-ai-logs/tcb-allowed.md`. The inherited `assume_specification`
+...
+[RESULT ✓] view: 67. /// Must be called from kernel mode (ring 0).
+68. ///
+69. // Trust boundary (see `verus-ai-logs/tcb-allowed.md` and the module's
+70. // `verus-unsupported.md`): the body is a single `core::arch::asm!` block issuing the
+71. // `invlpg` instruction, which flushes the CPU TLB entry for `vaddr`. Ver...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Let me verify the upstream assume_specification cross-reference.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n 'invlpg' src/kernel/src/mm/virt/identity_map.spec.rs 2>&1
+[RESULT ✓] bash: 151:// `invlpg` is specified in `arch::…::paging` (`mod.rs`) — an external-bottom
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] rg: admit\s*!\s*\(
+[TOOL] rg: \bassume\s*!\s*\(
+[TOOL] rg: #\[verus_verify\(external_body\)\]
+[TOOL] rg: ^\s*pub\s+assume_specification
+[TOOL] rg: #\[cfg\(verus_keep_ghost\)\]
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:1
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs:2
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '145,160p' src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] bash: // --- Paging index helpers ---
+
+// `pd_index` / `pt_index` are specified in `arch::…::paging::table` (removed here).
+
+// --- TLB maintenance ---
+
+// `invlpg` is specified in `arch::…::paging` (`mod.rs`) — an external-bottom
+// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TL...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] rg: src/libs/arch/src/x86/mem/paging/mod\.rs::invlpg
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:52:- `src/libs/arch/src/x86/mem/paging/mod.rs::invlpg` — the body is a single
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && if [ -f verus-ai-logs/nanvix-phys-arch-paging-mod/bugs.md ]; then echo exis
+[RESULT ✓] bash: missing
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in src/libs/arch/src/x86/mem/paging/mod.rs src/libs/arch/src/x86/mem/
+[RESULT ✓] bash: == src/libs/arch/src/x86/mem/paging/mod.rs ==
+✅ Consistent: 1 functions, 0 structs match.
+== src/libs/arch/src/x86/mem/paging/mod.spec.rs ==
+ERROR: Cannot get original from git: fatal: path 'src/libs/arch/src/x86/mem/paging/mod.spec.rs' exists on disk, but not in 'dev'
+== src/libs/arch/src/x86/mem/p...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] rg: (::arch::mem::paging::invlpg|paging::invlpg\()
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs:668:    unsafe { paging::invlpg(phys_addr) };
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:170:        unsafe { ::arch::mem::paging::invlpg(pgtable_address.into_raw_value(...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All checks complete. The upstream `assume_specification` has correctly been removed (now superseded by the module's own external_body contract). Let me write the final review.
+[TOOL] report_intent: Writing final review report
+[TOOL] bash: ls -la /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/ 2>&1
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: total 1096
+drwxrwxr-x 1 ruize ruize     136 Jun 15 01:01 .
+drwxrwxr-x 1 ruize ruize     472 Jun 15 01:01 ..
+-rw-rw-r-- 1 ruize ruize 1055626 Jun 15 01:04 review-claude-20260615-010103.jsonl
+-rw-rw-r-- 1 ruize ruize   62103 Jun 15 01:04 review-claude-20260615-010103.txt
+<shellId: 26 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/*
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/review-claude-20260615-010103.txt
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/review-claude-20260615-010103.jsonl
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final report
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat > verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.c
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review: arch-paging-mod (gpt-5.3-codex)
+2. ## Checklist (mark [x]/[ ] with evidence)
+3. - [x] Read required references and skills (`caller_analysis.md`, `view_design.md`, `tcb-allowed.md`, `verus-unsupported.md`; `spec-design`, `verus-constraints`, `ast-consistency`, `bug-re...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 183s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review report", tool_calls_completed: 25, (timed out...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Completed. I wrote the full review to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.codex.md`
+
+**Result:** PASS  
+**BLOCKERS:** None in scope (`invlpg`).
+
+I also ran `make verify-arch` (exit 0) and recorded cheating counts exactly as printed: `assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=4`.
+I'm waiting for both review sub-agents to finish. The claude agent is nearly done (writing its report); the codex agent is still running. I'll continue once they complete.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 186s, total_turns: 0, model: gpt-5.3-codex, duration: 184s
+
+Completed. I wrote the full review to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/n...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Codex agent completed (PASS). Let me check on the claude agent.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md with 9588 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Review complete. Independent verification done with live tool runs.
+
+## Result: **PASS** — no BLOCKERS
+
+**Evidence (all verified live, not trusted from summary):**
+
+- **Spec quality** — `invlpg` is `external_body` with an empty, faithful contract. Inline `asm!` is a genuine Verus-unsupported external-bottom hardware boundary; the TLB is unobservable, so no `requires`/`ensures` is the correct outcome (per spec-design). Notable: the upstream `assume_specification` at `identity_map.spec.rs:151` has been **removed** (now a comment) and superseded by this module's contract — correct bottom-up flow, no duplicated trust boundary.
+- **Caller coverage** — 1/1, Missing: none.
+- **Proof completeness** — `admit()=0`; the only in-scope `external_body` (`invlpg`) is allowlisted.
+- **TCB** — `invlpg` listed in tcb-allowed.md:52. YES.
+- **Guardrails** — admit:0, assume:0, external_body:3 (all 3 in tcb-allowed.md), assume_specification:0, cfg-gated exec:0. Confirmed `cfg_gate=4` comes from the spec/proof `include!` directives (allowed), not exec.
+- **AST consistency** — invlpg MATCH (matched=1, mismatched=0). PASS.
+- **Verification** — `make verify-arch` exit 0; "47 verified, 0 errors".
+- **Bugs** — 0 true bugs. The historic `table.proof.rs` `admit()` was dead spec-phase axiom code, correctly removed (deferred to table proving phase) — not a bug.
+
+**Minor non-blocking issues flagged:** (1) `bugs.md` is absent (skill expects a "None" file); (2) caller_analysis.md/tcb-allowed.md are slightly stale re: the now-removed upstream `assume_specification`.
+
+Output written to `verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md`.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 205s, total_turns: 0, model: claude-opus-4.8, duration: 205s
+
+Review complete. Independent verification done with live tool runs.
+
+## Result: **PASS** — ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Both reviews are PASS. Let me read both raw reports and verify key claims before consolidating.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===claude exists===" && ls -la verus-ai-logs/nanvix-phys-arch-paging-
+
+[THINKING] Both agents passed their reviews. Now I'm reading through the raw review files to consolidate the findings and verify some of the claude agent's specific claims about the upstream assume_specification being removed and cfg_gate coming from includes.
+[RESULT ✓] bash: ===claude exists===
+-rw-rw-r-- 1 ruize ruize 9691 Jun 15 01:05 verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize 5000 Jun 15 01:05 verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.codex.md
+===identity_map.spec.rs:151 area===
+// ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Claims verified: upstream `assume_specification` removed, 47 verified/0 errors. Let me read both raw reviews to consolidate.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.codex.md
+
+[THINKING] The verification passed with all 47 claims confirmed and no errors, so now I'm reviewing both raw feedback entries to consolidate them.
+[RESULT ✓] view: 1. # Final Comprehensive Review: arch-paging-mod (claude-opus-4.8)
+2. 
+3. In-scope target: `src/libs/arch/src/x86/mem/paging/mod.rs::invlpg` (only).
+4. Verification performed independently with live tool runs; the user's summary was
+5. not trusted. Evidence (file:line + command output) is cited inli...
+[RESULT ✓] view: 1. # Final Comprehensive Review: arch-paging-mod (gpt-5.3-codex)
+2. ## Checklist (mark [x]/[ ] with evidence)
+3. - [x] Read required references and skills (`caller_analysis.md`, `view_design.md`, `tcb-allowed.md`, `verus-unsupported.md`; `spec-design`, `verus-constraints`, `ast-consistency`, `bug-re...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Both independent reviews agree: **PASS**, no blockers. To honestly check the full checklist (cross-module regression, build, spec-drift, coverage), let me run those remaining checks myself.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===spec_drift===" && python3 /home/ruize/verus-ai-exp/verus-ai/script
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1800 make verify 2>&1 | tail -30
+
+[THINKING] Both reviews align on the verdict: no admissions, no assumptions, external body operations in scope via invlpg in the TCB, no assumption specifications, no CFG-gated execution, and AST and Verus both pass with zero true bugs. I'm consolidating these findings into the final review document, noting that the missing bugs.md file and stale reference documentation are minor non-blocking issues that don't affect the core assessment.
+
+Now I'm checking the full checklist against the task requirements. The bug-reporting requirement is conditional—no file needed if no bugs were found—so the absence of bugs.md doesn't constitute a checklist failure. I need to verify whether the full `make verify` and `make build` commands were executed, since the checklist includes these items even though the task only explicitly requires `make verify-arch`.
+
+To properly mark these boxes, I should run the key verification scripts myself: the full `make verify`, `make build`, `spec_drift.py`, and `fn_coverage.py` to ensure everything is legitimately checked.
+[RESULT ✓] bash: ===spec_drift===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+===fn_coverage===
+us...
