@@ -421,3 +421,156 @@ Turn 17
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
 
 [THINKING] I'm looking at the global summary counts, but I need to examine the module-specific output to see the breakdown. Let me trace through the full output before the summary section to understand what each module is reporting.
+[RESULT ✓] bash: 6:/home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module mm::virt::identity_map --log-dir verus-ai-logs/verify-kernel
+9:  Module    : mm::virt::identity_map
+22:=== Cheating Pattern Check ===
+23:  Module mm::virt::identity_map:
+24:    ⚠️  admit: 3
+26:    - identity_map.rs:53...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The 3 admits are the only module-scoped cheating. Let me examine the existing logs for this module and the arch dependency contracts to understand the intended proof approach.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-virt-identity-map/ verus-ai-logs/virt-iden
+
+[THINKING] So the three `admit` statements in `ensure_pt`, `ensure_pte`, and `identity_map_page` are the only cheating in this module, and I need to figure out if they can actually be proven rather than admitted.
+
+Looking at `ensure_pt` first: the `V.inv()` part is guaranteed by the requires, and the page-alignment of the returned address should be provable if the underlying dependencies (like the BSS slot allocation and `frame_address()`) provide alignment guarantees in their contracts.
+
+But `ensure_pte` is trickier—it needs to prove that `V.mapped` contains the page on success and doesn't contain it on failure, but `V.mapped` is a fixed value from the uninterpreted `identity_map_view()` constant, so I can't derive membership or non-membership from just the invariant alone.
+
+The `identity_map_page` ensures have a similar issue where I'd need to prove properties about the fixed `V.acc` set that aren't derivable from `V.inv()`.
+
+This means `ensure_pt` might be provable with the right alignment contracts, but `ensure_pte` and `identity_map_page` are genuinely unprovable without a ghost-token model that tracks state changes—which would require signature changes I can't make. So I need to accept that this phase will fail and record the verification todos honestly.
+
+But wait, there's another angle: the spec contracts themselves are editable, not the exec code. The real question is whether these contracts are even well-designed. Let me check how the prior verified phases handled similar situations—specifically, whether any free functions over singleton globals got their bodies verified without admits, and how they structured the view functions. Looking at the phys modules, I notice the free functions like `alloc` and `free` are marked as `external_body` (TCB-listed), while the actual verified logic lives in the `Inner::*` methods. So they didn't verify the free-function bodies at all—they made them external and verified the inner methods instead.
+
+For identity_map, there are no inner methods; the three functions ARE the free functions over globals. By that pattern, they'd need to be `external_body` too, but they're not in the TCB and the task forbids adding them. This points to either the intended design being exactly what's there (deferring the admit), or these functions should be TCB external_body—neither of which is allowed.
+
+Re-reading the spec comment more carefully, it explicitly states the v→v' transition is realized in the proving phase via a ghost token over the singletons. So this phase is supposed to do exactly that proving work. The standard Verus approach for global singletons without signature changes is using `vstd::atomic_ghost` or storing tracked permissions in a global accessed via `external_body`.
+
+To make this work honestly, I'd need a TCB external_body accessor—essentially a borrow function that would be listed in tcb-allowed.md. But the task frames the TCB list as fixed by humans, and adding my own entry would feel like gaming the constraint. I'm facing a genuine impasse: the grader requires the three admits gone and verification to pass, but the contracts as written are unprovable without changing signatures or adding TCB functions.
+
+Let me reconsider what's realistically achievable. I have two honest paths: either strengthen the proof infrastructure so the contracts become provable (ghost token without signature changes), or adjust the contracts themselves to match what's actually provable from the uninterpreted state while keeping them as strong as possible. For the second approach, I need to figure out what can honestly be proven about these functions given that identity_map_view() is an uninterpreted constant.
+
+The invariant preservation is trivial, and alignment might be provable if dependencies provide it, but the membership and accessibility claims aren't. Weakening the ensures clauses to drop unprovable claims would be honest and remove the admits, but it gutts the meaningful postconditions—essentially making verification meaningless. The task emphasizes "real proofs," so if a contract can't be proven, the honest answer might be that the proof is genuinely blocked. Let me actually test this empirically by removing one admit and running verus to see what errors surface, starting with the alignment one in ensure_pt since that's most likely provable.
+
+I should also check whether there's any hidden mechanism connecting identity_map_view to the table spec through axioms or broadcasts—searching the proof file shows there isn't. The function is truly disconnected from exec state. Given this, my best realistic strategy is to test removing admits to see exact errors, then determine the most honest path forward. One possibility: using a global tracked ghost state that the functions access through proof code without changing their signatures. be provable, but ensure_pte and identity_map_page both fundamentally require connecting the atomic state to the view — specifically, that `pd_paddr==0` implies the view isn't initialized yet. Without that ghost connection, even if ensure_pte's contract held, the pre-init early-return path in identity_map_page can't establish the accessibility postcondition.
+
+Let me check if a completed sibling phase that faced this same pattern documented how they resolved it, or if there's a known issue log for this module.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-virt-identity-map/:
+total 132
+drwxrwxr-x 1 ruize ruize   452 Jun 15 03:04 .
+drwxrwxr-x 1 ruize ruize  1788 Jun 14 12:07 ..
+-rw-rw-r-- 1 ruize ruize 16937 Jun 15 02:37 body_removed_source.rs
+drwxrwxr-x 1 ruize ruize   136 Jun 14 08:59 caller-analysis
+-rw-rw-r-- 1 ruize ruize...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+
+[THINKING] I need to check the verification-todo.md file to see what was concluded in the previous phase, and then review the proving dialogue to understand what was already attempted.
+[RESULT ✓] view: 1. # Verification TODO — `mm::virt::identity_map`
+2. 
+3. Honest hand-off of genuinely-stuck proof obligations per the `verus-constraints`
+4. skill. These are NOT accepted trust assumptions and NOT code bugs — they are the
+5. cross-module **proving-phase ghost-token** obligations that the whole botto...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The prior proving phase documented these as genuinely blocked. Let me empirically verify by examining the dependency contracts before attempting. Let me look at the allocator and bump_allocator specs.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/page_table_allocator.rs
+
+[THINKING] The previous phase identified three genuinely blocked cases that need a ghost-token framework with signature changes outside the current scope. Now I'm in the elimination phase where I need to actually remove these admits by either finding a way to implement the ghost token without modifying signatures, or definitively confirming it's impossible.
+
+The core challenge is connecting the atomic `KERNEL_PD_PADDR` to the identity map view through proof. I'm exploring whether I can define `identity_map_view()` as an open spec function backed by global ghost state accessed through proof functions, but Rust statics can't be tracked. The physical pattern uses `external_body` with `instance()` to materialize a mutable reference pinned via ensures, which works for methods taking `&mut self`, but identity_map would need an external proof function that's forbidden in this context. Another angle is tying the atomic's value to the spec through `assume_specification` on `AtomicUsize::load`, but that requires a new human-approved assumption and still leaves the connection incomplete.
+
+I'm now seeing this as a genuine blocker: eliminating the admits soundly requires either a TCB external accessor or a new assume_specification, both forbidden, or changing out-of-scope function signatures, also forbidden. The task demands zero cheating and full elimination of admits. I could weaken the contract to something provable—removing the admits would mechanically pass the cheating detector—but that destroys the meaningful guarantee. The alternative is keeping the admit, which definitively fails the phase.
+
+Looking at what's actually provable from the uninterpreted constant view: all three functions can prove `requires V.inv()` trivially since V is constant, but ensure_pt's alignment guarantee isn't provable for the fresh-alloc path, and there's a deeper issue with the `alloc_as` precondition `bump_view(self).inv()` that I'd need to satisfy. Even if I weaken the ensures, that precondition error remains—I'd need to either prove it or avoid calling alloc_as entirely. Checking whether `bump_view(PAGE_TABLE_ALLOCATOR).inv()` is provable seems unlikely given the static nature and the ghost token requirements. This means removing the admit from ensure_pt creates a precondition error regardless of ensures weakening, which is another blocker.
+
+Before accepting defeat, I should actually attempt the proofs empirically rather than just theorizing—the prior analysis might have missed something. Let me look at what's available: the bump_allocator's alloc_as contract, slice operations, frame_address, Table read/write, index functions, and whether bump_view and the allocator's invariant can be established from the dependencies.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module instantiates a global fixed-size bump allocator for kernel page tables. Allocation
+8. //! is backed by statically reserved and aligned BSS storage and is used...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find src/libs/bump_allocator -name "*.rs" | head; echo "=== alloc_as / inv 
+
+[THINKING] I need to check the bump_allocator spec to understand what preconditions apply to `alloc_as` and `bump_view`.
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.spec.rs
+src/libs/bump_allocator/src/lib.rs
+src/libs/bump_allocator/src/lib.proof.rs
+=== alloc_as / inv / bump_view ===
+src/libs/bump_allocator/src/lib.proof.rs:19:    requires
+src/libs/bump_allocator/src/lib.proof.rs:23:    ensures
+src/libs/bump_allocator/src/lib.proo...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I'm examining the allocation ensures and bump_view logic along with the alignment constraint around slot_ref_addr, looking at the relevant sections in lib.rs and cross-referencing with the spec.
+[RESULT ✓] view: 340.     ///
+341.     /// The caller must initialise the returned `MaybeUninit<T>` before reading through it
+342.     /// and ensure exclusive use of the returned reference.
+343.     ///
+344.     // SAFETY-SPEC: `external_body` for the same reason as `alloc` (it delegates to
+345.     // `alloc` and ...
+[RESULT ✓] view: 100.     pub open spec fn slot_addr(self, i: int) -> int {
+101.         self.base + i * (self.stride as int)
+102.     }
+103. 
+104.     /// A slot index is *consumed* iff it is below the high-water mark.
+105.     pub open spec fn is_consumed(self, i: int) -> bool {
+106.         0 <= i < self.allocate...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+I have enough understanding. The dependency contracts confirm `bump_view().inv()` and `identity_map_view()` are uninterp with no spec-readable link to the static state. Let me empirically confirm the exact Verus errors by removing the admits. First, a backup and a plan.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp src/kernel/src/mm/virt/identity_map.rs /tmp/identity_map.rs.bak && git s
+
+[THINKING] The issue is that `bump_view` is uninterpreted, so I can't establish the invariant needed for `alloc_as` without some kind of ghost token or axiom. The `PAGE_TABLE_ALLOCATOR` static would require proving `bump_view(&PAGE_TABLE_ALLOCATOR).inv()`, but since the function has no interpretation, there's no way to derive that property—though the bump allocator's own `new()` method does use an `assume_specification` to work around this.
+
+This confirms the analysis: the precondition for `ensure_pt`'s `alloc_as` call is fundamentally unprovable under the current constraints. The real blocker is that resolving `identity_map_view()` and `bump_view().inv()` for module-level statics would require the ghost-token framework from the proving phase, which depends on spec-readable atomics and would force signature changes to out-of-scope callers—both forbidden by the task constraints.
+
+I should empirically test by removing the admits and capturing the actual Verus errors to document what's blocking, then record this as a remaining item in the verification todo. I'm realizing that no matter how I define the identity_map_view—whether as a constant or with different initialization states—I run into the same fundamental problem: the postconditions require opposite membership claims depending on the result (Ok vs Err), and a static view can't satisfy both branches simultaneously. This isn't a proof effort issue; it's mathematically impossible without runtime state tied to execution, which isn't available here. The contracts are inherently result-dependent in a way that demands ghost state or a weaker spec, and weakening the spec would defeat the purpose of verification. The admits exist precisely because this is a legitimate hand-off point that the task's verification_todo mechanism is designed for.
+
+My best path forward is to empirically remove the admits, capture the actual Verus errors as evidence, then restore them so the module stays in its verified state with cheating detected rather than hard-failing. The honest resolution is to mark this as a BLOCKER in the fix report and document why the current contracts can't be satisfied soundly without external approval or spec changes.
+
+Let me back up the file and test what happens when I remove the admits.
+[RESULT ✓] bash: 
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The file is clean, so I'll remove the three admits and run Verus to see what errors surface. But to get meaningful error messages rather than just "admit" failures, I need the function bodies to actually attempt verification. I should also think about whether I can discharge the `pt.read`/`pd.read` preconditions and the trivial `inv()` call to cut down on noise.
+
+Actually, I don't need to worry about that right now — I just want to capture the blocking errors. Let me strip out all three admits.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -
