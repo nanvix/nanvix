@@ -30,6 +30,13 @@
       "review_file": null,
       "duration_s": 1310.5,
       "review_rounds": 2
+    },
+    "final-review": {
+      "verdict": "FAIL",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": false,
+      "duration_s": 492.5
     }
   },
   "prover_session_id": "59d018d8-eb57-4086-b516-a11772186786",
