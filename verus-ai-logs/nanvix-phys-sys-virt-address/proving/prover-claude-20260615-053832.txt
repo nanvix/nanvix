@@ -598,3 +598,27 @@ Turn 29
 [TOOL] report_intent: Testing per-method verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | tail -35
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: |
+167 | / impl Address for VirtualAddress {
+168 | |     ///
+169 | |     /// # Description
+170 | |     ///
+...   |
+269 | | }
+    | |_^
+
+error: could not compile `sys` (lib) due to 1 previous error
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summa...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys 2>&1 | grep -A3 "^error" | head -30
+
+[THINKING] I'm looking at an error where applying `#[verus_verify]` to individual methods in a trait implementation isn't supported — the compiler error points to the entire impl block instead of the specific method.
