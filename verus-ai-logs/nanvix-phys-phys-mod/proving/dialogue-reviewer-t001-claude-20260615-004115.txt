@@ -258,3 +258,101 @@ The scope is interesting here: the module targets init, book_mmio_regions, and b
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 11
+    ⚠️  admit: 22
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:298 free: admit
+    - frame.rs:379 share: admit...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail (mod.rs/mod.spec/mod.proof + cfg lines) ==="; grep -nE "mod
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls scripts/ | grep -iE "drift|spec" ; echo "==="; find . -path ./target -prune -o -in
+
+[THINKING] For the phys-mod proving target, I need to focus the cheating audit specifically on the three in-scope functions: `init`, `book_mmio_regions`, and `book_physical_memory_regions`. The module-level audit shows many admit/external_body instances, but most are scattered across other files like frame.rs and manager.rs that fall outside this proving scope, so I should filter those out and concentrate only on what's relevant to these target functions. audit checklist is really asking for — whether those are module-level cfg attributes or actual cfg-gated branches within executable code. The test module and test function are gated at the module level, not within the logic itself, so they shouldn't count as violations. Let me verify the rest of the checklist items for this proving target to make sure everything aligns. Now I need to verify the in-scope functions don't have any prohibited admits or external_body calls — checking mod.proof.rs (empty), mod.rs (has 2 external_body but both are TCB-allowed), and init which is body-verified. Everything in scope passes. Next I should run the spec drift check and look for any cfg-gated executable code in mod.rs to complete the checklist verification.
+[RESULT ✓] bash: === cheating-detail (mod.rs/mod.spec/mod.proof + cfg lines) ===
+32:    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+33:    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+34:    - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+=== cfg_gate section ===
+<shel...
+[RESULT ✓] bash: ===
+<shellId: 10 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] I don't see the spec-drift script, so I'm checking the cheating-detail.txt file to understand how cfg-gate is being counted and what the configuration gates look like.
+[RESULT ✓] view: 1.     - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+2.     - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+3.     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+4.     - hal/mem/types/address/phys.proof.rs:16 lemma_fra...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find verus-ai-logs/verify-kernel -name "*.txt" -o -name "*.json" 2>/dev/null | head; 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg" src/kernel/src/mm/phys/mod.rs src/kernel/src/mm/phys/mod.spec.rs src/k
+
+[THINKING] The cfg_gate count spans the entire kernel but isn't broken down per-function, so I need to locate where cfg-gated execution is actually detected—the global count is 15, though none of these appear in the mod.rs target functions. For the phys-mod proving target with in-scope files mod.rs, mod.spec.rs, and mod.proof.rs, I'm seeing two external_body annotations for book functions that are TCB-allowed, plus one external_type_spec for ExLink.
+
+edList which is allowed as a foreign type, with zero admits and zero assumes. Now I'm checking whether the `#[cfg(feature = "test")]` annotations on the test module and test function, along with the `#[cfg(verus_keep_ghost)]` includes, count as cfg-gated exec code—the rule specifically targets branches, expressions, and match arms rather than whole-function or module-level cfg gates, so I need to verify how the tool actually counts these and whether mod.rs contributes to the total.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.rs:15:#[cfg(feature = "test")]
+src/kernel/src/mm/phys/mod.rs:36:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:40:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:42:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:195:#[cfg(feature = "test")]
+<shellId:...
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+=== search cfg in logs ===
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-13_23-26-35.log:16:  cfg_gate=5
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-13_23-35-50.l...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff mod.spec.rs proving-START..HEAD ==="; git --no-pager diff 19e519240^ H
+
+[THINKING] Looking at the cfg usages in mod.rs, I see there are module and function gates using the "test" feature, along with some ghost-only conditional compilation for specs and proofs following the standard Verus pattern. The thinking seems to cut off while discussing a cfg-gated exec rule target.
+
+The key distinction is that cfg attributes creating execution branches within function bodies are verification holes, whereas module-level gates and the standard ghost-inclusion pattern aren't problematic. Checking the actual function bodies for init and book_* functions shows no cfg-gated branches inside them, so there's no exec control flow divergence in the target functions. The cfg_gate count of 15 in the global metrics includes these standard patterns plus test gating, but the actual proving scope is the three target functions in phys-mod, while other modules like frame, manager, and upool are separate proving targets with their own external dependencies.
+
+Now I need to verify that specs haven't been weakened during the proving phase. The specification phase baseline should be at the proving start commit, and I need to check whether the contracts in mod.spec.rs have drifted or been relaxed since then. Let me trace through the git history to see what changed during proving and compare the original guarantees against the current state.
+[RESULT ✓] bash: === diff mod.spec.rs proving-START..HEAD ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== mod.rs diff ==="; git --no-pager diff 19e519240^ HEAD -- src/kernel/src/mm/
+
+[THINKING] The test file hasn't changed, which is what I'd expect. Now I need to review the contracts in mod.rs and then check the proof implementation in mod.proof.rs.
+[RESULT ✓] bash: === mod.rs diff ===
+diff --git a/src/kernel/src/mm/phys/mod.rs b/src/kernel/src/mm/phys/mod.rs
+index c5df7c280..f50748878 100644
+--- a/src/kernel/src/mm/phys/mod.rs
++++ b/src/kernel/src/mm/phys/mod.rs
+@@ -173,9 +173,6 @@ pub fn init(
+     info!("initializing the frame allocator ...");
+     // Safety...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All key proving changes confirmed: the two `admit()` lemmas were removed and `init` is now body-verified. Let me run the full cross-module verification and a build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -25
+
+[THINKING] The key breakthrough here is that the two `admit()` calls in the proof file have been eliminated—the `init` function now proves its postcondition directly using the dependency contracts from `frame::init` and `PhysMemoryManager::init`. The proof is now complete with zero admits, and the initialization logic is fully verified through its body.
+
+Now I need to confirm the full kernel verification passes end-to-end and check what the build command should be to validate there are no compilation errors or warnings.
