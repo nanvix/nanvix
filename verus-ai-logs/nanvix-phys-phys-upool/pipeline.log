@@ -103,3 +103,9 @@ Module: phys-upool
 [2026-06-15 05:13:19] ✅ specification: PASS (0/0)
 [2026-06-15 05:13:19] [GATE] Running build: make build
 [2026-06-15 05:13:19] [GATE] Running verify: make verify
+[2026-06-15 05:13:26] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PHASE: proving
+Module: phys-upool
+============================================================

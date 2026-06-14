@@ -2,11 +2,12 @@
   "module_name": "phys-upool",
   "log_name": "nanvix-phys-phys-upool",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "f0eee62b23c5446966da6be387c6b556c237fc8b",
     "view-design": "92031160111facf193a8110a96383bf67001503a",
-    "specification": "210425703bc269e07076558969af98c1bbe0d0dd"
+    "specification": "210425703bc269e07076558969af98c1bbe0d0dd",
+    "proving": "f58e130ac8d40c0af43c584e94ec666b97f6633c"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "8d4e65c1456ca115f74484d18d38544fddb2a9a4",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "f58e130ac8d40c0af43c584e94ec666b97f6633c",
       "rollback_iter": 0
     }
   ],
