@@ -134,16 +134,19 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
     }
-    // VERUS DEVIATION: the original body was
+    // VERUS REWRITE: the original body was
     //   `value.div_ceil(alignment).checked_mul(alignment)`.
     // Verus ships no specification for the `usize::div_ceil` intrinsic (confirmed:
-    // not present in vstd `std_specs`), and the only ways to give it meaning are
+    // not present in vstd `std_specs`; Verus emits "`core::num::<impl usize>::
+    // div_ceil` is not supported"). The only ways to give it meaning are
     // `assume_specification`/`external_body`, both of which are unapproved cheating
-    // for this function. The ceiling division is therefore open-coded into the
-    // arithmetically-equivalent `value / alignment` (+1 on a non-zero remainder).
-    // This preserves semantics and O(1) time/space. `qd + 1` cannot overflow
-    // because a non-zero remainder forces `alignment >= 2`, hence
-    // `qd <= value / 2 < usize::MAX` (see `lemma_ceil_div`).
+    // for this function. Minimal reproducer with the captured Verus error:
+    //   verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/repro/div_ceil_no_spec.rs
+    // The ceiling division is therefore open-coded into the arithmetically-
+    // equivalent `value / alignment` (+1 on a non-zero remainder). This preserves
+    // semantics and O(1) time/space. `qd + 1` cannot overflow because a non-zero
+    // remainder forces `alignment >= 2`, hence `qd <= value / 2 < usize::MAX`
+    // (see `lemma_ceil_div`).
     let r: usize = value % alignment;
     let qd: usize = value / alignment;
     proof! {
