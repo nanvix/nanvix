@@ -190,6 +190,8 @@ impl PhysMemoryManager {
                     &&& forall|i: int|
                         0 <= i < count as int ==>
                             #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
+                    &&& phys_view().frames.free_frames.finite()
+                    &&& spec_watermark_ok(phys_view().frames, 0)
                 },
                 Err(_) => final(frames)@.len() == 0,
             },
@@ -257,6 +259,8 @@ impl PhysMemoryManager {
                 Ok(frame) => {
                     &&& phys_view().frames.allocated_frames.contains(frame@)
                     &&& frame@ % spec_page_size() == 0
+                    &&& phys_view().frames.free_frames.finite()
+                    &&& spec_watermark_ok(phys_view().frames, 0)
                 },
                 Err(_) => true,
             },
