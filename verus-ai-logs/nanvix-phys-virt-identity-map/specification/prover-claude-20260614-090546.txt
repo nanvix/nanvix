@@ -910,3 +910,144 @@ Turn 55
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -nE "error\[|error:
 
 [THINKING] The error count is down to 29 now that the initial issue is resolved. I'm looking at what's causing the remaining errors—it seems like the `Table` type might need an external type specification, or Verus is trying to verify functions that use `Table` without having the proper specification for it. Let me examine what these errors actually are.
+[RESULT ✓] bash: 16:error: cannot use type `arch::x86::mem::paging::pde::PageDirectoryEntry` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+17:   --> src/kernel/src/mm/virt/identity_map.rs:522:14
+62:    = help: The following declaration may resolve this error:
+...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Verus now needs trusted specs for all the arch paging types/functions these functions use. Let me check what specs already exist for these types across the codebase.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "external_type_specification\|ExTable\|ExPageDirectory\|ExPageTable\|assume_specific
+
+[THINKING] The issue is that these external types and functions from the architecture layer need formal specifications in Verus before it can verify the page table functions. I need to define `external_type_specification` and `assume_spec` declarations for all the external dependencies like `Table`, `PageDirectoryEntry`, `PageTableEntry`, and their associated methods so Verus can reason about them during verification. Now I'm cataloging all the flag types that need specifications — `PresentFlag`, `ReadWriteFlag`, `UserSupervisorFlag`, and the rest — along with the core entry types and their methods. I also need to account for `FrameNumber` (which may already have a spec in the arch crate), `PageTableBss` for the allocator type, and utility functions like `Table::read`, `Table::write`, and the paging operations `pd_index`, `pt_index`, and `invlpg`. There are also standard library functions like slice pointer conversion and `MaybeUninit::assume_init_mut` that likely have existing specs in vstd, plus `PageAligned::into_raw_value` which already has an `assume_specification` in the frame specs.
+
+This is a substantial amount of trust-boundary work — the real challenge of specifying this module. The task expects me to write specs for dependency functions and mark them `external_body`, while types get `external_type_specification`. Since the arch crate is in the verified crates list, those paging types might already have specs somewhere, or they're declared external. I should search the kernel codebase to see if `Table`, `PageDirectoryEntry`, and `PageTableEntry` already have external type specifications defined elsewhere.
+[RESULT ✓] bash: 
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== arch paging verus annotations ==="; grep -rln "verus_spec\|verus_verify\|external_t
+[RESULT ✓] bash: === arch paging verus annotations ===
+src/libs/arch/src/x86/mem/paging/frame/number.rs
+=== any .spec.rs in virt ===
+src/kernel/src/mm/virt/identity_map.spec.rs
+=== FrameNumber ExFrameNumber location ===
+src/kernel/src/mm/phys/mod.spec.rs:65:#[verifier::external_type_specification]
+src/kernel/src/mm/...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] Only `FrameNumber` has verus annotations in the arch paging module, so I need to provide trusted dependency specs for all the other paging types—Table, PDE, PTE, TableIndex, and flags—in identity_map.spec.rs since that's where they first get used under verification. This creates a significant trust boundary, so I'm looking at how `mm/phys/mod.spec.rs` models ExFrameNumber as a reference pattern.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+This needs trusted specs for many arch paging types. Let me check if a prior worktree already specced this module to reuse the pattern.
+[TOOL] bash: find /home/ruize -path "*mm/virt/identity_map.spec.rs" 2>/dev/null | grep -v "/nanvix-phy/"; echo "=== search any identi
+
+[THINKING] I need to set up a bunch of external type and function specifications for the architecture paging API to handle dependencies that haven't been verified yet. Rather than manually writing out twenty-plus trust declarations and going through multiple iterations, I should first map out exactly which types and functions are being referenced, then figure out the simplest correct specs for each one. I'm wondering if there's an existing pattern in the codebase I can reference—maybe something from boot_init that I can adapt.
+
+Looking at the three main functions, I need to enumerate all the external items they depend on: the table and entry types, the read operations on those tables, methods like `is_present()` and `frame_address()`, the page table allocator and its associated types and constants, and standard library operations like `assume_init_mut()` and pointer casting. This is a lot of ground to cover, but I'll work through it systematically rather than delegating it, since this needs careful iteration with the compiler.
+
+Now I'm seeing the rest of the dependencies: constructors for the entry types and their flag enums, write operations on the tables, and the `invlpg` instruction for TLB invalidation. But there's a complication emerging with cross-module specifications — `PageAligned::into_raw_value` is already specified in the phys module's frame.spec.rs, and I can't redeclare it in the virt module without creating a conflict. The `identity_map_page` function also pulls in atomic operations and kernel page directory references that add another layer of complexity.
+
+I'm reconsidering whether the scope is realistic. The arch crate is already verified, so maybe these paging types should have been annotated there in the first place. But the task is to spec the identity_map module itself, which means I need to provide trusted contracts for all its dependencies. The real question is whether I can reuse existing assume_specifications from frame.spec.rs or if I need to work around them somehow.
+
+Looking at what's already declared: PageAligned::into_raw_value is in frame.spec.rs, so I'll reuse that and not redeclare it. For everything else—Table, PDE, PTE, flags, TableIndex, atomics, paging functions, MaybeUninit, and slice operations—I need to add external specs. This is a large surface, but since these are new types not used by the phys module, they shouldn't conflict with existing specs. Given that the proof bodies are just admit(), I can take a minimal approach: register each external type and give the functions trivial external_body specs with no requires/ensures, just enough for Verus to type-check the calls.
+
+For external functions, I'll use assume_specification to provide specs that let Verus process the calls without reasoning about them. The challenge is that there are roughly 25 distinct external items, and each external_type_specification needs the exact generic signature—this is mechanical but error-prone.
+
+Let me check if there's prior work on this in git history or other branches, like that verus-ai-vmem-0417 worktree mentioned earlier, to see if identity_map or similar functions were already specified.
+[RESULT ✓] bash: === search any identity_map spec with content ===
+--- /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs (98 lines) ---
+=== search ExTable / ExPageTableEntry anywhere ===
+<command with shellId: 41 is still running after 30 seconds. The command is still running. Use read_bash to conti...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': '41', 'delay': 20}
+[RESULT ✓] read_bash: === search any identity_map spec with content ===
+--- /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs (98 lines) ---
+=== search ExTable / ExPageTableEntry anywhere ===
+<command with shellId: 41 is still running after 20 seconds. The command is still running. Use read_bash to conti...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 30, 'shellId': '41'}
+[RESULT ✓] read_bash: === search any identity_map spec with content ===
+--- /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs (98 lines) ---
+=== search ExTable / ExPageTableEntry anywhere ===
+<command with shellId: 41 is still running after 30 seconds. The command is still running. Use read_bash to conti...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] stop_bash: {'shellId': '41'}
+[RESULT ✓] stop_bash: <command with id: 41 stopped>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+This module requires extensive trusted specs for arch paging types. Let me examine the arch paging type definitions and the functions used.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging; ls; echo "=== table.rs signatures ==="; grep -n "pub struct\
+
+[THINKING] I need to create the external table types and specifications from scratch since they don't exist in any prior worktree. Let me examine the architecture's paging type definitions—Table, PageDirectoryEntry, PageTableEntry, TableIndex, flags, PteWord, and the page_table_allocator—so I can write the correct external_type_specifications and assume_specifications based on those.
+[RESULT ✓] bash: flags.rs
+frame
+mod.rs
+pde.rs
+pte.rs
+table.rs
+=== table.rs signatures ===
+41:pub struct TableIndex(usize);
+43:impl TableIndex {
+104:pub struct Table<E: TableEntry> {
+111:impl<E: TableEntry> Table<E> {
+140:    pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
+155:    pub unsafe fn write(&sel...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] view: 100. /// (i.e., a mapped virtual address). It does not own the backing memory — the caller is
+101. /// responsible for allocation and lifetime management.
+102. ///
+103. #[derive(Debug)]
+104. pub struct Table<E: TableEntry> {
+105.     /// Base address of the table (must be page-aligned).
+106.     bas...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+The dependency surface is large. Let me capture the complete error list to enumerate every external item needing a trusted spec.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "cannot use (typ
+
+[THINKING] I'm recognizing that documenting the entire architecture paging API with trusted specs is a substantial undertaking with real risk of errors. Rather than delegating this to a sub-agent that would need expensive compiler verification cycles, I should tackle this carefully myself. Let me think through whether there's a simpler approach—maybe focusing on proof bodies could streamline things.
+
+Actually, I realize the dependency function specs can be minimal since they just need to be Verus-usable and type-check. My ensures clauses only reference a few specific things like `identity_map_view()`, `phys_addr@`, and `spec_page_aligned`, so I don't need to prove complex properties about intermediate functions. With `admit()` in the function bodies, the proof obligations disappear entirely.
+
+So my strategy is to register all external types via `external_type_specification` and provide minimal `assume_specification` for every external function I use, then iterate with the compiler to fix errors in batches. I need to gather the complete list of all 29 errors and write out the specs at once, paying special attention to generic types like `Table<E: TableEntry>` which require trait bounds, plus the flags enums.
