@@ -557,3 +557,63 @@ All 8 deviations are the documented `// VERUS BUG FIX:` panic auto-fixes from pr
 [THINKING] The exec deviations all stem from documented bug fixes in the codebase where frame number conversions are being corrected, and the remaining mismatches are from proof-related code that the exec-only filter isn't cleanly removing—these are all pre-existing issues from earlier phases already committed upstream.
 
 Since I made no changes to the source, there are zero AST mismatches I introduced relative to the baseline, which confirms the consistency requirement. I should verify this by comparing the current frame.rs against the baseline to ensure they're identical, then run the full verification suite to check for any regressions before finalizing the report.
+[RESULT ✓] bash: === frame files vs HEAD ===
+(empty = identical)
+=== run full verify ===
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Full verify: exit 0, no regressions. frame files are byte-identical to baseline. Everything checks out. Let me write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; mkdir -p verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination; ls verus-ai-logs/na
+
+[THINKING] The verification passed with no regressions and matching frame files. Looking at the cheating analysis for the phys-frame module, the external_body function has 10 instances that are all already listed in tcb-allowed.md, so there are no eliminable violations to report.
+
+The broader codebase shows external_body and admit counts of 19 and 16 respectively, but those come from other modules that are explicitly out of scope for this task. The AST is consistent with the baseline—I made no changes to the frame files, and the pre-existing panic fixes in the Inner methods are already documented as prior auto-corrections. Now I'm writing up the fix_report.md.
+[RESULT ✓] bash: prover-claude-20260615-073155.jsonl
+prover-claude-20260615-073155.txt
+=== confirm no verification_todo needed ===
+none
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[TOOL] report_intent: Writing cheating-elimination report
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md with 4984 characters
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Done. Here's the outcome.
+
+## Result: PASS — zero eliminable cheating in `mm::phys::frame`
+
+**Findings (frame module scope):**
+- `admit()`: **0**, `assume()`: **0**, `assume_specification`: **0**
+- `external_body`: **10** — every one (`instance`, `init`, `alloc`, `alloc_contiguous`, `free_count`, `free`, `book`, `alloc_range`, `share`, `refcount`) is on the `tcb-allowed.md` list (human-approved cross-module global-token deferrals). The `Inner::*` methods holding the real state transitions are verified **in-body**.
+- cfg-gates are all legitimate (gating `error!`, `debug_assert_eq!`, logging-only `let`s) — not gate-and-duplicate.
+
+**Verification:** fresh `make verify-kernel MODULE=mm::phys` → **58 verified, 0 errors**. Full `make verify` → exit 0, no regressions. The global counter (`external_body=19 admit=16`) is whole-kernel; the residuals are in out-of-scope modules (`manager`, `kframe`, `mod`, `upool`, `hal`).
+
+**AST consistency:** frame files are byte-identical to baseline (HEAD/`verus-ai-prove`) — I introduced zero exec changes. Pre-existing `// VERUS BUG FIX:` deviations in 6 `Inner::*` methods are documented in `bugs.md` (panic-on-valid-input auto-fix) and predate this task.
+
+No `verification_todo.md` was needed (no proof gaps). Report written to `verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: e8ebf350-78c2-42f6-94d1-67406728dc0f
+Duration: 372.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/prover-claude-20260615-073155.jsonl
