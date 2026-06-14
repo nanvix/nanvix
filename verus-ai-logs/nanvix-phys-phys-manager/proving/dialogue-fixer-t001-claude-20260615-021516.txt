@@ -223,3 +223,33 @@ Turn 10
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|manager.proof.rs
+[RESULT ✓] bash: error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:9
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+verification results:: 41 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previo...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Attempt 1 fails as expected: no axiom links `upool@` to the constant `phys_view()`. Restoring and testing `lemma_kernel_alloc_one` standalone — its `ensures` reference free, unconstrained `pre`/`post`/`addr`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs && echo restored
+
+[THINKING] The empty body of `lemma_manager_attached` is failing the postcondition check because there's no linking axiom connecting the uninterpreted pool and the physical view's frames. I'm noticing that `frame.rs` itself contains eight admits scattered throughout various functions, which suggests these are known gaps in the verification.
+
+Before restoring the admit, I'm thinking through whether there's a legitimate path to prove `m@ == phys_view().frames`. The frame singleton's spec pins `phys_view().frames` to the instance's view, but the manager's pool is a separate external type with an uninterpreted view that has no relation to the frame instance. To bridge this gap, I'd need an axiom explicitly linking the pool to either the frame instance or the physical view, which would require adding it as a spec assumption.
+
+But that's not feasible — I can't use an axiom proof (forbidden), and I can't modify the external_body view definition. So there's genuinely no way forward here. Let me restore the admit and move on to the next lemma.
+[RESULT ✓] bash: restored
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: postcondition|m

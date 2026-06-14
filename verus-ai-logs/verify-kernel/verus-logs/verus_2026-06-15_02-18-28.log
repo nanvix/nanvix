@@ -1,0 +1,55 @@
+Timestamp: 2026-06-15_02-18-28
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+41 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=23
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/kernel/src/mm/phys/manager.proof.rs:27:1
+   |
+27 | pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:31:9
+   |
+27 | pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+   | ----------------------------------------------------------------------------------------- at the end of the function body
+...
+31 |         pre.free_frames.contains(addr),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:32:9
+   |
+27 | pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+   | ----------------------------------------------------------------------------------------- at the end of the function body
+...
+32 |         post == pre.alloc_one(addr),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 41 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
