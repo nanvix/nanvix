@@ -540,3 +540,131 @@ Module verifies: **11 verified, 0 errors**. The 6 manager `external_body` are al
 [THINKING] The module verification passed with 11 verified checks and no errors, though there are some cheating detections flagged globally across the kernel. For the manager module specifically, the external body references are all whitelisted in the allowed list, so there are no actual violations to address.
 
 The goal is for `make verify-kernel` to pass cleanly without disallowed cheating in my scope, which it does—the global cheating detected comes from other modules that are outside my task. Now I need to run the full crate verification to ensure there are no regressions across the entire project.
+[RESULT ✓] bash: note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Full-crate verify: **exit 0, no errors, no regressions**. Cheating counts unchanged (pre-existing whitelisted items in other modules). Let me confirm the final working-tree state of manager.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== diff vs HEAD ===" && git diff src/kernel/src/mm/phys/manager.rs && echo "=== conf
+
+[THINKING] The crate verification passed with no errors, and the cheating counts remain unchanged—those external_body and cfg_gate instances are pre-existing in other modules and already whitelisted, so they're not regressions from my changes. Now I'm checking the git diff to confirm I've only restored the on-disk check_user_watermark function without introducing any other modifications.
+
+Actually, I need to reconsider the baseline here. The committed HEAD version of check_user_watermark doesn't have external_body, and that version fails to compile under verus—the error! macro triggers an "Unsupported constant type" error that prevents verification from running at all. The on-disk version with external_body is what makes the module pass verification, so keeping that change is necessary and correct. Since it's whitelisted, the final state should preserve check_user_watermark as external_body, which ensures verify-kernel passes. Let me check the git diff to confirm the exact state I'm leaving.
+[RESULT ✓] bash: === diff vs HEAD ===
+=== confirm all 6 external_body present on disk ===
+98:    #[verus_verify(external_body)]
+177:    #[verus_verify(external_body)]
+249:    #[verus_verify(external_body)]
+292:    #[verus_verify(external_body)]
+336:    #[verus_verify(external_body)]
+388:    #[verus_verify(external_b...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+`git diff` is now empty — but earlier it showed a difference. The verify pipeline may have auto-committed. Let me check git state.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -3 && echo "=== status ===" && git status --short && echo "=== HEAD line 
+
+[THINKING] I'm noticing something odd with the git diff output — the file on disk now matches HEAD exactly, but earlier the diff showed HEAD had `#[verus_verify]` while the disk version had `#[verus_verify(external`. Let me trace back through what happened to understand how the file state changed.
+[RESULT ✓] bash: a70547920 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=22 cfg_gate=9)
+b2be491e6 [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+e82debc07 [verus] verify PASS (cheating detected): nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+The verify pipeline auto-committed `a70547920` with the whitelisted `external_body` state. Working tree is clean (only session log artifacts remain). Final state confirmed: all 6 target functions are whitelisted `external_body`, 0 admit/assume/assume_specification/exec-cfg-gate, module + full crate verify with 0 errors, AST consistent.
+
+Let me write the verification_todo.md and the fix report.
+[TOOL] report_intent: Writing reports
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md 2>/dev/null && echo "exists"
+
+[THINKING] The `make verify` pipeline auto-committed the changes, so HEAD now matches the disk state with external_body properly positioned on check_user_watermark at line 292. The working tree is clean aside from session artifacts. All six manager target functions are now external_body and whitelisted in tcb-allowed.md, with zero admits, assumes, or exec cfg-g entries in the final state.
+
+The module verification shows 11 verified with no errors, the full crate verifies cleanly with exit 0 and no regressions, and AST consistency checks pass with zero mismatches. Since all six external_body declarations are whitelisted trust boundaries rather than disallowed cheating, the disallowed cheating count remains zero before and after. This qualifies as a PASS — the codebase has zero cheating violations, all modules verify successfully, and the structural integrity is intact. I should now write up the fix report documenting that the six external_body remain as sanctioned trust boundaries with empirical and structural justification, then determine whether verification_todo.md entries are needed for these genuine trust boundaries versus actual proof gaps.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: absent
+prover-claude-20260615-041200.jsonl
+prover-claude-20260615-041200.txt
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md with 3055 characters
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md with 5191 characters
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Both reports written. Let me do a final integrity check.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating grep across manager files ===" && grep -rnE "admit\(\)|assume\(|assume_s
+
+[THINKING] I'm verifying the files are written correctly and checking that the proof file contains no hidden admits or assumes. The core task is done, but I'm reconsidering whether I should be more strict about the whitelist approach given the primary directive to eliminate all cheating by replacing external bodies with real proofs.
+
+Actually, the tcb-allowed.md file is the explicit written exception, and all six functions listed there have detailed, sound rationale. I've empirically verified the limitation—the error! macro combined with the structural spec gap makes genuine elimination impossible for those cases. The hard rule against touching unlisted functions means accepting the whitelist is the only viable path forward, not a shortcut. I'm confident the result passes.
+[RESULT ✓] bash: === cheating grep across manager files ===
+src/kernel/src/mm/phys/manager.proof.rs:8:// Bodies are discharged here in the proving phase (no `admit()`/`assume()`).
+=== external_body count (should be 6, all whitelisted) ===
+6
+=== reports present ===
+-rw-rw-r-- 1 ruize ruize 5213 Jun 15 04:19 verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Done. The only "match" is a comment mentioning admit/assume (not actual usage).
+
+## Summary
+
+**Result: PASS** — zero disallowed cheating in `phys-manager`.
+
+**Cheating counts (in-scope `manager.*` files):**
+| Item | Before | After |
+|------|--------|-------|
+| admit() | 0 | 0 |
+| assume() | 0 | 0 |
+| external_body | 6 (all whitelisted) | 6 (all whitelisted) |
+| assume_specification | 0 | 0 |
+| cfg-gated exec | 0 | 0 |
+
+**Findings:**
+- All 6 target methods (`init`, `alloc_user_frame`, `check_user_watermark`, `alloc_many_user_frames`, `alloc_kernel_frame`, `alloc_many_kernel_frames`) are `external_body` — **all explicitly whitelisted** in `tcb-allowed.md`, the task's sole sanctioned exception.
+- Following the escalation ladder, I **empirically proved** the limitation: removing `external_body` from `check_user_watermark` triggers `error: Unsupported constant type` from the `error!` macro ("verus did not run"). Beyond that, postconditions are undischarge-able because the callees (`Upool::alloc`, `frame::alloc`, `frame::free_count`, `KernelFrame::new`, …) are **unlisted** (forbidden to modify) and carry no `ensures`, and `KERNEL_WATERMARK` isn't linked to `spec_kernel_watermark()`. Genuine trust boundaries, not proof gaps.
+- The two `cfg(verus_keep_ghost)` lines only guard `include!` of the spec/proof files — not exec cfg-gating.
+
+**Verification:**
+- `make verify-kernel MODULE=mm::phys`: 11 verified, **0 errors**.
+- `make verify` (full crate): **exit 0**, no regressions.
+- AST consistency vs `verus-ai/phys-mod`: **matched=7, mismatched=0** — exec code unchanged.
+
+**Outputs written:** `cheating-elimination/fix_report.md` and `verification_todo.md` (no proof gaps; trust-boundary items documented with blocking constructs).
+
+
+=== Session End ===
+Session: 807ca3a9-58ad-413b-a052-968c1e47e987
+Duration: 456.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-041200.jsonl
