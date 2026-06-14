@@ -60,3 +60,19 @@ Module: arch-frame-number
 [2026-06-14 08:59:32] [PHASE] specification: dialogue-RESOLVED (57m51s)
 [2026-06-14 08:59:32] [SPEC DRIFT] (within specification) Comparing 860ea19a → 045b003e
 [2026-06-14 08:59:32] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 03:56:37] [BRANCH] Staying on current branch: verus-ai-prove-bottom-up
+[2026-06-15 03:56:37] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/body_removed_source.rs (3328 -> 2822 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-frame-number
+Source: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.rs
+Crate:  arch
+Branch: verus-ai-prove-bottom-up (base: verus-ai-prove-bottom-up)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: arch-frame-number
+============================================================
