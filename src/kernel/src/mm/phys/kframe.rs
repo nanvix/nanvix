@@ -23,7 +23,6 @@ use ::core::ops::{
     DerefMut,
 };
 use ::sys::error::Error;
-#[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
 //==================================================================================================

@@ -36,7 +36,6 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -95,7 +94,7 @@ impl PhysMemoryManager {
     // abstract model (the do-not-modify `PhysMemView` only tracks the allocator);
     // the contract therefore states the caller-relevant guarantee: the global
     // frame allocator stays initialized and well-formed across this call.
-    #[allow(verus_impl_method_marker)]
+    #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
@@ -289,7 +288,7 @@ impl PhysMemoryManager {
     // `KERNEL_WATERMARK + count`. Pure gate, no allocator state change. `Ok` exactly
     // captures the watermark policy: at least `KERNEL_WATERMARK` frames remain free
     // after servicing `count`. `Err` covers both the overflow guard and a breach.
-    #[allow(verus_impl_method_marker)]
+    #[cfg_attr(verus_keep_ghost, allow(verus_impl_method_marker))]
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
