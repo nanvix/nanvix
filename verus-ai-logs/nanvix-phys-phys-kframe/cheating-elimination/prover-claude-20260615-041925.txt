@@ -280,3 +280,105 @@ Source files match the base branch exactly. Now let me run the module verificati
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] The kframe files match the base branch exactly, so the AST consistency is intact. Now I'm running the verification command to establish a baseline for the kernel memory module.
+[RESULT ✓] bash: - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The report is whole-crate. Let me isolate the kframe-specific cheating entries from the detail file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -niE "kframe" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/
+
+[THINKING] I'm focusing on the kframe module functions—specifically `KernelFrame::new`, `KernelFrame::drop`, and `KernelFrame::base`—and checking what's allowed. The `external_body` call in `kframe.rs:94` is permitted according to the tcb-allowed.md rules, and there are no admit or assume statements in the kframe files themselves. The cfg_gate=15 setting globally applies to kframe's drop function along with other modules, and I'm trying to understand how that affects the scope.
+[RESULT ✓] bash: 21:    - mm/phys/kframe.rs:94 new: external_body
+=== cfg_gate section ===
+=== full file head ===
+    - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:6 lemma_...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Only `kframe.rs:94 new: external_body` appears, and it's explicitly allowed in tcb-allowed.md. Let me check whether the cfg_gate counter flags the kframe `drop` `error!` gate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cfg_gate detail (full) ==="; cat verus-ai-logs/verify-kernel/verus-logs/che
+
+[THINKING] I see that `external_body` in kframe is explicitly allowed according to the tcb-allowed.md file. Now I'm checking whether the cfg_gate count of 15 includes the kframe drop's cfg gate, and I need to look more carefully at how cfg_gate entries are being tallied in the detail file.
+[RESULT ✓] bash: === cfg_gate detail (full) ===
+=== look for separate cfg listing / section headers ===
+=== wc ===
+41 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me check how a sibling module's cheating-elimination report treated the identical `error!` cfg-gate pattern (e.g. upool, which has the same `UserFrame::drop`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for m in nanvix-phys-phys-upool nanvix-phys-phys-frame nanvix-phys-phys-manager; do f
+
+[THINKING] The detail file only contains 41 lines of admit/external_body/external_type_spec entries, while the cfg_gate count of 15 is calculated separately and not broken down in this file. I need to track down the analyzer script to understand how cfg_gate is detected and whether kframe's handling of it counts as cheating according to the task definition. The key question is what violations the task actually wants me to eliminate — admit, assume, external_body outside the TCB, and potentially others.
+
+The cfg_gate=15 comes from `#[cfg(not(verus_keep_ghost))]` patterns throughout the crate, including one in kframe's drop function. These gates remove logging calls in verus builds versus normal builds, which is technically a semantic difference in exec code. However, this is an established codebase-wide convention for handling logging macros that Verus can't verify. The task says not to touch unlisted functions, but drop is one of my three target functions, so it's in scope. I need to check whether the error! macro can be made verus-compatible or if the cfg gate is genuinely required by Verus's constraints.
+[RESULT ✓] bash: ===== verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md =====
+6:`UserFrame::refcount`, `Upool::new`, `UserFrame::leak`, `UserFrame::drop`,
+28:| cfg-gated exec       | 3**    | 3**   | 0          |
+33:`verification_todo.md`), and **excluded from the hard-cheating gate** by
+36:\*...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+This confirms the convention: `error!` logging cfg-gates are **pre-approved deviations** (logging macros unsupported under Verus), gate-neutral with semantics/time/space preserved. Let me confirm the kframe target functions verify with 0 errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -niE "verification results|verified|errors|error:" verus-ai-logs/verify-kernel/v
+
+[THINKING] The logging gates on `error!` and `warn!` macros are pre-approved deviations since Verus doesn't support logging, so they don't block the implementation. For `KernelFrame`, both the `new` external_body and the `drop` cfg-gate fall within allowed categories—the former is explicitly permitted in tcb-allowed.md, and the latter is a gate-neutral logging exception that preserves semantics.
+
+Now I'm checking that the three target functions in kframe actually verify without errors. The verification completed with exit 0 and no errors reported, and the status shows CHEATING_DETECTED rather than VERIFICATION_FAILED, which confirms the verification itself succeeded.
+[RESULT ✓] bash: 
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -3; echo "==="; tail -25 "$
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_04-20-41.log
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_04-19-22.log
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_04-17-44.log
+===
+Module: mm::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rniE "verified, |errors\b|verification results" verus-ai-logs/verify-kernel/ver
+
+[THINKING] I need to clear the cache and run a fresh build to see the actual verification results for the kframe module, specifically looking for the line that shows how many items were verified and if there were any errors.
+[RESULT ✓] bash: === try kframe-only fresh verify ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The kframe module's only cheating is the TCB-allowed `new` external_body; `drop`'s cfg-gate is a pre-approved logging deviation. Nothing eliminable remains. Let me start the full-crate regression check while I write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | tail -30
+
+[THINKING] The cached run skipped the verification message because it was pulling from cache, but the exit code and lack of error lines show verification actually passed—the CHEATING_DETECTED status refers to the crate-level cheating gate, not verification failures. Since kframe's only cheating item is the pre-approved `new` external_body and the drop cfg-gate is an allowed logging deviation, there's nothing that needs to be addressed.
+
+I should run a fresh verification to be certain, though the exit code 0 is already strong evidence that verification succeeded. I also want to confirm that deref, deref_mut, and clear are outside my scope—they're TCB-allowed external_body functions, so their presence in coverage is expected. The conclusion is that phys-kframe has zero eliminable cheating: the `new` external_body is explicitly allowed, the drop cfg-gate is pre-approved, and there are no admit/assume statements to remove.
+
+Since I made no source changes, running the full crate verification carries no regression risk, but I should do it anyway for completeness.
+
+Now I'm creating the output files. For the verification_todo.md, since kframe has no genuine proof gaps—only the TCB-allowed external_body on `new`—I'll document that there are no remaining proof gaps for this module. I'm also tallying the counts precisely: zero admit, zero assume, one external_body (TCB-allowed, so zero eliminable), zero assume_specification, and a few cfg-gated lines that are compile-time spec-inclusion guards plus the pre-approved logging gate. Let me write the fix_report.md and verification_todo.md with these counts.
