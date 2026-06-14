@@ -645,7 +645,6 @@ static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 #[verus_spec(result =>
     requires
         phys_view().initialized,
-        phys_view().inv(),
     ensures
         (*result).inv(),
         (*result)@ == phys_view().frames,

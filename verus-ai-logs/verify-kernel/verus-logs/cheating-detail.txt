@@ -7,15 +7,15 @@
     - mm/phys/frame.rs:481 book: external_body
     - mm/phys/frame.rs:517 is_covered: external_body
     - mm/phys/frame.rs:565 alloc_range: external_body
-    - mm/phys/frame.rs:653 instance: external_body
-    - mm/phys/frame.rs:690 init: external_body
-    - mm/phys/frame.rs:752 alloc: admit
-    - mm/phys/frame.rs:796 alloc_contiguous: admit
-    - mm/phys/frame.rs:825 free_count: admit
-    - mm/phys/frame.rs:849 free: admit
-    - mm/phys/frame.rs:894 book: admit
-    - mm/phys/frame.rs:918 alloc_range: admit
-    - mm/phys/frame.rs:945 share: admit
+    - mm/phys/frame.rs:652 instance: external_body
+    - mm/phys/frame.rs:689 init: external_body
+    - mm/phys/frame.rs:751 alloc: admit
+    - mm/phys/frame.rs:795 alloc_contiguous: admit
+    - mm/phys/frame.rs:824 free_count: admit
+    - mm/phys/frame.rs:848 free: admit
+    - mm/phys/frame.rs:893 book: admit
+    - mm/phys/frame.rs:917 alloc_range: admit
+    - mm/phys/frame.rs:944 share: admit
     - mm/phys/kframe.rs:141 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
