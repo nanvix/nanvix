@@ -4,20 +4,23 @@ use vstd::arithmetic::power2::pow2;
 verus! {
 
 // =================================================================================================
-// Abstract models of external (arch-crate) frame-number quantities.
+// Abstract models of frame-number quantities, realized by the verified `arch` crate.
 //
-// `FrameNumber` is an opaque newtype defined in the (not-yet-verified) `arch` crate, and its
-// maximum is the arch constant `FrameNumber::MAX`. Like `spec_page_size()` models the arch
-// page-size constant, these uninterpreted functions model a frame number's integer index and the
-// largest representable index in the spec domain. They are tied to the concrete exec values by the
-// dependency contracts below.
+// `FrameNumber` is a newtype defined in the `arch` crate. Its real `#[verus_spec]` contracts (a
+// `View` giving the integer index `frame@`, and the associated bound `FrameNumber::spec_max()`)
+// supersede the former placeholder `assume_specification`s. These helpers re-expose those arch
+// quantities under the names the kernel proofs already use.
 // =================================================================================================
 
-// The integer index (raw value) of a frame number.
-pub uninterp spec fn spec_frame_raw_value(frame: FrameNumber) -> int;
+// The integer index (raw value) of a frame number: its `arch` view.
+pub open spec fn spec_frame_raw_value(frame: FrameNumber) -> int {
+    frame@
+}
 
-// The largest representable frame index (models `arch::mem::paging::FrameNumber::MAX`).
-pub uninterp spec fn spec_max_frame_number() -> int;
+// The largest representable frame index (the `arch` bound `FrameNumber::spec_max()`).
+pub open spec fn spec_max_frame_number() -> int {
+    FrameNumber::spec_max() as int
+}
 
 // =================================================================================================
 // Derived spec helpers over the `PhysicalAddress` view (its `int` raw address).
@@ -45,7 +48,7 @@ impl PhysicalAddress {
 // =================================================================================================
 // Dependency contracts for not-yet-verified modules.
 //
-// `VirtualAddress` (the `sys` crate) and `FrameNumber`/`FRAME_SHIFT` (the `arch` crate) are not yet
+// `VirtualAddress` (the `sys` crate) and `FRAME_SHIFT` (the `arch` crate) are not yet
 // verified. They are given trusted external specifications so that the verified `PhysicalAddress`
 // bodies can be translated. These declarations are placeholders: when the underlying modules are
 // verified, their real specifications will supersede these.
@@ -68,19 +71,9 @@ pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
         spec_page_size() == pow2(result as nat),
 ;
 
-pub assume_specification[ ::arch::mem::paging::FrameNumber::from_raw_value ](value: usize)
-    -> (result: Option<FrameNumber>)
-    ensures
-        value as int <= spec_max_frame_number() ==> (result is Some
-            && spec_frame_raw_value(result->Some_0) == value as int),
-        value as int > spec_max_frame_number() ==> result is None,
-;
-
-pub assume_specification[ ::arch::mem::paging::FrameNumber::into_raw_value ](frame: FrameNumber)
-    -> (result: usize)
-    ensures
-        result as int == spec_frame_raw_value(frame),
-        0 <= spec_frame_raw_value(frame) <= spec_max_frame_number(),
-;
+// Note: `FrameNumber::from_raw_value` / `into_raw_value` now carry their own verified `#[verus_spec]`
+// contracts in the `arch` crate, so their placeholder `assume_specification`s were removed — the
+// real specifications supersede them (see `spec_frame_raw_value` / `spec_max_frame_number` above,
+// which now re-expose the arch quantities).
 
 } // verus!

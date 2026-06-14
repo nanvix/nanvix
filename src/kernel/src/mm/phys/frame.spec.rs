@@ -11,17 +11,16 @@ impl Inner {
 // =================================================================================================
 // Dependency contracts for not-yet-verified modules.
 //
-// The functions below live in the `arch` crate and in the kernel HAL
-// address/region layer, neither of which is verified yet. They are given
-// trusted external specifications here so that the frame-allocator bodies can be
-// translated by Verus. These declarations are placeholders: when the underlying
-// modules are verified, their real specifications will supersede these and the
-// declarations below will be removed.
+// The functions below live in the kernel HAL address/region layer, which is not verified yet. They
+// are given trusted external specifications here so that the frame-allocator bodies can be
+// translated by Verus. These declarations are placeholders: when the underlying modules are
+// verified, their real specifications will supersede these and the declarations below will be
+// removed.
+//
+// Note: `FrameNumber` (the `arch` crate) now carries its own verified `#[verus_spec]` contracts
+// (`View` + `FrameNumber::spec_max()`), so its placeholder `external_type_specification`
+// (`ExFrameNumber`) was removed — the real datatype specification supersedes it.
 // =================================================================================================
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFrameNumber(::arch::mem::paging::FrameNumber);
 
 pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
     ensures

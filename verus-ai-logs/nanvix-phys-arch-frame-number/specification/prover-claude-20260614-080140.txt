@@ -2323,3 +2323,91 @@ Turn 142
 Turn 143
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -22
+[RESULT ✓] bash: warning: `arch` (lib) generated 1 warning
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.00s
+
+=== Results ===
+  4 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/525 exec functions have contracts.
+  Unver...
+
+────────────────────────────────────────────────────────────
+Turn 144
+────────────────────────────────────────────────────────────
+`make verify-arch`: 4 verified, 0 errors, **status CLEAN**. Now the kernel supersession. Let me examine the kernel files to modify.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address
+echo "=== phys.rs imports + include ==="; grep -n "use \|
+
+[THINKING] The verification is clean with 4 verified and no errors, though there's a redundant external attribute warning. I could try switching to `#[verifier::external]` instead to eliminate it, but the warning is just cosmetic so it's probably fine to leave as is.
+
+Now moving on to the kernel changes. I need to update frame.spec.rs by removing ExFrameNumber, and then modify phys.spec.rs to remove the assume_specs for from_raw_value and into_raw_value, while converting spec_frame_raw_value and spec_max_frame_number from uninterpreted to open specs with bridge bodies. The bridge implementations will map the spec functions to their actual values using the View trait and FrameNumber's spec_max method, which should all be in scope since FrameNumber is already imported.
+[RESULT ✓] bash: === phys.rs imports + include ===
+8:use vstd::prelude::*;
+10:include!("phys.spec.rs");
+12:include!("phys.proof.rs");
+14:use crate::hal::mem::types::address::{
+19:use ::arch::mem::{
+21:    paging::FrameNumber,
+23:use ::sys::{
+127:    /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
+142:  ...
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+Now make the kernel edits. First, bridge the two uninterp functions in phys.spec.rs and remove the superseded method placeholders.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I've confirmed that `FrameNumber` is accessible in phys.spec.rs through the import in phys.rs, and `frame@` can use the View from arch. Now I'm making the kernel edits—I need to modify phys.spec.rs by changing lines 17 and 20 to use open bridge instead of uninterp, and removing the two assume_specs blocks from lines 71-84.
+
+Writing spec edits...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+Now remove `ExFrameNumber` from frame.spec.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 148
+────────────────────────────────────────────────────────────
+Let me check the other `external_type_specification` in mod.spec.rs and the FrameAddress layer references before running verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src
+echo "=== mod.spec.rs:60-70 ==="; sed -n '60,70p' mm/phys/mod.spec.rs
+echo; ech
+
+[THINKING] I'm running the kernel's verification to check for any issues, particularly around those architecture constants I reverted. The kernel still references `assume_specification` for `FRAME_SIZE` and `PAGE_SIZE` from the arch module, but since I didn't annotate those constants, there shouldn't be any conflicts there.
+
+The bigger concern is whether `FrameNumber::spec_max()` and the `frame@` View are accessible from the kernel's phys.spec.rs file. Both are defined in arch's number.spec.rs under `verus_keep_ghost`, and the kernel's phys.spec.rs is also compiled under that same flag, so they should both be available during verification. Let me check what that other `external_type_specification` in mod.spec.rs line 65 is about — it might be unrelated to FrameNumber. The type coercion checks out—Verus should treat `value as int <= Self::spec_max()` and `value as int <= (Self::spec_max() as int)` as equivalent since nat coerces to int consistently. Now I'm ready to run the full verification across all crates, though it'll take a while, so let me first double-check mod.spec.rs at line 65 to make sure everything's in order.
+[RESULT ✓] bash: === mod.spec.rs:60-70 ===
+// `book_mmio_regions`) cannot have their bodies verified and are `external_body`. See
+// `verus-ai-logs/nanvix-phys-phys-mod/bugs.md`.
+
+use ::core::alloc::Allocator;
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]...
+
+────────────────────────────────────────────────────────────
+Turn 149
+────────────────────────────────────────────────────────────
+Now run the full `make verify`:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -45
+
+[THINKING] I'm checking that the remaining references are accounted for—the ExLinkedList in mod.spec.rs is unrelated, and frame.spec.rs still has access to the spec functions it needs from the physics module. Now I'll run the verification to see if everything compiles correctly.
