@@ -482,3 +482,65 @@ Turn 21
 ────────────────────────────────────────────────────────────
 Restored. Now let me re-verify the clean tree to re-establish the true baseline (non-cached).
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -14
+[RESULT ✓] bash: cheating: assume=0 external_body=18 admit=24 trusted=0 no_decreases=0 cfg_gate=15
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  56/1026 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/cov...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Restored tree verifies (71 verified, 0 errors, non-cached). Let me check the git state — the auto-commit behavior needs reconciling.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -4; echo "=== status ==="; git --no-pager status --short
+
+[THINKING] The verification passed with the restored manager.rs showing 71 verified and 0 errors, but the auto-commit created broken FAIL commits in the history, and my working directory still has uncommitted changes compared to HEAD. I need to check the current git state to understand what happened.
+[RESULT ✓] bash: dd841b286 [verus] verify PASS (cheating detected): kernel::all (71 verified, 0 errors, admit=24 external_body=18 cfg_gate=15)
+f2c83cda1 [verus] verify FAIL: kernel::all (0 verified, compilation/setup error (verus did not run))
+68a5f20cd [verus] verify FAIL: kernel::all (0 verified, compilation/setup...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+I now have complete evidence. The tree is restored to a verifying state (HEAD `dd841b286`, 71 verified, 0 errors). Let me write the turn 2 review.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/proving/dialogue/turn_002_driver.md
+
+[THINKING] The verification passed and auto-committed with the correct manager.rs restored, so the repository is back in a working state with the gate present. The working tree is clean aside from my dialogue logs, and I'm now looking at the failed commits that need to be addressed.
+
+I'm going through the checklist systematically. The first item about specs not being weakened passes — the spec file and manager.rs contracts are unchanged. The second item is where the real problem sits: four admits remain in the codebase, and I've confirmed they're genuinely blocked by architectural constraints. The frame.rs verification still has eight admits, and the `phys_view()` function can't express the state transitions needed without the token machinery in the out-of-scope modules. This is a legitimate cross-module dependency issue, not just incomplete work, but it still means the "zero admit" requirement isn't met. The third item passes — both external_body calls are properly TCB-listed. I'm continuing through the fourth item on assume statements. The core issue is that item 2 (the 4 admits) is genuinely blocked by architectural dependencies: frame.rs isn't verified yet, the phys_view redesign is outside the manager's scope, and there's no available API for the upool free transition. The fixer correctly identified this as a NEEDS_GUIDANCE situation with reproducers rather than weakening specs or adding more cheats—that's the right call.
+
+I'm settling on BLOCKED for item 2 because this isn't a matter of fixer skill or additional attempts; it's a hard prerequisite that can't be resolved within the manager module's boundaries. The reproducers and independent verification confirm this is a genuine limitation, not just a justification, so escalating rather than demanding more attempts is the honest conclusion.
+
+I should also note that I restored the repo to a clean PASS state after my experimental verification, and the 4 admits here follow the same deferral convention used throughout the crate (frame.rs has 8, identity_map uses them too), so this approach is consistent with established patterns. The frame-layer proving phase needs to complete first before the manager's ghost-token attachment can be properly discharged. All four issues are genuinely blocked by out-of-scope dependencies. Now I'm writing the comprehensive turn 2 review document.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/proving/dialogue/turn_002_driver.md with 7587 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/proving/dialogue/STOP with 1582 characters
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Turn 2 complete. I verified the fixer's work against actual code/tools rather than accepting claims.
+
+**Findings:**
+- **Build fix CONFIRMED real** — `i`→`_idx` rename; `./z build` → `[OK]` exit 0.
+- **9/10 items PASS** with fresh evidence:
+  - [5] cfg-gated exec — I un-gated one `error!` and reproduced `error: Unsupported constant type` → genuine Verus limitation, logging-only, codebase-wide convention. PASS.
+  - [8] `// VERUS REWRITE` — 0 uses repo-wide; not a project convention. PASS.
+  - [9] Cross-module — re-ran non-cached: **71 verified, 0 errors**. PASS.
+- **[2] Zero admit — BLOCKED** (the sole failure). I did *not* accept the fixer's justification; I independently re-derived the block from source: the module's own §8 design doc pins the attachment to the **verified** `View for Inner`, but `frame.rs` still has 8 admits; and `phys_view()` is a parameter-free `uninterp` constant that cannot express the kernel-path transition without an out-of-scope tracked-token redesign of a DO-NOT-MODIFY global view. All 4 admits confirmed undischargeable within the manager's editable scope.
+
+**Repo hygiene:** the `verify.sh` auto-commit captured FAIL states from my un-gating experiment; I restored `manager.rs` from the last good commit and re-verified clean (HEAD `dd841b286`, 71 verified/0 errors).
+
+Wrote `turn_002_driver.md` and `STOP` = **BLOCKED**, with the escalation: sequence the `frame` proving phase first, after which the 4 manager admits follow mechanically.
+
+
+=== Session End ===
+Session: 7955c6c5-39a0-4cc9-a333-e5db83fb18fd
+Duration: 468.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/proving/dialogue-reviewer-t002-claude-20260615-022424.jsonl
