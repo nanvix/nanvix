@@ -61,3 +61,38 @@ Module: arch-paging-table
 [2026-06-14 10:49:59] [DIALOGUE] Reviewer turn 3 (remaining: 5812s)...
 [2026-06-14 10:49:59] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-14 10:52:10]   ↳ dialogue-reviewer-t3 done in 2m10s (exit=0)
+[2026-06-14 10:52:10] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-14 10:52:10] [DIALOGUE] STOP detail:
+RESOLVED
+
+All 17 specification-phase checklist items for arch::x86::mem::paging::table are
+PASS or FIXED with tool-backed evidence (see turn_001/turn_002/turn_003 driver
+notes).
+
+Key resolutions across the dialogue:
+- Turn 1: read/write/raw/from_raw were contract-free → fixer added full
+  caller-usable contracts via a global page-table ghost (spec_table_word /
+  spec_table_read) + the TableEntry round-trip law (lemma_entry_roundtrip),
+  following the project's identity_map_view() / phys_view() convention. No exec
+  signature change, no cascade into out-of-scope admit() callers.
+- Turn 2: write's contents `ensures` pinned a *pure* uninterp function to a
+  caller-chosen entry — unsound (two distinct writes to one slot derive false
+  via the round-trip lemma). Fixer reproduced the exploit (assert(false)
+  verified), then removed the ensures.
+- Turn 3: confirmed the unsound ensures is gone; write now carries only the
+  sound `requires index@ < PAGE_TABLE_LENGTH`; the write transition is deferred
+  to the proving-phase permission token (documented, matching the
+  identity_map_view() deferral convention).
+
+Final tool state:
+- make verify-arch: exit 0 (23 verified, 0 errors).
+- make verify (cross-module): all crates exit 0 (sys, bump-allocator, arch,
+  kernel) — no cascade.
+- ./z build: [OK] Build complete.
+- fn_coverage.py: 7/7 exec fns matched.
+- spec_drift.py check: 0 contract drift.
+- cheating: external_body=2 (read/write, genuine usize→ptr Verus limitation,
+  TCB-logged), admit=1 (lemma_entry_roundtrip — accepted spec-phase convention,
+  same as bump_allocator/manager/phys/identity_map proof lemmas). No internal
+  assume_specification, no trusted, no loops.
+[2026-06-14 10:52:10] [DIALOGUE] specification ended after 3 turns: RESOLVED (1519s)
