@@ -290,3 +290,21 @@ Module: phys-mod
 [2026-06-15 02:59:20] Running final comprehensive review...
 [2026-06-15 02:59:20] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 03:12:12]   ↳ review done in 12m52s (exit=0)
+[2026-06-15 03:12:12] [FINAL REVIEW] Result: UNKNOWN (0/5)
+[2026-06-15 03:12:13] [FINAL REVIEW] Cheating report: external_body: 17 (16 on user fns)
+[2026-06-15 03:12:13] [FINAL REVIEW] ⚠ unapproved external_body fn: 16
+[2026-06-15 03:12:13] [FINAL REVIEW] ⚠ unapproved external_body type-spec: 1
+[2026-06-15 03:12:13] [FINAL REVIEW] Done (12m53s)
+
+============================================================
+PIPELINE FINISHED: phys-mod (some phases need work)
+  ✅ caller-analysis           no-review                 2m02s
+  ✅ view-design               no-review                 3m43s
+  ✅ specification             dialogue-RESOLVED        47m37s (2 dialogue turns)
+  ✅ proving                   dialogue-RESOLVED        13m11s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         9m02s (1 dialogue turns)
+  ❌ final-review              UNKNOWN                  12m53s
+  ──────────────────────────────────────────────────────────
+  Total: 1h28m52s
+============================================================
+[2026-06-15 03:12:13] [USAGE] Summary: 11 calls, 0 tokens, 1h28m29s total → /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/usage_summary.json
