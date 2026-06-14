@@ -531,7 +531,7 @@ fn ensure_identity_mapped_range(
         },
 )]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
-    proof! { admit(); }
+    // TRY-NO-ADMIT
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
         #[cfg(not(verus_keep_ghost))]

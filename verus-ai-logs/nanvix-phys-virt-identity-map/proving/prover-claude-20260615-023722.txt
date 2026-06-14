@@ -677,3 +677,32 @@ It's a trigger auto-selection note. Let me add an explicit trigger to silence it
 Turn 39
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  9 verified
+  0 errors
+    ⚠️  admit: 3
+    - identity_map.rs:533 ensure_pt: admit
+    - identity_map.rs:627 ensure_pte: admit
+    - identity_map.rs:718 identity_map_pa...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Clean now (9 verified, 0 errors, no warnings). Now let me empirically confirm the exec obligations are the deferred global-view ones. Let me remove `ensure_pt`'s admit and observe Verus's errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp src/kernel/src/mm/virt/identity_map.rs /tmp/identity_map.rs.bak; sed -i '5
+
+[THINKING] All 9 lemmas are verified and clean now. The three exec functions still contain admit() calls, and I've confirmed these are genuinely unprovable. Rather than just asserting this, I should actually test it by removing the admit from ensure_pte and examining the Verus errors to provide concrete evidence. Though I'm reconsidering whether it's worth the effort to attempt a full proof.
+
+The core issue is that proving these functions would require modifying the spec to remove uninterpreted functions, threading tracked tokens through the exec signatures (which breaks callers), and adding postconditions to arch Table::write—all of which violate the scope constraints or introduce unsoundness. It's not feasible without major changes.
+
+But I want to be thorough rather than give up prematurely. Let me empirically attempt each exec function by removing the admit and collecting the actual Verus error output, then document the deferred obligations in verification-todo.md. I'll start with ensure_pte—removing the admit entirely to see all the errors at once.
+[RESULT ✓] bash: fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    // TRY-NO-ADMIT
+    let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm

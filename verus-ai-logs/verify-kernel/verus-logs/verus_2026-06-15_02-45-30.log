@@ -1,0 +1,52 @@
+Timestamp: 2026-06-15_02-45-30
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+8 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=30
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::virt::identity_map
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+    |
+533 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:535:44
+    |
+535 |     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+    |                                            ^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/arch/src/x86/mem/paging/table.rs:205:13
+    |
+205 |             index@ < crate::mem::PAGE_TABLE_LENGTH,
+    |             -------------------------------------- failed precondition
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:550:9
+    |
+550 | /         PAGE_TABLE_ALLOCATOR
+551 | |             .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+    | |_______________________________________________________^
+    |
+   ::: src/libs/bump_allocator/src/lib.rs:350:18
+    |
+350 |           requires bump_view(self).inv(),
+    |                    --------------------- failed precondition
+
+verification results:: 8 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
