@@ -1,0 +1,358 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T02:26:09.468794
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are performing a comprehensive final review of the entire verification
+effort for arch-paging-table. All phases (caller analysis → view design →
+specification → proving → cheating elimination → polish) have completed.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/arch/src/x86/mem/paging/table.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`Table::write`, `TableIndex::into_raw`, `raw`, `Table::read`, `from_raw`, `pt_index`, `TableIndex`, `pd_index`, `Table::from_address`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Source file: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+Spec file:  /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.proof.rs
+Caller analysis: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md
+View design: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md
+Verus command: make verify-arch
+Base branch: verus-ai-prove-bottom-up
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: spec quality and classification
+- **verus-constraints** — MUST follow: forbidden patterns
+- **ast-consistency** — MUST follow: AST consistency checks
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.8** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Use **2 sub-agents** (one per model from the sub-agent policy) to independently
+review. Each sub-agent should cover ALL of the following:
+
+1. **Spec quality** — are external-top specs (API contracts) correct, complete,
+   understandable? Follow **spec-design** skill criteria.
+2. **Caller coverage** — does every caller expectation from /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md
+   have a corresponding spec? Are any important properties missing?
+3. **Proof completeness** — count remaining `admit()` and `external_body`.
+   Any remaining admit() is a BLOCKER. Any external_body not in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+   is a BLOCKER — they must all be eliminated (the TCB is fixed in advance; no
+   new trust boundaries may be introduced).
+4. **TCB compliance** — every `external_body` must already be listed in the
+   pre-approved /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md. Do NOT justify or record new trust
+   boundaries. Any external_body not in the allowed list is a BLOCKER.
+5. **AST consistency** — run the AST consistency checks per the **ast-consistency** skill.
+   Check all `// VERUS REWRITE` comments for semantic equivalence. Any MISMATCH is a blocker.
+6. **Verification** — run `make verify-arch` to confirm 0 errors.
+7. **Guardrails compliance** — count ALL cheating dimensions:
+   `admit`, `assume`, `external_body`, `assume_specification`, `cfg-gated exec`.
+   Report exact counts. Any `admit > 0` or `assume > 0` is a **BLOCKER**.
+   `external_body` not listed in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md is a **BLOCKER** — every
+   external_body must either be eliminated or already be in the pre-approved TCB.
+8. **Bug reconciliation** — read /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md and reconcile against the final
+   code state. For each entry: is it still valid? Was it fixed? Were any bugs
+   discovered during proving/integrity that were not recorded? Ensure every
+   surviving verification failure that was NOT resolved is classified per the
+   **bug-reporting** skill.
+
+Save each sub-agent's raw review next to /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/final-review/final_review.md with the model name
+appended (e.g., `final_review.claude.md`). Then consolidate into a single review.
+
+== OUTPUT ==
+
+Write to /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/final-review/final_review.md:
+```markdown
+# Final Comprehensive Review: arch-paging-table
+
+## Checklist
+### Caller Analysis
+- [ ] All pub functions have callers searched (tool-verified, not manual claim)
+- [ ] Caller expectations (success + failure) documented for each pub function
+- [ ] Abstract resource identified
+- [ ] Pre-existing specs assessed (if any exist from upstream verification)
+
+### View Design
+- [ ] Every field passes the substitution test (survives a complete rewrite)
+- [ ] All caller-observable state represented (no missing fields)
+- [ ] No implementation-specific fields (only caller-observable state)
+- [ ] inv() encodes real constraints (not trivially true)
+- [ ] Mathematical types used (int/Seq/Set/Map; exception: addresses keep usize)
+
+### Specification
+- [ ] Every in-scope exec function has requires/ensures (run `fn_coverage.py`)
+- [ ] Caller coverage: read /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md, verify each caller expectation has corresponding requires/ensures
+- [ ] View consistency: read /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md, verify specs reference View fields and maintain inv()
+- [ ] No tautological ensures (e.g., `Err(_) => true`)
+- [ ] No subsumed ensures (derivable from inv() + other ensures)
+- [ ] Error paths have meaningful ensures (match style: Ok => ..., Err => ...)
+- [ ] No assume_specification for workspace-internal code
+- [ ] vstd searched before any assume_specification
+- [ ] Specs written for the caller (usable directly in caller proofs)
+- [ ] Trait obligations satisfied (specs match trait-level semantic contracts)
+- [ ] Spec completeness (advisory): run **spec-completeness** skill; intentional nondeterminism acceptable if it matches caller expectations
+- [ ] Loop invariants: every loop has an `invariant` clause (Verus requires it); define complex invariants as `spec fn` in spec/proof files
+- [ ] No cheating on module's own functions: grep for `admit`, `assume`, `external_body`, `trusted` and report counts. `assume_specification` on external dependencies temporarily allowed
+- [ ] No specs weakened: run `python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs --before HEAD` and review the output. Original guarantees (ensures, requires, spec function contracts) must not be weakened. If a spec is incorrect, replace it with an equally strong (not weaker) correct spec
+- [ ] Bug awareness: check for fundamentally incorrect code, record in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md
+- [ ] Cross-module regression: run `make verify` — all verified modules must pass, not just current
+- [ ] Verification: run `make verify-arch` and `make build`, report pass/fail and error count
+
+### Proving
+- [ ] No specs weakened: run `python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs --before HEAD` and review the output. Original guarantees must not be weakened. If a spec is incorrect, replace it with an equally strong (not weaker) correct spec (see **spec-drift-check** skill)
+- [ ] Zero remaining admit()
+- [ ] Zero external_body unless the function is listed in `/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md` — HARD RULE (see verus-constraints)
+- [ ] Zero assume/assume_specification (only external-bottom trust boundaries for std/external crates allowed)
+- [ ] No cfg-gated exec code (branches, expressions, match arms)
+- [ ] Cheating audit: count `admit`, `external_body`, `assume`, cfg-gated exec code — report exact counts and locations
+- [ ] Any claimed Verus limitation has an **isolated** reproducer for the specific construct — not just the full failing expression
+- [ ] Exec rewrites are minimal and semantically equivalent; check `// VERUS REWRITE` comments
+- [ ] Cross-module regression: run `make verify` — all verified modules must pass, not just current
+- [ ] Verification: run `make verify-arch` and `make build` — 0 errors, 0 warnings
+
+### Cheating Elimination
+- [ ] Zero admit() remaining
+- [ ] Zero assume() remaining
+- [ ] Zero trusted functions
+- [ ] Zero exec_allows_no_decreases_clause
+- [ ] Zero cfg-gated exec code (only imports/derives/debug_assert/logging allowed)
+- [ ] Zero external_body unless the function is listed in `/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md` — any unlisted external_body is a blocker
+- [ ] AST consistency: zero mismatches (run **ast-consistency** skill; only semantically-equivalent rewrites for verified Verus limitations)
+- [ ] All exec rewrites have VERUS REWRITE comment and minimal reproducer
+- [ ] For each surviving external_body: confirm it is listed in `/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md`; if not, it must be eliminated
+- [ ] No specs weakened: run `python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs --before HEAD` and review — original guarantees must not be weakened (see **spec-drift-check** skill)
+- [ ] Cross-module regression: run `make verify` — all verified modules must pass
+- [ ] Verification: run `make verify-arch` and `make build` — 0 errors, 0 warnings
+
+### Bug Recording
+- [ ] bugs.md exists if bugs were found (no file needed if no bugs)
+- [ ] Each bug is a real code defect (logic error, safety violation, incorrect behavior) — not a verification limitation or missing spec
+- [ ] Each bug entry has: What / Why / How Verus Helped / Severity / Suggested Fix
+- [ ] No external_body used to mask a code defect
+- [ ] Bug entries include provenance (which phase discovered it)
+
+## Spec Quality
+- [assessment of public API specs: correctness, completeness, readability]
+
+## Caller Coverage
+- Covered: N / Total
+- Missing: [list uncovered caller expectations]
+
+## Proof Completeness
+- Remaining admit(): N [list locations — each is a BLOCKER]
+- Remaining external_body not in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md: N [list — each is a BLOCKER]
+
+## TCB Compliance
+- All external_body listed in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md: YES / NO [list any not in the approved TCB — each is a BLOCKER]
+
+## Guardrails Compliance
+- admit: N, assume: N, external_body: N, assume_specification: N, cfg-gated exec: N
+
+## AST Consistency
+- AST check: PASS / FAIL
+
+## Verification
+- verus: PASS / FAIL
+
+## Bug Summary
+- Total bugs recorded: N
+- True Bugs: N [list each with severity]
+
+## Issues (highest priority first)
+- ...
+
+## Result: PASS / FAIL
+```
+
+== RESULT ==
+
+Be strict: PASS only if ALL checklist items are checked. Any unchecked item is FAIL.
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by exploring the project state and skills, then launch the two review sub-agents.
+[TOOL] report_intent: Gathering review context
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch --show-current && git log --oneline -5 && echo "---FILES---" && 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===SKILLS===" && ls .github/skills/ 2>/dev/null && echo "===VERUS-AI 
+
+[THINKING] I'm starting by gathering context about the project and understanding what needs to be reviewed, then I'll set up the sub-agents to conduct a comprehensive final review using two different models. Let me first examine the existing files and directory structure to get oriented.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+5a6f3ebdd [verus] verify PASS (cheating detected): kernel::all (76 verified, 0 errors, admit=36 external_body=12 cfg_gate=15)
+740908374 [verus] verify PASS (cheating detected): arch::all (47 verified, 0 errors, external_body=3)
+a2e9cc093 [verus] verify PASS (cheating detecte...
+[RESULT ✓] bash: ===SKILLS===
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+===VERUS-AI SKILLS===
+EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.p...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && find . -iname "*.md" 2>/dev/null | grep -iE "skill|spec-design|verus-constraint|
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===bugs.md===" && cat verus-ai-logs/nanvix-phys-arch-paging-table/bug
+
+[THINKING] I need to locate the skills directory for those verus-ai components in the project structure, likely under /home/ruize/verus-ai-exp/verus-ai/.
+[RESULT ✓] bash: ===bugs.md===
+# Bugs — `arch::x86::mem::paging::table`
+
+No code bugs were found in this module. All scope functions admit correct
+specs as written; the only obstacles are a Verus language limitation and a
+deferred abstraction, both recorded below for the proving phase.
+
+## Not a code bug — Verus lim...
+[RESULT ✓] bash: ./docs/skills/ast-consistency/SKILL.md
+./docs/skills/bug-reporting/SKILL.md
+./docs/skills/caller-analysis/SKILL.md
+./docs/skills/crate-analysis/SKILL.md
+./docs/skills/proof-extraction/SKILL.md
+./docs/skills/proof-minimization/SKILL.md
+./docs/skills/proving-guide/SKILL.md
+./docs/skills/review-methodo...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===CHEATING COUNTS in table.* ===" && for f in src/libs/arch/src/x86/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===tcb-allowed.md===" && cat verus-ai-logs/tcb-allowed.md
+
+[THINKING] I'm gathering the necessary context by reviewing the source files, the tcb-allowed.md documentation, and analyzing the caller patterns to understand the current code state, then I'll prepare this information for the sub-agents to conduct their detailed review.
+[RESULT ✓] bash: ===tcb-allowed.md===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleto...
+[RESULT ✓] bash: ===CHEATING COUNTS in table.* ===
+--- src/libs/arch/src/x86/mem/paging/table.rs ---
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+200:    // The `ensures` pins the (trusted) result to the global page-table memory ghost, exactly as
+202:    #[verus_verify(external_body)]
+231:    // value per ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "verify-arch|verify-kernel|^verify" Makefile 2>/dev/null | head; e
+
+[THINKING] I found two external_body functions in table.rs—`read` and `write`—both already documented in tcb-allowed.md. There's evidence of a prior review run, but I'll focus on executing the two sub-agents as requested. Now I'm gathering the key skill files needed to provide to them.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+---makefile arch---
+<shellId: 6 completed with exit code 0>
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "VERUS_CRATES|verify-%|verify-arch" Makefile | head
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.spec.rs
+
+[THINKING] I'm checking whether the `make verify-arch` target actually exists in the Makefile, since the grep search didn't show it explicitly—it's probably being generated dynamically from the VERUS_CRATES variable.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // TableIndex — a validated page-table slot number
+5. //==================================================================================================
+6. 
+7. // A `TableInde...
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===VERUS REWRITE comments in arch===" && grep -rn "VERUS REWRITE" src
+
+[THINKING] I'll review the proof file and supporting documents, then get the sub-agents started on their tasks.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // The `TableEntry` round-trip law — decoding a freshly-encoded entry yields it back
+4. // (`spec_entry_from_raw::<E>(spec_entry_raw(e)) == Some(e)`) — is a property of each concrete
+5. // codec, not a fact about the *uninterpreted* `spec_entry_raw` / `spec_entry_from_raw`. It is
+...
+[RESULT ✓] bash: ===VERUS REWRITE comments in arch===
+===ast_consistency script help===
+usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an origina...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me run the heavy verification commands myself first to establish baseline (avoids cargo-lock conflicts between parallel sub-agents).
+[TOOL] report_intent: Running baseline verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -1 && echo "===diff stat vs base===" && git diff --stat v
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-arch 2>&1 | tail -40
+
+[THINKING] Since there are no VERUS REWRITE comments in the architecture, the AST consistency check is straightforward. I should run the ast_consistency script against the original source on the base branch to establish a baseline, using the base ref `verus-ai-prove-bottom-up` for comparison. Once I have that baseline, I can launch the sub-agents to continue the verification process.
+
+The challenge is that running `make verify-arch` and `make verify` in parallel across multiple sub-agents will cause cargo lock conflicts. To avoid this, I'll run the heavy verification commands myself first to capture the baseline results, then instruct the sub-agents to focus on static analysis tasks like reading files, running grep, and executing the AST and spec_drift scripts — which are safe to parallelize since they're read-only operations. I'll provide them with the verification results I've already captured so they can proceed with their analysis without needing to rebuild.
+
+Let me kick off `make verify-arch` and `make build` now.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 5a6f3ebdd [verus] verify PASS (cheating detected): kernel::all (76 verified, 0 errors, admit=36 external_body=12 cfg_gate=15)
+===diff stat vs base===
+===HEAD table.rs author===
+94a79af7f [verus] verify PASS (cheating detected): arch::all (47 verified, 0 errors, external_body=3)
+c28a799cd [verus-ai] ...
