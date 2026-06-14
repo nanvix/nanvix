@@ -435,3 +435,32 @@ Turn 24
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
 
 [THINKING] I should run the module verification first since it's cached and will quickly confirm the Verus side is working, then do a full kernel build to make sure removing the cfg-gate doesn't break normal compilation.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  1/18 exec functions have contracts.
+  Unverified functions:
+    - into_inner
+    - into_raw_value
+    - clone_address
+    - from_raw_value
+    - align_up
+    - align_down
+    - is_aligned
+    - max_addr
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Module status is now CLEAN. Let me confirm the module-scoped cheating section and verify the normal build still compiles.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '/=== Cheating Pattern Check ===/,/=== Function/p' verus-ai-logs/ver
+
+[THINKING] The module-scoped cfg_gate has been cleaned up and dropped, bringing the global count down from 14 to 13, and the module-specific check no longer flags cfg-gated execution code. Let me verify this by reviewing the complete output.
+[RESULT ✓] bash: 
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
