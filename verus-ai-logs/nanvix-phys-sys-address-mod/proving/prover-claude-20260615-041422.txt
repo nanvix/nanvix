@@ -494,3 +494,16 @@ Let me force a clean re-verification by touching the source file to bypass any c
 Turn 23
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/mod.rs src/libs/sys/src/sys/mm/addres
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate sys --module mm::address --log-dir verus-ai-logs/verify-sys
+=== Verus Verification (cargo mode) ===
+  Module    : mm::address
+error: could not find module mm::address specified by --verify-module or --verify-only-module
+       - sys::m...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+The module path needs the `sys::` prefix. Let me re-run correctly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys MODULE=sys::mm::address 2>&1 | grep -iE "error|verif|fail|a
+
+[THINKING] The module path needs to be `sys::mm::address` rather than `mm::address` — the earlier cached run succeeded because it never actually executed, but now with a fresh compilation the incorrect path is failing. I'll rerun with the correct module specification.
