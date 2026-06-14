@@ -3256,3 +3256,125 @@ The trigger instantiation in the nested `by`/`if` isn't firing. Let me flatten t
 Turn 240
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
+[RESULT ✓] bash: verification: 58 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-23-44.log
+<shellId:...
+
+────────────────────────────────────────────────────────────
+Turn 241
+────────────────────────────────────────────────────────────
+58 verified, 0 errors — `alloc_range` proves. The admit=16 is in other modules. Let me confirm frame.rs/proof.rs are clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "admit()\|assume(" src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/fr
+
+[THINKING] All 58 tests are passing with no errors in `alloc_range`, though the "CHEATING_DETECTED" message indicates there are still 16 admit calls elsewhere in the codebase—specifically in other modules outside of mm::phys. I need to check that frame.rs and frame.proof.rs don't contain any admit or assume statements.
+[RESULT ✓] bash: exit: 1
+<shellId: 117 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 242
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "admit()" src/kernel/src/mm/phys/ 2>/dev/null; echo "--- phys admit count -
+
+[THINKING] The frame files don't have any admit or assume statements, which is good. I need to verify the build and check that the whole module compiles correctly. The global admit count of 16 exists in other modules outside the scope of mm::phys frame, and I should confirm that the "CHEATING_DETECTED" global counter isn't in the phys module itself.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.proof.rs
+--- phys admit count ---
+src/kernel/src/mm/phys/manager.proof.rs:4
+--- where are the 16 admits ---
+src/kernel/src/hal/mem/types/address/phys.proof.rs
+src/kernel/src/hal/mem/types/address/frame.proof.rs
+src/kernel/src/mm/phys/manager.proof.rs
+src/kernel/src/mm/...
+
+────────────────────────────────────────────────────────────
+Turn 243
+────────────────────────────────────────────────────────────
+All frame admits eliminated; the 16 remaining are in out-of-scope files. Now `make build` to confirm exec compiles.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make build 2>&1 | tail -15
+
+[THINKING] The admits are in separate files outside my scope, so the frame module work is done. Now I need to run the build to verify the non-Verus compilation works with the exec rewrites for the while loop, saturating multiplication, and conditional compilation.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 119 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 244
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "build" Makefile | grep -i "^build\|^all\|kernel" | head; echo "=== try buil
+[RESULT ✓] bash: 221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+265:export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build --locked --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_...
+
+────────────────────────────────────────────────────────────
+Turn 245
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^[a-z-]+:" build/make/kernel.mk | head -20
+[RESULT ✓] bash: 10:all-kernel: init
+26:check-kernel:
+29:format-kernel:
+32:format-check-kernel:
+35:clean-kernel:
+39:rust-lint-kernel:
+42:rust-lint-check-kernel:
+51:all-test-kernel: init
+61:run-kernel-tests: all-test-kernel all-uservm
+67:check-test-kernel:
+70:clean-test-kernel:
+<shellId: 121 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 246
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make check-kernel 2>&1 | tail -20
+
+[THINKING] I need to decide between running `make check-kernel` to compile-check the kernel without the Verus harness, or `make all-kernel` for the full build—the non-ghost exec build is important for handling the saturating_mul and cfg-gating correctly.
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy-specs/src/libs/config#0.16.17","manifest_path":"/home/ruize/nanvix-phy-specs/src/libs/config/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"config","src_path":"/home/ruize/nanvix-phy-specs/src/libs/con...
+
+────────────────────────────────────────────────────────────
+Turn 247
+────────────────────────────────────────────────────────────
+Exec build succeeds. Now let me record the diagnostic-overflow bug and review the dialogue/bugs context.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -40 verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+
+[THINKING] The build succeeded with the saturating multiplication and conditional compilation working correctly. Now I need to document the allocation range diagnostic overflow issue in the bugs file, then run the full kernel verification to check for any regressions in the mm::phys module.
+[RESULT ✓] bash: empty. So a bitmap that manages the top frame corrupts the allocator and leaks a frame. The same
+unrepresentable-base issue affects `alloc_contiguous`.
+
+**Verification Failure**: `assert(idx <= spec_max_frame_number())` fails at frame.rs (alloc's
+`from_raw_value` arm) on `TARGET=x86`; it passes on `...
+
+────────────────────────────────────────────────────────────
+Turn 248
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat >> verus-ai-logs/nanvix-phys-phys-frame/bugs.md <<'EOF'
+
+## [auto-fixed] `Inner::
+[RESULT ✓] bash: done
+<shellId: 124 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 249
+────────────────────────────────────────────────────────────
+Now let me read the turn-3 driver request to address it precisely in my response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_003_driver.md
+
+[THINKING] Let me check the reviewer's feedback in that file to make sure I'm addressing their specific concerns.
+[RESULT ✓] bash: ## Turn 3: Verify fixer turn 2, re-walk checklist
+
+### Progress
+- FIXED (carried): Verus runs (parse OK).
+- FIXED this turn:
+  - **Inner::refcount** now verifies (the turn-2 precondition error at frame.rs:452 is gone; the
+    fixer added the unaligned-address rejection guard).
+  - **Inner::book** no...
+
+────────────────────────────────────────────────────────────
+Turn 250
+────────────────────────────────────────────────────────────
+FIX A (done earlier) and FIX B (3 admits) are now both complete. Let me run the full kernel-wide `make verify-kernel` to capture the kernel-wide status for the response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel 2>&1 | tail -8
+
+[THINKING] FIX A and FIX B are both complete now—the transition lemmas and free/share operations were verified previously, and the three allocation functions (alloc, alloc_contiguous, alloc_range) all check out with no admits. The driver wants me to run the full kernel verification with zero admits across the board, but there are still 16 admits scattered through other modules like the manager proof, physical address space, and identity mapping that are outside the scope of what I'm working on.
+
+The frame module itself is clean—58 verified with 0 errors and 0 admits in frame.rs specifically. But I need to clarify whether those remaining 16 admits in manager.proof.rs and other files were pre-existing or if they're part of the mm::phys module that I should be addressing. Let me run the full kernel verification to give the driver the complete picture and confirm that the frame.rs work is done while being honest about what's still outstanding elsewhere.

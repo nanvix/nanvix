@@ -122,3 +122,30 @@ return `Err` (the `Err` postcondition `final@ == old@` holds since no mutation h
 is the correct behavior — no contiguous run longer than the bitmap can exist.
 
 **Auto-Fixed**: Yes — added the bounds guard (`// VERUS BUG FIX:`).
+
+## [auto-fixed] `Inner::alloc_range`: diagnostic `index * FRAME_SIZE` can overflow `usize`
+
+**Where**: `Inner::alloc_range` (frame.rs, coverage loop), the error-message computations
+`index * mem::FRAME_SIZE` used to print the offending physical address for the "uncovered" and
+"already allocated" diagnostics.
+
+**What**: When a region extends beyond the addressable space, the coverage loop walks indices that
+can reach (and, in the uncovered branch, exceed) `num_bits`. Computing `index * mem::FRAME_SIZE`
+for the log message then overflows `usize` on 32-bit (`TARGET=x86`, the CI/default target), causing
+a panic in debug builds (`overflow_checks = true`) precisely on the error path that is supposed to
+report the problem. The `conflicting_addr` (already-allocated) case has `index < num_bits` and is
+provably in range via `internal_inv` clause 7, but the `uncovered` case (`index >= num_bits`) is
+genuinely unbounded.
+
+**How Verus helped**: Proving the loop's exec arithmetic safe forced the multiplications to be made
+total; the unguarded `index * FRAME_SIZE` is unprovable for `index >= num_bits`.
+
+**Severity**: robustness (debug-build panic on a diagnostic path) on 32-bit.
+
+**Suggested/Applied Fix**: Use `index.saturating_mul(mem::FRAME_SIZE)` (and `saturating_add` for the
+region end) for the diagnostic addresses, and `#[cfg(not(verus_keep_ghost))]`-gate the diagnostic
+`let` bindings so they exist only in the exec build. The saturating value is only ever fed to a log
+message, so saturation at `usize::MAX` is a benign, informative clamp. No spec or behavioral change
+to the allocation logic.
+
+**Auto-Fixed**: Yes — `saturating_mul`/`saturating_add` + cfg-gating (`// VERUS BUG FIX:`).
