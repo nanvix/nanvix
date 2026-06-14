@@ -308,3 +308,90 @@ Turn 8
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -60
 
 [THINKING] The AST checks and spec validation are passing cleanly. Now I need to run the full cross-module verification with `make verify` to catch any regressions across all the crates, including the kernel—this could take a while, but it's necessary to ensure everything integrates properly.
+[RESULT ✓] bash: note: verifying module sys::mm::address::virt
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.32s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=1 trusted=0 no_decreases=0 cfg_gate=4
+  Det...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && head -5 src/libs/bump_allocator/Cargo.toml; echo "=== build check (warnings) ==="; RU
+
+[THINKING] All the verification checks passed with exit code 0 across the modules in scope, so the cross-module regression requirement is satisfied. The cheating detection patterns I'm seeing in the arch and kernel modules are pre-existing work from other phases and aren't relevant to what I'm validating for the bump-allocator changes.
+
+Now I need to check the build for any warnings. The verification process compiles through cargo with the kernel target, but I should run a separate cargo build on the bump_allocator package itself to catch any warnings that might have been introduced.
+[RESULT ✓] bash: # Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "bump-allocator"
+=== build check (warnings) ===
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/nightly-2026-05-21-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling compiler_...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All checks pass. Let me verify the output directory and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/dialogue && gr
+
+[THINKING] The build completed successfully with no warnings. Going through the verification checklist, I've confirmed zero `admit()` calls remaining in the proof—there's just a stale comment that doesn't affect the actual code. For `assume()` calls, I'm also at zero, though I need to double-check whether the `assume_specification` for `div_ceil` should count toward this requirement since it's part of the standard library specification.
+
+Continuing through the rest of the checklist: trusted functions are zero, no decreases clauses are missing, cfg-gating is only used for spec includes and test code which are both allowed, and the two `external_body` functions (alloc and alloc_as) are both listed in the TCB allowlist. AST consistency checks pass with no mismatches, there are no exec rewrites to verify since everything matched, spec drift is zero, cross-module regression testing passes, and the full verification and build completed without errors or warnings. All items are passing.
+
+Now I'm noticing the proof file header comment mentions "Bodies are admit() placeholders" but checking the actual proof bodies — lemma_geometry has a full proof, lemma_exhausted_boundary has an empty body that proves trivially, and lemma_alloc_transition has a body with assertions — so there are no admit() calls anywhere. The comment is just stale documentation and not a cheating concern. I should also verify that `assume_specification` for div_ceil is acceptable; it's a standard pattern for trusting well-known std library functions, the spec matches Rust's documented behavior, and the cheating checker doesn't flag it, so it's a reasonable TCB item. Everything passes the checklist, so I need to write the full review document and mark this as RESOLVED.
+[RESULT ✓] bash: 6:// Proof-function signatures for the abstract pool model. Bodies are `admit()`
+exit 0
+=== confirm verify-bump exit ===
+verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-15_00-19-24.log:0
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All 12 checklist items verified with tool evidence. Writing the review.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/dialogue/turn_001_driver.md
+
+[THINKING] The only mention of "admit" is a stale comment on line 6 of the proof file that describes the placeholder approach, but the actual proof bodies contain no admit() calls. This is misleading documentation since the comment claims the bodies are admit() placeholders when they're actually real proofs now. While it's not technically a cheating violation, a strict reviewer would flag it as needing cleanup since it doesn't match the current state of the code.
+
+However, the checklist item "Zero admit() remaining" is objectively PASS because there are no actual admit() calls present. The stale comment is a non-blocking advisory observation rather than a checklist failure. All 12 checklist items are PASS with tool evidence, so I'll mark this as RESOLVED and note the comment as a minor documentation issue to address.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/dialogue/turn_001_driver.md with 4759 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+All 12 checklist items PASS with tool evidence. Creating STOP=RESOLVED.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Review complete — **RESOLVED**. All 12 cheating-elimination checklist items PASS with tool evidence:
+
+- **admit/assume/trusted/no_decreases/cfg_gate = 0** (verified `make verify-bump-allocator`).
+- **external_body = 2** (`alloc`, `alloc_as`) — both individually confirmed in `tcb-allowed.md`, each carrying a full `#[verus_spec]` contract (not contract-free).
+- **AST consistency**: 12/12 MATCH, 0 mismatch.
+- **Spec drift**: 0 contract drift vs phase-start baseline.
+- **Cross-module `make verify`**: all crates exit 0.
+- **Build**: `cargo build -p bump-allocator` exit 0, 0 warnings.
+
+One non-blocking advisory: stale `admit()` mention in a `lib.proof.rs:6` comment (bodies are actually discharged; `admit=0`). Recommended for future cleanup but not a checklist failure.
+
+Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: 6a4a93d7-32c8-4cb0-bea7-591092bf79f8
+Duration: 190.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/dialogue-reviewer-t001-claude-20260615-001743.jsonl
