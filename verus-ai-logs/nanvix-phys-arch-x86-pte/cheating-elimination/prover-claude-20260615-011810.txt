@@ -820,3 +820,19 @@ AST consistency passes (exec-invisible). Now full-crate verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch 2>&1 | gr
 
 [THINKING] The AST consistency checks are passing with all 23 functions and 2 structs matching, and my refactoring changes—splitting the impl blocks and removing the cfg_attr—don't affect the executable output. Now I'm running the full architecture verification to make sure there are no regressions.
+[RESULT ✓] bash: Exit code : 0
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+=== Sum...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Full arch verifies (exit 0). Remaining global items are out-of-scope (pde.rs cfg-gates + tcb-allowed external_body). Now running `make verify` for full regression:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | grep -E
+
+[THINKING] The full architecture verification passes cleanly. There are two remaining global cheating instances—three external_body references that are all in tcb-allowed sections, and two cfg_gate instances in pde.rs that fall outside the scope of this module. My pte module itself has no violations.
+
+Since the task scope is limited to the pte module and those remaining items are either allowed exceptions or belong to a different module's responsibility, my deliverable is complete. Now I should run the full make verify to check for any regressions across the entire build.
