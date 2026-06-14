@@ -272,3 +272,42 @@ Let me confirm no regressions across verified modules.
 
 I should run the full `make verify` to confirm no regressions in the other verified modules, though the pre-existing admits in mm/phys and elsewhere are expected and out of scope for this task.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Done. The verification is complete.
+
+## Summary
+
+The 4 target functions in `region.rs` — `MemoryRegion::start`, `MemoryRegion::size`, `TruncatedMemoryRegion::start`, `TruncatedMemoryRegion::size` — **all verify with 0 errors** (module-scoped run: `5 verified, 0 errors`, `✅ No cheating detected in module hal::mem::types::region`).
+
+**No proof body was required.** The `region.proof.rs` file stays empty because:
+- The `view()` closed spec unfolds within the module, so `self@.start`/`self@.size` reduce to `self.start@`/`self.size as int`.
+- The dependency contract `Address::clone_address` (`ensures result@ == self@`) discharges `start`'s postcondition.
+- `TruncatedMemoryRegion`'s methods delegate to the inner `MemoryRegion`, whose contracts the verifier picks up directly.
+
+**No specs weakened, no `external_body` added, no `admit()`/`assume()` present** in the module.
+
+**No bugs found** — the code is correct, so `bugs.md` has no new entries.
+
+The global `admit=27 / external_body=11` counts (and the `CHEATING_DETECTED` status from full `make verify`) are **pre-existing in the in-progress `mm/phys` modules** — out of scope and unchanged by this task (confirmed: the region files contain no admits/assumes, and the cheating-detail attributes all entries to other modules). All modules still compile/verify with exit code 0, so there are no regressions.
+
+[THINKING] The `make verify` command is flagging CHEATING_DETECTED, but that's from pre-existing admits in the mm/phys modules that are outside my scope—not regressions from my changes. My module had an empty proof file before and after, and everything exits cleanly with no verification errors, so the detection is just picking up on those in-progress works.
+
+The task is done: the four target functions in region.rs verify successfully with no admits or bugs in my module, and since nothing was found to fix, there's no need to create a bugs.md entry.
+
+
+=== Session End ===
+Session: 586d5b0a-d6c8-40cf-aa42-20d42e042847
+Duration: 105.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/proving/prover-claude-20260615-062434.jsonl
