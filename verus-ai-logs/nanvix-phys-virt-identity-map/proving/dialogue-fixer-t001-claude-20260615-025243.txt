@@ -163,3 +163,49 @@ The real blocker is that to prove L619, I'd need to establish that `identity_map
 The core issue is that `KERNEL_PD_PADDR` is a raw atomic with no spec-readable accessor in Verus. Converting it to a verified atomic would require modifying `init` and `sync_kernel_pdes`, which are out of scope. So I'm genuinely blocked on the primary admits.
 
 Let me check whether the secondary cfg-gating issue on the `error!` macro is actually fixable — the reviewer might be right that removing the gate is harmless if the macro is Verus-compatible.
+[RESULT ✓] bash: removed all admits
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+    |             -------------------------------------- failed precondition
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/i...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me capture the full error text with details for the report:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs -I
+
+[THINKING] I need to pull the complete error message with surrounding context so I can include the exact text in my report.
+[RESULT ✓] bash: 28:error: precondition not satisfied
+29-   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+30-    |
+31-534 |     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+32-    |                                            ^^^^^^^^^^^^^^^^
+33-    |
+34-   ::: src/libs/arch/src/x86/m...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now let me investigate whether the `read` precondition (`index@ < PAGE_TABLE_LENGTH` on a `TableIndex` parameter) is obtainable at all in the kernel crate:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== broadcast / lemma exposing TableIndex bound ==="; grep -rn "broadca
+
+[THINKING] I'm looking at whether the read precondition is actually satisfiable across crates—specifically, whether I can establish that `pde_idx < PAGE_TABLE_LENGTH` for a TableIndex parameter coming from the kernel crate. Let me check if the arch module exports any broadcast lemmas or public methods that would give me this bound, and dig deeper into the table specification and implementation files.
+[RESULT ✓] bash: === broadcast / lemma exposing TableIndex bound ===
+51:/// A validated index into a page table, guaranteed to be in `[0, PAGE_TABLE_LENGTH)`.
+68:                Some(t) => index < crate::mem::PAGE_TABLE_LENGTH && t@ == index as nat,
+69:                None => index >= crate::mem::PAGE_TABLE_LENGTH,
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The `read` precondition is blocked by a cross-crate `use_type_invariant` Verus internal error (TableIndex's type invariant isn't exported to the kernel crate). Let me confirm that's a genuine Verus limitation and test whether the secondary item-5 (cfg-gated `error!`) is actually fixable. First restore the admits, then test ungating `error!`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/idm.rs.bak src/kernel/src/mm/virt/identity_map.rs
+# Test: remove ONE 
+
+[THINKING] I'm noticing a mismatch in how bounds are enforced across these functions. The `pd_index` and `pt_index` functions have explicit postconditions ensuring their results stay within `PAGE_TABLE_LENGTH`, and `into_raw` does too, but when `ensure_pt` and `ensure_pte` receive `pde_idx` and `pte_idx` as bare `TableIndex` parameters, the bounds only exist as type invariants. The problem is that Verus can't access those type invariants across crate boundaries—it throws an internal error about missing the invariant function.
+
+So I'm facing three fundamental blockers: the read precondition needs cross-crate type invariants (which Verus doesn't support), the `alloc_as` precondition requires a spec-readable invariant for the module-static allocator (which doesn't exist), and the postconditions at L618/L706 depend on an uninterpreted `identity_map_view()` with no ghost-token attachment. None of these can be fixed without either weakening preconditions, using `assume`, or touching functions outside the scope. I'm now checking whether I can make progress on any secondary items the reviewer might accept. I'll test removing the error! gates while keeping the admits in place to see if the macro compiles under verus verification.
