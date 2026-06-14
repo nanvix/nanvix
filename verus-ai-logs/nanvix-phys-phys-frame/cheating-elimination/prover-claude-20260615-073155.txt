@@ -1,0 +1,340 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T07:31:55.887541
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are performing cheating elimination for phys-frame. The goal is to
+**eliminate all cheating** — replace every `assume`, `admit`,
+and `external_body` with real proofs so that `make verify-kernel` passes cleanly.
+The only exception: if `/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md` exists, functions listed there
+are allowed to keep `external_body`. Any `external_body` on a function NOT
+in that file is a blocker and must be eliminated.
+
+Follow the **verus-constraints** escalation ladder: search vstd, write an
+isolated reproducer, try equivalent rewrites.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
+
+
+Source file: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+Source directory: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys
+Spec file:  /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+Verus command: make verify-kernel
+Base branch: verus-ai-prove
+
+== SKILLS ==
+
+Follow strictly:
+- **verus-constraints** — MUST follow: forbidden patterns, escalation ladder
+- **spec-design** — reference: trust classifications (external-top, external-bottom)
+- **ast-consistency** — reference: no exec code changes via cfg gates; workarounds must preserve semantics, time complexity, and space complexity
+
+== TASK ==
+
+Eliminate all cheating items. Zero cheating must remain — no exceptions.
+
+1. **Cheating detection**: Run `make verify-kernel` and count: admit, assume,
+   external_body, assume_specification, cfg-gated exec code.
+
+2. **Plan**: List every cheating item across source, spec, and proof files
+   (function name, file, cheating type). Plan an elimination order.
+
+3. **Eliminate each item**: For every cheating item:
+   - Follow **verus-constraints** escalation ladder: search vstd, write
+     isolated reproducer, try equivalent rewrite.
+   - `external_body` — remove every instance.
+   - **Proof gap** (verifiable but not yet proven): must be eliminated.
+     If you cannot resolve it now, record in /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md as
+     a remaining item, but keep trying — the goal is zero proof gaps.
+     Recording here does NOT make this phase pass: any remaining `admit()`
+     or `assume()` still trips the cheating gate and the phase FAILs.
+     The file is an honest hand-off of genuinely-stuck proofs, not a way out.
+   - admit/assume → must be eliminated, no exceptions.
+
+4. **AST consistency**: Run checks per the **ast-consistency** skill.
+   For each mismatch: if it matches a pre-approved deviation, document it.
+   Otherwise, provide evidence that the change is required by Verus
+   (e.g., error message without it) and confirm it preserves
+   semantics, time complexity, and space complexity. If no evidence,
+   restore the original
+   from `git show verus-ai-prove:/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs` and fix the proof
+   strategy instead.
+
+5. **Full-crate verification**: Re-run `make verify-kernel` to confirm 0 errors,
+   then `make verify` to ensure no regressions across the full crate.
+
+== OUTPUT ==
+
+Write to /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md:
+```markdown
+# Cheating Elimination Report: phys-frame
+
+## Cheating Counts (before → after)
+| Item | Before | After | Eliminated |
+|------|--------|-------|------------|
+| admit() | N | N | N |
+| assume() | N | N | N |
+| external_body | N | N | N |
+| assume_specification | N | N | N |
+| cfg-gated exec | N | N | N |
+
+## Items Eliminated
+- [each item: what it was, how it was eliminated]
+
+## Verification TODOs (/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md)
+- [each: function, specific Verus error or code pattern blocking the proof]
+
+## AST Consistency
+- Zero mismatches confirmed: YES / NO
+
+## Result: PASS / BLOCKER
+```
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the relevant skills and examining the current state of the files.
+[TOOL] skill: build
+
+[THINKING] I'm starting by exploring the project structure and understanding what needs to be done, then diving into the relevant skills and source files to get a sense of the codebase and the cheating detection system.
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me load the critical verus-constraints skill and examine the source files.
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/.github/skills/verus-constraints/SKILL.md 2>/dev/null; echo "===SPEC-DESIGN==="; cat /h
+[TOOL] report_intent: Exploring skills and source files
+
+[THINKING] I need to pull up the verus-constraints skill and examine its source files to understand what I'm working with.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ===SPEC-DESIGN===
+===AST===
+<shellId: 0 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/nanvix-phy-specs -iname "*.md" -path "*skill*" 2>/dev/null | head -50; echo "==="; ls /home/ruize/nanvi
+
+[THINKING] I need to look elsewhere for the skills files.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/.github/skills/benchmarking/SKILL.md
+/home/ruize/nanvix-phy-specs/.github/skills/ci-cd-pipeline/SKILL.md
+/home/ruize/nanvix-phy-specs/.github/skills/coding-standards/SKILL.md
+/home/ruize/nanvix-phy-specs/.github/skills/daemon-development/SKILL.md
+/home/ruize/nanvix-phy-s...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -iname "*.md" \( -iname "*verus-constraint*" -o -iname "*spec-design*" -o -iname "*ast-consistency*" \) 2>/dev/nu
+
+[THINKING] I need to search the entire filesystem since those skills aren't located in the .github/skills directory.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/virt-mm-spec-design.md
+/home/ruize/insights/2026-05-18-write-path-spec-design.md
+/home/ruize/.copilot.bak-20260601-013237/session-state/b31e1fee-efb1-4a6b-83ab-49e07c4c4943/checkpoints/017-removing-verus-constraints-vio.md
+/home/ruize/.copilot.bak-2...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/; echo "=== latest? check timestamps ==="; ls -la /mnt/shared/ |
+[RESULT ✓] bash: agentic-reasoning
+ast-consistency
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-consistency
+spec-design
+verus-constraints
+verus-setup
+view-design
+=== latest? check timestamps ===
+drwxrwxr-x 1 ruize ruize  506 ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: D=/mnt/shared/verus-ai-improve5-argus-exp2/docs/skills; echo "###### VERUS-CONSTRAINTS ######"; cat $D/verus-constraints
+[RESULT ✓] bash: ###### VERUS-CONSTRAINTS ######
+---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+-...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: D=/mnt/shared/verus-ai-improve5-argus-exp2/docs/skills; echo "###### AST-CONSISTENCY ######"; cat $D/ast-consistency/SKI
+[RESULT ✓] bash: ###### AST-CONSISTENCY ######
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `veru...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Now let me examine the source files and check for cheating items.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== tcb-allowed ==="; cat verus-ai-logs/tcb-allowed.md 2>/dev/null || echo "NOT F
+
+[THINKING] I'm examining the project structure and checking the tcb-allowed.md file along with the source files to verify everything is set up correctly.
+[RESULT ✓] bash: === tcb-allowed ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== git status ==="; git status --short; echo "=== cheating counts in frame.rs ==
+
+[THINKING] Looking at the tcb-allowed.md file, I can see that frame.rs has `instance` listed as an allowed external_body function, while `init` is excluded. The cross-module dependencies section then specifies several frame.rs functions that are accessible: `init`, `alloc`, `alloc_contiguous`, `free_count`, and `free`.
+
+But now I'm realizing there's a tension here — the task lists both the singleton wrapper functions and their `Inner::` counterparts as verification targets, yet tcb-allowed.md explicitly allows the singleton wrappers to keep their `external_body` annotations. The existing specs also say not to modify the `Inner::` versions, so I need to clarify whether I'm supposed to be working with just the singleton wrappers or both sets of functions.
+
+Let me start by checking the actual current state of the codebase and running the verification to see what the baseline looks like, then count up the cheating items across the three files to understand the scope of work.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-phys-frame/pipeline.log
+?? verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/
+=== cheating counts in frame.rs ===
+49:#[cfg(verus_keep_ghost)]
+52:#[cfg(verus_keep_ghost)]
+167:                #[cfg(not(verus_keep_ghost))]
+186:        #[cfg(not(ve...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me map each `external_body` to a function name.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; for ln in 1401 1435 1491 1519 1548 1564 1603 1622 1643 1662; do echo "=== line $ln ==="
+
+[THINKING] I'm examining the external_body functions in frame.rs to cross-reference them against the tcb-allowed list.
+[RESULT ✓] bash: === line 1401 ===
+1:#[verus_verify(external_body)]
+=== line 1435 ===
+1:#[verus_verify(external_body)]
+=== line 1491 ===
+1:#[verus_verify(external_body)]
+=== line 1519 ===
+1:#[verus_verify(external_body)]
+=== line 1548 ===
+1:#[verus_verify(external_body)]
+6:pub(super) fn free_count() -> usize {
+=== l...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -nE '^\s*(pub(\(super\))?\s+)?fn ' src/kernel/src/mm/phys/frame.rs | sed -n '1,60p
+[RESULT ✓] bash: 136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+285:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+546:    fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+715:    fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
+850:    fn...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -nE 'fn (init|instance|alloc|alloc_contiguous|free_count|free|is_covered|book|allo
+
+[THINKING] I'm trying to map the external_body lines to their corresponding functions by cross-referencing line numbers. Line 1435 should correspond to a function that comes after it, and based on the function list showing instance at 1408 and alloc at 1502, there's likely an init function somewhere between those lines that the grep didn't capture initially.
+[RESULT ✓] bash: 136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+285:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+546:    fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+715:    fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
+850:    fn...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I'm mapping the external body lines to their corresponding functions and verifying they're all allowed—instance, init, alloc variants, free_count, and free are all permitted either because they're in the tcb or marked for exclusion. Now I need to verify there are no actual assume_specification declarations in the spec file itself, since the grep results only showed comments. Let me examine the full spec.rs content to confirm.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. // =================================================================================================
+12. // Dependency contracts for...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+No `admit`/`assume` found. All 10 `external_body` functions map to tcb-allowed entries. Let me verify the build setup and run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; ls ~/toolchain/verus 2>/dev/null && echo "verus dir exists"; echo "VERUS_EXECUTABLE_DIR
+
+[THINKING] I'm checking whether there's actually any cheating to eliminate here—spec.rs looks clean and all external_body calls in frame.rs are in the TCB-allowed section, with no admit or assume statements in proof.rs. But since the task is specifically about cheating elimination, I should run the verification to see if the proof currently has gaps or if I'm missing something.
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+version.txt
+verus
+verus-root
+vstd
+vstd.vir
+z3
+verus dir exists
+VERUS_EXECUTABLE_DIR=
+298:export VERUS_EXECUTABLE_DIR ?= /h...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+VERUS_EXECUTABLE_DIR defaults correctly. Let me run module verification for the baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; make verify-kernel MODULE=mm::phys 2>&1 | tail -40
