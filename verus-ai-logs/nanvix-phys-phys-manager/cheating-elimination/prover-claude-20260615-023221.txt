@@ -465,3 +465,73 @@ The problem is that while Upool::new ensures the result is well-formed and Upool
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|admit|fail|veri
+[RESULT ✓] bash: error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:9
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in th...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Confirmed — removing the admits yields exactly 4 unprovable postconditions at the ghost-token seams. Note `frame.rs` itself still has 8 admits (the frame layer isn't verified yet), which is the upstream dependency. Restoring:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs && grep -c "admi
+
+[THINKING] Removing those four admits triggers postcondition failures at the exact points where the lemmas are defined—each one failing to satisfy its stated invariant about frame management, allocation, and contiguity constraints.
+
+The frame.rs module itself has eight unverified admits, which means the manager layer can't discharge its ghost-token obligations without that underlying verification. These postconditions are genuinely unprovable in the current scope because they depend on properties that only the frame layer can establish.
+
+I need to restore the admits and accept that this is a blocker for full verification.
+[RESULT ✓] bash: 4
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now let me run the AST consistency check (I made no exec changes to `manager.rs`, only restored the proof file):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status --short && echo "=== diff manager.rs vs base ===" && git --no-p
+
+[THINKING] I'm checking whether there's a way to make the kernel-path transition provable through a `&mut self` method like the user path does, since the fundamental issue is that these lemmas encode global ghost-token attachment and frame.rs sits outside the verification scope with unresolved admits.
+
+There's no `&mut self` kernel allocation method available—`frame::alloc()` is a free function and I can't add methods or modify frame.rs. Even looking at `lemma_user_bulk_err_restored` on the user path doesn't help because the exec calls `frames.clear()` directly, which I can't change to explicit frees. So this is genuinely blocked.
+
+Now I'm double-checking whether there are other cheating items in manager scope I should address. The external_body and kernel_watermark items in manager.rs are both tcb-allowed, so those are fine. The three assume_specification items in manager.spec.rs aren't flagged by the cheating gate since they're trusted stdlib specs that were approved during the spec phase—they're not blockers, though I should note them in the report.
+
+I'm going to leave the assume_specification items as-is since they're pre-existing and approved, then move on to writing the verification_todo.md and fix_report.md files. First, I'll run the AST consistency check on manager.rs to make sure nothing broke there.
+[RESULT ✓] bash: M src/kernel/src/mm/phys/manager.proof.rs
+ M verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-023221.jsonl
+ M verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-023221.txt
+=== diff manager.rs vs base ===
+ src/kernel/src/mm/phys/manage...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== working vs HEAD ===" && git --no-pager diff -- src/kernel/src/mm/phys/manag
+
+[THINKING] I'm noticing the manager.proof.rs file shows a 4 insertion/4 deletion diff against the verus-ai-prove base branch, and it's marked as modified in the working tree even though I restored it from backup. The backup was taken at the start of the current working state, so the discrepancy might be due to the admits being in a slightly different state than the original base branch, or the current HEAD state from the cheating-elimination branch has the proof file in a different configuration.
+[RESULT ✓] bash: === working vs HEAD ===
+diff --git a/src/kernel/src/mm/phys/manager.proof.rs b/src/kernel/src/mm/phys/manager.proof.rs
+index 3ff0bbaee..b1e10b95c 100644
+--- a/src/kernel/src/mm/phys/manager.proof.rs
++++ b/src/kernel/src/mm/phys/manager.proof.rs
+@@ -13,7 +13,7 @@ pub proof fn lemma_manager_attached(m...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The verify auto-commit captured the broken intermediate state. Let me inspect and clean up the git history:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -8
+
+[THINKING] I'm trying to understand what happened with the file changes—the backup restore seems to have reintroduced the `admit();` line that my earlier edit had removed and replaced with a comment, so now I'm looking at the diff to figure out exactly what got overwritten and what remained.
+[RESULT ✓] bash: f111c809d [verus] verify FAIL: kernel::mm::phys (38 verified, 4 errors)
+cf1253e5a [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=24 external_body=18 cfg_gate=15)
+a8d643993 [verus-ai] cheating-elimination START: phys-manager
+3a0b7204c [verus] verify PAS...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Working tree has the correct restored version (HEAD is the broken experiment auto-commit). Let me re-run verification to confirm the working tree is back to the clean baseline (this also produces a clean PASS auto-commit):
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified|errors|admit
+
+[THINKING] The HEAD commit has the broken state from my experiment, but my working tree has the correct `admit();` version restored, so the actual source of truth is good. When I run verify again, it'll auto-commit the passing state. Let me just confirm the working tree proof file to be sure.
