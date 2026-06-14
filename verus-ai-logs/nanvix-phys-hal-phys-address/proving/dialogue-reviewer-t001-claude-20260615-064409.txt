@@ -206,3 +206,392 @@ I'll run the kernel verification and investigate the `sys` crate's `VirtualAddre
 [RESULT ✓] bash: === files ===
 find: ‘src/libs/sys/src/mm’: No such file or directory
 <shellId: 3 completed with exit code 0>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find src -path "*mm*" -name "*.rs" | xargs grep -ln "struct VirtualAddress\
+
+[THINKING] The verify-kernel check passed and confirmed the hal::mem::types::address::phys module, but the cheating report shows violations across the entire kernel—assume=0, external_body=11, admit=27, cfg_gate=14—so I need to isolate which ones are specific to the phys module. I'm going to examine the cheating-detail file and locate the VirtualAddress definition to narrow down what applies to this particular module under review.
+
+Looking at my earlier grep results, phys.rs and its spec/proof files don't contain any admit or external_body violations, only assume_specification in phys.spec.rs and two #[cfg(verus_keep_ghost)] includes in phys.rs. The cfg_gate count of 14 might be counting those includes, but they're not executable code—just macro includes gated by configuration—so they shouldn't violate the checklist requirement against cfg-gated exec code. Let me check the cheating-detail file to confirm which violations actually belong to the phys module.
+[RESULT ✓] bash: - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - mm/phys/frame.rs:497 book: admit
+    - mm/phys/frame.rs:535 is_covered: admit
+    - m...
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/virt.rs
+===
+src/kernel/src/hal/arch/x86/cpu/context.rs:16:use ::sys::mm::VirtualAddress;
+src/kernel/src/hal/arch/x86/cpu/context.rs:138:        user_tda: Option<VirtualAddress>,
+src/kernel/src/hal/arch/shared/cpu/interrupt/xapic.rs:22:    pub use ::sys::mm::VirtualAdd...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== assume entries ==="; grep -in "assume" verus-ai-logs/verify-kerne
+
+[THINKING] The cheating details I'm looking at are mostly in the physical memory allocator modules, not in the `phys.rs` files that are actually under review, so those don't count toward this scope. For the phys module itself, I'm finding zero instances of admit and external_body, but there's one assume_specification in the spec file.
+[RESULT ✓] bash: === assume entries ===
+=== cfg entries ===
+=== any phys/address entries ===
+<shellId: 6 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && wc -l verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "===
+
+[THINKING] The cheating-detail.txt file only breaks down admit, external_body, and external_type_spec entries, while cfg_gate and assume metrics appear in the summary but not itemized per line. I'm noticing that assume_specification in phys.spec.rs isn't being counted as "assume" by their checker—they're only counting explicit assume(...) calls, not the specification variant. Let me dig into the full cheating report to understand what's being tracked.
+[RESULT ✓] bash: 38 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+=== full file ===
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - m...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+All cheating-detail entries are in `mm/phys/*` and `mm/virt/*` — none in the `hal/mem/types/address/phys` module under review. Let me check the sys VirtualAddress to evaluate the remaining `assume_specification`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "into_raw_value\|verus_spec\|verus_verify\|fn new\|assume_specifica
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg_gate\|cfg-gate\|verus_keep_ghost\|cfg(" scripts/verify.sh 2>/
+
+[THINKING] The cheating-detail entries I'm looking at are all in the `mm/phys/*` and `mm/virt/*` modules, which are outside the scope of this review focused on `hal::mem::types::address::phys`. I need to track down what cfg_gate=14 actually refers to since it's not broken down in the detail file — let me check the verify.sh script or look for a cfg detail file that explains it.
+
+For the phys module itself, the only cfg directives are the two `#[cfg(verus_keep_ghost)]` annotations on the include statements, which gate spec and proof code rather than exec code, so that passes. Now I'm working through the checklist items: zero admit calls is confirmed, zero external_body is confirmed, and for the assume_specification on line 61 of phys.spec.rs — that's referencing VirtualAddress from the sys crate, which is an external library, so I need to understand whether that assume is justified by the spec changes.
+
+The key question is whether sys::VirtualAddress::into_raw_value now has a verified spec like the new method does. If it does, keeping the assume_specification would be unnecessary trust and count as spec drift. Let me check the sys virt.rs file to see what spec coverage exists for into_raw_value.
+[RESULT ✓] bash: 35:#[verus_verify(external_derive)]
+46:#[verus_verify]
+48:    #[verus_spec(result =>
+52:    pub const fn new(value: usize) -> Self {
+65:    #[verus_spec(result =>
+253:    fn into_raw_value(self) -> usize {
+321:impl View for VirtualAddress {
+324:    closed spec fn view(&self) -> int
+<shellId: 9 compl...
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm examining the cfg_gate detection pattern to understand how it identifies the `#[cfg(_attr)?(not()?verus_keep_ghost` syntax, then checking the relevant section of the verify.sh script.
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+[RESULT ✓] view: 244.     ///
+245.     /// # Returns
+246.     ///
+247.     /// The maximum [`VirtualAddress`].
+248.     ///
+249.     fn max_addr() -> usize {
+250.         usize::MAX
+251.     }
+252. 
+253.     fn into_raw_value(self) -> usize {
+254.         self.0
+255.     }
+256. 
+257.     fn clone_address(&self) -> S...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The cfg_gate counter correctly excludes macros like `include!` and `use`, so the two `#[cfg(verus_keep_ghost)]` attributes in phys.rs don't count toward the total since they precede include statements. That means phys contributes zero cfg gates, and the 14 gates found are elsewhere in the kernel. Now I'm checking whether `sys::mm::VirtualAddress::into_raw_value` at line 253 carries a `#[verus` attribute...
+[RESULT ✓] view: 150.     ///
+151.     /// Performs a checked subtraction of a [`VirtualAddress`] and a `usize`.
+152.     ///
+153.     /// # Parameters
+154.     ///
+155.     /// - `rhs`: The value to subtract.
+156.     ///
+157.     /// # Returns
+158.     ///
+159.     /// Upon success, the new [`VirtualAddress`] is r...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm noticing that the `impl Address for VirtualAddress` block lacks the `#[verus_verify]` attribute, and `into_raw_value` doesn't have `#[verus_spec]`, which means this trait implementation isn't verified yet and has no contract. This means the `assume_specification` in phys.spec.rs for that method is still being generated.
+
+Looking at where `into_raw_value` is actually called in phys.rs, I see it's invoked in the verified bodies at lines 166 and 275, so phys depends on sys's unspecified method. The `assume_specification` provides the contract that the result equals the address value. Since `sys` is a separate external crate, this qualifies as a cross-crate trust boundary, though the tcb-allowed.md doesn't explicitly list this particular assumption. The spec file documents the reasoning — this was kept after sys's VirtualAddress::new got a real spec.
+
+The strict interpretation of the checklist is that assume_specifications should only exist at genuine bottom boundaries (std/external unverifiable crates), and sys is workspace-internal and slated for verification. But the practical pattern in this codebase, documented in tcb-allowed.md under "assume_specification for not-yet-verified callees," treats these as temporary placeholders that get eliminated once the module is verified. Since `new` was already replaced with a real spec when sys was verified, the cleaner approach would be to give `into_raw_value` a proper verified spec as well. I need to verify the View implementation for VirtualAddress to confirm what the correct ensures clause should be, then decide whether to fail the review on item 4 and require sys to have a real spec for `into_raw_value` rather than relying on the assume_specification placeholder.
+[RESULT ✓] view: 44. //==================================================================================================
+45. 
+46. #[verus_verify]
+47. impl VirtualAddress {
+48.     #[verus_spec(result =>
+49.         ensures
+50.             result@ == value as int,
+51.     )]
+52.     pub const fn new(value: usize) ->...
+[RESULT ✓] view: 318. 
+319. verus! {
+320. 
+321. impl View for VirtualAddress {
+322.     type V = int;
+323. 
+324.     closed spec fn view(&self) -> int
+325.     {
+326.         self.0 as int
+327.     }
+328. }
+329. 
+330. } // end verus!
+331. 
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me gather evidence for the remaining checklist items (spec-drift baseline, VERUS REWRITE/DEVIATION comments, limitation reproducers).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== specification dir ==="; ls -R verus-ai-logs/nanvix-phys-hal-phys-
+
+[THINKING] So the trait implementation for `Address` on `VirtualAddress` is missing the verification annotations—specifically `into_raw_value` at line 253 lacks `#[verus_spec]`—which means `phys`'s `assume_specification` for that trait method remains an unverified trust boundary within the workspace crate. The View is closed, so...
+
+To properly eliminate this assumption, I'd add `#[verus_verify]` to the trait impl and give `into_raw_value` a spec ensuring the result equals the abstract value. Since the View is closed, the body `self.0` should be provable within the module where it's defined—the closed spec body is visible to proofs in that same module, and the trait impl is in the same file. This mirrors the precedent already set with `new` and `from_raw_value`, so it's the right approach without weakening anything.
+
+The question is scope: does verifying the kernel require re-verifying sys's new specs? The `make verify-kernel` command builds sys too, but adding a real spec to `into_raw_value` would require running `make verify-sys` separately. The kernel verification would then depend on that real spec rather than the assumption. There's a risk here if...
+
+Actually, stepping back on the strict reviewer mandate—the checklist says zero assume_specification except for external-bottom trust boundaries. sys is a first-party workspace crate under active verification, not a genuine external bottom like std or arch. The precedent already removed `VirtualAddress::new`'s assumption by adding a real spec to sys, so the identical fix should apply to `into_raw_value`. Leaving it as an assumption is an unnecessary trust boundary, which means this should fail the checklist with a concrete, feasible fix available. I need to systematically evaluate the remaining checklist items: spec drift requires finding the baseline specs, the VERUS DEVIATION comments suggest there's an isolated reproducer I should verify exists, and I need to check for VERUS REWRITE comments to assess whether the exec rewrites are minimal. Let me also confirm the build command passes and gather any supporting documentation like verus-unsupported.md before finalizing the full checklist assessment.
+[RESULT ✓] bash: === specification dir ===
+verus-ai-logs/nanvix-phys-hal-phys-address/specification/:
+dialogue
+dialogue-fixer-t001-claude-20260614-055018.jsonl
+dialogue-fixer-t001-claude-20260614-055018.txt
+dialogue-reviewer-t001-claude-20260614-054546.jsonl
+dialogue-reviewer-t001-claude-20260614-054546.txt
+dialogue...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== bugs.md ==="; sed -n '1,80p' verus-ai-logs/nanvix-phys-hal-phys-a
+
+[THINKING] I'm checking the spec-drift by looking at the `body_removed_source.rs` file in the proving log directory, which the spec-drift-check skill uses to compare against stored baselines from the specification phase. I need to find the original spec content and then look at bugs.md to understand the use_type_invariant limitation reproducer.
+[RESULT ✓] bash: === bugs.md ===
+# Bugs — hal::mem::types::address::phys
+
+Module: `src/kernel/src/hal/mem/types/address/phys.rs`
+
+## Summary
+
+No code bugs found during verification.
+
+The target functions (`PhysicalAddress::into_frame_number`, `PhysicalAddress::from_number`,
+`PhysicalAddress` view, `PhysicalAddress::...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && wc -l verus-ai-logs/nanvix-phys-hal-phys-address/proving/body_removed_sourc
+
+[THINKING] I need to check what the specification phase established as the baseline contracts, then compare those against the current state to detect any spec-drift. The most reliable approach is looking at the `#[verus_spec]` annotations to see what was approved during the specification review phase versus what exists now.
+[RESULT ✓] bash: wc: verus-ai-logs/nanvix-phys-hal-phys-address/proving/body_removed_source.rs: No such file or directory
+=== grep broad ===
+grep: verus-ai-logs/nanvix-phys-hal-phys-address/proving/body_removed_source.rs: No such file or directory
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find verus-ai-logs/nanvix-phys-hal-phys-address -name "body_removed_source.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-hal-phys-address/body_removed_source.rs
+=== proving dir tree ===
+verus-ai-logs/nanvix-phys-hal-phys-address/proving
+verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-064207.txt
+verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verus_spec\|ensures\|requires\|assume_specification\|spec fn\|admi
+[RESULT ✓] bash: 94:    #[verus_spec(result =>
+95:        requires
+96:            spec_frame_number(addr@) <= spec_max_frame_number(),
+97:        ensures
+100:            (result->Ok_0).inv(),
+118:    #[verus_spec(result =>
+119:        ensures
+120:            result@ == spec_from_number(spec_frame_raw_value(frame)),
+...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== baseline spec helpers ==="; grep -n "spec_frame_raw_value\|spec_m
+
+[THINKING] I'm comparing the baseline contracts from the source file with the current implementation to see what's changed in the requirements and postconditions for the from_mmio_address function.
+
+The from_mmio_address contract matches between baseline and current — same precondition on frame number bounds and same postcondition ensuring the result is Ok with matching address and invariant. The from_number and into_frame_number functions also match. Now I need to verify that the spec helper functions themselves haven't drifted from the baseline definitions — checking whether spec_frame_number, spec_max_frame_number, and the invariant definition are still the same as what was originally agreed upon.
+[RESULT ✓] bash: === baseline spec helpers ===
+96:            spec_frame_number(addr@) <= spec_max_frame_number(),
+120:            result@ == spec_from_number(spec_frame_raw_value(frame)),
+130:            spec_frame_raw_value(result) == spec_frame_number(self@),
+=== does baseline contain spec.rs content? line range ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -10 -- src/kernel/src/hal/mem/types/address/phys.spec.rs 
+
+[THINKING] The body_removed_source.rs file is the core phys.rs stripped of implementations, so it doesn't capture the spec helper definitions that live separately in spec.rs. To properly detect spec drift, I need to compare the current spec.rs against what was approved during the specification phase. Git history should show what changed between the specification phase and the proving phase, so let me check the diff to see what evolved.
+[RESULT ✓] bash: a04779971 [verus] verify PASS: kernel::hal::mem::types::address::phys (6 verified, 0 errors)
+b240500b2 [verus] verify FAIL: kernel::hal::mem::types::address::phys (4 verified, 2 errors)
+bc021e12c [verus] verify FAIL: kernel::hal::mem::types::address::phys (0 verified, compilation/setup error (verus ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== full phys.spec.rs history ==="; git log --oneline -- src/kernel/s
+
+[THINKING] The working tree is clean with the proving phase complete at commit a04779971. Now I need to check for any drift in the spec contracts by comparing what was in the specification phase versus what's in the proving phase — specifically looking at how phys.spec.rs and phys.rs have changed between those two points.
+
+Let me trace back through the git history to find where the proving phase actually started. The recent commits show some setup attempts, but before those is the specification baseline. I'll identify the parent commit of the first proving attempt, then diff the spec and proof contracts across the entire proving phase to see if anything drifted.
+[RESULT ✓] bash: === full phys.spec.rs history ===
+1b74a0a74 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+3478c1c10 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+e53595ce0 [verus] verify PASS (cheating detected): bit...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec.rs diff (spec phase end -> now) ==="; git diff f81c68273 HEA
+
+[THINKING] The specification phase ends at commit f81c68273 with all verifications passing, followed by bitmap commits and then the proving phase. Now I need to compare the specs and Verus contracts between that specification checkpoint and the current proving phase state to check for any drift.
+[RESULT ✓] bash: === spec.rs diff (spec phase end -> now) ===
+diff --git a/src/kernel/src/hal/mem/types/address/phys.spec.rs b/src/kernel/src/hal/mem/types/address/phys.spec.rs
+index e3aeec8c9..03f37a61c 100644
+--- a/src/kernel/src/hal/mem/types/address/phys.spec.rs
++++ b/src/kernel/src/hal/mem/types/address/phys.sp...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The proving-phase diff confirms specs were **strengthened** (uninterp → concrete `open` defs; 4 assume_specs removed), not weakened. But one `assume_specification` remains. Let me verify the trait-impl status and whether a limitation reproducer exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== sys Address trait impl attr ==="; sed -n '165,168p' src/libs/sys/
+
+[THINKING] Looking at this diff, the proving phase actually strengthened the specifications rather than weakening them. The key changes show that previously uninterpreted functions like `spec_frame_raw_value` and `spec_max_frame_number` are now concretely defined in terms of actual architectural implementations—`spec_frame_raw_value` is realized by the architecture's real View, and `spec_max_frame_number` is defined through `FrameNumber::spec_max()`. This moves from abstract trust assumptions to concrete, verifiable definitions. The removal of several assume_specifications further reduces the trust boundary.
+
+For the phys.rs contract changes, I'm seeing only additions (marked with `+`) and no removals (marked with `-`), which means the contracts were strengthened or newly added, not weakened. The from_mmio_address function's requires and ensures clauses appear to have been enhanced during proving, but I should verify the full diff without filtering to confirm there are no hidden contract removals that would indicate weakening.
+
+On the remaining assume_specification for sys::VirtualAddress::into_raw_value — the prover removed four others by providing real specs to arch and sys functions, but kept this one because sys hasn't been given a spec for into_raw_value yet. The pattern is clear: eliminate assume_specification when the underlying function gains a real spec. Since the prover already did this for VirtualAddress::new, the consistent approach would be to add a trivial real spec to into_raw_value (just returning self.0) and remove this last placeholder, fully aligning with the checklist's requirement of zero assume_specification except for external crate boundaries.
+
+However, there's a genuine complication: into_raw_value is a trait method implementing sys::mm::Address, and Verus typically requires trait specs to be declared at the trait level or via when clauses, not just on the impl. Using assume_specification for an unspecced trait method impl is actually the standard Verus pattern for external traits. But the strict rule says sys is a workspace crate being verified, so even trait methods shouldn't remain as assume_specification — sys should specify them.
+
+Given this tension between the documented methodology (which allows cross-crate placeholders until modules are verified) and the strict checklist requirement, I need to either flag this as a FAIL and require sys to provide a real spec for into_raw_value, or acknowledge that tcb-allowed.md doesn't currently document this sys placeholder even though it does document similar ones for arch. The literal reading of "external trust boundaries for external crates" could justify it, but the documentation gap and the verification mandate suggest it should be resolved. So the real issue is that `Address::into_raw_value` is a trait method, not an inherent method, and phys.rs calls it through the trait. Since `Address` is internal to sys, sys could add specs directly to the trait and its implementations rather than relying on `assume_specification`. That's more involved than the `new` fix, but it's definitely doable.
+
+My strict position: I'm failing item 4 and requiring the prover to either spec sys's `Address::into_raw_value` trait method (the same way `new` was handled) or, if Verus genuinely won't allow it, provide an isolated reproducer and document it in tcb-allowed.md. A justification alone doesn't resolve the trust boundary.
+
+Now I need to check items 7, 8, and 10 for claimed Verus limitations and reproducers.
+
+Item 7 is the `use_type_invariant` cross-crate claim in phys.rs:143-148. The VERUS DEVIATION comment says it's unsupported, but I don't see an isolated reproducer anywhere—no verus-unsupported.md in the module directory. The checklist requires an isolated reproducer for any claimed Verus limitation. The workaround (binding to a let and using the method contract's postcondition) works semantically, but the claim itself needs backing evidence. That's a potential fail unless a reproducer exists.
+
+For item 8, I'm checking whether the exec rewrites are truly minimal and equivalent. The deviations in phys bind raw_value and shift to lets before operations—these look semantically equivalent to the original logic.
+
+Item 10 requires running the build command to verify zero errors and zero warnings. The verify-kernel passed, but I need to check what the actual build command is—possibly `./z build` or similar.
+
+Given the protocol of addressing one fail at a time, item 4 (assume_specification) is the clearest concrete fail, but I'm reconsidering whether it's worth demanding a code change if it triggers a large sys-trait-spec refactor. Let me check the tcb-allowed documentation again—it explicitly lists assume_specification as acceptable for not-yet-verified callees, including arch ones and intra-crate kernel ones.
+
+The real issue is that phys.spec.rs has an assume_specification for `into_raw_value` that isn't documented in tcb-allowed.md, while the sibling `VirtualAddress::new` placeholder was already eliminated. Since `into_raw_value` is trivially verifiable (just returns `self.0`), the fix is clear: add a real verified spec to sys's implementation so the result equals `self@` as an int, remove the assume_specification from phys.spec.rs, then re-run verification. If Verus genuinely can't spec the trait method, I need an isolated reproducer and a record in the tcb-allowed log.
+
+Now I'm ready to write the turn_001_driver.md file with a full checklist walk-through, marking item 4 as FAIL and item 7 as a secondary concern to verify next, with the rest passing. I should also check whether there's an existing reproducer for the use_type_invariant cross-crate limitation and confirm the build command, but I have enough for the primary deliverable—the review file and fix request.
+[RESULT ✓] bash: === sys Address trait impl attr ===
+}
+
+impl Address for VirtualAddress {
+    ///
+=== any reproducer for use_type_invariant limitation ===
+verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-064207.jsonl
+verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue-reviewer-t001-c...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+I have enough evidence. Let me record the todo state and write the turn 1 review.
+[TOOL] sql: {'query': "CREATE TABLE IF NOT EXISTS checklist (id TEXT PRIMARY KEY, item TEXT,
+
+[THINKING] The reproducer examples are embedded in the dialogue logs rather than existing as standalone files, so checklist item 7 about isolated reproducers for claimed Verus limitations isn't fully satisfied. The workaround mentioned for the cross-crate use_type_invariant issue is legitimate and doesn't compromise the soundness of the proof, but the checklist specifically requires an isolated reproducer file for any claimed limitation.
+
+Looking more carefully at the actual mechanism: the bound in from_number comes from the method contract of into_raw_value, not from use_type_invariant itself, so there's no unsoundness here—it's a design choice that's properly justified. I'll treat item 7 as a minor verification concern rather than a blocking failure, though a strict interpretation of the checklist would flag the missing reproducer file. Item 4 remains the primary issue to address first.
+
+But reconsidering item 4 itself: the key difference is that VirtualAddress::new is an inherent method (easy to add #[verus_spec]), while into_raw_value is a trait method requiring the trait declaration itself to carry the spec. Modifying the Address trait would cascade across all implementors—PhysicalAddress, VirtualAddress, FrameAddress, PageAligned—which might be out of scope. So the placeholder might be justified by Verus's trait-method spec mechanics, but per the strict rules, justification alone doesn't eliminate the requirement. The prover needs to either fix it or formally document why it's irreducible with a reproducer in tcb-allowed.md.
+
+The real issue is that this assume_specification is currently undocumented and sits in an in-scope crate being verified, which violates the checklist. I need to either spec the Address trait's into_raw_value method properly or document the limitation with proof that it can't be resolved.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. CREATE
+   Schema operation completed successfully.
+
+2. INSERT
+   10 row(s) inserted. Last inserted row ID: 10.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue/turn_001_driver.md with 6319 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Turn 1 review complete. I walked the entire checklist against actual code and tool output.
+
+**Verdict for `hal::mem::types::address::phys`:**
+
+| Item | Status |
+|---|---|
+| No specs weakened | **PASS** — proving-phase diff *strengthened* specs (`uninterp`→concrete `open`; removed 4 assume_specs); per-fn contracts byte-identical to baseline |
+| Zero `admit()` | **PASS** (all 27 admits are in `mm/phys/*`, `mm/virt/*` — out of scope) |
+| Zero `external_body` | **PASS** (all 11 out of scope) |
+| Zero assume/assume_specification | **FAIL** — `phys.spec.rs:61` keeps a placeholder on `sys` `VirtualAddress::into_raw_value` |
+| No cfg-gated exec code | **PASS** (only `include!` gates) |
+| Cheating audit | **PASS** — phys: admit=0, extbody=0, assume_spec=1, cfg_exec=0 |
+| Limitation reproducer | **CONCERN** (item 7, deferred) |
+| Exec rewrites minimal/equiv | **PASS** |
+| Cross-module regression | **PASS** — `make verify-kernel` exit 0 |
+| Verify + build 0/0 | **PARTIAL** — verify clean; build not yet run |
+
+**Active FAIL (Item 4):** the `sys::VirtualAddress::into_raw_value` `assume_specification` must be eliminated by giving `sys` a real verified spec (its sibling `VirtualAddress::new` was already done this way), or — if a genuine trait-spec limitation blocks it — backed by an isolated reproducer **and** documented in `tcb-allowed.md`. Justification alone won't be accepted.
+
+Fix request written to `proving/dialogue/turn_001_driver.md`. No `STOP` file created — not all items PASS.
+
+[THINKING] I've finished the turn 1 review and confirmed I shouldn't create a STOP file since item 4 failed and items 7 and 10 remain unverified. The checklist is complete with a concrete fix request for the failing item.
+
+
+=== Session End ===
+Session: fc728ada-5982-4949-9e72-2829f2918726
+Duration: 367.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue-reviewer-t001-claude-20260615-064409.jsonl
