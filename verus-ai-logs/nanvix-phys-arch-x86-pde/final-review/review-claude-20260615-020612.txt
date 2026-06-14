@@ -807,3 +807,218 @@ The escalation ladder (each step requires exhausting the previous):
 ────────────────────────────────────────────────────────────
 Turn 8
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '760,1100p' /tmp/copilot-tool-output-1781460572768-nnvi9n.txt
+[RESULT ✓] bash: | `-> T` | `-> (ret: T)` | Named returns for ensures |
+| `#[derive(Clone, ...)]` | `#[cfg(not(verus_keep_ghost))] #[derive(...)]` | cfg-gating incompatible derives |
+| `Ok(Self { .. })` | `let result = Self { .. }; Ok(result)` | Ensures needs to reference return value |
+| `f(complex_expr)` | `let x ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now let me run the verification scripts and guardrail checks.
+[TOOL] report_intent: Running verification scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git status ===" && git --no-pager log --oneline -5 && echo "=== b
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === git status ===
+e3a37152e [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=36 external_body=12 cfg_gate=15)
+a54803a23 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3)
+31890030f [verus] verify PASS (cheating...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in src/libs/arch/src/x86/mem/paging/pde.rs src/libs/arch/src/x86/mem/
+[RESULT ✓] bash: === src/libs/arch/src/x86/mem/paging/pde.rs ===
+-- admit --
+-- assume --
+-- external_body --
+-- assume_specification --
+-- cfg attributes --
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+=== src/libs/arch/src/x86/mem/paging/pde.spec.rs ===
+-- admit --
+-- assume --
+-- external_body --
+-- ass...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== VERUS REWRITE/DEVIATION comments ===" && grep -n "VERUS REWRITE\|
+[RESULT ✓] bash: === VERUS REWRITE/DEVIATION comments ===
+exit=1
+=== spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ N...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "#\[verus_verify\(external_body\)\]" src/libs/arch/src/
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] view: 60. ///
+61. /// # Description
+62. ///
+63. /// Flushes the TLB entry for the page containing `vaddr`.
+64. ///
+65. /// # Safety
+66. ///
+67. /// Must be called from kernel mode (ring 0).
+68. ///
+69. // Trust boundary (see `verus-ai-logs/tcb-allowed.md` and the module's
+70. // `verus-unsupported.md`): t...
+[RESULT ✓] view: 180.             _marker: ::core::marker::PhantomData,
+181.         }
+182.     }
+183. 
+184.     ///
+185.     /// # Description
+186.     ///
+187.     /// Reads the entry at `index`.
+188.     ///
+189.     /// Returns `None` if the raw value is invalid according to `E::from_raw()`.
+190.     ///
+191.   ...
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/table.rs:202:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:241:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/a
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/pde.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|---...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "PageDirectoryEntryFlags::new|PageDirectoryEntry::new|\.is_present\(|
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/vmem.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] view: File too large to read at once (66.4 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: File too large to read at once (32.5 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.spec.rs:93:// Abstract value produced by `PageDirectoryEntryFlags::new`: records each of the eight arguments
+src/libs/arch/src/x86/mem/paging/pde.spec.rs:150:// Abstract value produced by `PageDirectoryEntry::new`: pairs *these exact* flags with *this exact*
+src/...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/vmem.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/vmem.rs
+[RESULT ✓] view: 520.                 &&& spec_is_page_aligned(pt_paddr as int)
+521.             },
+522.             // On failure no usable page-table address is produced and the identity map is left
+523.             // well-formed: `ensure_pt` only ever installs *empty* page tables, so it maps no
+524.             ...
+[RESULT ✓] view: 850.             // SAFETY: both PDs are identity-mapped.
+851.             let kernel_pd: Table<PageDirectoryEntry> =
+852.                 unsafe { Table::from_address(kernel_pd_paddr) };
+853.             let kernel_pde: PageDirectoryEntry = match unsafe { kernel_pd.read(pde_idx) } {
+854.           ...
+[RESULT ✓] view: 240.         kpage: KernelPage,
+241.         vaddr: PageAligned<VirtualAddress>,
+242.         page_table_allocator: T,
+243.     ) -> Result<(), Error> {
+244.         let pt_vaddr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+245.             ::sys::mm::align_down(vaddr....
+[RESULT ✓] view: 530.                 .user_page_tables
+531.                 .front_mut()
+532.                 .expect("entry was just pushed to front")
+533.                 .1);
+534.         }
+535. 
+536.         let reason: &str = "page table not found";
+537.         error!("{reason}");
+538.         Err(Error::new(...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now running the verification builds. Let me check the Makefile targets and run `make verify-arch`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verify-arch:\|^verify:\|verify-arch\b" Makefile 2>/dev/null | head
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+---targets---
+116:NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
+300:# List of crates to verify with Verus.
+323:	$(CARGO) verus verify --locked --no-default-features
+32...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch 2>&1 | tail -40
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'PY'
+import re, pathlib
+files=[
+'src/libs/arch/src/x86/mem/pagi
+[RESULT ✓] bash: === src/libs/arch/src/x86/mem/paging/pde.rs ===
+admit: 0
+assume: 0
+external_body: 0
+assume_specification: 0
+cfg_attr: 2
+  9: #[cfg(verus_keep_ghost)]
+  11: #[cfg(verus_keep_ghost)]
+
+=== src/libs/arch/src/x86/mem/paging/pde.spec.rs ===
+admit: 0
+assume: 0
+external_body: 0
+assume_specification: 0
+cfg_a...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
