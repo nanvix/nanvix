@@ -1,0 +1,106 @@
+Timestamp: 2026-06-15_04-02-24
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=16
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2312 ~ kernel[5062]::mm::phys::manager::PHYS_MEMORY_MANAGER))
+   --> src/kernel/src/mm/phys/manager.rs:115:18
+    |
+115 |         unsafe { PHYS_MEMORY_MANAGER.write(PhysMemoryManager { upool }) };
+    |                  ^^^^^^^^^^^^^^^^^^^
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:203:13
+    |
+203 |               error!("{reason}");
+    |               ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:307:17
+    |
+307 |                   error!("{reason}");
+    |                   ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:159:12
+    |
+159 |               let _ = write!(
+    |  _____________________^
+160 | |                 &mut crate::klog::Klog::get(
+161 | |                     module_path!(),
+162 | |                     crate::klog::KlogLevel::Warn,
+...   |
+165 | |                 $($arg)*
+166 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:350:13
+    |
+350 |               warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
+    |               ------------------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `warn` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                     module_path!(),
+191 | |                     crate::klog::KlogLevel::Error,
+...   |
+194 | |                 $($arg)*
+195 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:411:13
+    |
+411 |               error!("{reason}");
+    |               ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors
