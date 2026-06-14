@@ -121,15 +121,7 @@ use super::page_table_allocator::PageTableBss;
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
-pub struct ExPageDirectoryEntry(PageDirectoryEntry);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPageTableEntry(PageTableEntry);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExPageDirectoryEntryFlags(PageDirectoryEntryFlags);
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -137,29 +129,14 @@ pub struct ExPageTableEntryFlags(PageTableEntryFlags);
 
 // --- Flag enums ---
 
-#[verifier::external_type_specification]
-pub struct ExPresentFlag(PresentFlag);
-
-#[verifier::external_type_specification]
-pub struct ExReadWriteFlag(ReadWriteFlag);
-
-#[verifier::external_type_specification]
-pub struct ExUserSupervisorFlag(UserSupervisorFlag);
-
-#[verifier::external_type_specification]
-pub struct ExPageWriteThroughFlag(PageWriteThroughFlag);
-
-#[verifier::external_type_specification]
-pub struct ExPageCacheDisableFlag(PageCacheDisableFlag);
-
-#[verifier::external_type_specification]
-pub struct ExAccessedFlag(AccessedFlag);
-
-#[verifier::external_type_specification]
-pub struct ExDirtyFlag(DirtyFlag);
-
-#[verifier::external_type_specification]
-pub struct ExPageSizeFlag(PageSizeFlag);
+// NOTE: `PageDirectoryEntry`, `PageDirectoryEntryFlags`, and the page-table flag
+// enums (`PresentFlag`, `ReadWriteFlag`, `UserSupervisorFlag`,
+// `PageWriteThroughFlag`, `PageCacheDisableFlag`, `AccessedFlag`, `DirtyFlag`,
+// `PageSizeFlag`) now carry real `#[verus_verify]` modeling in
+// `arch::x86::mem::paging`. Their former placeholder external type
+// specifications here were removed because the real arch modeling supersedes
+// them — per the documented "placeholders are removed when the dependency
+// module is verified" methodology.
 
 // --- BSS page-table storage marker (kernel `page_table_allocator`) ---
 
@@ -182,25 +159,11 @@ pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
 
 // --- Page-directory-entry operations ---
 
-pub assume_specification[ PageDirectoryEntryFlags::new ](
-    present: PresentFlag,
-    read_write: ReadWriteFlag,
-    user_supervisor: UserSupervisorFlag,
-    page_write_through: PageWriteThroughFlag,
-    page_cache_disable: PageCacheDisableFlag,
-    accessed: AccessedFlag,
-    dirty: DirtyFlag,
-    page_size: PageSizeFlag,
-) -> PageDirectoryEntryFlags;
-
-pub assume_specification[ PageDirectoryEntry::new ](
-    flags: PageDirectoryEntryFlags,
-    frame: FrameNumber,
-) -> PageDirectoryEntry;
-
-pub assume_specification[ PageDirectoryEntry::is_present ](pde: &PageDirectoryEntry) -> bool;
-
-pub assume_specification[ PageDirectoryEntry::frame_address ](pde: &PageDirectoryEntry) -> usize;
+// `PageDirectoryEntryFlags::new`, `PageDirectoryEntry::new`,
+// `PageDirectoryEntry::is_present`, and `PageDirectoryEntry::frame_address` now
+// carry real `#[verus_spec]` contracts in `arch::x86::mem::paging::pde`, so their
+// former placeholder `assume_specification`s here were removed — the real arch
+// specifications supersede them.
 
 // --- Page-table-entry operations ---
 

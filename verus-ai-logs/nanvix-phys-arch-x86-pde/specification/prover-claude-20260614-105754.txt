@@ -1482,3 +1482,65 @@ Now add the broadcast lemma to `into_frame_number` so `pow2(12)` evaluates:
 Turn 102
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
+[RESULT ✓] bash: 194 | | ) -> PageDirectoryEntryFlags;
+    | |____________________________^ specification declared via `assume_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+
+=== Results ===
+  39 verified
+  0 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify fail...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+Progress — FRAME_SHIFT resolved. New conflict: a kernel `assume_specification` returning `PageDirectoryEntryFlags` now conflicts with my arch modeling. Let me find it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "PageDirectoryEntryFlags\|PageDirectoryEntry" src/kernel/src --include=*.spec.rs -
+
+[THINKING] I'm running into a conflict where an `assume_specification` is expecting `PageDirectoryEntryFlags` to be returned, but I've added `#[verus_verify]` modeling to the PDE types and flags in the architecture module, which is now causing a clash. I need to track down where this assumption is defined.
+[RESULT ✓] bash: src/kernel/src/mm/virt/identity_map.spec.rs:124:pub struct ExPageDirectoryEntry(PageDirectoryEntry);
+src/kernel/src/mm/virt/identity_map.spec.rs:132:pub struct ExPageDirectoryEntryFlags(PageDirectoryEntryFlags);
+src/kernel/src/mm/virt/identity_map.spec.rs:185:pub assume_specification[ PageDirectoryE...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] view: 110. 
+111. // NOTE: `TableEntry` (trait), `Table<E>`, `TableIndex`, `pd_index`, `pt_index`,
+112. // `Table::from_address`, `Table::read`, and `Table::write` now have real
+113. // `#[verus_spec]`/`#[verus_verify]` contracts in `arch::x86::mem::paging::table`.
+114. // Their former placeholder declarat...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+These kernel placeholders are superseded by my arch specs. I need to remove the 4 PDE function placeholders plus the now-conflicting external type specs for the PDE types and 8 flag enums. Let me remove them per the documented supersession pattern.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I need to clean up the kernel placeholder implementations for the PDE functions now that I've provided actual specifications in the arch module. There are four functions I need to remove: the constructors and accessor methods for `PageDirectoryEntryFlags` and `PageDirectoryEntry`.
+
+But I'm also realizing there might be additional conflicts beyond just the assume_specification at line 194. The external_type_specifications for the `PageDirectoryEntry` and `PageDirectoryEntryFlags` structs in the kernel could conflict with the `#[verus_verify]` annotations I added in arch, since those annotations model the types. Similarly, the flag enums have external_type_specifications in the kernel, but arch now has `#[verus_verify]` on those same enums — though the compiler only reported one error, so either those didn't conflict or compilation stopped before reaching them. I need to figure out what exactly gets exported when a type is marked with `#[verus_verify]` and whether that creates an implicit external_type_specification that would clash with the kernel's explicit ones.
+
+The right approach is to follow the documented methodology: since arch is now verifying these types, I should remove the superseded kernel placeholders. That means deleting the external_type_specifications for `PageDirectoryEntry`, `PageDirectoryEntryFlags`, and the eight flag enums from the kernel's identity_map.spec.rs file.
+
+However, I need to be careful about what arch actually models. The flag enums are shared between PDE and PTE, so if arch verifies all eight flag enums, I can safely remove those external specs from the kernel — the PTE-related assume_specs will still work because they'll reference the arch-modeled flag types. But I should keep the PTE placeholders since arch doesn't model `PageTableEntry` itself.
+
+Let me verify exactly which flag enums got `#[verus_verify]` in flags.rs to confirm what I can remove. The key insight is that the old kernel placeholders had no ensures clauses—they provided no guarantees, just made the functions callable in spec mode. Arch's real specs are strictly stronger, so removing the placeholders and using arch's verified specs won't break kernel callers. I need to verify that ExPageDirectory and other types don't have similar issues when the placeholders are removed. Now I need to verify that removing the flag enum external specs won't break anything in the kernel—since the kernel will just use arch's modeled versions instead. The transparency should be preserved either way. Let me go ahead and make the edits to identity_map.spec.rs, replacing the flag enum block and the PDE operations block with explanatory comments.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
+
+[THINKING] I need to verify that removing those PTE flag enum external specs doesn't break anything else — the kernel's identity_map.spec.rs still imports PresentFlag and similar types, so I should check for unused import errors and scan the kernel proof for any other usages of these flag types that might now be problematic.
