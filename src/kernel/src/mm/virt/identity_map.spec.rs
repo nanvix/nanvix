@@ -139,7 +139,6 @@ use super::page_table_allocator::PageTableBss;
 // --- BSS page-table storage marker (kernel `page_table_allocator`) ---
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPageTableBss(PageTableBss);
 
 // --- Paging index helpers ---
