@@ -1500,3 +1500,28 @@ Turn 90
 ────────────────────────────────────────────────────────────
 Now run full verify (no regressions) and build (dual compilation):
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | tail -30
+[RESULT ✓] bash: (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/mod.proof.rs:154:17
+    |
+154 ...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+Verify passes (exit 0). There's a benign trigger-inference warning on line 154. Let me add explicit triggers to silence it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] The verification passed with exit code 0, though there's a trigger warning on line 154 of proof.rs about quantifier inference that I should clean up by adding an explicit trigger annotation to make it more robust.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+Now verify dual compilation with `make build`, and re-run module verify to confirm the trigger fix:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "trigger|error|verified|stat
+
+[THINKING] I'm checking the other foralls in proof.rs to see which ones trigger warnings—lemma_spec_book_frames_preserves_inv and lemma_book_region_reserves both have foralls in their ensures clauses, but only line 154 actually warned. The key difference seems to be that 154's forall uses `reserved.contains(a)` in its conclusion, whereas the others likely have natural triggers that prevent the warning.
+
+Let me rebuild the verify-kernel module to confirm there are no new warnings and we still have 8 verified lemmas, then proceed with the build.

@@ -151,7 +151,8 @@ pub proof fn lemma_init_establishes_and_reserves(
             let post = pre.spec_initialize(initial).spec_book_frames(reserved);
             &&& post.initialized
             &&& post.inv()
-            &&& forall|a: int| reserved.contains(a) ==> post.frames.allocated_frames.contains(a)
+            &&& forall|a: int| reserved.contains(a)
+                ==> #[trigger] post.frames.allocated_frames.contains(a)
             &&& post.frames.allocated_frames.disjoint(post.frames.free_frames)
         }),
 {
