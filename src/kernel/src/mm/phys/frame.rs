@@ -1130,6 +1130,7 @@ impl Inner {
         // The coverage check runs unconditionally — including optimized builds —
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
+        let mut index: usize = start_frame_number;
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
                 start_fn == start_frame_number as int,
@@ -1140,6 +1141,8 @@ impl Inner {
                 rsize == region@.size,
                 rstart / ps == start_fn,
                 (rstart + rsize) / ps == start_fn + nfr,
+                start_frame_number <= index,
+                index <= end_exclusive,
                 self@ == g_old,
                 self@ == old(self)@,
                 self.bitmap@.set_bits == pre_sb,
@@ -1151,7 +1154,7 @@ impl Inner {
                     #[trigger] pre_sb.contains(k) == false && k < pre_nb,
             decreases end_exclusive - index,
         ))]
-        for index in start_frame_number..end_exclusive {
+        while index < end_exclusive {
             if index >= self.bitmap.number_of_bits() {
                 proof! {
                     // This frame is in the requested range but not covered, so it cannot be free.
@@ -1187,13 +1190,7 @@ impl Inner {
                         assert(index < self.bitmap@.num_bits);
                         assert(!self.bitmap@.is_bit_set(index as int));
                         assert(!pre_sb.contains(index as int));
-                        assert forall|k: int| start_fn <= k < index as int + 1 implies
-                            #[trigger] pre_sb.contains(k) == false && k < pre_nb by {
-                            if k < index as int {
-                            } else {
-                                assert(k == index as int);
-                            }
-                        }
+                        assert(index as int < pre_nb);
                     }
                 },
                 Ok(true) => {
@@ -1242,6 +1239,7 @@ impl Inner {
                     return Err(err);
                 },
             }
+            index = index + 1;
         }
         proof! {
             // Every requested index is in range and free; the range fits the bitmap.

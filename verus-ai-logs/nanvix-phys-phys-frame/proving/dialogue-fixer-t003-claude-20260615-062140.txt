@@ -3024,3 +3024,99 @@ Let me re-verify with the region equalities added.
 [THINKING] I'm working through the equivalence between my local frames calculation and the postcondition. With the invariants that rstart equals region's start and ps equals the page size, the frames computation should be definitionally equal—both are computing the same range of page indices. But I'm noticing a potential mismatch: my local version uses rstart divided by ps, while the postcondition uses region's start divided by the page size, and the thought cuts off before I can fully reconcile whether these are actually the same.
 
 Now I'm reconsidering error 3 about the coverage invariant. The issue might not be separate but rather another case of missing facts. The maintenance of `k < pre_nb` should follow from asserting `index < self.bitmap@.num_bits` combined with the invariant that num_bits equals pre_nb. That chain of reasoning should be available to Verus. But since it's still failing, I'm questioning whether the real problem is how Verus interprets the loop invariant—specifically, whether the loop variable `index` in the invariant refers to the current element being processed or the next element to be yielded by the range iterator. The semantics of how Verus represents loop variables in invariants for range iteration might be the actual blocker here. The facts established in the `Ok(false)` branch should persist along that control path to the loop body end, since the other arms return early. But to be safe and clearer, I could move the maintenance assertion outside the match block entirely, after it completes — though that means I'd lose direct access to the test result. Let me just run this with the region fixes and see if the error changes, and if needed I can restructure to put the maintenance proof after the match to make it unambiguous.
+[RESULT ✓] bash: cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-19-48.log
+make: *** [Makefile:625: verify-kernel] Error 101
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 222
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "verifie
+[RESULT ✓] bash: 30:error: loop invariant not satisfied
+48:error: assertion failed
+304:verification results:: 56 verified, 2 errors (partial verification with `--verify-*`)
+305:error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+=== locs ===
+31:    --> src/kernel/src/mm/phys/frame.rs:1133:9
+49:...
+
+────────────────────────────────────────────────────────────
+Turn 223
+────────────────────────────────────────────────────────────
+Postcondition errors fixed. Now just the coverage invariant (error 3) and its cascade (error 4). Let me read error 3's detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '30,60p'
+
+[THINKING] Good news—the postcondition errors are resolved after fixing the region equalities. Now I'm down to two remaining issues: the loop invariant preservation error and the post-loop assertion that depends on it. Let me dig into the details of that invariant error to understand what's blocking the proof.
+[RESULT ✓] bash: error: loop invariant not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1133:9
+     |
+1133 | /           #[cfg_attr(verus_keep_ghost, verus_spec(
+1134 | |               invariant
+1135 | |                   start_fn == start_frame_number as int,
+1136 | |                   end_exclusive as int == ...
+
+────────────────────────────────────────────────────────────
+Turn 224
+────────────────────────────────────────────────────────────
+The for-loop ghost-iterator maintenance is fighting me. Let me convert loop-1 to a `while` loop for explicit, robust invariant control. Let me view the full current loop-1.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The marker `-` is positioned under `pre_nb` in the condition `k < pre_nb`, which causes that conjunct to fail. At loop exit (line 1245, the closing brace), I'm reconsidering what the `invariant_except_break` hint means—in Verus, loop invariants must hold at break points, though `return` statements exit the function and check postconditions instead.
+
+The normal loop exit occurs when the iterator exhausts, and the invariant must hold there. For the preservation check with `k == index`, I need to verify that `index < pre_nb`. Since the invariant maintains `self.bitmap@.num_bits == pre_nb` and the guard at line 1151 ensures `index < self.bitmap.number_of_bits()`, the assertion `index < self.bitmap@.num_bits` should hold. The guard's false branch (`index >= ...`) returns early, so continuing code has `index < number_of_bits()`, which translates to `index < num_bits` as an integer, satisfying the requirement. The question is whether this guard fact remains available inside the subsequent match arm.
+
+In Rust, after an `if cond { return }` statement, the code that follows knows `!cond` holds throughout, including in the Ok(false) match arm. So `index < num_bits` is established. Both conjuncts for `k == index` should satisfy the maintenance, yet the loop invariant fails at exit. This suggests either Verus isn't using `index+1` as the post-iteration value, or there's a break-related issue. The hint about `invariant_except_break` strongly indicates there's a break somewhere that's failing the invariant check. The early returns might be modeled as breaks in Verus's loop semantics, and at those break points the invariant is verified. At normal exit when `index == end_exclusive`, I need to reconsider what the invariant actually requires to hold.
+
+The real issue might be that the preservation obligation itself is failing. When Verus checks preservation at loop exit, it's not re-proving the invariant with a maintenance hypothesis — it's concluding the invariant holds by induction. If preservation fails, that's when it reports "invariant not satisfied at loop exit," meaning the inductive step didn't actually establish that the body preserves the invariant.
+
+Looking at the difference between loop1 and loop2: loop2's index-dependent invariant about refcount gets automatically verified because the state change (setting refcount[index]:=1) directly satisfies the new invariant when the index advances. But loop1 has no state change, so the invariant `forall k<index: P(k)` must become `forall k<index+1: P(k)` purely by advancing the loop counter — which requires proving P(index) holds, namely that `pre_sb.contains(index)==false && index<pre_nb`.
+
+I'm establishing these facts through asserts in the Ok(false) branch, which is at the end of the loop body before it closes, so they should be in scope for the preservation check. But maybe the issue is that Verus isn't connecting the runtime checks (the guard and test result) to the invariant extension the way it does with explicit state updates.
+
+The hint about `invariant_except_break` is nagging at me — it suggests that maybe `k<pre_nb` isn't supposed to hold at the break point where we return uncovered. At that break, the index is the current uncovered position, and the incoming invariant guarantees `forall k<index`, but perhaps that's not the right invariant to maintain across the break itself.
+
+I'm also wondering if there's a type mismatch lurking here: `index` is a usize loop variable, but I'm comparing `k < index as int + 1` in my assert, and maybe at the next iteration the bound shifts in a way Verus doesn't recognize. Let me try reformulating the invariant to be simpler and more Verus-friendly — maybe tracking coverage with a cleaner predicate, or switching to a manual while loop with explicit index management instead of relying on the for loop's implicit state.
+
+Actually, I should double-check the type coercions: `pre_nb` is a nat from `self.bitmap@.num_bits`, and when I compare `index as int < pre_nb`, that's int < nat, which coerces the nat to int. That should be fine. But maybe the real issue is that the maintenance assert with `forall ... by {}` isn't being checked properly, or Verus is picking bad triggers for the outer forall. Let me try rewriting the invariant to avoid `==false` and use negation instead, and see if that helps the trigger selection.
+
+Actually, I'm wondering if the problem is deeper: in the Ok(false) branch, I need to prove `index < pre_nb`, and I have `index < self.bitmap@.num_bits` from the guard, plus `self.bitmap@.num_bits == pre_nb` from the loop invariant. So that should work. Let me add an explicit assertion to force Verus to derive that intermediate fact, then assert the full conjunction for the forall. But wait, I can't call `number_of_bits()` in a proof block since it's an exec function. The guard fact should already be available from context though. The real issue might be that Verus's desugaring of for-range loops doesn't bind the next index in a way that matches my `index as int + 1` assertion—the loop invariant check might be working over a different representation of the iterator state.
+
+Let me sidestep this by converting to a while loop with an explicit mutable index variable. That gives me full control over the invariant maintenance: I establish the property for the current index in the body, then increment, and Verus extends the coverage to the new bound. This is the standard while-loop pattern and avoids the for-loop ghost-iterator subtleties.
+[RESULT ✓] view: 1127.         // Check that all frames in the range are covered by the bitmap and free,
+1128.         // then book them. Uncovered frames indicate a memory layout bug.
+1129.         //
+1130.         // The coverage check runs unconditionally — including optimized builds —
+1131.         // because ou...
+
+────────────────────────────────────────────────────────────
+Turn 225
+────────────────────────────────────────────────────────────
+Converting loop-1 to a `while` loop for robust, explicit invariant maintenance:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm converting the for-loop structure to a while loop, starting with an index variable and setting up the loop invariants that track the frame boundaries and page size constraints.
+
+Writing while loop body... The key insight is that after the increment, the fact `forall k < old_index+1` still holds as a concrete bound, and since `new_index == old_index+1`, Verus can connect them. I need to ensure the loop maintains `index <= end_exclusive` and that after the loop exits, `index == end_exclusive` so the post-loop coverage assertion works. I'll also need to handle the decreases clause with `end_exclusive - index` for termination and verify there's no overflow on the increment.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 226
+────────────────────────────────────────────────────────────
+Now update the Ok(false) arm to drop the explicit forall and add the increment at the end of the loop body:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 227
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 228
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
