@@ -236,3 +236,109 @@ Turn 6
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys::manager 2>&1 | grep -iE "verified|error|postcondi
+[RESULT ✓] bash: error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:9
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in th...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Approach A independently confirmed: removing the 4 admits → exactly 4 `postcondition not satisfied` at the 4 targeted lemmas (lines 14, 31/32, 49/50, 214). Restoring and confirming baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs && grep -c "admi
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/reproducers/alloc_one_unsound.rs
+
+[THINKING] So removing those 4 admits exposes exactly 4 failing postconditions at the targeted lemma lines, confirming the admits are hiding unprovable conditions. Now I need to verify the unsoundness claim by converting to external_body and checking if that proves false, then run the reproducers to confirm.
+
+Looking at the signatures directly: `lemma_kernel_alloc_one` requires only `pre.wf()` but ensures `pre.free_frames.contains(addr)` for arbitrary `addr`, which is clearly false for most values. Similarly, `lemma_user_bulk_err_restored` ensures `m@ == pre` for arbitrary `pre` when `m` is fixed — also false. These can't be sound axioms. Only `lemma_manager_attached` looks potentially sound, but that's just 1 of 4 lemmas. Signature inspection alone is conclusive here, so I don't need to run the reproducers — I've already verified empirically that removing the admits causes the expected failures. Let me restore the file and confirm it returns to 42 verified with 0 errors.
+
+This is genuinely a cross-module blocker. The admits mask postconditions that are unprovable in-scope and actually non-theorems — their only sound discharge requires a frame-layer token that's out of scope. The fixer provided executable proof and I independently confirmed it, but the core issue remains: these lemmas can't be converted to tcb-allowed boundaries either. Before declaring this fully blocked, let me check one more angle: could restructuring the lemmas to add the transition as a `requires` hypothesis work, with that hypothesis supplied from the frame contract at the call site? At the call site in manager.rs, `frame::alloc()` only ensures membership in allocated frames, not the step itself, and `self@` remains unchanged.
+
+The deeper problem is that the manager's postcondition is itself essentially unprovable in-scope because `frame::alloc` is a free function that doesn't update `self@`. The only way to make this work is for the frame layer to either provide a token linking to the manager view or export a versioned phys_view step — both out of scope. This is a genuine cross-module dependency that the project's own TCB documentation acknowledges by listing frame functions as allowed external_body "eliminated when their module is verified," treating the frame layer as a separate verification target. So the 4 admits are legitimately blocked on the frame layer being verified first.
+
+I can't mark this RESOLVED-with-tcb because admits aren't on any tcb-allowed list and the checklist requires zero admits remaining. The honest status is BLOCKED. Let me restore the file to confirm the baseline, quickly verify the unsound reproducers, then write the final report marking this as BLOCKED.
+[RESULT ✓] view: 1. use vstd::prelude::*;
+2. 
+3. verus! {
+4. 
+5. // Minimal model of FrameAllocView (the real one has Set<int>/Map<int,int> fields).
+6. pub struct FrameAllocView {
+7.     pub allocated_frames: Set<int>,
+8.     pub free_frames: Set<int>,
+9.     pub refcounts: Map<int, int>,
+10. }
+11. 
+12. impl FrameAl...
+[RESULT ✓] bash: 4
+ src/kernel/src/mm/phys/manager.proof.rs | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+File restored (back to 4 admits, baseline). Now let me run the unsoundness reproducer with standalone Verus to verify Approach B's claim.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/toolchain/verus/verus 2>/dev/null && cd verus-ai-logs/nanvix-phys-phys
+
+[THINKING] I should verify this reproducer actually demonstrates the unsoundness issue by running it through the Verus tool directly.
+[RESULT ✓] bash: /home/ruize/toolchain/verus/verus
+===== alloc_one_unsound.rs =====
+verification results:: 1 verified, 0 errors
+===== others_unsound.rs =====
+verification results:: 1 verified, 0 errors
+===== alloc_one_realbody.rs =====
+note: function body check: not all errors may have been reported; rerun with a hi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All three reproducers independently confirmed:
+- `alloc_one_unsound.rs` → **1 verified, 0 errors** (a proof of `false` verifies — external_body axiom is unsound)
+- `others_unsound.rs` → **1 verified, 0 errors** (unsound)
+- `alloc_one_realbody.rs` → **0 verified, 1 errors** (unprovable in-scope)
+
+Let me confirm the working tree is clean post-restore and the baseline holds.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff --stat 3a0b7204c30502882370885cf4298e7d96c57726 -- src/kernel/src/mm/phys/ma
+
+[THINKING] All three test cases independently confirm the unsoundness: the exploit verifies successfully in both the axiom-based versions, while the real implementation version fails to prove it, showing the external_body axiom is fundamentally unsound.
+
+I've now systematically tested all three approaches. Removing the admits causes 4 errors at the lemmas themselves. Converting to external_body is provably unsound—I reproduced both cases where `false` verifies. And threading a token is impossible because the frame layer's free functions are out-of-scope and themselves carry unverified admits. The root issue is cross-module: the frame layer needs to be verified first and export a versioned partition-step token before the manager's four admits can discharge. This is a genuine blocker—the zero-admit requirement cannot be satisfied in-scope through any sound path, so accepting this as a pass would be fabricating compliance. The admits remain blockers, so I'm documenting the full re-verification of all 12 items in turn_002_driver.md—11 passing and 1 proven to be cross-module-blocked—and marking this as BLOCKED. Since the source is byte-identical to the phase start, my earlier verification still holds, but I'm double-checking that manager.proof.rs matches the backup and the working tree is clean.
+[RESULT ✓] bash: EMPTY=clean
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Every claim independently verified through executable experiments. This is a genuine cross-module blocker. Writing the turn-2 review and the STOP file.
+[TOOL] report_intent: Writing turn 2 verdict
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/STOP
+
+[THINKING] The working tree is clean and all my previous checks still pass. Now I'm writing the turn_002_driver.md file and setting BLOCKED status since the strict reviewer has independently confirmed through three executable experiments that the admit item is a genuine cross-module blocker.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/turn_002_driver.md with 5833 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue/STOP with 1767 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Turn 2 complete. Verdict: **BLOCKED** (11/12 PASS, 1 cross-module blocker).
+
+I did not accept the fixer's `NEEDS_GUIDANCE` on its word — I independently reproduced all three of its claims:
+
+| Claim | My independent check | Result |
+|---|---|---|
+| **A.** Admits unprovable in-scope | Removed all 4 admits, `make verify-kernel MODULE=mm::phys::manager` | **15 verified, 4 errors** at the 4 targeted lemmas — confirmed |
+| **B.** external_body conversion is unsound | Ran reproducers with standalone `verus` | `alloc_one_unsound.rs` & `others_unsound.rs` → **1 verified, 0 errors** — a proof of `false` verifies. My Turn-1 tcb-boundary fallback would inject a false-deriving axiom; I withdrew it for 3 of 4 lemmas |
+| **C.** Root cause is the frame layer | Read `frame::alloc` contract (frame.rs:758-771) | Free function, no `&mut self`; exports only frame membership, **not** the `phys_view()` partition step. All token producers are out-of-scope `external_body` — confirmed |
+
+The other 11 items remain PASS (source byte-identical to phase start: spec-drift=0, AST matched=8/0, no unlisted external_body, cross-module verify exit 0).
+
+The 4 admits cannot be soundly eliminated within `manager.{rs,spec.rs,proof.rs}`: removing them = 4 errors, faking them = unsoundness, weakening the wrapper postconditions = forbidden spec-drift. The fixer correctly refused all three. Resolution requires verifying/token-instrumenting the out-of-scope `mm::phys::frame` layer first. Marked **BLOCKED** rather than RESOLVED — `admit=0` is genuinely unachievable in-scope and must not be faked. Working tree left clean.
+
+
+=== Session End ===
+Session: f8614442-ba57-408c-b778-d10510a387cc
+Duration: 231.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/dialogue-reviewer-t002-claude-20260615-025352.jsonl
