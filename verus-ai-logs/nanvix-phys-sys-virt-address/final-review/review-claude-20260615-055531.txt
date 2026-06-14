@@ -885,3 +885,93 @@ Turn 12
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make build
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The mismatches are name-collisions between inherent and trait methods. Let me confirm no actual exec changes via git diff against baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff vs base branch tip (origin) ==="; git --no-pager log --oneli
+[RESULT ✓] bash: === diff vs base branch tip (origin) ===
+357b25dc4 [verus] verify PASS: sys::all (cached (no recompilation), —)
+--- find a pre-verification baseline commit ---
+abe5189fe [verus] verify FAIL: sys::sys::mm::address::virt (0 verified, compilation/setup error (verus did not run))
+59fa0aea5 [verus] verif...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing compliance evidence
+[TOOL] rg: admit\(
+[TOOL] rg: assume\(
+[TOOL] rg: #\[verifier::external_body\]
+[TOOL] rg: assume_specification
+[TOOL] rg: #\[cfg\([^\]]*verus_keep_ghost[^\]]*\)\]
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && if [ -f verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md ]; then echo 'bu
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] bash: bugs.md missing
+---DIFF virt.rs---
+<shellId: 37 completed with exit code 0>
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs:2
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== diff current vs caller-analysis START commit (baseline exec) ==="
+[RESULT ✓] bash: === diff current vs caller-analysis START commit (baseline exec) ===
+diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index 691df4dd7..8634b431a 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -22,7 +...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --
+[RESULT ✓] bash: usage: spec_drift.py git-diff [-h] --before BEFORE [--after AFTER]
+                              [--file-stem FILE_STEM] [-o OUTPUT] [--json]
+                              source
+
+positional arguments:
+  source                Source file path (relative to repo root)
+
+options:
+  -h, --help           ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Confirmed: only spec annotations added, no exec changes. The 3 AST mismatches are inherent-vs-trait name collisions. Now running verification.
+[TOOL] report_intent: Running make verify-sys
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-sys 2>&1 | tail -40; echo "EXIT:${PIPESTATUS[0]}"
+[RESULT ✓] report_intent: Intent logged
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && files='src/libs/sys/src/sys/mm/address/virt.rs src/libs/sys/src/sys/mm/addr
+[RESULT ✓] bash: admit: 0
+assume: 0
+external_body: 0
+assume_specification: 0
+verus_keep_ghost cfg attrs: 2
+--- verus_keep_ghost lines ---
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
