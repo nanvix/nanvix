@@ -835,3 +835,23 @@ But I'm uncertain whether `closed` spec functions are automatically transparent 
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error
+[RESULT ✓] bash: error[E0255]: the name `user_addr_set` is defined multiple times
+   --> src/kernel/src/mm/phys/manager.proof.rs:83:5
+ 83 | use crate::mm::phys::manager::user_addr_set;
+   ::: src/kernel/src/mm/phys/manager.spec.rs:113:1
+ 83 | use crate::mm::phys::manager::user_addr_set as other_user_addr_set;
+error:...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+`user_addr_set` is already in module scope. Remove the redundant `use`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] The `user_addr_set` variable is already available in this scope since it's defined earlier in the same test file, so I can remove that unnecessary import statement.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|errors|error

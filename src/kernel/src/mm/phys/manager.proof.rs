@@ -80,8 +80,6 @@ pub proof fn lemma_contig_no_overflow(base_raw: usize, idx: usize, count: usize)
 // User bulk-path transitions
 //==================================================================================================
 
-use crate::mm::phys::manager::user_addr_set;
-
 /// The address set of an empty handle sequence is empty.
 pub proof fn lemma_user_addr_set_empty()
     ensures

@@ -1,0 +1,134 @@
+Timestamp: 2026-06-15_02-05-38
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+41 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/manager.rs:193:5
+    |
+193 | /     pub fn alloc_many_user_frames(
+194 | |         &mut self,
+195 | |         count: usize,
+196 | |         frames: &mut Vec<UserFrame>,
+197 | |     ) -> Result<(), Error> {
+    | |__________________________^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.rs:180:17
+    |
+180 |                 Ok(()) => {
+    |                 ^^^^^^ failed this postcondition
+...
+224 |             return Ok(());
+    |             ------------- at this exit
+
+error: invariant not satisfied before loop
+   --> src/kernel/src/mm/phys/manager.rs:239:17
+    |
+239 |                 user_bulk_inv(g_old, self@, frames@),
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/manager.proof.rs:98:17
+   |
+98 |         let i = choose|i: int| 0 <= i < extended.len() && extended[i]@ == a;
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/manager.proof.rs:98:59
+   |
+98 |         let i = choose|i: int| 0 <= i < extended.len() && extended[i]@ == a;
+   |                                                           ^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/manager.proof.rs:96:5
+   |
+96 |     assert forall|a: int| user_addr_set(extended).contains(a) implies
+   |     ^^^^^^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/manager.proof.rs:96:27
+   |
+96 |     assert forall|a: int| user_addr_set(extended).contains(a) implies
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:108:21
+    |
+108 |             let i = choose|i: int| 0 <= i < frames.len() && frames[i]@ == a;
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:108:61
+    |
+108 |             let i = choose|i: int| 0 <= i < frames.len() && frames[i]@ == a;
+    |                                                             ^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:103:5
+    |
+103 |     assert forall|a: int| user_addr_set(frames).insert(uf@).contains(a) implies
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:104:9
+    |
+104 |         user_addr_set(extended).contains(a) by {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:192:5
+    |
+192 |     assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:192:27
+    |
+192 |     assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |                           ^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/manager.proof.rs:192:5
+    |
+192 |     assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |     ^^^^^^
+
+verification results:: 41 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
