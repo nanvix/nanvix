@@ -1,0 +1,33 @@
+Timestamp: 2026-06-14_12-01-12
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+48 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+verification results:: 48 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate specification for `arch::x86::mem::paging::invlpg`
+   --> src/libs/arch/src/x86/mem/paging/mod.rs:80:1
+    |
+ 80 | pub unsafe fn invlpg(vaddr: usize) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ declared here (and not marked as `external`)
+    |
+   ::: src/kernel/src/mm/virt/identity_map.spec.rs:151:1
+    |
+151 | pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ specification declared via `assume_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
