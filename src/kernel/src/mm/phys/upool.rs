@@ -17,6 +17,7 @@ use crate::{
 };
 use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
+#[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
 //==================================================================================================
