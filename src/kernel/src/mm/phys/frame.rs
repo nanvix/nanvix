@@ -445,6 +445,13 @@ impl Inner {
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (downstream bounds checks reject oversized).
         let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+        proof {
+            let addr = frame@;
+            assert(addr >= 0);
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+            lemma_alloc_contains(self, addr);
+            lemma_alloc_iff_key(self, addr);
+        }
 
         if frame_number >= self.refcount.len() {
             let reason: &str = "frame number out of bounds";
@@ -460,6 +467,10 @@ impl Inner {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        proof {
+            let i = frame_number as int;
+            lemma_refcount_value(self, frame@);
+        }
         Ok(self.refcount[frame_number])
     }
 
@@ -540,7 +551,17 @@ impl Inner {
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (compared against num_bits below).
         let frame_number: usize = phys_addr.into_raw_value() / mem::FRAME_SIZE;
-        frame_number < self.bitmap.number_of_bits()
+        let nbits: usize = self.bitmap.number_of_bits();
+        proof {
+            let addr = phys_addr@;
+            let i = frame_number as int;
+            assert(addr >= 0);
+            assert(i == addr / spec_page_size());
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+            lemma_alloc_contains(self, addr);
+            lemma_free_contains(self, addr);
+        }
+        frame_number < nbits
     }
 
     ///

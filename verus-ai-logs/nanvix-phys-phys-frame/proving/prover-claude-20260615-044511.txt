@@ -2655,3 +2655,217 @@ Now let me run the baseline verification. This is slow, so I'll start it in asyn
 Turn 29
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -80
+[RESULT ✓] bash: ...   |
+515 | |             },
+516 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:534:13
+    |
+534 | /             ret <==> (
+535 | |                 self@.allocated_frames.contains(phys_addr@)
+536 | |       ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Baseline: 35 verified, 5 errors. Let me see the full list of errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "error: \|--> src" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_05
+[RESULT ✓] bash: 30:error: postcondition not satisfied
+31:   --> src/kernel/src/mm/phys/frame.rs:270:17
+45:error: postcondition not satisfied
+46:   --> src/kernel/src/mm/phys/frame.rs:359:17
+54:error: postcondition not satisfied
+55:   --> src/kernel/src/mm/phys/frame.rs:434:17
+63:error: postcondition not satisfied
+6...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SIZE\|PAGE_SIZE" src/libs/arch/src/x86/mem/mod.rs src/libs/arch/src/x
+[RESULT ✓] bash: 
+<shellId: 107 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SIZE\|PAGE_SIZE" src/libs/arch/src/ | grep -i "pub const\|verus_spec\
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:37:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+src/libs/arch/src/x86/mem/constants.rs:50:pub const PAGE_SIZE: usize = 4096;
+src/libs/arch/src/x86/mem/constants.rs:58:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+src/libs/arch/s...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '40,120p' src/libs/arch/src/x86/mem/constants.rs && echo "=== spec? ===" && ls
+[RESULT ✓] bash: ///
+#[verus_verify]
+pub const PAGE_SHIFT: usize = 12;
+
+///
+/// # Description
+///
+/// Number of bytes in a page.
+///
+#[verus_verify]
+pub const PAGE_SIZE: usize = 4096;
+::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+
+///
+/// # Description
+///
+/// Mask for page offset.
+///
+pub const PAGE_MA...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Let me check existing proof patterns in the repo for style reference.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "assert_sets_equal\|assert_maps_equal\|lemma_fundamental_div_mod\|lemma_div_
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.proof.rs:92:    broadcast use vstd::set::group_set_axioms;
+src/kernel/src/mm/phys/manager.proof.rs:183:    broadcast use vstd::set::group_set_axioms;
+src/libs/bitmap/src/lib.proof.rs:22:        broadcast use vstd::layout::layout_of_primitives, vstd::layout::align_of_u8...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '80,210p' src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] bash: // User bulk-path transitions
+//==================================================================================================
+
+/// The address set of a length-zero handle sequence is empty.
+pub proof fn lemma_user_addr_set_empty(frames: Seq<UserFrame>)
+    requires
+        frames.len() == 0,
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find / -path "*/vstd/arithmetic/div_mod.rs" 2>/dev/null | head -1
+[RESULT ✓] bash: /mnt/toolchain/verus/vstd/arithmetic/div_mod.rs
+<shellId: 112 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd/arithmetic && grep -n "pub proof fn lemma_fundamental_div_mod\b\|pub broadcast proof fn lem
+[RESULT ✓] bash: 489:pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+626:        lemma_div_multiples_vanish(x * (y / z), z);
+682:            lemma_div_by_multiple(x, b);
+696:pub broadcast proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: int)
+714:            lemma_div_multiples_vanish(...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd/arithmetic && sed -n '489,495p;776,800p' div_mod.rs && echo "=== mul ===" && grep -n "pub b
+[RESULT ✓] bash: pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+    requires
+        d != 0,
+    ensures
+        x == #[trigger] (d * (x / d) + (x % d)),
+{
+    assert(x == d * (x / d) + (x % d)) by {
+pub broadcast proof fn lemma_div_multiples_vanish(x: int, d: int)
+    requires
+        0 < d,
+    e...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd/arithmetic && grep -n "cancel\|lemma_mul_is_injective\|injective\|lemma_mul_equal" mul.rs
+[RESULT ✓] bash: 234:pub broadcast proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
+413:pub broadcast proof fn lemma_mul_cancels_negatives(x: int, y: int)
+<shellId: 115 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd/arithmetic && sed -n '225,260p' mul.rs
+[RESULT ✓] bash: y <= z ==> #[trigger] (x * y) <= #[trigger] (x * z),
+        y < z ==> x * y < x * z,
+{
+    lemma_mul_induction_auto(x, |u: int| u > 0 ==> y <= z ==> u * y <= u * z);
+    lemma_mul_induction_auto(x, |u: int| u > 0 ==> y < z ==> u * y < u * z);
+}
+
+/// Proof that if `x` and `y` have equal results when...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd/arithmetic && grep -n "nonnegative\|nonneg\|pub broadcast proof fn lemma_div" div_mod.rs | 
+[RESULT ✓] bash: 55:pub broadcast proof fn lemma_div_is_div_recursive(x: int, d: int)
+103:pub broadcast proof fn lemma_div_basics_1(x: int)
+111:pub broadcast proof fn lemma_div_basics_2(x: int)
+119:pub broadcast proof fn lemma_div_basics_3(x: int)
+127:pub broadcast proof fn lemma_div_basics_4(x: int, y: int)
+135:pub...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd/arithmetic && sed -n '242,260p' div_mod.rs
+[RESULT ✓] bash: pub broadcast proof fn lemma_div_pos_is_pos(x: int, d: int)
+    requires
+        0 <= x,
+        0 < d,
+    ensures
+        0 <= #[trigger] (x / d),
+{
+    lemma_div_auto(d);
+    assert(div_auto(d));
+    let f = |u: int| 0 <= u ==> u / d >= 0;
+    assert forall|i: int| #[trigger] is_le(0, i) && f(i) ...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Now I have enough understanding. Let me add helper lemmas to frame.proof.rs.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use vstd::map::*;
+6. 
+7. /// Helper: convert a bitmap index to a frame (physical) address.
+8. pub open spec fn frame_addr_of(i: int) -> int {
+9.     i * spec_page_size()
+10. }
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Now let me write the `is_covered` and `refcount` method proofs.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+
+
+=== Session End ===
+Session: 57463f30-57bb-45c0-af90-e95d6504cb3d
+Duration: 2679.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/proving/prover-claude-20260615-044511.jsonl

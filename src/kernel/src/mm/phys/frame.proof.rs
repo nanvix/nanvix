@@ -71,4 +71,106 @@ impl Inner {
     }
 }
 
+//==================================================================================================
+// Arithmetic helper lemmas relating frame addresses and bitmap indices
+//==================================================================================================
+
+/// For a page-aligned address `a`, dividing by the page size then multiplying recovers `a`.
+pub proof fn lemma_aligned_addr_index(a: int)
+    requires
+        a % spec_page_size() == 0,
+        spec_page_size() > 0,
+    ensures
+        frame_addr_of(a / spec_page_size()) == a,
+{
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(a, spec_page_size());
+    vstd::arithmetic::mul::lemma_mul_is_commutative(a / spec_page_size(), spec_page_size());
+}
+
+/// `frame_addr_of` is injective: distinct indices map to distinct frame addresses.
+pub proof fn lemma_frame_addr_injective(i: int, j: int)
+    requires
+        frame_addr_of(i) == frame_addr_of(j),
+        spec_page_size() > 0,
+    ensures
+        i == j,
+{
+    vstd::arithmetic::mul::lemma_mul_is_commutative(i, spec_page_size());
+    vstd::arithmetic::mul::lemma_mul_is_commutative(j, spec_page_size());
+    vstd::arithmetic::mul::lemma_mul_equality_converse(spec_page_size(), i, j);
+}
+
+//==================================================================================================
+// View membership lemmas
+//==================================================================================================
+
+/// A page-aligned address is in `allocated_frames` iff its bitmap index bit is set.
+pub proof fn lemma_alloc_contains(inner: &Inner, addr: int)
+    requires
+        inner.internal_inv(),
+        addr % spec_page_size() == 0,
+    ensures
+        inner@.allocated_frames.contains(addr)
+            <==> inner.bitmap@.set_bits.contains(addr / spec_page_size()),
+{
+    let i = addr / spec_page_size();
+    lemma_aligned_addr_index(addr);
+    if inner@.allocated_frames.contains(addr) {
+        let j = choose|j: int|
+            #[trigger] inner.bitmap@.set_bits.contains(j) && addr == frame_addr_of(j);
+        assert(inner.bitmap@.set_bits.contains(j) && addr == frame_addr_of(j));
+        lemma_frame_addr_injective(j, i);
+        assert(inner.bitmap@.set_bits.contains(i));
+    }
+    if inner.bitmap@.set_bits.contains(i) {
+        assert(addr == frame_addr_of(i));
+        assert(inner@.allocated_frames.contains(addr));
+    }
+}
+
+/// A page-aligned address is in `free_frames` iff its bitmap index is in range and unset.
+pub proof fn lemma_free_contains(inner: &Inner, addr: int)
+    requires
+        inner.internal_inv(),
+        addr % spec_page_size() == 0,
+    ensures
+        inner@.free_frames.contains(addr) <==> {
+            let i = addr / spec_page_size();
+            &&& 0 <= i < inner.bitmap@.num_bits
+            &&& !inner.bitmap@.set_bits.contains(i)
+        },
+{
+    let i = addr / spec_page_size();
+    lemma_aligned_addr_index(addr);
+    if inner@.free_frames.contains(addr) {
+        let j = choose|j: int|
+            0 <= j < inner.bitmap@.num_bits && !(#[trigger] inner.bitmap@.set_bits.contains(j))
+                && addr == frame_addr_of(j);
+        assert(0 <= j < inner.bitmap@.num_bits && !inner.bitmap@.set_bits.contains(j)
+            && addr == frame_addr_of(j));
+        lemma_frame_addr_injective(j, i);
+    }
+    if 0 <= i < inner.bitmap@.num_bits && !inner.bitmap@.set_bits.contains(i) {
+        assert(addr == frame_addr_of(i));
+        assert(inner@.free_frames.contains(addr));
+    }
+}
+
+/// The refcount map's domain coincides with the allocated-frame set.
+pub proof fn lemma_alloc_iff_key(inner: &Inner, addr: int)
+    ensures
+        inner@.allocated_frames.contains(addr) == inner@.refcounts.contains_key(addr),
+{
+    assert(inner@.refcounts.dom() =~= inner@.allocated_frames);
+}
+
+/// The refcount-map value at an allocated address equals the underlying refcount slot.
+pub proof fn lemma_refcount_value(inner: &Inner, addr: int)
+    requires
+        inner@.refcounts.contains_key(addr),
+    ensures
+        inner@.refcounts[addr] == inner.refcount@[addr / spec_page_size()] as int,
+{
+}
+
 }
