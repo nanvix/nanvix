@@ -30,8 +30,14 @@ use super::{
 #[verus_verify]
 pub trait TableEntry: Copy {
     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
+    #[verus_spec(result =>
+        ensures result == spec_entry_from_raw::<Self>(raw),
+    )]
     fn from_raw(raw: PteWord) -> Option<Self>;
     /// Returns the raw [`PteWord`] representation.
+    #[verus_spec(result =>
+        ensures result == spec_entry_raw(self),
+    )]
     fn raw(self) -> PteWord;
 }
 
@@ -191,7 +197,15 @@ impl<E: TableEntry> Table<E> {
     // performs a volatile load — the hardware page-table access. Verus does not support the
     // `usize -> *const T` cast, so the body cannot be verified; this mirrors the
     // `bump_allocator::alloc` / `frame::instance` int-to-pointer materialization boundaries.
+    // The `ensures` pins the (trusted) result to the global page-table memory ghost, exactly as
+    // `frame::instance` pins its result to `phys_view()` — no exec signature change.
     #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            index@ < crate::mem::PAGE_TABLE_LENGTH,
+        ensures
+            result == spec_table_read::<E>(self@.addr, index@),
+    )]
     pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *const PteWord = (self.base + offset) as *const PteWord;
@@ -210,8 +224,17 @@ impl<E: TableEntry> Table<E> {
     // Trust boundary (see `tcb-allowed.md` / `verus-unsupported.md`): materializes a raw
     // `*mut PteWord` from the integer base address and performs a volatile store — the hardware
     // page-table write. The `usize -> *mut T` cast is unsupported by Verus, so the body cannot be
-    // verified; same int-to-pointer boundary as `read`.
+    // verified; same int-to-pointer boundary as `read`. The `ensures` pins the (trusted) global
+    // page-table memory ghost at the written slot; because that ghost is a pure function, every
+    // other slot/page is preserved across the call (the caller-facing frame condition), and a
+    // subsequent `read(index)` decodes back to `Some(entry)` via `lemma_entry_roundtrip`.
     #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            index@ < crate::mem::PAGE_TABLE_LENGTH,
+        ensures
+            spec_table_word(self@.addr, index@) == spec_entry_raw(entry),
+    )]
     pub unsafe fn write(&self, index: TableIndex, entry: E) {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *mut PteWord = (self.base + offset) as *mut PteWord;

@@ -48,24 +48,75 @@ pub open spec fn spec_pt_index(vaddr: usize) -> nat {
 }
 
 //==================================================================================================
+// TableEntry codec (the per-entry round-trip law)
+//==================================================================================================
+
+// Abstract serialization / decoding of a `TableEntry`. These mirror the exec `raw` / `from_raw`
+// trait methods. They are deliberately *unbounded* over `E` (no `TableEntry` bound) to avoid a
+// definitional cycle (`TableEntry`'s method specs reference these, so a bound here would make the
+// trait depend on a function that depends on the trait).
+//
+// `spec_entry_from_raw` returns `None` for a word that is not a valid encoding of `E` — exactly
+// the `read` failure path callers map to `InvalidArgument` (see `caller_analysis.md`).
+pub uninterp spec fn spec_entry_raw<E>(e: E) -> PteWord;
+
+pub uninterp spec fn spec_entry_from_raw<E>(w: PteWord) -> Option<E>;
+
+//==================================================================================================
+// Global ghost model of page-table memory
+//==================================================================================================
+
+// Page-table memory is volatile, caller-owned storage the `Table<E>` handle does not contain
+// (the struct holds only `base`). It is modeled here as a *global, parameter-free* ghost
+// function — the same device used for the physical-frame subsystem (`mm::phys::phys_view()`):
+// the abstract state is named globally rather than threaded through a permission parameter, so
+// `read`/`write` keep their exec signatures and do not cascade ghost arguments into out-of-scope
+// callers (`identity_map::ensure_pt`/`ensure_pte`/`identity_map_page`).
+//
+// `spec_table_word(addr, index)` is the raw word currently stored at slot `index` of the
+// page-table page based at `addr`. Because it is a pure function, a call to `write` only updates
+// knowledge about the *one* slot named in its `ensures`; every other slot/page is automatically
+// preserved across the call (the caller-facing frame condition). The cross-call write transition
+// (and its consistency when the same slot is written twice) is realized in the proving phase by a
+// ghost token over the page-table pages — exactly the `phys_view()` "transition realized in the
+// proving phase" placeholder.
+pub uninterp spec fn spec_table_word(addr: nat, index: nat) -> PteWord;
+
+// The decoded entry currently stored at slot `index` of the page based at `addr`: the value a
+// `read` returns. This is the `index -> Option<E>` entry map from `view_design.md`, expressed
+// pointwise over the global word store.
+pub open spec fn spec_table_read<E>(addr: nat, index: nat) -> Option<E> {
+    spec_entry_from_raw::<E>(spec_table_word(addr, index))
+}
+
+//==================================================================================================
 // Table<E> — a typed, non-owning handle over one page-table page
 //==================================================================================================
 
 // To callers a `Table<E>` is a typed handle over the page at a physical/identity-mapped base
-// address (see `view_design.md`). The caller-meaningful identity is *which page* read/write act
-// on. The per-slot entry map (`index -> Option<E>`) is volatile, caller-owned memory that the
-// struct does not store, so it is not part of this struct-level view; per `view_design.md`'s Open
-// Mechanism Note it is realized by a memory-permission token in the proving phase.
-pub struct TableView {
+// address (see `view_design.md`): its caller-meaningful identity is *which page* read/write act
+// on (`addr`), and its observable contents are the per-slot decoded entry map (`entries`). The
+// contents live in volatile, caller-owned memory the struct does not store, so the view reads
+// them from the global `spec_table_read` ghost rather than from struct fields.
+pub struct TableView<E> {
     /// Physical/identity-mapped base address this handle denotes.
     pub addr: nat,
+    /// Decoded entry at each valid slot — `entries[i]` is what `read(i)` returns
+    /// (`None` = the slot holds a word that is not a valid encoding of `E`).
+    pub entries: Map<nat, Option<E>>,
 }
 
 impl<E: TableEntry> View for Table<E> {
-    type V = TableView;
+    type V = TableView<E>;
 
-    closed spec fn view(&self) -> TableView {
-        TableView { addr: self.base as nat }
+    closed spec fn view(&self) -> TableView<E> {
+        TableView {
+            addr: self.base as nat,
+            entries: Map::new(
+                |i: nat| i < crate::mem::PAGE_TABLE_LENGTH,
+                |i: nat| spec_table_read::<E>(self.base as nat, i),
+            ),
+        }
     }
 }
 

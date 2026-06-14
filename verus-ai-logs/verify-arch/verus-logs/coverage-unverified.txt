@@ -1,4 +1,4 @@
-# Unverified exec functions: 518/525
+# Unverified exec functions: 516/525
   from_ptr
   from_ptr
   do_checksum
@@ -511,8 +511,6 @@
   set_cow
   from_raw
   raw
-  read
-  write
   new
   init
   load
