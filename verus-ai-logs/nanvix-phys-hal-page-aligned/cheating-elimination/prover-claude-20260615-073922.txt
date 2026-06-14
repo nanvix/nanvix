@@ -266,3 +266,172 @@ Turn 10
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
 
 [THINKING] I need to understand what targets need annotation here—`PageAligned::into_raw_value`, `PageAligned::from_address`, and `PageAligned` itself. The `from_address` method already has `#[verus_spec]`, but `into_raw_value` in the Address impl for PageAligned doesn't yet. Before making changes, I should run the module verification to see the current baseline and identify any cheating items.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "aligned/page" verus-ai-logs/verify-kernel/verus-logs/cheating-deta
+
+[THINKING] The module shows one instance of cfg-gated exec code, while the global counts span the entire kernel. I need to dig into the cheating-detail file to identify what's actually happening in this specific module.
+[RESULT ✓] bash: 
+<shellId: 12 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && head -50 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "
+[RESULT ✓] bash: - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:379 share: admit
+    - mm/phys/frame.rs:442 refcount: admit
+    - mm/phys/frame.rs:497 book: admit
+    - mm/phys/frame.rs:535 is_covered: admit
+    - m...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg-gated exec\|cfg_gate" --include=*.py --include=*.sh tools/ sc
+
+[THINKING] The module doesn't have any global cheating items, but the module-specific check flagged one instance of cfg-gated exec code. I need to track down that cfg gate—the `#[cfg(verus_keep_ghost)]` includes are normal since they gate spec and proof code, but I'm looking for `#[cfg(not(verus_keep_ghost))]` applied to executable code specifically.
+[RESULT ✓] bash: scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+scripts/verify.sh:559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEAT...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "cfg(verus_keep_ghost)" src/kernel/src/hal/mem/types/address/ 
+
+[THINKING] The cfg-gate counter scans through the module directory, and for the `hal::mem::types::address::aligned::page` module, it resolves to the `page.rs` file. Since that's a file rather than a directory, only `page.rs` gets copied—the associated `page.spec.rs` and `page.proof.rs` files aren't included. Now I need to identify which cfg gate within `page.rs` is actually triggering.
+
+Looking at the cfg gates in the file, the ones guarding `include!` statements for the spec and proof files get skipped by the counter's logic. But at line 218, there's a `#[cfg(verus_keep_ghost)]` attribute directly before a `verus! {}` block containing the `inv()` spec function. Since that block doesn't start with use/include/extern/mod and isn't a debug_assert, it counts as one cfg-gated exec code item. The counter flags this as a heuristic, even though the block itself contains ghost/spec code rather than actual exec code. The question is why line 218's verus block is cfg-gated while the one at line 233 isn't—and whether that's necessary or if the gating can be removed. The real issue is whether removing the cfg gate from the `inv()` block would break the normal build. The `View` impl isn't cfg-gated and still compiles, so maybe the `inv()` spec function doesn't actually need the gate either. I should check how other verified modules in this repo handle spec code in the main file versus segregating it into `.spec.rs` files.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/aligned/page.rs:11:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/aligned/page.rs:218:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/frame.rs:9:#[cfg(ver...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '200,320p' src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm noticing that `page.rs` is different from its sibling modules — it has a cfg gate wrapping an entire `verus!` block with the `inv()` method, whereas `frame.rs` and `phys.rs` only use cfg gates for includes. I should check how `frame.rs` actually implements `inv()` and the `View` trait, since they're likely in non-gated verus blocks or defined in the spec file instead.
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verus!\|inv(\|View\|spec fn\|view(" src/kernel/src/hal/mem/types/a
+[RESULT ✓] bash: 36:verus! {
+39:// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+42:pub open spec fn spec_page_size() -> int {
+46:impl View for FrameAddress
+50:    closed spec fn view(&self) -> int
+57:    pub open spec fn inv(&self) -> bool
+88:    // Succeeds only fo...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "spec_page_size\|pub use" src/kernel/src/hal/mem/mod.rs | head -30
+
+[THINKING] In `frame.rs`, the `inv()`, `View`, and `spec_page_size` functions all live in a single unguarded `verus! {}` block, which is why the cfg-gate counter doesn't flag them—it only catches lines with explicit `#[cfg(...verus_keep_ghost...)]` attributes, and since the verus block itself isn't gated, nothing gets counted.
+
+For `page.rs`, the fix is to remove the cfg gate on line 218 and unify the two verus blocks, matching the pattern from `frame.rs`. The concern is whether removing the gate will still compile in a normal build, but since `spec_page_size` is imported from `crate::hal::mem` and the verus macro handles spec functions regardless of build mode, it should work fine—the cfg gate was likely a workaround that's no longer needed.
+
+The actual task scope is just eliminating the one cfg_gate=1 cheating in this module; the other cheating instances (adm/external_body) are in different modules and off-limits. For the target functions listed, `into_raw_value` and `PageAligned` currently have no cheating or contracts, so they don't need changes—only the cfg gate removal is required to achieve zero cheating in this module.
+
+Now I need to handle the practical issue: removing the cfg gate will expose the `use crate::hal::mem::spec_page_size` import in normal builds, so I need to verify that `spec_page_size` is actually exported from the mem module and available outside of verus-only contexts.
+[RESULT ✓] bash: 14:pub use self::types::{
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "spec_page_size" src/kernel/src/hal/mem/ | grep -v "page.rs:" 
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:7:    addr_view % spec_page_size() == 0
+src/kernel/src/hal/mem/types/address/frame.rs:42:pub open spec fn spec_page_size() -> int {
+src/kernel/src/hal/mem/types/address/frame.rs:59:        self@ % spec_page_size() == 0
+src/kernel/src/hal/mem/...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The only module-local cheating is `cfg_gate=1`: a `#[cfg(verus_keep_ghost)]` gating a ghost `verus!` block (line 218), which the sibling `frame.rs`/`phys.rs` don't do. Let me fix it to match the clean sibling pattern.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] `spec_page_size` is defined in frame.rs within a verus block and is public, so it's accessible via `crate::hal::mem::spec_page_size` from the spec files that are only compiled under `#[cfg(verus_keep_ghost)]`. The import in page.rs is currently gated behind a cfg condition, but removing that gate would expose the reference unconditionally.
+
+The key question is whether `spec_page_size` actually resolves in normal builds. Since it's a `spec fn`, the verus macro erases it entirely in non-verus builds, meaning the path wouldn't exist at compile time. Rather than reason through the macro behavior further, I should just test the change empirically by removing the cfg gate and seeing if it compiles. I'm going to merge the two separate verus blocks into a single un-gated block, combining the use statement, the inv spec function, and the View impl together. Then I'll test the normal build to confirm this works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "build:\|build-kernel\|cargo build" Makefile | head
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+916:# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' .github/skills/build/SKILL.md
+
+[THINKING] I need to verify that the normal `cargo build` process works alongside the verus verification, since the verus verify uses `verus_keep_ghost`. Let me check how the kernel is built without verus to make sure I'm not breaking the standard compilation path.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::pa
+
+[THINKING] I should run the module verification first since it's cached and will quickly confirm the Verus side is working, then do a full kernel build to make sure removing the cfg-gate doesn't break normal compilation.
