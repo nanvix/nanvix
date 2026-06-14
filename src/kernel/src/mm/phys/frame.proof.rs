@@ -164,11 +164,10 @@ proof fn lemma_size_div_pos(size: int)
 {
     let ps = spec_page_size();
     vstd::arithmetic::div_mod::lemma_fundamental_div_mod(size, ps);
+    vstd::arithmetic::div_mod::lemma_div_pos_is_pos(size, ps);
     assert(size == ps * (size / ps));
-    if size / ps <= 0 {
-        assert(ps * (size / ps) <= 0) by {
-            vstd::arithmetic::mul::lemma_mul_nonpositive(ps, size / ps);
-        }
+    if size / ps == 0 {
+        assert(size == ps * 0);
     }
 }
 

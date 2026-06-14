@@ -2602,3 +2602,34 @@ Now fix the unqualified `set_int_range` in the final block.
 Turn 191
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 192
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `lemma_mul_nonpositive` in module `vstd::arithmetic::mul`
+38:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+===
+compilation/setup error (verus did not run)
+
+error[E0425]: cannot find function `lemma_mul_nonpositive` in module `vstd::ari...
+
+────────────────────────────────────────────────────────────
+Turn 193
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to fix the lemma for handling division—specifically proving that when size divided by ps is non-positive and ps is positive, their product stays non-positive. I'm working through the logic by contradiction rather than relying on a lemma that doesn't exist. I can use `lemma_div_pos_is_pos` from the Verus library to establish that `size/ps >= 0` given the constraints, which then rules out the case where `size/ps <= 0` since that would make `size <= 0`, contradicting our assumption.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 194
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
