@@ -67,10 +67,4 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 /// Must be called from kernel mode (ring 0).
 ///
 #[inline]
-pub unsafe fn invlpg(vaddr: usize) {
-    core::arch::asm!(
-        "invlpg ({0})",
-        in(reg) vaddr,
-        options(nostack, preserves_flags, att_syntax)
-    );
-}
+pub unsafe fn invlpg(vaddr: usize) { ... }
