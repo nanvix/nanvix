@@ -1,0 +1,19 @@
+RESOLVED
+
+All checklist items for the arch-x86-pde specification phase are PASS or FIXED.
+
+Summary of evidence (turn 2, independently re-verified):
+- The only FAIL from turn 1 — `proof! { admit(); }` in
+  `PageDirectoryEntry::frame_address` — is removed and replaced by a real proof
+  (`lemma_frame_address` in pde.proof.rs, built from vstd arithmetic/bits lemmas,
+  no admit/assume/external_body/trusted).
+- Forced clean recompile: `make verify-arch` → 41 verified, 0 errors, exit 0.
+- Cheating check: `admit` 2 → 1; the remaining admit + 2 external_body all belong
+  to the out-of-scope `table` module. `grep -i pde cheating-detail.txt` → no pde
+  cheats; `grep admit/assume/external_body/trusted` over pde.rs/.spec.rs/.proof.rs
+  → none.
+- No spec weakened: frame_address `ensures` byte-identical to before the fix
+  (`result == self@.frame * FRAME_SIZE`, `result % FRAME_SIZE == 0`).
+- All five in-scope functions carry two-sided ensures matching the caller-analysis
+  invariants and the view-design Views (closed, encoding-independent).
+- `./z build` → exit 0, build complete.
