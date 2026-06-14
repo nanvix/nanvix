@@ -337,3 +337,57 @@ s=op
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | sed -n 
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+    |
+534 |     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+    |                                            ^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/arch/src/x86/mem/paging/table.rs:20...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Decisive. The concrete-view experiment confirms the logical impossibility: with `{initialized:false, mapped:empty}`, the `Ok => mapped.contains` clause fails (empty set), AND the `Err => !accessible` clause fails (accessible always true) — a concrete view satisfies one branch but breaks its opposite. Plus the view-independent `bump_view(self).inv()` and read-index preconditions still fail. Let me restore the clean passing state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/im_admit.bak src/kernel/src/mm/virt/identity_map.rs && cp /tmp/im_s
+
+[THINKING] I'm working through a proof by concrete counterexample where the state `{initialized:false, mapped:empty}` violates the Ok-membership clause. The `ensure_pte` function fails because checking if the empty set contains a page returns false, breaking the idempotent fast path at line 618. For `identity_map_page`, I'm evaluating the accessibility condition and running into a logical issue with how the disjunction evaluates.
+
+Actually, I see the real problem now: with `initialized=false`, the `accessible` predicate becomes `!false || ...` which is always true. But the Err branch of the postcondition requires `!accessible(p)`, which becomes `!true = false` — unprovable. So when the early-return `?` operator propagates an Err at line 706, the postcondition demands that the page be inaccessible, yet the concrete view makes it always accessible. This is the contradiction that makes the concrete view impossible.
+
+The other precondition failures at lines 549, 534, and 631 are separate blockers that would persist regardless. I've got enough evidence now. Let me restore the files to their clean admit state and verify everything passes, then write up the findings.
+[RESULT ✓] bash: restored
+3
+36:pub uninterp spec fn identity_map_view() -> IdentityMapView;
+=== diff vs base (should be 3 admit lines only) ===
++    proof! { admit(); }
++    proof! { admit(); }
++    proof! { admit(); }
+-pub open spec fn identity_map_view() -> IdentityMapView {
+-    IdentityMapView { initialized: fal...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+The branch HEAD captured my experiment via auto-commit. Let me verify my restored working tree matches the pristine pre-task state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec.rs vs pristine pre-task commit 6a31083cd ==="; git --no-page
+
+[THINKING] I'm confused about the diff output — the minus lines show the base branch has the concrete `open spec fn` version, but the plus lines suggest my working tree has the `uninterp` version, which doesn't match since I restored from the backup file that should contain the uninterp code. Let me reread the git diff output more carefully to understand what's actually in each branch.
+
+Oh, I see what happened — the `verus-ai-prove-bottom-up` branch is my current HEAD, and verify.sh auto-commits to it after each run, so the "base" I'm comparing against is actually the latest auto-committed state from my failed concrete-view experiment. My working tree now has the correct uninterp version with admits restored, so the diff is just showing me undoing that experiment. The problem is the branch HEAD is now stuck with the failed experimental state, and I need to make sure the final commit is the clean uninterp version.
+
+Let me verify that uninterp was indeed the original spec at the start of this task by checking against the pristine pre-task commit.
+[RESULT ✓] bash: === spec.rs vs pristine pre-task commit 6a31083cd ===
+(empty above = identical)
+=== rs vs pristine: should be only 3 admit lines ===
+<shellId: 13 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+My restored files are byte-identical to the pristine pre-task state (admits were added by the prior proving phase). Now let me run `make verify-kernel` and `make build` as the reviewer requested.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | tail -20
+
+[THINKING] So the spec.rs file hasn't changed from the pristine version, and the identity_map.rs diff came back empty too—meaning that file is also identical to the base commit. That's interesting because it suggests the admits were already present in that pristine state at 6a31083cd, which was marked as having cheating detected with 31 admits. The earlier proving phase must have already introduced those admits before this point.
+
+Now I need to run the full kernel verification and build to confirm everything is clean. Let me execute `make verify-kernel` for the whole kernel and `make build` as the reviewer requested, which should auto-commit the clean state.
