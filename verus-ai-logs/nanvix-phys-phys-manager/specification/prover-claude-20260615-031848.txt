@@ -1536,3 +1536,49 @@ Adding the trigger annotation...
 Turn 92
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
+[RESULT ✓] bash: error: triggers cannot contain let/forall/exists/lambda/choose
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+  verificat...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+The lambda inside `map_values` can't be in a trigger. I'll add a dedicated helper spec fn over `Seq<KernelFrame>` to avoid the lambda. Let me check the KernelFrame import path:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "pub use\|pub mod\|mod kframe\|mod upool\|KernelFrame\|UserF
+
+[THINKING] I'm running into an issue where the trigger contains a lambda function inside `map_values`, which isn't allowed. I need to restructure this by either binding the mapped sequence outside the trigger with a `let` statement or creating a helper spec function that transforms the kernel frame sequence into an integer sequence. I'm leaning toward defining a spec helper function for this.
+
+Actually, I realize I can create a new helper function directly in manager.spec.rs that checks if kernel frames are contiguous by examining their addresses through the `@` operator. This avoids the lambda entirely and lets me use it cleanly in the ensures clause. I'll need to import KernelFrame into manager.spec.rs to make this work.
+[RESULT ✓] bash: 11:mod kframe;
+13:mod upool;
+49:pub use self::{
+50:    kframe::KernelFrame,
+52:    upool::UserFrame,
+<shellId: 52 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
+
+[THINKING] I need to verify that `is_contiguous_run` is still being used elsewhere in the codebase, particularly in the proof.rs lemmas, and confirm that the KernelFrame import is necessary for the kernel_frames_contiguous function. Let me also double-check whether the map_values and lambda expressions were properly removed.

@@ -21,6 +21,7 @@ use crate::hal::mem::spec_page_size;
 use crate::mm::phys::{
     phys_view,
     FrameAllocView,
+    KernelFrame,
 };
 use vstd::seq::Seq;
 
@@ -54,6 +55,17 @@ pub open spec fn spec_watermark_ok(v: FrameAllocView, count: int) -> bool {
 pub open spec fn is_contiguous_run(addrs: Seq<int>, base: int) -> bool {
     forall|i: int|
         0 <= i < addrs.len() ==> #[trigger] addrs[i] == base + i * spec_page_size()
+}
+
+/// `frames` is an ascending, page-stride-contiguous run of kernel frames based at
+/// `base`: the address of the `i`-th frame is `base + i * PAGE_SIZE`.
+///
+/// Phrased directly over the `KernelFrame` sequence (using each frame's abstract
+/// address `@`) so that the `alloc_many_kernel_frames` contiguity guarantee can be
+/// triggered without an inline closure (closures are forbidden inside triggers).
+pub open spec fn kernel_frames_contiguous(frames: Seq<KernelFrame>, base: int) -> bool {
+    forall|i: int|
+        0 <= i < frames.len() ==> #[trigger] frames[i]@ == base + i * spec_page_size()
 }
 
 } // verus!

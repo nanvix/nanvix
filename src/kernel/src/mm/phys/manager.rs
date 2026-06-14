@@ -398,7 +398,7 @@ impl PhysMemoryManager {
                         0 <= i < count as int ==>
                             #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
                     &&& exists|base: int|
-                        #[trigger] is_contiguous_run(final(frames)@.map_values(|kf: KernelFrame| kf@), base)
+                        #[trigger] kernel_frames_contiguous(final(frames)@, base)
                 },
                 Err(_) => final(frames)@.len() == 0,
             },
