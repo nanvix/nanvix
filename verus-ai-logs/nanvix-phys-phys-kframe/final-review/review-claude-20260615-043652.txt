@@ -291,3 +291,60 @@ The logging statement is allowed under the guardrails, so that's fine. No VERUS 
 5. `KernelFrame` is an **owning handle to exactly one page-sized physical frame**.
 6. To the outside world it is a single value: *which physical frame this handle
 7. owns*. The only caller-observable abstract state ...
+[RESULT ✓] bash: - frame.rs:583 alloc_range: admit
+    - frame.rs:675 instance: external_body
+    - frame.rs:713 init: external_body
+    - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, cached). For kframe specifically the only cheating dimension is `kframe.rs:94 new: external_body` — which is in the TCB allowlist. No admit/assume in kframe. Now let me run the full build/verify and launch the two review sub-agents in parallel.
+[TOOL] report_intent: Building and launching reviewers
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make build 2>&1 | tail -25
+
+[THINKING] Verification passes with the module-level cheating counts being global across mm::phys, but for kframe specifically there's only one external_body violation at kframe.rs:94 which is already in the tcb-allowed list. The task scope is phys-kframe with in-scope functions being KernelFrame::new, drop, and base.
+
+The AST consistency check shows no VERUS REWRITE comments or rewrites, and the cfg-gated error logging in drop is semantically equivalent under verification since it's just logging with no state changes. Now I'm setting up two parallel sub-agents to write their independent reviews with the comprehensive context I've gathered, then I'll consolidate their findings.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^build\|^verify\|build-kernel\|all-kernel\|^\.PHONY" Makefile 2>/dev/null | 
+
+[THINKING] I'm checking whether `make build` is actually doing anything, and I need to verify the correct build command—the task mentions `./z build` and `make verify-kernel`, but the checklist says to run `make build`, so I should look at what targets are available in the Makefile.
+[RESULT ✓] bash: 377:.PHONY: update-sysroot-link
+392:.PHONY: dump-sccache-stats
+420:	all-kernel \
+513:.PHONY: release-generate-manifest
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+590:.PHONY: ensure-verus
+624:verify-kernel: ensure-verus
+859:....
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+`make build` is a no-op; the real normal build is `./z build`. Let me run it and `make verify` (cross-module) in background, then launch reviewers.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build -- all-kernel 2>&1 | tail -25
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -30
+
+[THINKING] I need to run the actual build command through `./z build -- all-kernel` for validation, and then execute `make verify` to check for cross-module regressions while the sub-agents continue their work.
+[RESULT ✓] bash: <command started in background with shellId: verifyall>
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy-specs/bin
+mkdir -p /home/ruize/nanvix-phy-specs/lib
+mkdir -p /home/ruize/nanvix-phy-specs/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-feat...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
