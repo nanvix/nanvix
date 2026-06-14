@@ -501,3 +501,69 @@ Turn 20
 
 The external_body count of 17 matches the known-good baseline from the prior commit, which is reassuring. Now I need to run the full `make verify` across all modules to ensure there are no regressions, though that might take a while. I'll also check ast-consistency and then update the documentation to note that the LinkedList limitation was resolved through the TCB and external_body mechanism, keeping the notes minimal since bugs.md already confirms no code bugs were found.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/mod.proof.rs:64:27
+   |
+64 |     assert forall|a: int| frames.contains(a)
+   |                           ^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppre...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Full verify passes (exit 0, 0 errors, 0 admit/assume) but there are trigger warnings I must eliminate (proving-guide requires zero warnings). Let me find all of them.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "warning|low confidence|mod.proof.rs:[0-9]+:" verus-ai-logs/verify-kernel/verus-lo
+
+[THINKING] The verification passed with no errors, but there are low-confidence trigger warnings in the proof file that I need to eliminate by adding explicit triggers to satisfy the proving guide's zero-warning requirement.
+[RESULT ✓] bash: 28:  --> src/kernel/src/mm/phys/mod.proof.rs:56:5
+34:  --> src/kernel/src/mm/phys/mod.proof.rs:56:67
+40:  --> src/kernel/src/mm/phys/mod.proof.rs:64:5
+46:  --> src/kernel/src/mm/phys/mod.proof.rs:64:27
+64:  --> src/kernel/src/mm/phys/mod.proof.rs:64:5
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,70p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_02-41-59.log
+[RESULT ✓] bash: Timestamp: 2026-06-15_02-41-59
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+note: verifying module mm::phys
+
+note: verifying m...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+I'll add explicit triggers to the two flagged quantifiers in the proof file.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] I'm noticing some trigger annotation issues in the Dafny code. On line 56, the auto-selected trigger for the forall quantifier isn't ideal—I should explicitly mark `pre_f.refcounts.contains_key(x)` as the trigger since that's the hypothesis. Line 64 seems to have a similar issue that I need to address.
+
+Let me add explicit `#[trigger]` annotations to both assertions. For line 56, I'll place the trigger on the `contains_key` check, and for line 64, I'll mark `frames.contains(a)` as the trigger. Since line 61-63 already has a trigger annotation without warnings, this approach should resolve the issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "warning|low confidence|automatically ch

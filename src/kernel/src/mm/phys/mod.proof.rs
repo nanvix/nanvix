@@ -53,7 +53,7 @@ pub proof fn lemma_spec_book_frames_preserves_inv(pre: PhysMemView, frames: Set<
     assert(pre_f.wf());
 
     // Key fact: the refcount domain is exactly the allocated set (pre-state).
-    assert forall|x: int| pre_f.refcounts.contains_key(x) implies pre_f.allocated_frames.contains(x) by {
+    assert forall|x: int| #[trigger] pre_f.refcounts.contains_key(x) implies pre_f.allocated_frames.contains(x) by {
         assert(pre_f.refcounts[x] > 0);
     }
 
@@ -61,7 +61,7 @@ pub proof fn lemma_spec_book_frames_preserves_inv(pre: PhysMemView, frames: Set<
     assert forall|a: int| frames.contains(a)
         implies #[trigger] post_f.allocated_frames.contains(a) by {
     }
-    assert forall|a: int| frames.contains(a)
+    assert forall|a: int| #[trigger] frames.contains(a)
         implies post_f.free_frames.contains(a) == false by {
     }
 
