@@ -1,0 +1,328 @@
+Timestamp: 2026-06-15_02-37-19
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=15
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: `alloc::collections::linked_list::impl&%8::iter` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/mod.rs:87:19
+    |
+ 87 |     for region in physical_memory_regions.iter() {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+121 |     for region in mmio_regions.iter() {
+    |                   -------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::iter] (_0: &alloc::collections::LinkedList<T, A>) -> alloc::collections::linked_list::Iter<'_, T>
+            where
+            A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:123:32
+    |
+123 |         let mut start: usize = region.start().into_raw_value();
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::into_raw_value] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> usize
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::mem::types::region::TruncatedMemoryRegion::start` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:123:32
+    |
+123 |         let mut start: usize = region.start().into_raw_value();
+    |                                ^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::start] (_0: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>) -> crate::hal::mem::types::address::aligned::page::PageAligned<T>
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::mem::types::region::TruncatedMemoryRegion::size` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:124:35
+    |
+124 |         let end: usize = start + (region.size() - 1);
+    |                                   ^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::mem::types::region::TruncatedMemoryRegion::<T>::size] (_0: &crate::hal::mem::types::region::TruncatedMemoryRegion<T>) -> usize
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::platform::microvm::gva_to_gpa` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:126:36
+    |
+126 |             let mmio_addr: usize = crate::hal::platform::gva_to_gpa(start);
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::platform::microvm::gva_to_gpa] (_0: usize) -> usize;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:127:59
+    |
+127 |               let phys_addr: PageAligned<PhysicalAddress> = PageAligned::from_address(unsafe {
+    |  ___________________________________________________________^
+128 | |                 // MMIO GPAs may legitimately lie outside tracked RAM, so they must not go through
+129 | |                 // the regular physical-address validator here.
+130 | |                 PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
+131 | |             })?;
+    | |______________^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::mem::types::address::aligned::page::PageAligned::<T>::from_address] (_0: T) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<T>, sys::error::Error>
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::mem::types::address::phys::PhysicalAddress::from_mmio_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:130:17
+    |
+130 |                 PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::mem::types::address::phys::PhysicalAddress::from_mmio_address] (_0: sys::mm::VirtualAddress) -> core::result::Result<hal::mem::types::address::phys::PhysicalAddress, sys::error::Error>;
+
+error: cannot use function `sys::sys::mm::address::virt::impl&%0::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/mod.rs:130:52
+    |
+130 |                 PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [sys::mm::VirtualAddress::from_raw_value] (_0: usize) -> sys::mm::VirtualAddress;
+
+error: `arch::x86::mem::constants::FRAME_SIZE` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/phys/mod.rs:139:22
+    |
+139 |             start += mem::FRAME_SIZE;
+    |                      ^^^^^^^^^^^^^^^
+
+error: `alloc::collections::linked_list::Iter` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/phys/mod.rs:87:5
+    |
+ 87 |       for region in physical_memory_regions.iter() {
+    |  _____^             ------------------------------
+ 88 | |         info!("booking: {:?}", region);
+ 89 | |         frame::alloc_range(region)?;
+ 90 | |     }
+    | |_____^
+...
+121 |       for region in mmio_regions.iter() {
+    |  _____-             -------------------
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    |  _____|
+    | |
+122 | |         info!("booking: {:?}", region);
+123 | |         let mut start: usize = region.start().into_raw_value();
+124 | |         let end: usize = start + (region.size() - 1);
+...   |
+141 | |     }
+    | |_____-
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    | |_____|
+    |
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExIter<'a, T>(alloc::collections::linked_list::Iter<'a, T>);
+
+error: could not compile `kernel` (bin "kernel") due to 10 previous errors
