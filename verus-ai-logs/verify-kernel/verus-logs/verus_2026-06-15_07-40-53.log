@@ -1,0 +1,65 @@
+Timestamp: 2026-06-15_07-40-53
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+32 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=6
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:134:21
+    |
+134 |               let i = choose|i: int|
+    |  _____________________^
+135 | |                 0 <= i < n && !sb.contains(i) && addr == frame_addr_of(i);
+    | |_________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:135:58
+    |
+135 |                 0 <= i < n && !sb.contains(i) && addr == frame_addr_of(i);
+    |                                                          ^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/frame.proof.rs:134:21
+    |
+134 |               let i = choose|i: int|
+    |  _____________________^
+135 | |                 0 <= i < n && !sb.contains(i) && addr == frame_addr_of(i);
+    | |_________________________________________________________________________^
+
+verification results:: 32 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.26s

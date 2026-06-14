@@ -823,6 +823,11 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 )]
 pub(super) fn free_count() -> usize {
     let inner = instance();
+    // VERUS DEVIATION (pre-approved: intermediate value for assertions):
+    // `number_of_bits() - usage()` is split into named bindings so the proof can
+    // recover `num_bits >= 0` from the `usize` result of `number_of_bits()`.
+    // `Bitmap::inv()` references the bitmap's private backing slice, so the bound
+    // is opaque in this module and cannot be derived inside `lemma_free_count`.
     let nbits: usize = inner.bitmap.number_of_bits();
     let used: usize = inner.bitmap.usage();
     proof! {
