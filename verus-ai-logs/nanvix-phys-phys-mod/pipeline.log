@@ -1,0 +1,19 @@
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[PIPELINE] NOTE: added cfg-gated include!(mod.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+[2026-06-15 01:43:20] [BRANCH] Base: verus-ai/bump-allocator → Verus: verus-ai/phys-mod
+[2026-06-15 01:43:20] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/body_removed_source.rs (4840 -> 2807 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: phys-mod
+Source: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+Crate:  kernel
+Branch: verus-ai/phys-mod (base: verus-ai/bump-allocator)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: phys-mod
+============================================================
