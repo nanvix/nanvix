@@ -1,0 +1,35 @@
+Timestamp: 2026-06-15_06-35-54
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=18
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0603]: module `types` is private
+ --> src/kernel/src/mm/phys/frame.proof.rs:5:22
+  |
+5 | use crate::hal::mem::types::address::spec_max_frame_number;
+  |                      ^^^^^  ------- module `address` is not publicly re-exported
+  |                      |
+  |                      private module
+  |
+note: the module `types` is defined here
+ --> src/kernel/src/hal/mem/mod.rs:8:1
+  |
+8 | mod types;
+  | ^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0603`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

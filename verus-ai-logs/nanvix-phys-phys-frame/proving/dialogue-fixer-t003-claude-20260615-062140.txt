@@ -837,3 +837,71 @@ Writing the proof... So the bitmap's alloc postcondition guarantees that in the 
 Turn 61
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Compile error. Let me find it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `spec_max_frame_number` in this scope
+32:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_max_frame_number\|spec_frame_number\|use crate::hal::mem" src/kernel/s
+
+[THINKING] I need to track down where `spec_max_frame_number` is imported from—it's defined as a public spec function in the phys module within the address types, so I need to find the correct use path to reference it in the proof file.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:195:                    assert(idx <= spec_max_frame_number());
+src/kernel/src/mm/phys/frame.proof.rs:4:use crate::hal::mem::spec_page_size;
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "pub use\|pub open spec fn spec_max_frame_number\|spec_max_frame_number" src
+[RESULT ✓] bash: src/kernel/src/hal/mem/mod.rs:14:pub use self::types::{
+src/kernel/src/hal/mem/mod.rs:14:pub use self::types::{
+===
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_max_frame_number\|spec_from_number\|spec_frame_raw_value" src/kernel/s
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:129:            (result->Ok_0)@ == spec_from_number(spec_frame_raw_value(frame_number)),
+src/kernel/src/hal/mem/types/address/frame.rs:142:            spec_frame_number(self@) <= spec_max_frame_number(),
+src/kernel/src/hal/mem/types/address/frame.rs:144:...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,15p' src/kernel/src/hal/mem/types/address/frame.spec.rs; echo ===phys.specm
+
+[THINKING] I'm tracing through how these spec functions are exposed across modules—they're defined as public spec functions in the address module within the HAL, and I need to figure out the correct import path to use them in the physical frame layer where they're currently not in scope.
+[RESULT ✓] bash: // Spec helpers for `FrameAddress` are shared with the `phys` sibling module: a frame's abstract
+// state is the physical address (`int`), its frame number is `self@ / spec_page_size()`, and its
+// base address is `frame_index * spec_page_size()`.
+use crate::hal::mem::types::address::phys::{
+    spe...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm tracing through the module path to find where `spec_max_frame_number` is exported from, and realizing I need to add the import in the right place so it's visible to the Verus proof blocks in frame.rs — likely by adding a use statement in frame.proof.rs which gets included into the module.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

@@ -2,6 +2,7 @@ verus! {
 
 use super::FrameAllocView;
 use crate::hal::mem::spec_page_size;
+use crate::hal::mem::types::address::spec_max_frame_number;
 use vstd::map::*;
 
 /// Helper: convert a bitmap index to a frame (physical) address.
