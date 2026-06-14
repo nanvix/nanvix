@@ -1,0 +1,7 @@
+# Unverified exec functions: 6/6
+  align_up
+  fmt
+  new
+  alloc
+  alloc_as
+  default

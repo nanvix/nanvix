@@ -1,0 +1,411 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T00:44:59.474020
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/bump_allocator/src/lib.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`FixedSizeBumpAllocator::alloc_as`, `FixedSizeBumpAllocator::alloc`, `align_up`, `as_mut_ptr`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/view_design.md
+Source file: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+Spec file:  /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs
+Verus command: make verify-bump-allocator
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-bump-allocator` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the key context files and skills to understand the task.
+[TOOL] skill: find-skills
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I'm starting by reviewing the key context files to understand the task and requirements.
+[RESULT ✓] skill: Skill "find-skills" loaded successfully. Follow the instructions in the skill context.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Fixed-Size Bump Allocator
+6. //!
+7. //! A generic, `no_std`-compatible bump allocator that hands out fixed-size slots from a
+8. //! statically reserved memory region (typically BSS). Each slot is ...
+[RESULT ✓] view: 1. # View Design: bump_allocator
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, `FixedSizeBumpAllocator` is a **fixed-capacity, one-shot slot
+6. vendor**: a pool of `capacity` equally-sized, statically-reserved memory slots
+7. that are handed out **at most once each**, in order, until the pool is ex...
+[RESULT ✓] view: 1. # Caller Analysis: bump_allocator
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-bump-allocator/script_output.md`
+5. (generated by `find_callers_lsp.py`, rust-analyzer LSP, crate `bump-allocator`,
+6. depended on by `kernel`).
+7. 
+8. > Tooling note: the pinned toolchain `nightly-2026-0...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The find-skills skill isn't relevant here. Let me load the actual project skills referenced in the task.
+[TOOL] report_intent: Reading required skills
+[TOOL] bash: find /home/ruize -maxdepth 5 -type d -name "spec-design" 2>/dev/null; echo "---"; find /home/ruize -maxdepth 6 -iname "*
+
+[THINKING] I need to load the specific project skills instead—spec-design, verus-constraints, verification-order, spec-completeness, and bug-reporting. Let me locate those.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/.openclaw/workspace/skills/spec-design
+/home/ruize/verus-ai-improve/docs/skills/spec-design
+/home/ruize/verus-ai-improve-backup/docs/skills/spec-design
+/home/ruize/verus-ai-improve2/docs/skills/spec-design
+/home/ruize/verus-ai-improve3/docs/skills/spec-design
+/home/ruize/verus-ai-improve...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The relevant skills live under `/home/ruize/verus-ai-exp/verus-ai/docs/skills/`. Let me read them.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verification-order/SKILL.md
+
+[THINKING] I need to look at the skills documentation in that directory to understand what capabilities are available for this task.
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: verification-order
+3. description: "Determine function-level verification order within a module using the verification plan. Use at the start of proving to know which function to verify first and how to sequence work."
+4. ---
+5. 
+6. # Verification Order
+7. 
+8. ## Purpose
+9. 
+10. When...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me read the spec-design skill in sections, plus the spec-completeness and bug-reporting skills, and the existing spec/proof files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. } // verus!
+4. 
+[RESULT ✓] view: 1. verus! {
+2. 
+3. } // verus!
+4. 
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me read the rest of the spec-design skill, focusing on View abstraction, exec binding rules, and error path sections.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 140.    `assume_specification` and `axiom` are unverified axioms.
+141.    See the audit checklist above when writing `assume_specification`.
+142. 3. **Missing Loop Specs** — loops need `invariant` clauses that capture
+143.    the loop's progress and preservation properties. A function with
+144.    l...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] I need to review the rest of the spec-design section and check the verus-syntax documentation for how `#[verus_spec]` attributes work on functions returning Result types, plus understand how to properly handle View on structs with const fields.
+[RESULT ✓] view: 340. 
+341. ### External-bottom (trust assumptions)
+342. 
+343. Assumptions about layers below the verification scope: std library
+344. behavior, hardware semantics, runtime correctness, compiler fidelity.
+345. These are unverified: if they do not match reality, downstream proofs
+346. may be unsound. ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me look at the verus-syntax skill and find existing verified-module examples in the repo for patterns (View on struct, Result ensures, trait methods).
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/; echo "==="; cat /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md 2
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-completeness/SKILL.md
+
+[THINKING] I need to look at the verus-syntax documentation and search the repo for examples of how to properly annotate functions with `#[verus_spec]`, especially for functions returning Result and trait methods, and find existing patterns for using `view()` on atomic-backed structs with const generics.
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+===
+# TCB Allowed List — Na...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md
+
+[THINKING] I'm looking for the spec-completeness skill but it doesn't seem to exist under that name in the directory, so I'll move on and focus on reviewing the verus-syntax and view-design skills along with bug-reporting. Now I'm examining the BssStorage const generics like `S::NUM_UNITS` and `S::STORAGE_SIZE`.
+
+These are associated constants, and the view design specifies that `capacity == S::NUM_UNITS as nat`. I need to check the verus-syntax documentation to understand how to properly reference associated constants in specs and how to annotate trait methods with `#[verus_spec]`.
+[RESULT ✓] view: 1. ---
+2. name: verus-syntax
+3. description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example."
+4. ---
+5. 
+6. # Verus Attribute-Base...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me examine existing verified modules in this repo for patterns — especially `view()` on structs and how atomics/Result ensures are handled.
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . -name "*.spec.rs" | head -40; echo "=== count ==="; find . -name "*.spec.rs" | wc -l
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rl "closed spec fn view" --include=*.spec.rs | head; echo "=== AtomicUsize in src ===";
+
+[THINKING] I need to check the GUIDE.md to understand how to write trait specs, particularly for a method like `as_mut_ptr`, and figure out how to handle the `view()` specification for structs containing atomic types like `AtomicUsize`. Let me look for existing examples in the repo that show how closed specs work with types that can't be directly viewed.
+
+The core issue is that `view()` needs to be a closed spec function returning `BumpAllocatorView`, but it references `self.next_slot` which is an `AtomicUsize` — and spec functions normally can't read atomic interior state. Verus has `PAtomicUsize` in vstd with ghost permissions, but the exec code uses the standard library's `AtomicUsize` directly. Since `view()` is closed, I need to define it somehow, but I can't directly read the atomic value. I'm trying to figure out if a closed spec function can be defined arbitrarily or if there's another approach Verus expects here.
+
+Let me search the repo for existing patterns where structs with atomics have View implementations to see how this is typically handled.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.spec.rs
+=== AtomicUsize in src ===
+src/daemons/linuxd/src/worker_thread.rs
+src/kernel/src/ipc/bulk_pull.rs
+src/kernel/src/ipc/rendezvous.rs
+src/kernel/src/mm/virt/identity_map.rs
+src/kernel/src/pm/process/manager/unsafe.rs
+src/kernel/src/pm/sync/fence.rs
+src/kernel/src/kargs....
+[RESULT ✓] bash: ./src/kernel/src/mm/phys/frame.spec.rs
+./src/kernel/src/mm/phys/mod.spec.rs
+./src/libs/bitmap/src/lib.spec.rs
+./src/libs/raw-array/src/lib.spec.rs
+./src/libs/slab/src/lib.spec.rs
+./src/libs/bump_allocator/src/lib.spec.rs
+=== count ===
+6
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/src/lib.spec.rs
+
+[THINKING] I need to check how other allocators handle the View pattern, so I'm looking at the slab and bitmap allocator specs to understand how their view() methods are defined and structured.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // Bitmap - Specifications
+5. //
+6. // This file contains specification functions, BitmapView, and View trait for Bitmap.
+7. 
+8. verus! {
+9. 
+10. //=============================================================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -rln "AtomicUsize" . | head; echo "=== atomic spec ==="; grep -rln "atom
+
+[THINKING] I'm realizing the core issue: `next_slot` is an `AtomicUsize`, and I need to figure out how Verus handles viewing atomic types. The spec phase uses `admit()` for proof bodies, but `view()` is a closed spec function that requires an actual implementation, not just an admission. I should check if Verus's vstd library has built-in support for `core::sync::atomic::AtomicUsize`.
+[RESULT ✓] bash: ./atomic.rs
+./atomic_ghost.rs
+./rwlock.rs
+./std_specs/atomic.rs
+=== atomic spec ===
+./Cargo.toml
+./atomic.rs
+./atomic_ghost.rs
+./invariant.rs
+./pervasive.rs
+./prelude.rs
+./rwlock.rs
+./std_specs/atomic.rs
+./std_specs/mod.rs
+./vstd.rs
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; sed -n '1,80p' std_specs/atomic.rs
+[RESULT ✓] bash: #![allow(unused_imports)]
+use super::super::prelude::*;
+use core::sync::atomic::*;
+
+// Supports the core::sync::atomic functions
+// This provides NO support for reasoning about the values inside the atomics.
+// If you need to do that, see `vstd::atomic` or `vstd::atomic_ghost` instead.
+
+#[verifier::...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+vstd's atomic specs provide **no value reasoning** (opaque atomic). This is key for how I model `alloc`. Let me examine how an existing verified allocator in this repo annotates exec functions and handles proof obligations.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "verus_spec\|proof!\|admit()" src/libs/slab/src/lib.rs | head -40
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "bump\|verify-bump\|verify-kernel\|verify-slab\|MODULE" Makefile* 2>/dev/null | head
+
+[THINKING] I'm realizing that vstd's atomic specs don't actually track the values stored inside atomics—operations like `load` and `compare_exchange` just return arbitrary values with no guarantees about what they contain. Since `ExAtomic` is marked as `external_body`, its internal state is completely opaque, which means a `closed spec fn view(&self)` can't actually read the value of `self.next_slot`.
+
+This creates a fundamental problem: with an immutable reference and an opaque atomic, there's no spec-visible state that could change, so I can't meaningfully express how `allocated` transitions before and after an operation. The View design acknowledges this gap but defers the solution to the implementation phase. For now, I need to write a `view()` that at least typechecks and captures caller expectations, even if it can't fully model the atomic's behavior—maybe defining `allocated` as a constant or leaving it unconnected to the atomic for now. I'm realizing the key insight: the task explicitly allows `admit()` in proof bodies, so I don't need to solve the ghost state problem—I just need specs that typecheck. For `align_up`, I can write a complete spec about alignment properties. For `as_mut_ptr`, it's a trait method, so I'll need to handle it as a trait obligation with minimal or descriptive ensures. For `alloc` and `alloc_as`, the challenge is that without tracked ghost state, I can't express the "before/after" mutation of the atomic, but I can still write specs about what the function returns and its preconditions, letting `admit()` handle the proof that the implementation satisfies them. So `proof!{ admit(); }` is the key — I can add it to the end of exec functions to discharge their postconditions without full proofs. The tricky part is handling early returns, since `admit()` needs to be on all paths. Let me look at how the existing verified code in this repo (like the slab allocator) actually structures its exec functions and whether it uses this pattern, or check the Makefile to understand how verification is invoked and what it actually checks.
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+339:ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-sla...
+[RESULT ✓] bash: 9:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+107:    #[verus_spec(result =>
+153:        proof! { Self::lemma_wrapping_add_consequences(addr, len); }
+196:            proof! {
+203:        proof! {
+218:        proof! {
+224:        proof! {
+241:        #[cfg_at...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me establish a baseline by running the current verification, and check vstd for `size_of` spec support.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -rn "size_of\|align_of" layout.rs std_specs/*.rs 2>/dev/null | grep -i "
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-bump-allocator 2>&1 | tail -40
+
+[THINKING] I'm looking at how the slab library implements full proofs in its state-mutating methods, particularly how the exec body uses proof! { lemma } calls to establish postconditions, and examining the View definition for slab. I want to check the alloc and deallocate functions in the spec file to understand the pattern, though it seems bump_allocator is still in the specification phase.
+
+The core issue is whether I can write a coherent ensures clause for alloc given that the atomic is opaque and I only have &self with no visibility into mutations. Since view() can't read the atomic's actual value and there's no old(self) to compare against, the View-based transition model that ties allocated state to the atomic becomes unrealizable without ghost permissions or modifications to the exec code itself. The pragmatic approach for this spec phase is to acknowledge that the View design's goal—proving alloc success implies state == old@.spec_alloc()—isn't achievable with these constraints.
+
+What I can meaningfully specify are the parts that are actually expressible: align_up has a full pure spec, and alloc_as can have type-gating ensures that check whether the generic type T matches the fixed size N and alignment A, with specific error cases for mismatches. These type-level contracts are verifiable and match what callers expect, even if the full state transition for alloc itself remains out of reach.
+
+But now I'm hitting a deeper issue: can Verus even handle `core::mem::size_of::<T>()` in spec functions? I need to check if vstd provides spec-level access to these layout primitives. And more fundamentally, I'm realizing that the view design mandates a two-field View with a transition model on alloc, but if `view()` can't read the atomic field, the whole approach breaks. The task does give me latitude to adjust the View design if needed, but I should first understand whether spec functions can even inspect struct fields that contain external types like AtomicUsize.
+
+Actually, I could sidestep this: define `view()` to return a BumpAllocatorView without reading the atomic at all—just return a constant capacity and zero allocated. That typechecks cleanly, but then the alloc transition claiming `self@ == old(self)@.spec_alloc()` becomes false since allocated never changes. So I'd have to drop that transition claim and focus the spec on what's actually provable: error conditions and slot existence. The real issue is that the exec code uses `compare_exchange` with unconstrained semantics in vstd, so the loop's behavior is non-deterministic from a proof perspective—I can't track the atomic's value. However, the guard `if current >= S::NUM_UNITS { return Err }` does give me a bound: on success, `current < S::NUM_UNITS`.
+
+From there, the stride calculation, offset, and bounds checks are all runtime-verified, so I can prove the pointer properties—but returning a `&'static mut` slice from a raw cast is tricky in Verus without PointsTo machinery. Given the task allows `admit()` in proof bodies and the instruction is to add `#[verus_spec]` contracts to exec functions while leaving proof bodies as `admit()`, the practical approach is to annotate the exec functions with requires/ensures and let the proof phase fill in the details. The real blocker might be whether Verus can even parse and typecheck the exec code as-is—returning `&'static mut` from raw pointer casts and MaybeUninit conversions. The constraints say the code is pre-refactored to be Verus-compatible, so it should work, but I need to test empirically. Let me start by running the baseline build with empty specs to see what Verus accepts and understand the harness structure.
+[RESULT ✓] bash: layout.rs:20:pub uninterp spec fn size_of<V>() -> nat;
+layout.rs:22:pub uninterp spec fn align_of<V>() -> nat;
+layout.rs:25:/// Spec for `size_of_val`: <https://doc.rust-lang.org/std/mem/fn.size_of_val.html>.
+layout.rs:26:pub uninterp spec fn spec_size_of_val<V: ?Sized>(val: &V) -> nat;
+layout.rs:28...

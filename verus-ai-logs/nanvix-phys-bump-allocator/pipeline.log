@@ -35,3 +35,6 @@ Module: bump-allocator
 PHASE: specification
 Module: bump-allocator
 ============================================================
+[2026-06-15 00:44:59] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[2026-06-15 00:44:59] [PROVER] Running specification...
+[2026-06-15 00:44:59] [COPILOT] Running: copilot --model claude-opus-4.8 ...
