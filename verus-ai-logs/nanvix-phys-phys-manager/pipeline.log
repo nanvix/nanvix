@@ -281,3 +281,21 @@ Module: phys-manager
 [2026-06-15 04:23:21] Running final comprehensive review...
 [2026-06-15 04:23:21] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 04:34:25]   ↳ review done in 11m04s (exit=0)
+[2026-06-15 04:34:26] [FINAL REVIEW] Result: UNKNOWN (0/5)
+[2026-06-15 04:34:26] [FINAL REVIEW] Cheating report: external_body: 22 (21 on user fns)
+[2026-06-15 04:34:26] [FINAL REVIEW] ⚠ unapproved external_body fn: 21
+[2026-06-15 04:34:26] [FINAL REVIEW] ⚠ unapproved external_body type-spec: 1
+[2026-06-15 04:34:26] [FINAL REVIEW] Done (11m04s)
+
+============================================================
+PIPELINE FINISHED: phys-manager (some phases need work)
+  ✅ caller-analysis           no-review                 2m43s
+  ✅ view-design               no-review                 3m51s
+  ✅ specification             dialogue-RESOLVED        41m58s (3 dialogue turns)
+  ✅ proving                   dialogue-RESOLVED        10m59s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED        11m12s (1 dialogue turns)
+  ❌ final-review              UNKNOWN                  11m04s
+  ──────────────────────────────────────────────────────────
+  Total: 1h22m12s
+============================================================
+[2026-06-15 04:34:26] [USAGE] Summary: 13 calls, 0 tokens, 1h21m47s total → /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/usage_summary.json
