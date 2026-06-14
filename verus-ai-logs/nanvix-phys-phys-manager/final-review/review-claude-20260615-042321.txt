@@ -844,3 +844,142 @@ Turn 13
 [TOOL] report_intent: Running kernel verification
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] rg: VERUS REWRITE
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Now let me run the verification and helper scripts. First, let me check the scripts and start the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -40
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -40; ech
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git branch --show-current 2>&1; echo "---log---"; git --no-pager log --oneline -8; echo "--
+[RESULT ✓] bash: verus-ai/phys-manager
+---log---
+759a6857f [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, external_body=22 cfg_gate=9)
+4289d439c [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, external_body=22 cfg_gate=9)
+6fe1c1648 [v...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re, pathlib
+files=[
+ 'src/kernel/src/mm/phys/manager.rs',
+ 'src/ker
+[RESULT ✓] bash: [admit] count=0
+[assume] count=0
+[external_body] count=6
+  src/kernel/src/mm/phys/manager.rs:98:     #[verus_verify(external_body)]
+  src/kernel/src/mm/phys/manager.rs:177:     #[verus_verify(external_body)]
+  src/kernel/src/mm/phys/manager.rs:249:     #[verus_verify(external_body)]
+  src/kernel/src...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] rg: \#\[verus_verify\(external_body\)\]
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs:98:    #[verus_verify(external_body)]
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs-99-    #[verus_spec(result =>
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs-100-        requires
+/home/ruize/nanvix-phy/src/kernel/src/mm...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline --follow -- src/kernel/src/mm/phys/manager.rs | head -20
+[RESULT ✓] bash: 84dcb1a1c [verus] verify PASS (cheating detected): kernel::mm::phys (11 verified, 0 errors, external_body=22 cfg_gate=9)
+c08fda2e5 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+de748e6e5 [verus] verify PASS (cheating detected): kernel::mm::phys (11 v...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re, pathlib
+mgr = pathlib.Path('src/kernel/src/mm/phys/manager.rs')
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init @attr_line=98, fn_line=107, in_tcb=True
+src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_user_frames @attr_line=177, fn_line=198, in_tcb=True
+src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_user_frame @attr_line=2...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] rg: pub fn alloc\(|verus_spec\(|verus_verify\(external_body\)
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs:165:    #[verus_verify(external_body)]
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs:179:    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+[RESULT ✓] view: 120.     /// # Returns
+121.     ///
+122.     /// Upon success, the current reference count of the underlying physical frame is returned.
+123.     /// Upon failure, an error is returned instead.
+124.     ///
+125.     pub fn refcount(&self) -> Result<u8, Error> {
+126.         frame::refcount(self.addr...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Let me start the verification build (long-running) in the background, then run the static checks in parallel.
+[TOOL] report_intent: Running verification and static checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tee verus-ai-logs/nanvix-phys-phys-manager/final-
+[TOOL] bash: cd /home/ruize/nanvix-phy && git show 2cccace54:src/kernel/src/mm/phys/manager.rs > verus-ai-logs/nanvix-phys-phys-manag
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: verify>
+[RESULT ✓] bash: 322 verus-ai-logs/nanvix-phys-phys-manager/final-review/manager.orig.rs
+---AST count---
+✅ Consistent: 7 functions, 1 structs match.
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
