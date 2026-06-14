@@ -349,3 +349,22 @@ Turn 20
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -20
+[RESULT ✓] bash: === Results ===
+  23 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=1 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  9/525 exec functions have contract...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+23 verified, 0 errors. `admit=1` is the round-trip lemma (allowed in proof phase). Now check for cascade into the kernel callers via full `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | grep -E "verified, [0-9]+ error|error\[|cannot prove|precon
+
+[THINKING] Got 23 verified checks with no errors and coverage at 9 — the read/write contracts and trait method specs are accounted for. The `admit=1` in the proof file is the broadcast lemma, which is expected and allowed. Now I need to run the full verification to check whether the `requires index@ < PAGE_TABLE_LENGTH` constraint on the read/write operations might cascade into the identity_map.
