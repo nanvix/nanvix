@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: arch-x86-pde
 ============================================================
+[2026-06-14 10:52:11] [PROVER] Running caller-analysis...
+[2026-06-14 10:52:11] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 10:54:15]   ↳ prover done in 2m04s (exit=0)
