@@ -56,7 +56,7 @@ pub proof fn lemma_frame_index(
     requires
         addr.inv(),
         raw_addr as int == addr@,
-        shift < 64,
+        shift < usize::BITS,
         spec_page_size() == pow2(shift as nat),
         frame_number == raw_addr >> shift,
     ensures

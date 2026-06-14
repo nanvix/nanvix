@@ -140,10 +140,17 @@ impl PhysicalAddress {
             result@ == spec_from_number(spec_frame_raw_value(frame)),
     )]
     pub fn from_number(frame: FrameNumber) -> Self {
+        // VERUS DEVIATION (intermediate value): the base-address multiply is bound to a `let`
+        // first so that `into_raw_value`'s postcondition (`0 <= frame@ <= spec_max()`) is in scope
+        // when `lemma_from_number_no_overflow` discharges the no-overflow obligation. Cross-crate
+        // `use_type_invariant` on `arch`'s `FrameNumber` is unsupported ("missing type invariant
+        // function"), so the bound must come from the method contract. Evaluation order and effects
+        // are identical to `frame.into_raw_value() * mem::FRAME_SIZE`.
+        let raw_value: usize = frame.into_raw_value();
         proof! {
             lemma_from_number_no_overflow(frame);
         }
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+        let addr: usize = raw_value * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 

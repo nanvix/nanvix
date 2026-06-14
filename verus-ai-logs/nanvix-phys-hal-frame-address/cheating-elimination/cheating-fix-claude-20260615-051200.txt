@@ -479,3 +479,59 @@ The core problem is that the bound `0 <= frame@ <= spec_max` needs to come from 
 Turn 29
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
+[RESULT ✓] bash: === Results ===
+  4 verified
+  2 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 4 verified, 2 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+=== errors ===
+
+error: precondition not sat...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat build/targets/x86-kernel.json 2>/dev/null | python3 -c "import json,sys;d
+
+[THINKING] I'm running into two verification issues with the Verus proof. First, the frame parameter's invariant isn't being automatically assumed, so the precondition `0 <= frame@ <= spec_max` is failing—I need to reorder the lemma to establish this bound upfront. Second, `lemma_usize_shr_is_div` requires `shift < usize::BITS`, but I only have `shift < 64`, and while `usize::BITS` equals 64, Verus needs the explicit constant rather than the numeric literal.
+
+The real complication is that the kernel target might be 32-bit (i686) rather than 64-bit, which would make `usize::BITS == 32`, meaning my `shift < 64` bound wouldn't satisfy the lemma's precondition at all.
+[RESULT ✓] bash: target-pointer-width: 32
+arch: x86
+=== usize::BITS usage in repo proofs ===
+src/kernel/src/event/manager.rs:183:    interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
+src/kernel/src/event/manager.rs:184:    pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Target is **32-bit** (`usize::BITS == 32`, `MAX_ADDRESS == usize::MAX == 2³²−1`). Two fixes needed: (1) `lemma_frame_index` requires `shift < usize::BITS` not `< 64`; (2) `from_number` must surface the frame bound from `into_raw_value`'s postcondition (cross-crate `use_type_invariant` is unsupported — "missing type invariant function").
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] The target is 32-bit, so `usize::MAX` is `0xFFFF_FFFF`. I'm realizing that `lemma_usize_shr_is_div` requires `shift < 32`, but `lemma_frame_index` only guarantees `shift < 64`, which isn't tight enough for what I need here since `FRAME_SHIFT` is 12.
+
+I could strengthen the lemma's requires to `shift < usize::BITS`, which would match what the vstd lemma actually needs. The caller passes `shift = FRAME_SHIFT = 12`, which is provably less than 32, so it would satisfy the stronger requirement. But I also have the constraint that `spec_page_size() == pow2(shift)`, which might give me additional information to work with. The safest approach is to change the lemma's requires from `shift < 64` to `shift < usize::BITS`, which better reflects the 32-bit target and matches what the caller can prove. Since FRAME_SHIFT is concretely 12, this bound is satisfied. Now I'm verifying the math for the frame bounds: on 32-bit, MAX_ADDRESS is 2^32-1, FRAME_SIZE is 4096, so the maximum frame index is around 1048574, and multiplying back gives a valid address within bounds.
+
+The key insight is reordering from_number to call into_raw_value first, which establishes the postcondition `0 <= frame@ <= spec_max` that the lemma requires. Since into_raw_value takes self by Copy, the postcondition should expose the bound on frame@ after the call. For lemma 1's assertion about the overflow check, the concrete constants (MAX_ADDRESS/FRAME_SIZE - 1 = 1048574) should compute consistently in Verus, so the assert serves as a helpful hint but the math checks out.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Now reorder `from_number` so the lemma's bound is available from `into_raw_value`'s postcondition (pre-approved "intermediate value" deviation, identical effect order):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] Looking at the proof requirements for `into_frame_number`, I need to verify that the shift parameter (which is `FRAME_SHIFT` = 12) satisfies the constraint `shift < usize::BITS` (32). The proof block is invoking a power-of-2 lemma and then calling `lemma_frame_index` with the necessary parameters to establish this relationship.
+
+The caller already satisfies all the required preconditions: `addr.inv()` from the function's own requires clause, `raw_addr == addr@` from the underlying `into_raw_value` call, `spec_page_size() == pow2(shift)` which the comment indicates comes from the lemma and transparent `FRAME_SHIFT`, and the frame number equality. Since `FRAME_SHIFT` is transparent with value 12 and `usize::BITS` is 32, Verus should automatically verify that 12 < 32. Now I'll reorder the `from_number` function similarly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | s
