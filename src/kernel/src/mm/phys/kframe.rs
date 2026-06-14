@@ -74,6 +74,18 @@ impl KernelFrame {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        ensures
+            // Address identity: on success the handle owns exactly the input
+            // address, so callers can transfer the allocator facts established
+            // for `base` (membership, alignment) onto the returned handle. On
+            // failure no handle exists; `base` is `Copy`, so nothing is consumed
+            // and the caller remains free to release the raw frame.
+            match result {
+                Ok(frame) => frame@ == base@,
+                Err(_) => true,
+            },
+    )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
         // Ensure the frame is identity-mapped in the kernel address space so that
         // Deref/DerefMut can safely access it. This lazily installs a page
@@ -101,6 +113,11 @@ impl KernelFrame {
     ///
     /// The base address of the target kernel frame.
     ///
+    #[verus_spec(result =>
+        ensures
+            // Pure read: the returned address is the handle's abstract value.
+            result@ == self@,
+    )]
     pub fn base(&self) -> FrameAddress {
         self.base
     }
@@ -150,6 +167,17 @@ impl DerefMut for KernelFrame {
 }
 
 impl Drop for KernelFrame {
+    #[verus_spec(
+        ensures
+            // Releasing the frame preserves the subsystem invariant (the last
+            // reference returns the frame to the free pool). The precise refcount
+            // transition is not expressible: `phys_view()` is a single fixed value
+            // with no `old(phys_view())` to compare against. Errors are logged, not
+            // propagated, so `drop` cannot unwind.
+            phys_view().inv(),
+        opens_invariants none
+        no_unwind
+    )]
     fn drop(&mut self) {
         if let Err(e) = super::frame::free(self.base) {
             error!("failed to free kernel frame: {:?}", e);

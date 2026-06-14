@@ -1,0 +1,510 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T05:56:57.356741
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/kframe.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`KernelFrame::new`, `KernelFrame::drop`, `KernelFrame::base`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md
+Source file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+Spec file:  /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-kernel` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by loading the relevant skills and reading the key files.
+[TOOL] report_intent: Reading source and analysis files
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md
+
+[THINKING] I'm starting by examining the project structure and reading through the key files—the source, spec, proof, caller analysis, view design, and skills documentation.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::kframe` (`KernelFrame`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-kframe/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py` via rust-analyzer LSP, intra-crate).
+6. 
+7. Summary from the script:
+8. - 6 exec functions, all publi...
+[RESULT ✓] view: 1. # View Design: `mm::phys::kframe` (`KernelFrame`)
+2. 
+3. > Status: the View already exists inline in `kframe.rs`
+4. > (`impl View for KernelFrame { type V = int; view = self.base@ }`).
+5. > This document **reviews and refines** that design against the caller
+6. > analysis and the `view-design` / ...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame type.
+5. //!
+6. //! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+7. //! It provides `Deref`/`DerefMut` for direct kernel access (identity-mapped) a...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me read the relevant skills and the existing phys module specs to understand the vocabulary.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls .github/skills/ && echo "---TCB---" && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | he
+[TOOL] view: /home/ruize/nanvix-phy/.github/skills/coding-standards/SKILL.md
+
+[THINKING] I need to review the relevant skills around spec design, verification constraints, and bug reporting, then examine the frame.rs spec and existing phys module specs to understand the vocabulary and patterns I'll be working with.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+---TCB---
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `ext...
+[RESULT ✓] view: 1. ---
+2. name: coding-standards
+3. description: Detailed Nanvix coding, documentation, and review standards across Rust, C/C++, Python, and Shell. Use this when asked to implement or review code quality conventions.
+4. ---
+5. 
+6. # Coding Standards and Review Guidelines
+7. 
+8. Use this skill when t...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The skill files referenced (spec-design, verus-constraints, etc.) aren't in `.github/skills/`. Let me locate them and read the frame.rs `free`/`alloc` specs for vocabulary.
+[TOOL] bash: cd /home/ruize && find . -iname "*.md" 2>/dev/null | grep -iE "spec-design|verus-constraint|verification-order|spec-comp
+
+[THINKING] I need to track down where those skills are actually located—they're not in the `.github/skills/` directory, so they must be stored elsewhere, possibly in the verus-ai-exp scripts or a different path.
+[RESULT ✓] bash: ./.openclaw/workspace/skills/bug-reporting/SKILL.md
+./.openclaw/workspace/skills/spec-design/SKILL.md
+./.openclaw/workspace/skills/verus-constraints/SKILL.md
+./.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/lasso-0.7.3/.github/ISSUE_TEMPLATE/bug-report.md
+./.cargo/registry/src/index.crates.io-...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verification-order/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verification-order
+3. description: "Determine function-level verification order within a module using the verification plan. Use at the start of proving to know which function to verify first and how to sequence work."
+4. ---
+5. 
+6. # Verification Order
+7. 
+8. ## Purpose
+9. 
+10. When...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/verification-plan.json 2>/dev/null && python3 /home/ruize/verus-ai-exp/ver
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] I need to carefully review the spec-design skill and bug-reporting skill, then examine the verification plan and the frame.rs specifications for the free/alloc and phys_view implementations along with the FrameAllocView definitions.
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: verus-ai-logs/verification-plan.json
+=== also try kframe module ===
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verificati
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,400p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+[RESULT ✓] bash: === modules list ===
+['target', 'entries', 'total_modules', 'cycles_broken', 'steps']
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Now let me examine the existing phys module specs for the vocabulary (`phys_view`, `free` contract, `FrameAddress`).
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && ls -la; echo "=== grep phys_view def ==="; grep -rn "spec fn phys_vi
+
+[THINKING] I need to review the frame.rs specifications for the `free` and `alloc` functions, along with understanding `phys_view`, `FrameAllocView`, and the `Inner::inv` definitions to get the right terminology. Let me check the existing spec files in the phys module to see what conventions are already established.
+[RESULT ✓] bash: total 144
+drwxrwxr-x 1 ruize ruize   370 Jun 15 05:51 .
+drwxrwxr-x 1 ruize ruize   140 Jun 13 00:06 ..
+-rw-rw-r-- 1 ruize ruize  2740 Jun 15 02:26 frame.proof.rs
+-rw-rw-r-- 1 ruize ruize 32776 Jun 15 05:17 frame.rs
+-rw-rw-r-- 1 ruize ruize   135 Jun 15 00:16 frame.spec.rs
+-rw-rw-r-- 1 ruize ruize   ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to examine the free-function shim specification and related memory management code, including how the allocator uses kernel frames and the contiguity predicate in manager.rs.
+[RESULT ✓] view: 640. 
+641.     // SAFETY: `INSTANCE_INIT` is `true`, so `INSTANCE` has been fully written by `init()`.
+642.     // The kernel is single-threaded with interrupts disabled, so no concurrent access is possible.
+643.     unsafe { INSTANCE.assume_init_mut() }
+644. }
+645. 
+646. //=========================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "KernelFrame::new\|\.base()\|kernel_frames_contiguous\|Kerne
+
+[THINKING] I've got the contract for `free` down—it needs to maintain the physical view invariant, keep opens invariants empty, and prevent unwinding. Now I'm diving into how the manager uses `KernelFrame::new` and `base`, particularly checking the `kernel_frames_contiguous` predicate and how it validates that frames are in the allocated set. I need to trace through the manager spec and the exec functions that call these methods, plus understand what `FrameAddress` represents.
+[RESULT ✓] bash: manager.rs:18:        kframe::KernelFrame,
+manager.rs:57:static PHYS_MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
+manager.rs:109:            return Err(Error::new(
+manager.rs:206:            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+manager.rs:211:            return Er...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 55.     forall|i: int|
+56.         0 <= i < addrs.len() ==> #[trigger] addrs[i] == base + i * spec_page_size()
+57. }
+58. 
+59. /// `frames` is an ascending, page-stride-contiguous run of kernel frames based at
+60. /// `base`: the address of the `i`-th frame is `base + i * PAGE_SIZE`.
+61. ///
+62. /// ...
+[RESULT ✓] view: 340.             phys_view().inv(),
+341.         ensures
+342.             phys_view().inv(),
+343.             phys_view().initialized,
+344.             match result {
+345.                 Ok(frame) => {
+346.                     &&& phys_view().frames.allocated_frames.contains(frame@)
+347.           ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me check the dependency function specs (FrameAddress, PageAligned, identity_map_page).
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "fn into_raw_value\|fn from_raw_value\|impl View for FrameAddress\|struct FrameAdd
+
+[THINKING] The `KernelFrame::new` spec needs to guarantee that when it returns Ok, the frame address matches the base address, and the manager's `alloc_kernel_frame` already ensures the frame is in allocated_frames and page-aligned. Looking at line 346, the allocated_frames check comes from `frame::alloc()`, so after `KernelFrame::new` succeeds, the caller has the invariant that the frame is properly allocated.
+
+Now I need to understand the FrameAddress type's view and invariant — checking the hal::mem module for its View definition and the invariant that ensures page alignment. The key dependency functions like `identity_map_page`, `PageAligned::from_raw_value`, and `into_raw_value` need sufficient specs so that the exec function body can verify the ensures clause without relying on admit.
+
+Looking at the `new` function's logic: on the Ok path, the result `Self { base }` has a view equal to `base@` by definition of the closed view, so the ensures `result@ == base@` verifies trivially since `base` is unchanged. The `?` operators handle the Err path short-circuiting. Since FrameAddress is Copy, there's no ownership transfer concern — the caller retains the value even if the function returns Err, so the "no consumption" requirement is automatically satisfied. The spec for `new` only needs to assert the Ok case; I should consider whether to add a frame condition about `phys_view()` since `identity_map_page` modifies virtual memory mappings.
+
+The question is whether `new` must preserve the physical view. In `alloc_kernel_frame`, after `frame::alloc()` ensures the frame is in `allocated_frames`, the call to `KernelFrame::new(frame_addr)` must maintain that invariant so the manager's ensures can verify. This means `new` should preserve `phys_view()` entirely. However, there's a problem: `phys_view()` is an uninterpreted spec function with no parameters, so the `old()` construct doesn't apply to it — you can only use `old()` on mutable parameters. The frame.rs comment explicitly notes this limitation, so I can't express `phys_view() == old(phys_view())` in the spec. This creates a verification gap for how the manager's `alloc_kernel_frame` actually establishes its postcondition.
+
+The resolution is that `phys_view()` is modeled as a single fixed value throughout the program in spec-land, not as something that mutates. So when `frame::alloc()` ensures `phys_view().frames.allocated_frames.contains(frame@)`, it's referring to that same constant `phys_view()` value, and the invariant persists trivially without needing `new` to explicitly preserve it. This is a design limitation they accept — the model doesn't track mutations to the physical view. So `new` only needs to ensure `result@ == base@`.
+
+Now I need to check whether `new` itself has any requires to satisfy. It calls `identity_map_page` and `PageAligned::from_raw_value`, which are cross-module dependencies. If those functions have specs with requires clauses, then `new` must satisfy them for verification to succeed.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:39:    fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:57:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+src/kernel/src/hal/mem/types/address/aligned/page.rs:51:    fn into_raw_value(self)...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 620. ///
+621. /// Identity-maps a single page in the kernel page directory.
+622. ///
+623. /// If the target PTE is already present, this function is a no-op. If the PDE is absent, a new
+624. /// page table is allocated from the BSS pool and installed before the identity-mapped PTE is
+625. /// create...
+[RESULT ✓] view: 29. pub struct FrameAddress(PageAligned<PhysicalAddress>);
+30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. pub uninterp spec fn spec_page_size() -> int;
+35. 
+36. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+37.     ensures
+38.         result == spec_page_size(),
+39. ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '40,90p' src/kernel/src/mm/virt/kpage.rs; echo "=== verus_spec in kpage ==="; grep -
+
+[THINKING] I'm checking whether `identity_map_page`, `PageAligned::from_raw_value`, and `FrameAddress::into_raw_value` have verification specs — none of them do. For the `new` function to verify, it needs to call `base.into_raw_value()` which has no spec requirements, then `PageAligned::from_raw_value`...
+
+Actually, the fastest approach is to write the specs and run verification to see what fails. I'll add an optional `inv()` method to `kframe.spec.rs` for completeness since the view design suggests it, though the manager spec uses `frame@` directly rather than `frame.inv()`.
+
+But I need to be careful about floating specs — every spec function must connect to an exec contract. If I add `inv()` without anything referencing it, that violates the rule. The `base()` method could potentially ensure `result.inv()` to establish page-alignment of the returned address, but that requires proving `self.base.inv()` holds. Since `FrameAddress` wraps `PageAligned<PhysicalAddress>`, it's structurally always page-aligned, but the spec function `inv()` returning `self@ % spec_page_size() == 0` isn't automatically known to be true without connecting to the underlying `PageAligned` structure. Let me check how `kpage.rs` actually uses `base()` to see what the callers need.
+[RESULT ✓] bash: ///
+    pub fn new(kframe: KernelFrame) -> Self {
+        Self { kframe }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Get the base address of the target kernel page.
+    ///
+    /// # Returns
+    ///
+    /// The page address of the target kernel page.
+    ///
+    pub fn base(&self) -> PageA...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me check how UserFrame's Drop is specified (same pattern needed for KernelFrame).
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "impl Drop\|fn drop\|no_unwind\|opens_invariants\|verus_spec" src/kernel/src/mm/ph
+
+[THINKING] `KernelFrame::base()` only needs the in-scope spec that the result equals self, so I'll keep it minimal. `PageAligned::from_raw_value` has no preconditions or postconditions, so calling it in `new` is straightforward. Now I'm deciding whether I need a hand-written proof or if the verification can proceed automatically.
+
+The manager spec doesn't reference an `inv()` predicate, and the design notes it as optional, so I'll skip adding it to avoid floating specs. Since the View is already defined inline in kframe.rs and the FrameAddress vocabulary is elsewhere, kframe.spec.rs can stay empty—just an empty `verus!{}` block. Similarly, proof.rs doesn't need any lemmas since the drop function's postcondition directly uses the ensures clause from `free` without requiring intermediate proofs.
+
+Now I'm setting up the exec annotations in kframe.rs, starting with `KernelFrame::new` and its postcondition that specifies the frame's view equals the base address, with error handling for the failure case.
+
+Writing exec annotations...
+[RESULT ✓] bash: 54:    #[verus_spec(ret =>
+78:    #[verus_spec(ret =>
+96:    #[verus_spec(ret =>
+124:    #[verus_spec(child =>
+159:    #[verus_spec(result =>
+186:impl Drop for UserFrame {
+187:    #[verus_spec(
+195:        opens_invariants none
+196:        no_unwind
+198:    fn drop(&mut self) {
+247:    #[verus_spec(...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 186. impl Drop for UserFrame {
+187.     #[verus_spec(
+188.         ensures
+189.             // Releasing a reference preserves the subsystem invariant (the last
+190.             // reference returns the frame to the free pool). The precise refcount
+191.             // transition is not expressible: ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,52p' src/kernel/src/mm/phys/upool.rs | grep -n "use\|include\|phys_view\|verus" 
+
+[THINKING] I need to verify the imports for `phys_view` and `frame::free` in kframe.rs—`phys_view()` is defined as a spec function in mod.spec.rs under the mm module, and I need to make sure it's accessible for the drop implementation.
+[RESULT ✓] bash: 8:use vstd::prelude::*;
+9:#[cfg(verus_keep_ghost)]
+10:include!("upool.spec.rs");
+11:#[cfg(verus_keep_ghost)]
+12:include!("upool.proof.rs");
+14:use crate::{
+18:use ::core::mem::ManuallyDrop;
+19:use ::sys::error::Error;
+20:#[cfg(verus_keep_ghost)]
+21:use ::vstd::prelude::*;
+30:/// A type that represen...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '14,28p' src/kernel/src/mm/phys/upool.rs; echo "=== how phys_view is brought in upoo
+[RESULT ✓] bash: use crate::{
+    hal::mem::FrameAddress,
+    mm::phys::frame,
+};
+use ::core::mem::ManuallyDrop;
+use ::sys::error::Error;
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
+
+//==================================================================================================
+// User Frame
+//============...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+I have enough understanding. The View is already defined inline; spec/proof files only need a `phys_view` import for the Drop contract. Let me write the specs.
+[TOOL] create: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.spec.rs
+
+[THINKING] I'm noticing that `phys_view` needs to be accessible in the normal namespace of kframe.rs since it's referenced in the drop's `#[verus_spec]` attribute, whereas in upool.rs it's imported directly within the `verus!{}` block. The pattern suggests I need to make sure the import is available at the right scope level for the attribute to resolve it properly. Adding the use statement to kframe.spec.rs to bring phys_view into scope, then annotating the new, base, and drop methods with their respective contracts — new ensures the frame owns the input address on success, base ensures it returns the stored address, and drop ensures the physical memory view invariant is preserved. The Drop implementation calls `free` on the base address, which has no preconditions and ensures the physical view invariant holds — this should verify cleanly. Now I need to figure out whether I should add `external_body` annotations to `clear`, `deref`, and `deref_mut`. They're listed in tcb-allowed.md as external functions, but my target list only includes `new`, `drop`, and `base`. The question is whether the verification will fail if these other functions remain unverified and unspecified.
+
+Since functions without `#[verus_verify]` or `#[verus_spec]` annotations are simply skipped by Verus under attribute style, `clear`, `deref`, and `deref_mut` won't cause verification errors — they're treated as external by default. The tcb-allowed list just documents which functions are permitted to use `external_body` if they were annotated, but since they're out of scope and currently unannotated, I should leave them as-is and focus on verifying my target functions.
+
+Now I need to finalize the spec for `new` — the caller expects that on `Ok`, the frame's view matches the base address, and on `Err`, no consumption occurs since `Copy` handles that automatically.  The allocated frames constraint and page alignment both carry over from `alloc()` through the frame address, so the single ensures clause covering `frame@ == base@` is sufficient without needing to redundantly specify handle wellformedness.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > src/kernel/src/mm/phys/kframe.spec.rs <<'EOF'
+// Copyright(c) The Maintainers of Nanv
+[RESULT ✓] bash: written
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now the proof file and the exec annotations in kframe.rs:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > src/kernel/src/mm/phys/kframe.proof.rs <<'EOF'
+// Copyright(c) The Maintainers of Nan
+[RESULT ✓] bash: done
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now let me run module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verify-kernel" Makefile | head
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -40

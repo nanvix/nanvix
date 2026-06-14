@@ -1,0 +1,27 @@
+Timestamp: 2026-06-15_06-01-19
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/mm/phys/kframe.rs:89:19
+   |
+89 |     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
+   |                   ^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
