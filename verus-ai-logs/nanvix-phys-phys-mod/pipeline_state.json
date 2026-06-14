@@ -8,7 +8,8 @@
     "caller-analysis",
     "view-design",
     "specification",
-    "proving"
+    "proving",
+    "cheating-elimination"
   ],
   "phase_results": {
     "caller-analysis": {
