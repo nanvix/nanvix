@@ -177,3 +177,88 @@ The most straightforward fix that aligns with how `sys` already handles trait-im
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "Exit code|error|cheating|verified|status:|
+[RESULT ✓] bash: Module    : <all>
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/libs/sys/src/sys/mm/address/virt.rs:167:1
+167 | / impl Address for VirtualAddress {
+error: could not compile `sys` (lib) due to 1...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Verus requires the entire trait impl to be verified together. Let me revert and examine what the whole block needs — particularly `is_aligned`, `align_up`, `max_addr`, and the alignment specs.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I need to apply the `#[verus_verify]` annotation to the entire `impl Address for VirtualAddress` block rather than individual methods, since Verus requires the whole trait implementation to be verified together. This means I'll need to ensure all the methods—including `is_aligned`, `from_raw_value`, and `clone_address`—satisfy their trait specifications.
+
+Looking at the trait specs, most methods check out: `from_raw_value` returns `Ok` with the correct value, `into_raw_value` preserves the address, and `clone_address` copies the view correctly. The tricky one is `is_aligned`, which calls an inherent method that in turn uses `mm::is_aligned`—I need to find or create a spec that links `mm::is_aligned` to the trait's `spec_addr_is_aligned`. The `align_up` and `align_down` methods have no trait specs, so they just need to typecheck without panicking. I should also check what specs exist for `max_addr`, `as_ptr`, and `as_mut_ptr` before finalizing the implementation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/alignment.rs
+[RESULT ✓] view: 140.     fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
+141. 
+142.     ///
+143.     /// # Description
+144.     ///
+145.     /// Returns the maximum address for [`Address`].
+146.     ///
+147.     /// # Returns
+148.     ///
+149.     /// The maximum [`Address`].
+150.     ///
+151.     fn...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Alignment predicate over an abstract address value `v` (`self@`): the integer
+4. // address is an exact multiple of the alignment's byte value. This is the
+5. // declarative meaning callers attach to `is_aligned` — independent of how the
+6. // alignment check is computed. `spec...
+[RESULT ✓] view: 180. 
+181. } // verus!
+182. 
+183. //==================================================================================================
+184. // Standalone Functions
+185. //==================================================================================================
+186. 
+187. pub const fn align_...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The whole-block approach forces `is_aligned` to prove equivalence between `mm::is_aligned` (bitwise) and `spec_addr_is_aligned` (modulo). Let me check existing specs in alignment.rs before deciding.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] The whole-block approach would require proving that the runtime `is_aligned` check matches the specification version, essentially showing that bitwise alignment checks are equivalent to modulo-based checks. This is a substantial proof undertaking that involves functions outside the current scope, and it's hitting against a genuine limitation of Verus itself.
+
+Actually, wait — the reviewer anticipated this exact scenario. The constraint is that verifying any method in a trait impl forces verification of the entire impl block, so speccing just `into_raw_value` would drag in `is_aligned` which needs both a spec on the standalone `mm::is_aligned` function and bitvector reasoning. The other methods like `align_up`, `align_down`, `max_addr`, `as_ptr`, and `as_mut_ptr` should verify trivially since they have no trait ensures, and `from_raw_value` and `clone_address` should also pass. Let me actually try annotating the whole block and running the verifier to see which methods actually fail and whether this is truly infeasible or just requires the work.
+[RESULT ✓] view: 1. // Copyright (c) The Maintainers of Nanvix.
+2. // Licensed under the MIT license.
+3. 
+4. //==================================================================================================
+5. // Lint Configuration
+6. //=============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me empirically try annotating the whole impl block to see exactly which methods fail.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The standalone `mm::is_aligned` function lacks a verus_spec, which means verifying the entire `impl Address for VirtualAddress` block would require proving the equivalence between bitwise and modulo operations—a substantial proof effort that's outside the current scope. But I can still try annotating the whole block to see what actually breaks and whether `is_aligned` is truly the blocker.
+
+Actually, I'm realizing the reviewer's escape hatch for "genuine limitations" doesn't apply here—the trait already has its spec, so this isn't about forcing specs onto the trait declaration. The real issue is that Verus requires whole-impl verification, which pulls in the `is_aligned` proof. I could do this proof using the power-of-two bit-trick lemma that vstd likely has, but it's non-trivial work on a function outside my phys task scope.
+
+Let me refocus on what the reviewer actually asked for—removing the `assume_specification` for `into_ra`.
+
+Let me just try annotating the whole impl block and see if it verifies empirically.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "Exit code|error|cheating|verified|status:|
