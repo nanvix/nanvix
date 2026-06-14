@@ -508,3 +508,307 @@ Now let me run module verification.
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:731 alloc: external_body
+    - frame.rs:778 free: external_body
+    - frame.rs:802 is_covered: external_body
+    - frame.rs:822 book: external_body
+    - frame.rs:844 alloc_range: external_body
+    - frame.rs:869 share: external_body
+    - frame.rs:894 refcount: external_body
+    - manage...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Compilation error. Let me check the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && tail -60 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-01-19.log | grep -v "^$
+
+[THINKING] The Verus compiler didn't run and it's flagging "new" as unverified, which is odd. Let me check what the actual compilation error is in the logs.
+[RESULT ✓] bash: Timestamp: 2026-06-15_06-01-19
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+--- Full output ---
+    Checking kernel ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm looking at a Verus spec attribute on a `new` constructor where the `result =>` binding inside the macro might be causing a scope issue. The compiler error says it can't find the `new` function, which is strange since it's a constructor. I'm wondering if the doc comment placement or the macro expansion itself is interfering with how the function is being recognized.
+[RESULT ✓] view: 63. impl KernelFrame {
+64.     ///
+65.     /// # Description
+66.     ///
+67.     /// Instantiates a kernel frame.
+68.     ///
+69.     /// # Parameters
+70.     ///
+71.     /// - `base`: Frame address.
+72.     ///
+73.     /// # Returns
+74.     ///
+75.     /// Upon success, a kernel frame is returned. ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The error about `new` not being found is happening during the verus pre-check phase, not the regular cargo build. The `#[verus_spec]` attribute gets erased during normal compilation, so the issue must be stemming from how verus is processing the code before that stripping happens.
+
+Looking at the working examples in upool.rs and manager.rs, they use `#[verus_spec(ret => ...)]` and `#[verus_spec(result => ...)]` with match expressions in the ensures clause, so that syntax should be valid. The error pointing to line 89 (the function signature) suggests verus might be struggling to parse the macro itself, possibly because of how the match block is structured or because the `verus_spec` proc-macro from vstd is having trouble with the specific pattern I'm using.
+
+Let me think about this differently — the error "cannot find function `new`" is unusual for a plain function definition unless the macro is trying to generate a call to `new` internally. Maybe the issue is specific to how `verus_spec` handles constructor-style functions that return `Result<Self, Error>`, or there's a conflict with the `pub(super)` visibility combined with the macro. I should try running a plain cargo check to see the actual error context and understand what the macro is expanding to.
+[RESULT ✓] view: 44.     /// Instantiates a user frame.
+45.     ///
+46.     /// # Parameters
+47.     ///
+48.     /// - `addr`: Frame address.
+49.     ///
+50.     /// # Returns
+51.     ///
+52.     /// A user frame.
+53.     ///
+54.     #[verus_spec(ret =>
+55.         requires
+56.             addr.inv(),
+57.         en...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm noticing that upool's `new` function returns `Self` directly with an ensures clause that validates the return value, whereas mine returns `Result<Self, Error>` and uses pattern matching. Mine also uses `pub(super)` visibility. I should check if there are other verified functions in upool that return `Result` and use match statements in their ensures clauses to see if that pattern is supported.
+[RESULT ✓] view: 155.     ///
+156.     /// Upon success, the current reference count of the underlying physical frame is returned.
+157.     /// Upon failure, an error is returned instead.
+158.     ///
+159.     #[verus_spec(result =>
+160.         requires
+161.             self.inv(),
+162.             phys_view().init...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Let me reproduce the exact error with full context:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel && cargo build 2>&1 | grep -A15 "E0425\|error\[" | head -40
+
+[THINKING] I'm wondering if the missing `requires` clause in my `new` function could be causing a parse error, since it only has `ensures`. Let me look at some examples—upool's `new` has both `requires` and `ensures`, and refcount does too. I should check if there's a verus_spec that uses only `ensures` without `requires` to see if that's even valid, maybe something like the external_body in manager.rs.
+
+Actually, looking at frame.rs's free shim and upool's drop function, both have `ensures`-only specs without `requires`, and they work fine—drop even returns unit so there's no `result =>` binding. So ensures-only should be valid. The weird part is the error message saying it can't find the function `new` at all, which suggests maybe a macro expansion issue or something with how the doc comment and attribute are formatted together.
+
+Let me just run a full cargo check to see the actual error with proper context instead of guessing.
+[RESULT ✓] bash: error[E0433]: cannot find `Idt` in `idt`
+   --> src/kernel/src/hal/platform/microvm/mod.rs:961:14
+    |
+961 |         idt::Idt::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
+    |              ^^^ could not find `Idt` in `idt`
+    |
+help: a struct with a similar name exists
+...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+The plain `cargo build` is the wrong environment (pre-existing unrelated errors). The E0425 is from the verus pass. Let me isolate which part triggers it by testing variations.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "verus_spec" src/kernel/src/mm/ src/kernel/src/hal/mem/ | xargs -I{} true; echo "=
+
+[THINKING] The plain `cargo build` command isn't the right approach here since this is a kernel that requires a special target configuration. The actual verification happens through `make verify-kernel`, which uses the verus toolchain and specific target settings. The E0425 error about the missing `new` function came from verus's checking phase, not from a standard cargo build—so I shouldn't rely on plain cargo output to diagnose this issue.
+
+The real problem is the verus error during the `Checking kernel` phase, which runs cargo check with the verus_keep_ghost cfg and proc macros active. The `#[verus_spec]` macro expands the function body, and the error points to the `new` identifier itself, which typically happens when a proc macro fails to expand properly or there's a name resolution issue. I'm reconsidering whether something in the function definition—maybe the comment lines or how the `?` operator interacts with the macro expansion—is causing the macro to fail.
+
+Actually, wait—the error might not be from verus_spec at all. Before my change, the module verified, so something I added broke it. The only addition was the verus_spec attribute. Let me think about whether `result` as a parameter name could be conflicting, or whether the ensures clause referencing `base@` after it's moved in the body is causing issues with how the macro generates the expanded code. The E0425 error specifically means the expanded code contains an unresolvable call to `new`, which suggests the verus_spec macro might be generating a recursive or forwarding call that can't find the original function. I'm wondering if the real issue is how `verus_spec` handles the `?` operator and `map_err` closures in the function body when combined with a named return type in the spec. Let me search for other verified functions in the codebase that use `?` with `#[verus_spec]` to see if there's a pattern I'm missing, or I could just strip down the spec temporarily to isolate which part is triggering the error.
+[RESULT ✓] bash: === verified (non-external) fns using ? with verus_spec ===
+skip
+325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate ker...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Let me check whether impl blocks need `#[verus_verify]` and look at the verify script for faster iteration:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus_verify\|^impl\|impl UserFrame\|impl Upool" src/kernel/src/mm/phys/upool.rs |
+
+[THINKING] I'm looking at the verify.sh script to understand how to run a faster check, but the make command already surfaces the error I need. Running `make verify-kernel` repeatedly is slow, so I need to think through the E0425 error more carefully. I'm remembering now that in Verus, when you use `#[verus_spec(name => ...)]`, the `name` becomes the binding for the return value, and the macro expansion handles this.
+
+The error points to line 89 in kframe.rs where `new` is defined, but that line shifted down by 12 lines after I added the verus_spec attribute. I'm wondering if the macro expansion is somehow creating a reference to `new` that can't be resolved. Let me reconsider whether the issue is actually with my verus_spec or with the imports I added in kframe.spec.rs or proof.rs instead. Looking at the ensures clause with the match expression on `Result<Self, Error>`, that should be fine in Verus context. I'm noticing that my ensures clause has no requires clause before it — just `result => ensures ...` — and I'm trying to find similar patterns in the codebase to see if that's valid or if I need to add a dummy `requires true,` to make it work.
+[RESULT ✓] bash: 33:#[verus_verify]
+39:#[verus_verify]
+40:impl UserFrame {
+185:#[verus_verify]
+186:impl Drop for UserFrame {
+216:#[verus_verify]
+222:#[verus_verify]
+223:impl Upool {
+233:    #[verus_verify]
+=== kframe impl blocks ===
+40:#[verus_verify]
+53:impl View for KernelFrame {
+63:impl KernelFrame {
+150:impl Der...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The issue: the `impl` blocks lack `#[verus_verify]` (compare with upool). Let me check how upool handles unspecced methods within a `#[verus_verify]` impl block.
+[TOOL] bash: cd /home/ruize/nanvix-phy && awk 'NR>=39 && NR<=184 {print NR": "$0}' src/kernel/src/mm/phys/upool.rs | grep -E "fn |ver
+
+[THINKING] I'm noticing the inconsistency in the verification attributes across the two files—upool has `#[verus_verify]` on both the `impl UserFrame` and `impl Drop for UserFrame` blocks, while kframe.rs is missing these attributes on the corresponding `impl KernelFrame` and `impl Drop for KernelFrame` blocks.
+
+But adding `#[verus_verify]` to the impl blocks would force verification of all methods inside them, including `clear`, `deref`, and `deref_mut`—which are unsafe operations that should be marked as external_body and left out of scope. The constraint is that I can only modify the target functions (new, drop, base), not the unlisted ones, so I need to find a way to add the attribute without triggering verification failures on those unsafe methods.
+
+Let me reconsider how Verus actually selects functions for verification. Maybe `#[verus_verify]` on an impl block just enables macro processing, while individual methods need their own `#[verus_verify]` or `#[verus_spec]` to be verified. Looking at the upool code, methods have their own `#[verus_verify]` annotations alongside the impl block's annotation, so perhaps methods without specs inside a `#[verus_verify]` impl aren't automatically verified—they're just processed by the macro.
+
+The unverified functions list includes clear, deref, and deref_mut, which belong to KernelFrame. If I add `#[verus_verify]` to that impl, these methods would become verification targets, but they'd fail without specs. However, they're already listed in tcb-allowed.md as external_body, which means adding that annotation to them is sanctioned—the rule against touching unlisted functions doesn't apply here since they're explicitly listed. So I could add external_body to them, but I'm still deciding whether adding `#[verus_verify]` to the whole impl is necessary or if I can just annotate individual methods instead.
+[RESULT ✓] bash: 39: #[verus_verify]
+54:     #[verus_spec(ret =>
+65:     pub fn new(addr: FrameAddress) -> Self {
+78:     #[verus_spec(ret =>
+83:     pub fn address(&self) -> FrameAddress {
+96:     #[verus_spec(ret =>
+103:     pub fn leak(self) -> FrameAddress {
+124:     #[verus_spec(child =>
+144:     pub fn share(&...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Methods need an enclosing `#[verus_verify]` on the impl block. Let me check the macro behavior to know if unspecced `clear` would be force-verified:
+[TOOL] bash: cd /home/ruize && find / -name "*.rs" -path "*builtin_macros*" 2>/dev/null | head; echo "---"; grep -rln "verus_verify" 
+
+[THINKING] I'm noticing that every method in upool's `impl UserFrame` is marked with `#[verus_spec]`, so I can't determine from that pattern whether unspecced methods get verified. The safest approach that aligns with the existing pattern and respects tcb-allowed constraints would be to add `#[verus_verify]` to the `impl KernelFrame` block, keep `new` and `base` with `#[verus_spec]`, and give `clear` the `#[verus_verify(external_body)]` attribute with a `#[verus_spec]` contract since it's in tcb-allowed—though I'm still working out what that spec should be.
+
+But I'm realizing the real issue: if I add block-level `#[verus_verify]` to `impl KernelFrame`, does `clear` (which has no `#[verus_spec]`) become a verification target whose body must verify? Looking at the patterns in upool, both block-level and method-level `#[verus_verify]` appear, and in `impl UserFrame` the block has `#[verus_verify]` while methods only have `#[verus_spec]`. The verification output showed 35/44 functions have contracts, with `clear`, `deref`, and `deref_mut` among the unverified ones, which suggests these are the functions causing the issue.
+
+The safest approach is to mark `clear` with `#[verus_verify(external_body)]` since it's explicitly in tcb-allowed — this way I can add block-level `#[verus_verify]` to `impl KernelFrame` while treating `clear` as a trusted external function that doesn't need its body verified.
+[RESULT ✓] bash: /mnt/toolchain/verus/builtin_macros/src/syntax.rs
+/mnt/toolchain/verus/builtin_macros/src/unerased_proxies.rs
+/mnt/toolchain/verus/builtin_macros/src/fndecl.rs
+/mnt/toolchain/verus/builtin_macros/src/syntax_trait.rs
+/mnt/toolchain/verus/builtin_macros/src/calc_macro.rs
+/mnt/toolchain/verus/builtin_m...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/builtin_macros/src && grep -n "verus_verify\|external_body\|fn verus_verify\|VerusVerify\|impl.*
+[RESULT ✓] bash: 7:///   with `#[verus_verify].
+29:/// - #[verus_verify] does not support all `verus` syntax, particularly
+128:        ["external", "external_body", "external_type_specification"];
+158:                        .expect("unsupported tokens in verus_verify(dual_spec(...))")
+177:                compile_er...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/builtin_macros/src && sed -n '185,230p;346,400p' attr_rewrite.rs
+[RESULT ✓] bash: }
+    if !contains_external {
+        attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+    }
+
+    // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
+    let mut visitor = VerusVerifyVisitor { verify_const: true };
+    visitor.visit_item_...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+The macro shows `#[verus_verify]` is needed on the impl block, and unspecced methods only get a spec marker if they already have `#[verus_spec]`. Let me check whether an unannotated method in a verified impl (e.g. `get_mut`) is skipped or force-verified:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "verus_verify\|fn get_mut\|impl PhysMemoryManager\|impl.*Phy
+
+[THINKING] I'm seeing how the `#[verus_verify]` attribute works on impl blocks—it adds verification markers and processes methods differently based on whether they already have `#[verus_spec]`. Methods without that spec annotation don't get forced verification or automatic spec generation, and the `verify_const` setting only applies to const and static items.
+
+For the `clear` method specifically, since it performs raw pointer operations and calls external functions like `memset`, the body verification would likely fail unless those operations have proper specs. Since `clear` is listed in the TCB allowlist as `external_body`, I should mark it with `#[verus_verify(external_body)]` to skip body checking while keeping a trivial contract. The real question is whether I even need the `#[verus_verify]` attribute on the impl block in the first place.
+
+The E0425 error clarifies this — the `#[verus_spec]` macro on `new` failed because the impl block wasn't marked `#[verus_verify]`, so the macro didn't get processed correctly. That means I do need `#[verus_verify]` on the impl block.
+
+My plan is to add `#[verus_verify]` to the main `impl KernelFrame` block (which contains `new`, `base`, and `clear`), mark `clear` with its own `#[verus_verify(external_body)]` since methods can have nested attributes, add `#[verus_verify]` to the `impl Drop for KernelFrame` block, and leave the `Deref` and `DerefMut` impls unverified unless something forces verification on them.
+
+For `clear` specifically, since it's in the tcb-allowed list for external_body and its callers aren't yet verified, I'll just add the external_body attribute without inventing a spec — that's the minimal, sanctioned approach for an out-of-scope function I'm forced to touch.
+
+Now I need to verify whether unannotated methods inside a `#[verus_verify]` impl block are automatically skipped or if they cause failures. Looking at the verify output, methods like `get_mut` appear in the unverified list rather than failing, which suggests that unannotated methods in a verified impl are simply skipped rather than causing errors.
+[RESULT ✓] bash: 68:#[verus_verify]
+77:impl PhysMemoryManager {
+98:    #[verus_verify(external_body)]
+141:    pub unsafe fn get_mut<'a>() -> &'a mut PhysMemoryManager {
+177:    #[verus_verify(external_body)]
+249:    #[verus_verify(external_body)]
+292:    #[verus_verify(external_body)]
+336:    #[verus_verify(external...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 125.     ///
+126.     /// # Panics
+127.     ///
+128.     /// Panics if the physical memory manager is not initialized.
+129.     ///
+130.     /// # Safety
+131.     ///
+132.     /// This function is unsafe because it returns a mutable reference to a global variable.
+133.     ///
+134.     /// The calle...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+`get_mut` (unannotated, with `panic!`/unsafe) sits in a `#[verus_verify]` impl yet is skipped — confirming unannotated methods are NOT force-verified. So I just need `#[verus_verify]` on the two impl blocks, leaving `clear`/`deref`/`deref_mut` untouched.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm realizing that `get_mut` is an unannotated method inside a `#[verus_verify]` impl block without `#[verus_spec]` or external_body, yet it shows up in the unverified functions list rather than failed—which means unannotated methods in verified impl blocks are actually skipped, not force-verified. But then there's the issue that `get_mut` contains `panic!` and unsafe code, so if it were being verified it would fail. Since the module verifies overall, `get_mut` must be getting skipped entirely.
+
+So for `impl KernelFrame`, I can add `#[verus_verify]` to the impl block itself, keep the `#[verus_spec]` annotations on `new` and `base`, and leave `clear`, `deref`, and `deref_mut` completely untouched—they'll be skipped just like `get_mut`. I don't need to add `external_body` to `clear` at all. The minimal fix is just adding `#[verus_verify]` to both the `impl KernelFrame` block and the `impl Drop for KernelFrame` block, which respects the constraint of not touching unlisted functions.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I just realized my edit accidentally removed the doc comment for the `new` function when I added the `#[verus_verify]` attribute to the impl block. I need to restore those documentation lines.
+[RESULT ✓] view: 63. #[verus_verify]
+64. impl KernelFrame {
+65.     ///
+66.     /// # Parameters
+67.     ///
+68.     /// - `base`: Frame address.
+69.     ///
+70.     /// # Returns
+71.     ///
+72.     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+73.     ///
+74.     #[verus...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+I accidentally dropped the `# Description` doc lines. Let me restore them:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -30

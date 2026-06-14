@@ -60,6 +60,7 @@ impl View for KernelFrame {
 
 } // verus!
 
+#[verus_verify]
 impl KernelFrame {
     ///
     /// # Description
@@ -166,6 +167,7 @@ impl DerefMut for KernelFrame {
     }
 }
 
+#[verus_verify]
 impl Drop for KernelFrame {
     #[verus_spec(
         ensures
