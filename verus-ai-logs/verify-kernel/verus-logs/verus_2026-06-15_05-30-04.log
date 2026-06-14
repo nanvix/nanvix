@@ -1,0 +1,154 @@
+Timestamp: 2026-06-15_05-30-04
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: expected identifier, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:449:13
+    |
+448 |         proof {
+    |         ----- while parsing this struct
+449 |             let addr = frame@;
+    |             ^^^ expected identifier, found keyword
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:451:81
+    |
+448 |         proof {
+    |         ----- while parsing this struct
+...
+451 |             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+    |                                                                   --------------^ expected one of `,`, `:`, or `}`
+    |                                                                   |
+    |                                                                   while parsing this struct field
+    |
+help: try naming a field
+    |
+451 |             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size: spec_page_size());
+    |                                                                   +++++++++++++++
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/mm/phys/frame.rs:452:44
+    |
+448 |         proof {
+    |         ----- while parsing this struct
+...
+452 |             lemma_alloc_contains(self, addr);
+    |                                            ^ expected one of `,`, `:`, or `}`
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/mm/phys/frame.rs:453:43
+    |
+448 |         proof {
+    |         ----- while parsing this struct
+...
+453 |             lemma_alloc_iff_key(self, addr);
+    |                                           ^ expected one of `,`, `:`, or `}`
+
+error: expected `;`, found keyword `if`
+   --> src/kernel/src/mm/phys/frame.rs:454:10
+    |
+454 |         }
+    |          ^ help: add `;` here
+455 |
+456 |         if frame_number >= self.refcount.len() {
+    |         -- unexpected token
+
+error: expected identifier, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:471:13
+    |
+470 |         proof {
+    |         ----- while parsing this struct
+471 |             let i = frame_number as int;
+    |             ^^^ expected identifier, found keyword
+
+error: expected one of `,`, `:`, or `}`, found `@`
+   --> src/kernel/src/mm/phys/frame.rs:472:45
+    |
+470 |         proof {
+    |         ----- while parsing this struct
+471 |             let i = frame_number as int;
+472 |             lemma_refcount_value(self, frame@);
+    |                                        -----^ expected one of `,`, `:`, or `}`
+    |                                        |
+    |                                        while parsing this struct field
+
+error: expected `;`, found `Ok`
+   --> src/kernel/src/mm/phys/frame.rs:473:10
+    |
+473 |         }
+    |          ^ help: add `;` here
+474 |         Ok(self.refcount[frame_number])
+    |         -- unexpected token
+
+error: expected identifier, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:556:13
+    |
+555 |         proof {
+    |         ----- while parsing this struct
+556 |             let addr = phys_addr@;
+    |             ^^^ expected identifier, found keyword
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:560:81
+    |
+555 |         proof {
+    |         ----- while parsing this struct
+...
+560 |             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+    |                                                                   --------------^ expected one of `,`, `:`, or `}`
+    |                                                                   |
+    |                                                                   while parsing this struct field
+    |
+help: try naming a field
+    |
+560 |             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size: spec_page_size());
+    |                                                                   +++++++++++++++
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/mm/phys/frame.rs:561:44
+    |
+555 |         proof {
+    |         ----- while parsing this struct
+...
+561 |             lemma_alloc_contains(self, addr);
+    |                                            ^ expected one of `,`, `:`, or `}`
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/mm/phys/frame.rs:562:43
+    |
+555 |         proof {
+    |         ----- while parsing this struct
+...
+562 |             lemma_free_contains(self, addr);
+    |                                           ^ expected one of `,`, `:`, or `}`
+
+error: expected `;`, found `frame_number`
+   --> src/kernel/src/mm/phys/frame.rs:563:10
+    |
+563 |         }
+    |          ^ help: add `;` here
+564 |         frame_number < nbits
+    |         ------------ unexpected token
+
+error: expected identifier or integer
+   --> src/kernel/src/mm/phys/frame.rs:449:13
+    |
+449 |             let addr = frame@;
+    |             ^^^
+
+error: could not compile `kernel` (bin "kernel") due to 14 previous errors
