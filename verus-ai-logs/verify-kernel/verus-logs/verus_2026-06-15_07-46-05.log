@@ -1,0 +1,40 @@
+Timestamp: 2026-06-15_07-46-05
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+31 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=5
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:742:13
+    |
+742 |             Ok(frame) => {
+    |             ^^^^^^^^^ failed this postcondition
+...
+752 |     instance().alloc()
+    |     ------------------ at the end of the function body
+
+verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

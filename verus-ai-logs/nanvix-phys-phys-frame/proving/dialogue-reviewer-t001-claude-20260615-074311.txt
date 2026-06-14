@@ -270,3 +270,280 @@ Now let me run the verification to establish baseline.
 [THINKING] I need to run the verification command to establish a baseline, starting with `make verify-kernel`. The task specifies the exact Verus commands to use, though some placeholders like `{spec_drift_cmd}` and `{tcb_allowed_file}` are still unfilled—I'll need to interpret what the spec-drift-check skill entails and fill in the appropriate values.
 
 Looking at the verification results, there are 6 remaining `admit()` calls that need to be discharged during the proving phase, which means this currently fails the zero-admits requirement. Let me kick off the full kernel verification to see where we stand.
+[RESULT ✓] bash: ⚠️  external_body: 20
+    ⚠️  admit: 6
+    ⚠️  cfg-gated exec code: 3
+  Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verification results\|verified\|errors\|warning\|0 verified\|error\[" verus-ai-log
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] I'm checking the verification output from the log to see the full results and whether it passed or failed, particularly looking at the error count and exit status.
+[RESULT ✓] bash: 
+<shellId: 3 completed with exit code 0>
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refc...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n -i "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null; ec
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg(" src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.spec.rs src/ke
+
+[THINKING] Looking at the frame.rs file to understand which methods need to be verified in the phys-frame module proof. I'm seeing the external_body methods scattered throughout the file — alloc, alloc_contiguous, free, share, refcount, book, is_covered, alloc_range, instance, and init — though I need to clarify whether these are Inner:: methods or something else based on the line numbers.
+
+Checking against the TCB-allowed.md list, all ten of these external_body declarations appear to be permitted, so that checklist item passes. However, the real work ahead is discharging the six remaining admit() calls in frame.rs at lines 751, 795, 855, 900, 925, and 956 — these are the deferred admits that need to be proven during this phase.
+
+Now I need to verify the cfg-gated exec code count. The grep found only two cfg directives in frame.rs at lines 49 and 52, both of which are include! statements for spec and proof files rather than exec code branches. But the module summary reports three cfg-gated exec items, so I should look more carefully at the full cheating-detail output to understand where that third one is coming from.
+[RESULT ✓] bash: === full detail tail ===
+<shellId: 5 completed with exit code 0>
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:49:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:52:#[cfg(verus_keep_ghost)]
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg(" src/kernel/src/mm/phys/ | grep -v "\.rs~"; echo "=== logs dir ==="; ls veru
+
+[THINKING] I'm looking at how the tool counts cfg-gated execution code and need to examine the cheating detail file and logs more carefully. The summary shows cfg_gate=9 globally with 3 cfg-gated exec code entries for the module, so I should check the actual report generator or cfg detail file to understand the breakdown. I notice the two cfg instances in frame.rs are `include!` statements for spec and proof code, which are standard includes.
+[RESULT ✓] bash: src/kernel/src/mm/phys/kframe.rs:15:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/kframe.rs:17:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/kframe.rs:32:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/kframe.rs:47:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/upool.rs:9:#[cfg(verus_keep_ghost...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -10 && echo "=== status ===" && git --no-pager status --short 
+
+[THINKING] Looking at the cfg attributes in the module — there are test-gated sections in mod.rs marked with `#[cfg(feature = "test")]` at a few different lines, but frame.rs only has the standard `#[cfg(verus_keep_ghost)]` includes for ghost code handling.
+
+The real focus now is the six admits scattered throughout the proof — that's what this phase needs to eliminate. The verification technically passes because of them, but that's the whole point of the proving phase. I should check if there's a spec-drift comparison available to see what's changed from the original specification, then work through each checklist item systematically.
+[RESULT ✓] bash: 52d779150 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=6 external_body=22 cfg_gate=9)
+55c0712aa [verus-ai] proving scaffold END: phys-frame
+a353a4f85 [verus-ai] proving prover END: phys-frame
+b2ff8f7b6 [verus] verify PASS (cheating detected): kernel:...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-phys-frame/ && echo "=== todo ===" && cat verus-ai-logs/nanvix
+
+[THINKING] The verification shows 32 verified with 0 errors, but there are 6 admits that need to be discharged during the proving phase. Looking at the verification-todo analysis, these admits appear to be blocked by the frozen specs themselves—meaning the current specifications make them impossible to prove, which could indicate a rollback is needed.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verification-todo.md
+view-design
+view_design.md
+=== todo ===
+# Verification TODO — `src/kernel/src/mm/phys/frame.rs`
+
+Sta...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The core issue is 6 deferred `admit()`s. Let me empirically test whether they can be discharged by removing one and observing the verifier error.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/frame.rs /tmp/frame.rs.bak && python3 - <<'EOF'
+import re
+p='src/
+
+[THINKING] I need to carefully examine whether the prover's claim that these 6 admits are false against the fixed `phys_view()` function holds up. The architecture here is that `phys_view()` is defined as an uninterpreted specification function returning a constant PhysMemView, and I'm trying to understand how the shim contract relates to this.
+
+The shim's postcondition requires that after allocation, the frame appears in `phys_view().frames.allocated_frames`, but `instance()` ensures that `(*result)@` equals `phys_view().frames` at the time of initialization. After `instance().alloc()` mutates the internal state, `(*result)@` changes while `phys_view().frames` remains fixed at its pre-state value. This creates a tension: the postcondition demands the frame be in the pre-state's allocated set, but in the pre-state it was free, which contradicts the well-formedness disjointness property.
+
+But wait—I should reconsider whether the obligation is genuinely false or if there's a proof strategy I'm missing. The crucial insight is that `phys_view()` is an uninterpreted function with no arguments, so within a single proof context it's a constant. When `instance()` is called once and establishes `(*result)@ == phys_view().frames`, that relationship holds at that moment. After the allocation mutates the internal state, `(*result)@` changes but `phys_view().frames` doesn't—it's still the same constant value from the pre-state.
+
+The real question is whether `phys_view()` is semantically supposed to reflect the current post-mutation state of the singleton, or if it's meant to be a snapshot.  If it's meant to be current, then modeling it as a pure constant function is the design flaw — Verus has no mechanism to track that it changed after the mutation. The shim's obligation to prove `phys_view().frames.allocated_frames.contains(frame@)` in the post-state is genuinely unprovable under these frozen specs, which suggests this is a fundamental spec-design issue rather than a prover error.
+
+The potential lever is `instance()`'s contract — it's in the TCB-allowed list as the bridge axiom. If its ensures could be strengthened to relate pre and post states, or if `phys_view()` itself were redefined to re-read the singleton's current state, the shim might become provable. But both of those would require modifying the trust boundary or the frozen specs, which raises the question of whether `instance()`'s spec is actually modifiable or locked as part of the bridge definition. unprovable as long as `phys_view()` is a constant and `instance()` bridges to it. The real fix requires either making `phys_view()` state-indexed or giving `instance()` a spec that re-pins it to the post-state, but both hit the same wall: `instance()` runs before the mutation, so it can't establish post-mutation relationships, and the Inner methods are frozen anyway. I'm wondering if the shim could call `instance()` again after the mutation to re-establish the bridge in the post-state world, rather than trying to thread the relationship through a single instance call.
+
+But that creates a soundness problem: calling `instance()` twice around a mutation, where each call asserts `(*result)@ == phys_view().frames`, forces the pre-state and post-state to be equal. Combined with the mutation's ensures (which say post = pre.insert(frame)), this derives a contradiction. Verus wouldn't flag this as unsound—it would just let you prove anything from the inconsistent assumptions. That's a real flaw in the bridge axiom design, but exploiting it to discharge admits would be cheating via inconsistency, not a legitimate proof.
+
+So the six admits are genuinely unprovable without either breaking the spec or introducing unsound reasoning.
+
+My role here is to walk the checklist as the reviewer and write fix requests in the driver file, not to attempt fixes myself. For this turn, I should complete the full checklist, mark the admits as a FAIL, and write a focused fix request explaining that the specification needs to model `phys_view()` as state-indexed or add a diffing mechanism so the post-state facts become both true and provable. The fixer will attempt in subsequent turns, and only after multiple failed attempts should rollback be considered.
+
+Let me run a concrete experiment to verify the prover's claim: I'll remove the admit in `alloc()` and capture the actual error message to provide as evidence in my review.
+[RESULT ✓] bash: patched
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verified|admit|fail|
+[RESULT ✓] bash: VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Confirmed: removing the admit yields `error: postcondition not satisfied` at `instance().alloc()` (31 verified, 1 error). Restoring the file now.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp /tmp/frame.rs.bak src/kernel/src/mm/phys/frame.rs && git --no-pager diff --stat src/kern
+
+[THINKING] Removing the admit triggers a postcondition failure on `instance().alloc()`, confirming the obligation isn't provable in its current form. I've captured enough detail to understand the issue—now I need to determine whether this postcondition is actually false or just lacks the necessary proof, and my analysis suggests it's a structural problem with how the condition is stated.
+
+As a fair reviewer in the first pass, I should request that the fixer discharge the admit rather than immediately rolling back—they can either find a legitimate proof or demonstrate why it's impossible. But let me reconsider whether there's a local proof path: `instance()` isn't on the do-not-modify list and is a valid target for strengthening its contract. The core tension is that `instance()` returns before any mutation happens, yet the postcondition claims the returned reference's state matches `phys_view().frames` after mutation. Strengthening `instance()`'s ensures to express a two-state relation or adding tracked ghost state to thread a token through the mutation would be needed, but the Inner method specs are frozen and don't support that threading.
+
+I'm convinced this is a genuine spec-design limitation. Per protocol, my job in turn 1 is to fail the admit and request a fix: discharge all 6 admits, show `make verify-kernel` with admit=0, and explicitly address the "false obligation" claim—if it's truly false, the fixer must produce an isolated reproducer and we escalate to rollback. I should also restore the driver file and walk through the full checklist for this pass.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs | 6 ++++++
+ 1 file changed, 6 insertions(+)
+restored
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking whether the diff is actually empty or if HEAD is missing the admit comment that's in my current file. The git diff output seems to be showing changes when it shouldn't, so I need to verify what's actually different between my working copy and HEAD.
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/frame.rs b/src/kernel/src/mm/phys/frame.rs
+index e4a7b7662..7ce39a358 100644
+--- a/src/kernel/src/mm/phys/frame.rs
++++ b/src/kernel/src/mm/phys/frame.rs
+@@ -749,6 +749,12 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
+         },
+ )]
+ pub(supe...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== HEAD alloc shim ===" && git --no-pager show HEAD:src/kernel/src/mm/phys/frame.rs 
+
+[THINKING] I'm realizing there's a discrepancy in the diff — the working tree shows the admit block being added to `alloc()`, but HEAD should already have it from the last commit. Let me trace through this more carefully to understand what's actually in each version.
+[RESULT ✓] bash: === HEAD alloc shim ===
+                &&& phys_view().frames.refcounts.contains_key(frame@)
+                &&& phys_view().frames.refcounts[frame@] == 1
+            },
+            Err(_) => phys_view().frames.free_frames.is_empty(),
+        },
+)]
+pub(super) fn alloc() -> Result<FrameAddress, Erro...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager status --short src/kernel/src/mm/phys/ && echo "=== worktree admit lines ===
+
+[THINKING] I'm noticing a discrepancy in the git state—HEAD shows 5 admits while the working tree had 6 at the start of my session, but git status showed frame.rs as clean. Let me trace back through the earlier status output to understand what was actually being tracked. The working tree currently has 6 admits (restored from backup), which matches what the verification docs describe, while HEAD only has 5 — likely because the pipeline auto-committed an intermediate state or the alloc admit was added after the last commit. Rather than getting caught up in the git history discrepancy, I should focus on confirming the current state is consistent and ready for the fixer to work with.
+[RESULT ✓] bash: M src/kernel/src/mm/phys/frame.rs
+=== worktree admit lines ===
+756:        admit();
+797:        admit();
+857:        admit();
+902:        admit();
+927:        admit();
+956:        admit();
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -4 && echo "=== reflog ===" && git --no-pager reflog -6
+
+[THINKING] I'm noticing a discrepancy — frame.rs showed as clean at the start, meaning the worktree should've matched HEAD, but when I read the file initially, it already contained the alloc admit block that shouldn't have been there. Let me verify what I actually saw in that first read of the file. The verify pipeline likely auto-commits on pass, so verify1's successful run probably committed the 6-admit version to HEAD. But verify2 failed, and I'm not sure if failed runs still commit — the commit messages I saw were all "[verus] verify PASS" format. This discrepancy between HEAD showing 5 admits and my worktree showing 6 is puzzling, but checking the git log should clarify whether new commits appeared during the session.
+[RESULT ✓] bash: 95a5b8008 [verus] verify FAIL: kernel::mm::phys (31 verified, 1 errors)
+52d779150 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=6 external_body=22 cfg_gate=9)
+55c0712aa [verus-ai] proving scaffold END: phys-frame
+a353a4f85 [verus-ai] proving prover EN...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+My verify experiment auto-committed a broken state (`95a5b8008`). I need to clean up: reset HEAD to the good `admit=6` commit and restore the file.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admits in 52d779150 ===" && git --no-pager show 52d779150:src/kernel/src/mm/phys/
+
+[THINKING] The `make verify-kernel` pipeline auto-commits, and my verify2 experiment created a broken commit with 5 admits that's now in git history, while my worktree has 6 admits. I need to clean this up since HEAD is stuck at the broken state and the history is polluted.
+
+I'll do a soft reset back to the good commit (52d779150 with 6 admits) to move HEAD without touching the worktree, then restore frame.rs from that commit to ensure it has the correct 6-admit version. This way I can preserve the dialogue log modifications while cleaning up the git state.
+[RESULT ✓] bash: === admits in 52d779150 ===
+6
+=== after cleanup ===
+52d779150 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=6 external_body=22 cfg_gate=9)
+55c0712aa [verus-ai] proving scaffold END: phys-frame
+6
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Cleanup complete — HEAD restored to the good `admit=6` commit, worktree clean. I have all evidence needed. Now writing the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue && ls verus-ai-logs/nanvix-p
+
+[THINKING] Good, I've reset HEAD back to the passing commit with 6 admits and verified that frame.rs is clean. The broken commit is now orphaned, so I have all the evidence needed to assess the checklist. Let me work through each item to confirm nothing was weakened.
+
+For spec drift, I'm comparing the frozen specs against the current state — the do-not-modify methods (Inner::*, phys_view, FrameAllocView) remain unchanged, and frame.spec.rs only contains the View implementation, internal invariant, and the lemma for free_count. The shim specs are intact with their full post-state ensures, which means they're actually stronger than before, not weakened. That's a PASS.
+
+However, I'm seeing 6 remaining admits across alloc, alloc_contiguous, free, book, alloc_range, and share — that's a FAIL on the zero-admits requirement. For external_body, all 10 instances in frame.rs (the Inner methods plus instance and init) are listed in tcb-allowed.md, so that's a PASS. Now I need to verify there are no assume or assume_specification calls remaining. The verification-todo.md claim about the constant phys_view limitation lacks an isolated reproducer—it's tied to the admit issue, so the fixer needs to either resolve it or demonstrate that it's genuinely impossible. The free_count split into nbits/used bindings is semantically equivalent and minimal, so that passes. The full kernel verification shows 32 verified with 0 errors and 0 warnings, but that's only because the admits are masking the real issues—I should run the complete suite once those are addressed.
+
+The primary failure cascades from the six admits, which dominate items 6, 7, and 10. Per protocol, I'm writing the fix request for turn 1 without creating a STOP file or rollback yet—the fixer needs to attempt local fixes first. The analysis strongly suggests the admits encode false obligations against the frozen phys_view constant, pointing toward a specification-level fix, but I need to drive the fixer through the standard flow: request, attempt, then escalate to rollback if they demonstrate impossibility with an isolated reproducer.
+
+Writing the turn_001_driver.md file now...
+[RESULT ✓] bash: 
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md with 6478 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Turn 1 review complete. Walked the entire checklist against actual code and tool output.
+
+**Results (`frame.rs` proving phase):**
+
+| Item | Result |
+|---|---|
+| No specs weakened | ✅ PASS |
+| Zero `external_body` unless TCB-allowed | ✅ PASS (all 10 listed in `tcb-allowed.md`) |
+| Zero `assume`/`assume_specification` | ✅ PASS (`assume=0`) |
+| No cfg-gated exec code | ✅ PASS (only ghost `include!`) |
+| Exec rewrites minimal/equivalent | ✅ PASS |
+| **Zero remaining `admit()`** | ❌ **FAIL — 6 admits** |
+| Isolated reproducer for claimed limitation | ❌ not provided |
+| Cheating audit | `admit=6 external_body=10(allowed) assume=0 cfg=0` in `frame.rs` |
+| Cross-module regression / 0-err-0-warn build | ⏳ blocked on admits |
+
+**Primary FAIL:** 6 deferred `admit()`s in the mutating shims (`alloc` 756, `alloc_contiguous` 797, `free` 857, `book` 902, `alloc_range` 927, `share` 956). I empirically confirmed they're load-bearing — removing the `alloc` admit gives `error: postcondition not satisfied` (31 verified, 1 error).
+
+**Fix request** written to `turn_001_driver.md`: discharge all 6 admits (note `instance()` is modifiable and is the one lever to try), verify `admit=0`/0 errors via `make verify-kernel MODULE=mm::phys`. Justification text is not accepted — if genuinely impossible, the fixer must supply an isolated reproducer + proof that strengthening `instance()` fails before ROLLBACK is considered.
+
+I did **not** create `STOP` (items remain) or `ROLLBACK` (fixer must attempt first). Cleaned up my experiment: an auto-commit captured the broken state (`95a5b8008`); I reset HEAD back to the good `admit=6` commit `52d779150` and restored `frame.rs` (worktree clean).
+
+[THINKING] I've completed the turn 1 driver file and won't create the STOP or ROLLBACK files yet since the checklist items are still unverified and the fixer hasn't attempted any fixes. My role for this turn was to walk through the checklist and write the fix request, which is done—any further action depends on the fixer's response.
+
+Let me verify the repo state: the frame.rs worktree is clean and matches the HEAD commit, the orphaned FAIL commit is dangling but not on any branch, and the dialogue and turn_001_driver.md files are in place.
+
+
+=== Session End ===
+Session: ecebaf79-a858-4775-abad-6cac1297fe48
+Duration: 354.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-reviewer-t001-claude-20260615-074311.jsonl
