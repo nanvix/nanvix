@@ -829,3 +829,132 @@ VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z bu
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passed (exit 0). Let me confirm the cheating detail locations and that pte module verified with no errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-arch/verus-l
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -in "pte\|verification results\|verified\|error" verus-ai-logs/verify-
+[RESULT ✓] bash: === cheating-detail.txt ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 27 completed with exit code 0>
+[RESULT ✓] bash: 19:note: verifying module x86::mem::paging::pte
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Inspecting verification logs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_01-34-23.log
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_01-34-23
+2. Mode: cargo
+3. Crate: arch
+4. Directory: N/A
+5. Module: <all>
+6. Exit code: 0
+7. cached (no recompilation)
+8. —
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=3
+13.   admit=0
+14.   trusted=0
+15.   no_decreases=0
+16.   cfg_gate=2
+17. 
+18. --- Full o...
+[RESULT ✓] view: 1.     - x86/mem/paging/mod.rs:80 invlpg: external_body
+2.     - x86/mem/paging/table.rs:209 read: external_body
+3.     - x86/mem/paging/table.rs:246 write: external_body
+4. 
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me see the full verus log to confirm the verification result count.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_01-34-19.log 2>&1
+[RESULT ✓] bash: Timestamp: 2026-06-15_01-34-19
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+note: verifying module x86::mem::paging::pte
+
+    Fin...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Result was cached. To independently confirm the actual verified-count, let me force a fresh verification of the pte module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "verus-module\|--module\|VERUS_MODULE\|cached\|recompil" scripts/ve
+[RESULT ✓] bash: 42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+66:        --module)
+239:        VERIFIED="cached (no recompilation)"
+612:# When --module is given, narrow coverage to that module's files only.
+776:    if ! git diff --cached --quiet 2>/dev/null; then
+<shellId: 30 comple...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '230,250p' scripts/verify.sh
+[RESULT ✓] bash: ERRORS="$(grep -oP '\d+ errors' "$TMPFILE" | tail -1)"
+
+# If no "verification results:" line appeared, there are two cases:
+#   1. VERUS_EXIT == 0: genuine cache hit — Verus skipped re-verification.
+#   2. VERUS_EXIT != 0: compilation or other error prevented Verus from running.
+# Only case 1 is a t...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'PY'
+import re, json
+from pathlib import Path
+
+repo = Path('.')
+[RESULT ✓] bash: {
+  "module_counts": {
+    "admit": 0,
+    "assume": 0,
+    "external_body_attr": 0,
+    "assume_specification": 0,
+    "cfg_total": 2,
+    "cfg_gated_exec": 0,
+    "cfg_include_only": 2
+  },
+  "module_locations": {
+    "admit": [],
+    "assume": [],
+    "external_body_attr": [],
+    "assume_specifi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me bust the cargo cache by touching the source (content unchanged) and re-run the pte module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/pte.rs src/libs/arch/src/x86/mem/pag
