@@ -94,8 +94,17 @@ impl PhysMemoryManager {
     // abstract model (the do-not-modify `PhysMemView` only tracks the allocator);
     // the contract therefore states the caller-relevant guarantee: the global
     // frame allocator stays initialized and well-formed across this call.
+    #[allow(verus_impl_method_marker)]
     #[verus_verify(external_body)]
-        pub(super) fn init(upool: Upool) -> Result<(), Error> {
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+    )]
+    pub(super) fn init(upool: Upool) -> Result<(), Error> {
         if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
             return Err(Error::new(
                 ErrorCode::InvalidArgument,
@@ -176,12 +185,12 @@ impl PhysMemoryManager {
             phys_view().initialized,
             match result {
                 Ok(()) => {
-                    &&& frames@.len() == count
+                    &&& final(frames)@.len() == count
                     &&& forall|i: int|
                         0 <= i < count as int ==>
-                            #[trigger] phys_view().frames.allocated_frames.contains(frames@[i]@)
+                            #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
                 },
-                Err(_) => frames@.len() == 0,
+                Err(_) => final(frames)@.len() == 0,
             },
     )]
     pub fn alloc_many_user_frames(
@@ -275,8 +284,22 @@ impl PhysMemoryManager {
     // `KERNEL_WATERMARK + count`. Pure gate, no allocator state change. `Ok` exactly
     // captures the watermark policy: at least `KERNEL_WATERMARK` frames remain free
     // after servicing `count`. `Err` covers both the overflow guard and a breach.
+    #[allow(verus_impl_method_marker)]
     #[verus_verify(external_body)]
-        fn check_user_watermark(count: usize) -> Result<(), Error> {
+    #[verus_spec(result =>
+        requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+            phys_view().frames.free_frames.finite(),
+            match result {
+                Ok(()) => spec_watermark_ok(phys_view().frames, count as int),
+                Err(_) => true,
+            },
+    )]
+    fn check_user_watermark(count: usize) -> Result<(), Error> {
         let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
             .checked_add(count)
             .ok_or_else(|| {
@@ -369,14 +392,14 @@ impl PhysMemoryManager {
             phys_view().initialized,
             match result {
                 Ok(()) => {
-                    &&& frames@.len() == count
+                    &&& final(frames)@.len() == count
                     &&& forall|i: int|
                         0 <= i < count as int ==>
-                            #[trigger] phys_view().frames.allocated_frames.contains(frames@[i]@)
+                            #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
                     &&& exists|base: int|
-                        is_contiguous_run(frames@.map_values(|kf: KernelFrame| kf@), base)
+                        is_contiguous_run(final(frames)@.map_values(|kf: KernelFrame| kf@), base)
                 },
-                Err(_) => frames@.len() == 0,
+                Err(_) => final(frames)@.len() == 0,
             },
     )]
     pub fn alloc_many_kernel_frames(

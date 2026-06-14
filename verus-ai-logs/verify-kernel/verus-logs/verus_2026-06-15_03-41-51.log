@@ -1,0 +1,146 @@
+Timestamp: 2026-06-15_03-41-51
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: `config::kernel::KERNEL_WATERMARK` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+  --> src/kernel/src/mm/phys/manager.spec.rs:33:5
+   |
+33 |     config::kernel::KERNEL_WATERMARK as int
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: cannot use type `kernel::mm::phys::manager::PhysMemoryManager` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/manager.rs:197:9
+    |
+197 |         &mut self,
+    |         ^^^^^^^^^
+...
+263 |     pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+    |                             ---------
+...
+348 |     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+    |                               ---------
+...
+406 |         &mut self,
+    |         ---------
+
+error: cannot use type `kernel::mm::phys::upool::UserFrame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/manager.rs:199:9
+    |
+182 |               old(frames)@.len() == 0,
+    |               ------------------
+...
+188 |                       &&& final(frames)@.len() == count
+    |                           --------------------
+...
+191 |                               #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
+    |                                                                                       ------------------
+192 |                   },
+193 |                   Err(_) => final(frames)@.len() == 0,
+    |                             --------------------
+...
+199 |           frames: &mut Vec<UserFrame>,
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+255 |               match result {
+    |                     ------
+256 |                   Ok(frame) => {
+    |                   ---------
+257 |                       &&& phys_view().frames.allocated_frames.contains(frame@)
+    |                                                                        ------
+258 |                       &&& frame@ % spec_page_size() == 0
+    |                           ------
+259 |                   },
+260 |                   Err(_) => true,
+    |                   ------
+...
+263 |       pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
+    |                                             ------------------------
+    |
+   ::: src/kernel/src/mm/phys/upool.rs:38:1
+    |
+ 38 | / impl View for UserFrame {
+ 39 | |     type V = int;
+    | |     -------------
+ 40 | |
+ 41 | |     closed spec fn view(&self) -> int {
+    | |                         -----
+ 42 | |         self.addr@
+    | |         ---------
+ 43 | |     }
+ 44 | | }
+    | |_-
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExUserFrame(crate::mm::phys::upool::UserFrame);
+
+error: cannot use type `kernel::mm::phys::kframe::KernelFrame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/phys/kframe.rs:50:25
+    |
+ 47 | / impl View for KernelFrame {
+ 48 | |     type V = int;
+    | |     -------------
+ 49 | |
+ 50 | |     closed spec fn view(&self) -> int {
+    | |                         ^^^^^
+ 51 | |         self.base@
+    | |         ---------
+ 52 | |     }
+ 53 | | }
+    | |_-
+    |
+   ::: src/kernel/src/mm/phys/manager.rs:340:19
+    |
+340 |               match result {
+    |                     ------
+341 |                   Ok(frame) => {
+    |                   ---------
+342 |                       &&& phys_view().frames.allocated_frames.contains(frame@)
+    |                                                                        ------
+343 |                       &&& frame@ % spec_page_size() == 0
+    |                           ------
+344 |                   },
+345 |                   Err(_) => true,
+    |                   ------
+...
+348 |       pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+    |                                               --------------------------
+...
+389 |               old(frames)@.len() == 0,
+    |               ------------------
+...
+395 |                       &&& final(frames)@.len() == count
+    |                           --------------------
+...
+398 |                               #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
+    |                                                                                       ------------------
+399 |                       &&& exists|base: int|
+400 |                           is_contiguous_run(final(frames)@.map_values(|kf: KernelFrame| kf@), base)
+    |                                             ------------------------------------------------
+401 |                   },
+402 |                   Err(_) => final(frames)@.len() == 0,
+    |                             --------------------
+...
+408 |           frames: &mut Vec<KernelFrame>,
+    |           -----------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExKernelFrame(crate::mm::phys::kframe::KernelFrame);
+
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors

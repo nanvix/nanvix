@@ -1003,3 +1003,271 @@ Let me test a simpler hypothesis: what if the issue is specifically with having 
 Turn 51
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|verification:|status:
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+=== Verus Verification (cargo mode) ===
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+error: to dereference a mutable reference parameter in a postcondition, disa...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Confirmed: `verus_spec` on no-receiver associated fns is the bug. Also need `final()`/`old()` for `&mut` params. Let me search for any working pattern of `verus_spec` on no-`self` associated fns in the broader codebase.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "verus_spec" src/ | wc -l; echo "=== assoc fns with verus_spec and no self (heuris
+
+[THINKING] Good news—the no-self `init` and `check_user_watermark` errors disappeared, which confirms that `verus_spec` on no-self associated functions was the issue. Now I'm hitting a different problem: the verifier wants me to disambiguate mutable reference parameters in postconditions by wrapping them in either `old` or `final`. The issue is with `frames@` in my `alloc_many_*` ensures clauses—I'm using `frames@.len()` but since `frames` is a `&mut Vec` parameter, I need to clarify whether I'm referring to its state before or after the function executes.
+
+Looking at how the existing `frame.rs` handles this with `final(self)@` and `old(self)@`, I should apply the same pattern: use `final(frames)@` in ensures to refer to the post-state and `old(frames)@` in requires for the pre-state. The error count of 2 matches the two `alloc_many_*` functions, so I need to update all instances of `frames@` in their ensures clauses to `final(frames)@`, including nested accesses like `frames@[i]@` and `frames@.map_values`. Once I fix this, I'll circle back to properly restoring the specs on the no-self functions with the right workaround.
+
+For the no-self associated functions like `init` and `check_user_watermark`, the macro issue might stem from how Verus generates the dual-spec companion functions—it may need explicit `Self::` prefixes for associated functions. I'm exploring whether the `#[verus_spec]` annotation works differently when there's no `self` parameter, or if I need to adjust the ensures clause format (maybe omitting the `result =>` arrow for functions that don't return a meaningful result). I'm spiraling on the macro expansion details. Let me step back and try a direct approach: run the compiler with macro expansion output to see exactly what code gets generated for these no-self methods, or test whether using the raw `#[verifier::external_body]` attribute instead of the `#[verus_verify]` wrapper changes the behavior. I need to see the actual generated code to understand why the function lookup is failing.
+[RESULT ✓] bash: 51
+=== assoc fns with verus_spec and no self (heuristic): functions where next non-attr line has 'fn NAME(' without self ===
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+
+[THINKING] There's no existing pattern in the codebase for using `#[verus_spec]` without self-association, so this approach is untested. I need to find a different solution, which means looking at how the `#[verus_spec]` attribute itself is implemented to understand what helper it might be generating.
+[RESULT ✓] bash: 343:pub fn verus_spec(
+347:    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into()
+352:/// Using proof_with! to tell #[verus_spec] to add ghost input/output.
+353:/// Using proof_with outside of #[verus_spec] does not have any side effects.
+<shellId: 31 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+[RESULT ✓] bash: 428:pub(crate) fn rewrite_verus_spec(
+518:pub(crate) fn rewrite_verus_spec_on_item_const(
+550:pub(crate) fn rewrite_verus_spec_on_item_static(
+582:pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
+866:fn rewrite_verus_spec_on_expr_local(
+    replacer.visit_block_mut(fblock);
+}
+
+pub(crate) fn replace_...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && se
+[RESULT ✓] bash: pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
+    erase: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    f: AnyFnOrLoop,
+) -> proc_macro::TokenStream {
+    match f {
+        AnyFnOrLoop::Fn(mut fun) => {
+            // Note: trait default methods appear in this case,
+            /...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && se
+[RESULT ✓] bash: let spec_stmts =
+                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
+
+            if erase.erase() {
+                // In erase mode, just return the stub functions.
+                // No need to add proof statements.
+                fun.to_tokens(&mut new_str...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+
+[THINKING] The `is_impl_fn` flag gets determined by checking for a `verus_impl_method_marker` attribute that the `verus!{}` macro adds when processing impl methods. When a function has `#[verus_spec]` directly in a plain `impl` block outside of `verus!{}`, this marker won't be present, so `is_impl_fn` becomes false and gets passed to `sig_specs_attr`.
+
+The requires/ensures handling differs based on whether `is_impl_fn` is true or false — particularly in how `Self` and return values are treated. But the alloc_* methods are also impl methods with `#[verus_spec]` directly (not in verus!), so they'd also have `is_impl_fn=false`, yet they work fine. So the real issue isn't about `is_impl_fn` — it's about whether the function has `self` at all.
+
+The "cannot find function `init`" error is a name resolution problem where `init` is being referenced as a value or function call somewhere. This could happen if the macro generates a spec reference like `when_used_as_spec(init)` or a `broadcast use init`, or if it's trying to reference `init` as a spec function in the ensures clause.
+
+Let me trace through `sig_specs_attr` to see how it handles the requires/ensures generation and whether it's creating an invalid reference to the function name.
+[RESULT ✓] bash: 5153:pub(crate) fn sig_specs_attr(
+pub(crate) fn sig_specs_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: SignatureSpecAttr,
+    sig: &mut syn::Signature,
+    is_impl_fn: bool,
+    is_closure: bool,
+) -> Vec<Stmt> {
+    let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
+    let mut spec_stm...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+
+[THINKING] I'm tracing through how `take_sig_specs` uses the function identifier that's passed in — specifically looking at where `init` gets invoked as a callable within that function.
+[RESULT ✓] bash: 530:    fn take_sig_specs<TType: ToTokens>(
+    fn take_sig_specs<TType: ToTokens>(
+        &mut self,
+        spec: &mut SignatureSpec,
+        ret_pat: Option<&Pat>,
+        ret_ty: Option<&TType>,
+        _span: Span,
+        // is the function a ImplItemFn or TraitImplFn
+        is_impl_fn: bool...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && aw
+
+[THINKING] I'm looking at how the code handles the return value identifier—if the pattern matches the function name itself, it uses a generated identifier instead. This matters for ensures clauses that reference `returns` or `decreases` in relation to the function.
+
+Let me trace through where `fn_ident` and the spec clauses actually generate references back to the function. The `decreases` builtin might create a stub spec function that references the original function, and I need to find where that happens in the signature specs handling.
+[RESULT ✓] bash: is_impl_fn: bool,
+        fn_ident: &Ident,
+        let returns = self.take_ghost(&mut spec.returns);
+        let (self_token_op, args) = inputs;
+            Some(Pat::Ident(pat)) if pat.ident != *fn_ident => &pat.ident,
+                                    match (is_impl_fn, self_token_op) {
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && gr
+
+[THINKING] I'm realizing that the `#receiver_token#fn_ident#generics_token(#args)` pattern is specifically generated for async functions through the `get_future_output_type` function, and I'm looking at the match statement that handles this case where it wraps the return type constraint.
+[RESULT ✓] bash: 712:                                    match (is_impl_fn, self_token_op) {
+                                    match (is_impl_fn, self_token_op) {
+                                        (true, None) => Some(quote_spanned!(token.span => Self::)),
+                                        (true, Some(...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/verus_builtin_macros-0.0.0-2026-05-31-0205/src && se
+
+[THINKING] I'm seeing how the `constrain_type` block generates a function call expression like `Self::init(args)` or `init(args)` to constrain the return type when the ensures clause uses a `ret_pat` that needs type inference. I need to trace back to find the condition that determines when this branch gets taken.
+
+The key insight is that when `is_impl_fn` is false (because the function isn't marked inside verus!) and there's no self receiver, the `receiver_token` becomes `None`, which produces a bare `init(...)` call instead of `Self::init(...)`. That's the bug—the bare call doesn't resolve for associated functions. The `&mut self` functions work because they have a receiver, generating `self.alloc_...()` which resolves correctly. Free module-level functions work because they're genuinely free, so `init(args)` resolves. The problem is specifically with impl associated functions that lack the `is_impl_fn` marker.
+
+The fix would be to set `is_impl_fn` to true, which requires the `verus_impl_method_marker` attribute added when the impl block is processed by `verus!{}`. But these functions live in manager.rs outside verus!, using `#[verus_spec]` on plain exec functions instead. I need to understand why `constrain_type` is even being generated—it should only appear when there's a `ret_pat` binding that needs type constraining, so I should check the condition wrapping that code generation.
+[RESULT ✓] bash: };
+                if cont {
+                    if let Some(ty) = ret_ty {
+                        if is_closure {
+                            // closures cannot return impl xxx so it's safe to
+                            spec_stmts.push(Stmt::Expr(
+                                Expr::Verbatim(
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Found the root cause. The macro generates `#fn_ident(#args)` (a self-call to constrain the return type) for any exec fn with ensures + return type. For `&mut self` fns it becomes `self.alloc(...)`; for no-`self` associated fns it becomes a bare `init(...)` instead of `Self::init(...)` — unresolvable. The fix: mark the fn as an impl method via the hidden `#[allow(verus_impl_method_marker)]` attribute, which flips `is_impl_fn` to true → generates `Self::init(...)`.
+
+Let me restore the full backup and apply this fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp /tmp/manager.rs.bak src/kernel/src/mm/phys/manager.rs && grep -n "verus_spec\|verus_veri
+
+[THINKING] So `constrain_type` gets generated whenever there's an `ensures` clause with a return type on a non-closure function, pulling in the quantifier triggers from the extraction. That means all my functions with return types and ensures clauses—like `check_user_watermark` and `alloc_user_frame`—would be generating this token-based receiver pattern, but I'm running into an issue with how `&mut self` is being handled.
+
+The ones with `self.` prefix work fine, but the bare functions like `init` and `check_user_watermark` generate unqualified calls like `init(args)` and `check_user_watermark(args)`, which fail. Both of these have return types and ensures clauses, so they're triggering the constrain_type generation. The fix is to set `is_impl_fn = true` so it generates `Self::init(args)` instead. The `verus_impl_method_marker` attribute is normally added by the `verus!` macro when expanding impl blocks, but since these functions aren't inside `verus!`, I can manually add `#[allow(verus_impl_method_marker)]` to trick the marker detection into treating them as impl methods, which then gets stripped before output.
+[RESULT ✓] bash: 97:    #[verus_verify(external_body)]
+98:    #[verus_spec(result =>
+106:    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+176:    #[verus_verify(external_body)]
+177:    #[verus_spec(result =>
+195:    pub fn alloc_many_user_frames(
+246:    #[verus_verify(external_body)]
+247:    #[verus_spec...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to check the full annotation blocks for the `init` and `check_user_watermark` functions to properly apply the marker attribute.
+[RESULT ✓] view: 95.     // the contract therefore states the caller-relevant guarantee: the global
+96.     // frame allocator stays initialized and well-formed across this call.
+97.     #[verus_verify(external_body)]
+98.     #[verus_spec(result =>
+99.         requires
+100.             phys_view().initialized,
+101. ...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 286.     #[verus_verify(external_body)]
+287.     #[verus_spec(result =>
+288.         requires
+289.             phys_view().initialized,
+290.             phys_view().inv(),
+291.         ensures
+292.             phys_view().inv(),
+293.             phys_view().initialized,
+294.             phys_view()....
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+Now I'll add the `#[allow(verus_impl_method_marker)]` marker to the two no-`self` functions to flip `is_impl_fn` to true:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Now fix the `&mut` postcondition disambiguation errors. Let me view the alloc_many functions' signatures and specs:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The `&mut` reference errors are coming from the four verus_spec functions that made it past name resolution—specifically `alloc_many_user_frames` and `alloc_many_kernel_frames`, which take mutable vector parameters that need dereferencing in postconditions.
+[RESULT ✓] view: 177.     #[verus_verify(external_body)]
+178.     #[verus_spec(result =>
+179.         requires
+180.             phys_view().initialized,
+181.             phys_view().inv(),
+182.             old(frames)@.len() == 0,
+183.         ensures
+184.             phys_view().inv(),
+185.             phys_view()....
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to clarify the ambiguity in the `frames@` references within the ensures clause by using `final(frames)@` instead, since `frames` is a mutable reference. The `old(frames)@` in requires is already correct, but I should update the ensures conditions for `alloc_many_user_frames` to replace `frames@.len()` with `final(frames)@.len()` and similarly update the array access patterns.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 383.     // (contiguity is load-bearing for kernel stacks). On error the vector is emptied.
+384.     #[verus_verify(external_body)]
+385.     #[verus_spec(result =>
+386.         requires
+387.             phys_view().initialized,
+388.             phys_view().inv(),
+389.             old(frames)@.len() ...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+Update the backup and re-run verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/mm/phys/manager.rs /tmp/manager.rs.bak && timeout 600 make verify-kernel 
+
+[THINKING] I need to update the backup in /tmp with the corrected version and run the verify-kernel check again, then review the specs for alloc_user_frame and alloc_kernel_frame to confirm they're using result binding with &mut self but no additional &mut output parameters.
