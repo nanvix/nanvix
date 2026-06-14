@@ -142,3 +142,4 @@ verus-logs/cheating-detail.txt under verus-ai-logs/verify-kernel.
 PHASE: proving
 Module: phys-manager
 ============================================================
+[2026-06-15 04:00:53] [STRIP-EXT] removed 6 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
