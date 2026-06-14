@@ -293,3 +293,34 @@ No warnings. Let me create the bugs file (no bugs found) and run the full `make 
 
 [THINKING] The proofs are complete with no bugs found, so I'll create the bugs.md file documenting that. Then I need to run the full verification suite to ensure there are no regressions before wrapping up.
 [RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md with 512 characters
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_01-39-50
+
+    Checkin...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The task is complete. Summary:
+
+**Result**: All in-scope `pde.rs` functions verify cleanly.
+
+- **`make verify-arch`**: 47 verified, 0 errors (fresh recompile, not cached).
+- **`make verify`** (full): arch 47/0, kernel 76/0 — no regressions.
+- **pde module**: 0 `admit`, 0 `assume`, 0 `external_body`.
+
+The proofs for all five target functions (`PageDirectoryEntry::new`, `PageDirectoryEntryFlags::new`, `PageDirectoryEntry::is_present`, `PageDirectoryEntryFlags::is_present`, `PageDirectoryEntry::frame_address`) were already complete and pass against their unchanged specs. The non-trivial one, `frame_address`, is discharged by `lemma_frame_address`, which proves frame_index × FRAME_SIZE is overflow-free and FRAME_SIZE-aligned using the `FrameNumber` type-invariant bound.
+
+The `CHEATING_DETECTED` status comes only from pre-existing items **outside my scope**: 3 `external_body` in arch (table read/write are TCB-allowed; `invlpg` in mod.rs), and admits/external_body in unrelated kernel modules.
+
+No code bugs found — recorded "None" in `verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md`. No source files were modified (specs/proofs were already in place).
+
+[THINKING] The full verification run shows the arch crate with 47 verified entries and zero errors, while the kernel crate has 76 verified with zero errors. The admit and external_body counts in the kernel are from other unfinished modules outside my scope—my pde.rs module is completely verified with no cheating constructs. The task is done.
+
+
+=== Session End ===
+Session: a4dd3d0b-eefb-4da2-be39-54e21e8a718d
+Duration: 128.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/proving/prover-claude-20260615-013800.jsonl
