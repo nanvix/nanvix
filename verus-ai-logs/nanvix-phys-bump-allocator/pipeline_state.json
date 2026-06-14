@@ -2,9 +2,11 @@
   "module_name": "bump-allocator",
   "log_name": "nanvix-phys-bump-allocator",
   "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "3b7cf1819b4e0cbb9308cf5ba6444d9527f00678"
   },
   "phase_start_shas": {
-    "proving": "9b2438e44a56046fd3daf7a563d119f31a67c0f2"
+    "proving": "9b2438e44a56046fd3daf7a563d119f31a67c0f2",
+    "cheating-elimination": "f0b5aecc520500b822a79f108f00eb8c9c66f0c4"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "3b7cf1819b4e0cbb9308cf5ba6444d9527f00678",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "f0b5aecc520500b822a79f108f00eb8c9c66f0c4",
       "rollback_iter": 0
     }
   ],
