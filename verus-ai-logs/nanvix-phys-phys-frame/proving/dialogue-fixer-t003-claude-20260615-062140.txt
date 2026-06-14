@@ -1701,3 +1701,336 @@ Turn 126
 Turn 127
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] bash: === Summary ===
+  verification: 55 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-5...
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+The range lemma verifies (55 verified). Now let me view `alloc_contiguous`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I've verified 55 lemmas with no errors, though there are still 18 admits scattered throughout the proof. Now I need to examine the body of the alloc_contiguous function to work on proving it.
+[RESULT ✓] view: 230.             },
+231.             Err(error) => {
+232.                 proof! {
+233.                     // `from_frame_number` is total (always `Ok`); this arm is unreachable.
+234.                     assert(false);
+235.                 }
+236.                 #[cfg(not(verus_keep_ghost))]
+237.  ...
+
+────────────────────────────────────────────────────────────
+Turn 129
+────────────────────────────────────────────────────────────
+Let me study the verified `alloc` proof as a template, plus `book`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm looking at the alloc function to understand its structure—how it handles snapshots, manages reference counts, and implements the view_of mechanism—so I can mirror that same pattern.
+[RESULT ✓] view: 136.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+137.         proof_decl! {
+138.             let ghost g_old = self@;
+139.             let ghost pre_sb = self.bitmap@.set_bits;
+140.             let ghost pre_nb = self.bitmap@.num_bits;
+141.             let ghost pre_rc = self.refcount@;...
+
+────────────────────────────────────────────────────────────
+Turn 130
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "spec_refcount_seq\|spec_refcount_slot\|closed spec fn spec_refcount" src/ker
+
+[THINKING] I'm reviewing the key spec functions like `lemma_view_of`, `spec_refcount_seq`, and `view_of` to understand how the refcount sequence updates work, along with the ensures conditions for `from_raw_value` and `from_frame_number`. For the `alloc_contiguous` function, I need to capture the initial state with snapshots of the ghost variables and refcount before proceeding.
+
+Now I'm checking the guard condition that count must not exceed num_bits—if it does, the function returns an error with the final state matching the old state. The bitmap allocation either succeeds by finding a contiguous free range and marking those bits as set, or fails when no such range exists. I need to establish the loop invariant for the refcount update phase, where each allocated frame gets its refcount set to 1. The key is characterizing the final refcount sequence as one where indices in the allocated range are 1 and all others preserve their pre-allocation values. I'm also verifying that the frame number conversions via `from_raw_value` and `from_frame_number` succeed as expected, with the base address correctly derived from the starting position. I need to figure out how Verus exposes the loop counter in `for` loops and whether I can reference it directly in the loop invariant. Let me look for existing verified for-loop examples in the codebase to understand the pattern.
+[RESULT ✓] bash: 211:closed spec fn spec_refcount_slot(inner: &Inner, i: int) -> int {
+218:closed spec fn spec_refcount_seq(inner: &Inner) -> Seq<u8> {
+227:        inner@.refcounts[addr] == spec_refcount_slot(inner, addr / spec_page_size()),
+262:        inner@ == view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bit...
+
+────────────────────────────────────────────────────────────
+Turn 131
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 205. }
+206. 
+207. /// The integer value of the refcount slot for index `i`. A spec-fn wrapper so the value can be
+208. /// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
+209. /// (which Verus rejects in an `ensures`); reading the field in a spec-fn bo...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to understand how the refcount initialization works in the exec function and verify that the refcount slice has sufficient length to accommodate the loop bounds, so I'm checking the internal_inv function to see the relationship between refcount length and num_bits.
+[RESULT ✓] view: 44. 
+45. impl Inner {
+46.     pub closed spec fn internal_inv(&self) -> bool
+47.     {
+48.         &&& self.bitmap.inv()
+49.         &&& spec_page_size() > 0
+50.         // refcount slice covers all bitmap-managed frames
+51.         &&& self.refcount@.len() >= self.bitmap@.num_bits
+52.         // bi...
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+Let me check `book`, `from_raw_value` spec, and `number_of_bits`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to check the `book` proof to understand how `self.refcount[..] = 1` behaves in the execution context with bounds, and review the `from_raw_value` specification to determine what's needed for representability.
+[RESULT ✓] view: 702.                 // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
+703.                 // so the bit is clear and the frame is not allocated.
+704.                 let i = frame_number as int;
+705.                 assert(i >= self.refcount@.len());
+706.                ...
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 760.                 Ok(()) => {
+761.                     &&& old(self)@.free_frames.contains(phys_addr@)
+762.                     &&& final(self)@ == FrameAllocView {
+763.                         allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
+764.                         free_fra...
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+Now let me check `alloc_range` bitmap spec, `number_of_bits`, and `FrameNumber::from_raw_value`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '288,335p' src/libs/bitmap/src/lib.rs; echo "=== number_of_bits ==="; grep -n 
+
+[THINKING] I need to verify how `bitmap.alloc_range` works and check the specifications for `number_of_bits` and `from_raw_value` in the lib.rs file.
+[RESULT ✓] bash: /// # Returns
+    ///
+    /// Upon success, the index of the allocated range is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            size > 0,
+            size <= old(self)@.num_bits,
+        ensure...
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '200,230p' src/libs/bitmap/src/lib.rs
+
+[THINKING] I see that `alloc_range` already has a runtime check for size validity, but the spec requires callers to guarantee `size <= num_bits` beforehand—the exec check is just defensive. The issue is that `alloc_contiguous` calls `alloc_range(count)` without first ensuring count stays within bounds, so I need to either validate the count before calling or add error handling.
+[RESULT ✓] bash: ///
+    /// The number of bits in the bitmap.
+    ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result as int == self@.num_bits,
+            result > 0,
+            result < u32::MAX as usize,
+    )]
+    pub fn number_of_bits(&self) -> usize {
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '95,160p' src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I need to examine the specs for `FrameNumber::from_raw_value` and `FrameAddress::from_frame_number` to handle the representability and unreachable code paths in the address layer.
+[RESULT ✓] bash: Ok(fa) => fa.inv() && fa@ == raw_addr as int,
+                Err(_) => true,
+            },
+    )]
+    pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+        Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))
+    }
+
+    ///
+    /// # Description
+    //...
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn from_raw_value\|fn from_frame_number\|spec_from_number\|spec_frame_raw_v
+
+[THINKING] I need to look up the specification for `FrameNumber::from_raw_value`.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:62:    pub fn from_raw_value(value: usize) -> Option<Self> {
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:12:    // `spec_frame_raw_value(frame)`.
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '40,75p' src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] bash: pub const NULL: Self = Self(0);
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`FrameNumber`].
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: The value of the frame number.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(`[`FrameNumber`]`)`: Upon success.
+    /// - `None`: I...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+Let me find a verified `for ... in a..b` loop with invariants elsewhere in the codebase for correct syntax.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "verus_spec(invariant" src/ | head; echo "==="; grep -rn "verus_spec(invari
+
+[THINKING] I'm verifying the logic for `FrameNumber::from_raw_value` where values within the spec maximum return `Some` with the value preserved, and anything exceeding it returns `None`. In `alloc_contiguous`, when `start` is within bounds, this conversion succeeds and maintains the value. Then I'm checking that `FrameAddress::from_frame_number` always succeeds when given a valid frame number, producing a result that corresponds to the spec's frame representation, though I need to work through the relationship between these conversions.
+
+Writing the proof structure... Writing loop invariants... Writing loop invariant... Now I'm verifying the preconditions for the lemma_reserve_range_v call. Most of them follow directly from the loop invariant and the internal invariant of the old state—things like the refcount array length matching, the range being valid, and the refcount values being set correctly. The trickier parts are confirming that the old bitmap's set bits are well-formed (which comes from the bitmap's wf property) and that the target range was indeed unset before the allocation (which the Ok branch of alloc_range guarantees). Once these conditions are established, the lemma will give me the final view state I need to reconstruct the invariant. I'm verifying that the frame range specification matches the implementation by showing the bijection between indices and frame addresses, then proving the subset relationship—each frame in the range is free in the old state since its bitmap bit is unset and it's within the valid range. Finally, I need to confirm that the final state's FrameAllocView matches the specification by leveraging extensionality of set operations.
+
+Now I'm working through the invariant preservation after the mutation: the bitmap's invariant holds from the alloc_range operation, the refcount length is unchanged, and for the bit-set-iff-refcount-positive property, I need to verify that newly allocated frames have refcount 1 while existing frames retain their previous refcounts. I need to establish the internal invariant after the loop by leveraging the entry state invariant and the mutations that occurred. The key is that I captured the pre-allocation bitmap and refcount state at the very start, so I can use those old relationships to reconstruct the invariant for the new state. The tricky part is handling the bitmap mutation from alloc_range—I need to carefully track which facts come from the entry state versus the current state, especially in the Ok branch where the bitmap has been modified.
+
+For the loop itself, I should assert that the bitmap remains unchanged since the body only writes to refcount, and I need to handle the potential overflow in the range bound `frame_number + count`. Since `frame_number + count <= num_bits < u32::MAX`, this should be provable, but I may need an explicit assertion before the loop to help Verus verify the range doesn't overflow.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs
+src/libs/bitmap/src/lib.rs
+src/libs/slab/src/lib.rs
+===
+5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+<shellId: 57 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verus_spec(invariant\|for .* in \|while " src/libs/bitmap/src/lib.rs | head 
+[RESULT ✓] bash: 5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+374:        while !done {
+436:                while offset < size {
+464:                    for alloc_offset in 0..size {
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '455,490p' src/libs/bitmap/src/lib.rs
+[RESULT ✓] bash: let ghost pre_alloc_self = *self;
+                    }
+
+                    #[cfg_attr(verus_keep_ghost, verus_spec(
+                        invariant
+                            self.alloc_range_third_loop_invariant(old(self), pre_alloc_self, size, start,
+                                          ...
+
+────────────────────────────────────────────────────────────
+Turn 143
+────────────────────────────────────────────────────────────
+Now let me view `alloc_range`'s body to plan both proofs together.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I can use the loop variable `i` from my `for i in frame_number..frame_number+count` loop directly in the invariant, and I should add a `decreases` clause to help with termination. Let me check how the existing `alloc_range` loops in frame.rs handle this with their current `invariant false` structure.
+[RESULT ✓] view: 855.             assert(i == addr / spec_page_size());
+856.             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+857.             lemma_alloc_contains(self, addr);
+858.             lemma_free_contains(self, addr);
+859.         }
+860.         frame_number < nbits
+861. ...
+
+────────────────────────────────────────────────────────────
+Turn 144
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '360,380p' src/libs/bitmap/src/lib.rs
+
+[THINKING] The `alloc_range` function is much more involved—it uses two separate loops with inclusive ranges. The first loop performs a read-only validation pass, checking that all frames are uncovered and not already allocated, which can fail early. The second loop actually books each frame by setting the bitmap and initializing the refcount to 1, though it can also error partway through if the bitmap operation fails. The error postcondition is strict: if anything goes wrong, the state must remain completely unchanged, and the allocated frames must not be a subset of what was originally there.
+
+The tricky part is that if `bitmap.set` fails during the second loop after some frames have already been booked, the state would be mutated, violating the postcondition. However, looking at the design more carefully: the first loop already verified that every index is within bounds and the bit is clear. Since `bitmap.set` only fails when the index is out of bounds or the bit is already set, and we've ruled both out, the set operation in the second loop should never actually fail—that error path is unreachable. The key insight is maintaining an invariant that the indices we haven't processed yet in the second loop still have their bits clear in the original bitmap state, since we're only modifying the bits in the range we've already covered.
+
+For the first loop's invariant, I need to establish that for all indices checked so far, they're within bounds and their bits are clear in the original bitmap, while the state itself remains unchanged. The inclusive range loop accumulates this property: after processing each index, we know it satisfies the bounds and bit-clear conditions. Once the loop completes over the full range, we've verified all indices in that range meet the requirements.
+
+The second loop's invariant is more complex—it tracks that as we set bits, the bitmap's set_bits grows to include the newly set indices, the refcount updates to 1 for those indices while preserving prior values elsewhere, and the total bit count stays constant. The key is ensuring each set operation succeeds by verifying the target bit is clear before setting it. Since the first loop already proved all indices in the range are clear, the second loop can safely set them without failure.
+
+This is getting intricate with the inclusive range semantics and the mutation side effects, so I should focus on proving the simpler alloc_contiguous first to build confidence, then tackle the more involved alloc_range proof.
+
+For the refcount loop, I need to add a decreases clause to help the verifier understand termination. I should also guard against overflow when computing frame_number plus count in the loop header. Let me check how the bitmap example handles field snapshots in loop invariants when self is mutable—they reference spec methods on self, and direct field@ references should work fine in the invariant.
+[RESULT ✓] bash: let initial_start: usize = self.next_free;
+        let mut start: usize = initial_start;
+        let mut wrapped: bool = false;
+        let mut done: bool = false;
+
+        // Traverse the bitmap, wrapping around once if needed.
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+...
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn is_bit_set\|fn is_full\|fn usage" src/libs/bitmap/src/lib.spec.rs; sed -n
+
+[THINKING] I'm going to write the proof for `alloc_contiguous` by replacing the body section, starting with the loop invariants. The loop iterates from `frame_number` to `frame_number + count`, and I need to carefully define what properties hold at each iteration as the loop variable `i` progresses and the decreasing metric `frame_number + count - i` shrinks. I'm working through how the loop invariant carries over after the loop exits. Once the for-loop completes, Verus should give me the invariant with the loop variable at its final value (frame_number+count), which means I can reference the accumulated refcount updates without needing to explicitly mention the loop variable afterward. The key is that the invariant's forall condition becomes fully satisfied once i reaches the upper bound, so I can use that as a fact in the post-loop proof. I'm wondering whether Verus keeps the ensures facts from alloc_range available after the call, especially the snapshot of the old bitmap state. Since I captured pre_sb before the guard, and the guard doesn't mutate, the old state should unify with what I have. Rather than rely on Verus exposing the snapshot term, I'll re-derive the needed facts in a proof block right after the loop to be safe — the all_bits_unset property should still be derivable from the alloc_range ensures since the entry bitmap state hasn't changed.
+[RESULT ✓] bash: 27:    pub open spec fn usage(&self) -> int {
+37:    pub open spec fn is_full(&self) -> bool {
+47:    pub open spec fn is_bit_set(&self, index: int) -> bool {
+    pub open spec fn is_bit_set(&self, index: int) -> bool {
+        self.set_bits.contains(index)
+    }
+<shellId: 61 completed with exit cod...
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+Now I'll write the `alloc_contiguous` proof. Let me replace its body.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Now I'm verifying that the bit-checking logic works correctly, then moving on to rewrite the `alloc_contiguous` function by replacing that section of code.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+I need to add a `lemma_frame_addr_split` helper. Let me add it near the other frame-address lemmas.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to define the `lemma_frame_addr_split` helper lemma that proves frame addresses distribute over addition—specifically that `frame_addr_of(start + j)` equals `frame_addr_of(start) + j * spec_page_size()`. I'll add this near the other frame_addr helpers around line 124 in frame.proof.rs.
+[RESULT ✓] view: 114. }
+115. 
+116. /// Dividing a frame address by the page size recovers its index.
+117. proof fn lemma_frame_addr_div(i: int)
+118.     requires
+119.         spec_page_size() > 0,
+120.     ensures
+121.         frame_addr_of(i) / spec_page_size() == i,
+122. {
+123.     vstd::arithmetic::div_mod::lemma...
+
+────────────────────────────────────────────────────────────
+Turn 148
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to look up how frame_addr_of is defined.
+[RESULT ✓] view: 8. 
+9. /// Helper: convert a bitmap index to a frame (physical) address.
+10. pub open spec fn frame_addr_of(i: int) -> int {
+11.     i * spec_page_size()
+12. }
+
+────────────────────────────────────────────────────────────
+Turn 149
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 150
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

@@ -283,35 +283,169 @@ impl Inner {
             },
     )]
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
-        proof! { admit(); }
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            lemma_view_of(self);
+            assert(spec_refcount_seq(self) == pre_rc);
+            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+        }
+        // VERUS BUG FIX: `Bitmap::alloc_range` requires `size <= num_bits`. `alloc_contiguous`
+        // only requires `count > 0`, so guard `count` against the bitmap size before calling;
+        // no contiguous run longer than the bitmap can exist. No mutation occurs here, so the
+        // `Err` postcondition (`final@ == old@`) holds.
+        if count > self.bitmap.number_of_bits() {
+            let reason: &str = "requested range exceeds bitmap size";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason} (count={count})");
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
+                proof! {
+                    lemma_view_of(self);
+                    assert(spec_refcount_seq(self) == pre_rc);
+                    assert(self@ == g_old);
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (count={count})");
                 return Err(error);
             },
         };
+        proof_decl! { let ghost start = frame_number as int; }
+        proof! {
+            assert(0 <= start < pre_nb);
+            assert(start + count as int <= pre_nb);
+            assert(self.bitmap@.set_bits
+                == pre_sb.union(BitmapView::range_set(start, start + count as int)));
+            assert(self.bitmap@.num_bits == pre_nb);
+            assert(spec_refcount_seq(self) == pre_rc);
+        }
         // Newly allocated frames have a single owner.
-        #[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                start == frame_number as int,
+                0 <= start,
+                start + count as int <= pre_nb,
+                pre_nb <= pre_rc.len(),
+                self.bitmap@.num_bits == pre_nb,
+                self.bitmap@.set_bits
+                    == pre_sb.union(BitmapView::range_set(start, start + count as int)),
+                self.refcount@.len() == pre_rc.len(),
+                forall|k: int| 0 <= k < pre_rc.len() ==>
+                    #[trigger] self.refcount@[k] == (if start <= k < i as int {
+                        1u8
+                    } else {
+                        pre_rc[k]
+                    }),
+            decreases frame_number + count - i,
+        ))]
         for i in frame_number..frame_number + count {
             #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
             self.refcount[i] = 1;
         }
+        proof! {
+            // Representability: `start < pre_nb`, so `old(self)`'s internal_inv bounds `start`.
+            assert(frame_addr_of(start) <= usize::MAX as int);
+            assert(start <= spec_max_frame_number());
+        }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
+                proof! {
+                    // `None` requires `start > spec_max`, contradicting representability. Unreachable.
+                    assert(start <= spec_max_frame_number());
+                    assert(false);
+                }
                 let reason: &str = "frame number is out of bounds";
                 #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
+        proof! {
+            assert(frame_number@ == start);
+        }
 
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+                proof! {
+                    let ghost base = frame_address@;
+                    assert(base == frame_addr_of(start));
+                    let ghost frames = Set::new(|addr: int|
+                        exists|i: int|
+                            0 <= i < count as int && addr == #[trigger] (base + i * spec_page_size())
+                    );
+                    // Every range index is free in `old(self)`: clear bit, in-range.
+                    assert forall|j: int| start <= j < start + count as int implies
+                        !pre_sb.contains(j) by {}
+                    // `frames` (base + i*PS) coincides with the index-range frame set.
+                    assert(frames =~= spec_range_frames(start, count as int)) by {
+                        assert forall|addr: int| frames.contains(addr) implies
+                            spec_range_frames(start, count as int).contains(addr) by {
+                            let j = choose|j: int|
+                                0 <= j < count as int && addr == base + j * spec_page_size();
+                            lemma_frame_addr_split(start, j);
+                            assert(start <= start + j < start + count as int
+                                && addr == frame_addr_of(start + j));
+                        }
+                        assert forall|addr: int|
+                            spec_range_frames(start, count as int).contains(addr) implies
+                            frames.contains(addr) by {
+                            let k = choose|k: int|
+                                start <= k < start + count as int && addr == #[trigger] frame_addr_of(k);
+                            lemma_frame_addr_split(start, k - start);
+                            assert(0 <= k - start < count as int
+                                && addr == base + (k - start) * spec_page_size());
+                        }
+                    }
+                    // The whole range is currently free in `old(self)`.
+                    assert(frames.subset_of(g_old.free_frames)) by {
+                        assert forall|addr: int| frames.contains(addr) implies
+                            g_old.free_frames.contains(addr) by {
+                            let k = choose|k: int|
+                                start <= k < start + count as int && addr == #[trigger] frame_addr_of(k);
+                            assert(0 <= k < pre_nb && !pre_sb.contains(k) && addr == frame_addr_of(k));
+                        }
+                    }
+                    // Reconstruct the post-state view from the range-reserve lemma.
+                    lemma_view_of(self);
+                    assert(self.bitmap@.set_bits
+                        == pre_sb.union(BitmapView::range_set(start, start + count as int)));
+                    assert(self.bitmap@.num_bits == pre_nb);
+                    assert(self@ == view_of(
+                        pre_sb.union(BitmapView::range_set(start, start + count as int)),
+                        pre_nb,
+                        spec_refcount_seq(self),
+                    ));
+                    assert forall|x: int| pre_sb.contains(x) implies 0 <= x < pre_nb by {}
+                    lemma_reserve_range_v(
+                        pre_sb,
+                        pre_nb,
+                        pre_rc,
+                        spec_refcount_seq(self),
+                        start,
+                        count as int,
+                    );
+                    assert(self@.allocated_frames =~= g_old.allocated_frames.union(frames));
+                    assert(self@.free_frames =~= g_old.free_frames.difference(frames));
+                    assert(self@.refcounts =~= g_old.refcounts.union_prefer_right(
+                        Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                    ));
+                }
+                Ok(frame_address)
+            },
             Err(error) => {
+                proof! {
+                    // `from_frame_number` is total (always `Ok`); this arm is unreachable.
+                    assert(false);
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 Err(error)

@@ -123,6 +123,15 @@ proof fn lemma_frame_addr_div(i: int)
     vstd::arithmetic::div_mod::lemma_div_multiples_vanish(i, spec_page_size());
 }
 
+/// Frame addresses split additively over the index: `frame_addr_of(base + j)` is
+/// `frame_addr_of(base) + j * spec_page_size()`.
+proof fn lemma_frame_addr_split(base: int, j: int)
+    ensures
+        frame_addr_of(base + j) == frame_addr_of(base) + j * spec_page_size(),
+{
+    vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(spec_page_size(), base, j);
+}
+
 /// A non-page-aligned address can never be a tracked (allocated) frame.
 proof fn lemma_alloc_unaligned(inner: &Inner, addr: int)
     requires
