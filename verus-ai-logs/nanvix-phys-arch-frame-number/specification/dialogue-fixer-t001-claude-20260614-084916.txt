@@ -365,3 +365,79 @@ Turn 17
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "error|duplicat
+[RESULT ✓] bash: Crate     : bitmap
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+  Crate     : sys
+  ch...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Kernel: **66 verified, 0 errors** — no regression. The `CHEATING_DETECTED` counts (external_body=11, admit=28, cfg_gate=15) are the pre-existing baseline; my change only *removed* assume_specifications (arch is now CLEAN with assume=0, down from assume=1). Let me confirm baseline didn't worsen and run `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git stash list 2>/dev/null; echo "--- checking arch assume count change ---"
+# arch was pre
+
+[THINKING] Looking at the kernel verification results, I see 66 verified with no errors, and the cheating detection counters show the baseline values that existed before my change. I need to verify that my modification didn't increase these cheating counts compared to the baseline state, and I'm checking whether the architecture still has the assume_specification set to MAX as it did previously.
+
+Actually, I realize my changes actually reduced the cheating counts — I removed two assume_specification placeholders from kernel and one from arch, so the assume count went from 1 down to 0. The external_body, admit, and cfg_gate cheating detections are pre-existing baseline issues from other unrelated modules that the task says are acceptable. With 0 errors and no new cheating introduced, the verification looks good. Now I need to run the build to confirm dual compilation works.
+[RESULT ✓] bash: --- checking arch assume count change ---
+make: Nothing to be done for 'build'.
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- kernel 2>&1 | tail -15
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all 2>&1 | tail -20
+[RESULT ✓] bash: Standalone images built successfully.
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profile-time standalone microvm" -p nanvix-bench
+   Compiling uservm v0.16.17 (/home/ruize/nanvix-phy/src/uservm)
+   Compiling nanvix-sandbox v0.16.17 (/home/ruize/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All three pass: `make verify-arch` (8 verified, CLEAN), `make verify` (kernel 66 verified, 0 errors), `./z build -- all` (Build complete). Now write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy && rm -f /tmp/f1.rs /tmp/f2.rs /tmp/a1.rs /tmp/a2.rs
+cat > verus-ai-logs/nanvix-phys-arch-fram
+[RESULT ✓] bash: written
+-rw-rw-r-- 1 ruize ruize 3575 Jun 14 08:57 verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_001_fixer.md
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+**FIXED.** The reviewer's item-7 objection is resolved.
+
+## What I did
+Implemented the reviewer's **Option 2** (interpret `spec_max` instead of assuming the binding), which eliminated the workspace-internal `assume_specification[ FrameNumber::MAX ]` plus two superseded kernel placeholders:
+
+- **`arch/.../constants.rs`** — made `PAGE_SIZE`, `MAX_ADDRESS`, `FRAME_SIZE` verus-visible (`#[verus_verify]` + `use vstd::prelude::*`).
+- **`number.spec.rs`** — deleted the assume; `spec_max()` is now `open spec { (MAX_ADDRESS / FRAME_SIZE - 1) as nat }`.
+- **`number.rs`** — moved `MAX` into the verified impl so `MAX == spec_max()` is *proven*.
+- **kernel `frame.rs` / `frame.spec.rs`** — removed the now-duplicate `PAGE_SIZE`/`FRAME_SIZE` placeholders; `spec_page_size()` delegates to arch's verified `PAGE_SIZE`.
+
+## Verification
+- `make verify-arch`: **8 verified, 0 errors, CLEAN** (assume=0)
+- `make verify`: kernel **66 verified, 0 errors** — no regression
+- `./z build -- all`: **Build complete**
+
+Net: 3 workspace-internal assumes removed, none added. Response written to `turn_001_fixer.md`; scratch files cleaned up.
+
+
+=== Session End ===
+Session: 0dfda3c3-9a9a-425f-9a09-cfb11385c756
+Duration: 515.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue-fixer-t001-claude-20260614-084916.jsonl
