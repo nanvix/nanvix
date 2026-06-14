@@ -1243,3 +1243,23 @@ Now add `proc_macro_hygiene` to arch's lib.rs:
 Turn 70
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_08-13-23
+
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::add...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+The struct needs `#[verus_verify]` so Verus treats it as a datatype. Let me add it.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] I'm hitting a type invariant error that requires the struct to be recognized as a datatype within this crate. The solution is to add the `#[verus_verify]` annotation to the `FrameNumber` struct so Verus can properly attach the type invariant to it. I'm also adding derive traits...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -45
