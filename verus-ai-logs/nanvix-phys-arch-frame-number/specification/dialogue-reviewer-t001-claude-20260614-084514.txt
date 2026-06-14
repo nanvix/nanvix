@@ -159,3 +159,242 @@ Turn 0
 4. //==================================================================================================
 5. // Imports
 6. //=========================================================================================...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-frame-number/ 2>/dev/null && echo "---VIEW DESIGN---" && 
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "number" verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt 2>/dev/null;
+
+[THINKING] The verification came back clean, so now I'm looking at the context files and checking what artifacts exist from earlier phases in the verus-ai-logs directory structure. I need to examine the function coverage tooling and see what's available in the surrounding directories.
+[RESULT ✓] bash: 483:  frame_number
+505:  frame_number
+---
+524
+<shellId: 1 completed with exit code 0>
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+pipeline.log
+pipeline_state.json
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+---VIEW DESIGN---
+verus-ai-logs/nanvix-phys-arch-frame-number/verification-plan.json
+verus-ai-logs/nanvix-phys-arch-frame-number/pipe...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md
+
+[THINKING] I'm checking the coverage-unverified.txt file for references to frame_number at specific line numbers to identify which functions lack coverage, then examining the caller analysis and design files to understand the context.
+[RESULT ✓] view: 478.   new
+479.   from_raw_value
+480.   into_raw_value
+481.   flags
+482.   is_present
+483.   frame_number
+484.   frame_address
+485.   is_large_page
+486.   set_page_size
+487.   set_read_write
+488.   set_user_supervisor
+489.   from_raw
+490.   raw
+491.   new
+492.   from_raw_value
+493.   into_raw_value
+...
+[RESULT ✓] view: 1. # Caller Analysis: `x86/mem/paging/frame/number` (`FrameNumber`)
+2. 
+3. ## Script Output
+4. 
+5. Source: `find_callers_lsp.py /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs --project-dir /home/ruize/nanvix-phy`
+6. 
+7. | Metric | Count |
+8. |--------|------:|
+9. | Total exe...
+[RESULT ✓] view: 1. # View Design: `FrameNumber` (`x86/mem/paging/frame/number.rs`)
+2. 
+3. In-scope (verification-order) targets: the type `FrameNumber` (its `View` +
+4. `inv`), `FrameNumber::from_raw_value`, and `FrameNumber::into_raw_value`. All
+5. other items (the unit tests, the `NULL`/`MAX` associated constants...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -name "fn_coverage.py" 2>/dev/null; find . -name "*.py" -path "*verus*" 2>/dev/null 
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "admit\|assume\|external_body\|trusted\|assume_specification" src/libs/arch/src/x8
+
+[THINKING] I'm running the fn_coverage tool to get a detailed breakdown, and the verus output already indicates 2 out of 525 executable functions have contracts. Looking at the in-scope functions specifically, both from_raw_value and into_raw_value have specs, along with the NULL constant. I need to verify which functions are actually in scope for this analysis.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:36:// `assume_specification[FrameNumber::MAX]` in `number.spec.rs`.
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:26:    // exec constant `FrameNumber::MAX` by the `assume_specification` below. Realizes the kernel's
+src/libs/arch/src/x86/mem/p...
+[RESULT ✓] bash: ---SPEC DRIFT---
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "---scripts---"; find /home/ruize/verus-ai-exp/verus-ai -name "f
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "MAX_ADDRESS\|FRAME_SIZE\|FRAME_SHIFT" src/libs/arch/src/x86/mem/mod.rs src/libs/a
+
+[THINKING] I'm looking for the fn_coverage.py and spec_drift scripts, which should be in the verus-ai-exp directory referenced by VERUS_AI_DIR. The verify-arch summary already includes a cheating pattern check and function coverage analysis, which reported zeros across most categories, but there's an assume_specification on FrameNumber::MAX that contradicts the checklist's expectation about external dependencies.
+
+The issue is that FrameNumber::MAX is workspace-internal code, not external, so the checklist flags "No assume_specification for workspace-internal code" as a potential failure. However, the design rationale justifies it because MAX's body ultimately depends on build-time page-size constants that Verus treats as external boundaries. I need to examine mem::MAX_ADDRESS and mem::FRAME_SIZE to understand whether this assumption is actually justified, then search more broadly for the fn_coverage tool location.
+[RESULT ✓] bash: ---find mem def---
+src/libs/arch/src/x86/cpu/cpuid.rs:36:    pub const MAX_ADDRESSABLE_IDS_SHIFT: u32 = 16;
+src/libs/arch/src/x86/cpu/cpuid.rs:38:    pub const MAX_ADDRESSABLE_IDS_MASK: u32 = 0xFF << Self::MAX_ADDRESSABLE_IDS_SHIFT;
+src/libs/arch/src/x86/mem/constants.rs:90:pub const MAX_ADDRESS: us...
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+---scripts---
+/home/r...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && head -40 scripts/fn_coverage.py 2>/dev/null; echo "===SPECDRIFT==="; head -40 sc
+
+[THINKING] I'm going to run the coverage and drift analysis tools on this file to check their usage patterns.
+[RESULT ✓] bash: #!/usr/bin/env python3
+
+"""
+Function coverage analysis for Verus verified code.
+
+Compares exec functions between an original Rust source file and a Verus
+exec file, classifying each function as MISSING, EXTRA, MATCHED, or
+SPEC/PROOF ONLY.  Extra functions are further annotated with a caller
+count an...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running coverage and drift tools
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/arch/src/x86/mem/
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-frame-number/pipeline_state.json 2>/dev/null | python3 -
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: {
+    "module_name": "arch-frame-number",
+    "log_name": "nanvix-phys-arch-frame-number",
+    "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs",
+    "current_phase": "specification",
+    "current_phase_idx": 2,
+    "completed_phases": [
+        "caller-analysi...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|------...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check arch-frame-number --p
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-frame-number/pipeline_state.json | python3 -m json.tool 
+[RESULT ✓] bash: "caller-analysis": "5391268567bcc354fd75589934e059c1bdc73dfc",
+        "view-design": "860ea19a5f779ff9434a175823cd4b9c537022b0"
+    },
+    "phase_start_shas": {
+        "caller-analysis": "f30176b6f50479ce7a44eb03baf989f5b08df18b",
+        "view-design": "5391268567bcc354fd75589934e059c1bdc73dfc",
+...
+[RESULT ✓] bash: Error: pipeline_state.json not found for module 'arch-frame-number'
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -8; echo "---DIFF since spec phase start---"; git --no-pager diff 860ea19
+
+[THINKING] I need to check for spec drift by running a git-diff comparison between the specification's starting SHA and the current state, specifically looking at the number.rs file to see what's changed.
+[RESULT ✓] bash: 181b5b02b [verus] verify PASS: arch::all (cached (no recompilation), —)
+0486c8fe7 [verus-ai] specification scaffold END: arch-frame-number
+a13a7b404 [verus-ai] specification prover END: arch-frame-number
+7445e2b4c [verus] verify PASS (cheating detected): kernel::all (66 verified, 0 errors, admit=28 ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff 860ea19a5f779ff9434a175823cd4b9c537022b0 HEAD -- src/kernel/src/hal/mem
+
+[THINKING] I need to verify that the kernel spec changes didn't weaken any original guarantees—specifically checking the diffs in phys.spec.rs and frame.spec.rs where the placeholders were converted to `open` definitions.
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/mem/types/address/phys.spec.rs b/src/kernel/src/hal/mem/types/address/phys.spec.rs
+index a00826699..19200f6c1 100644
+--- a/src/kernel/src/hal/mem/types/address/phys.spec.rs
++++ b/src/kernel/src/hal/mem/types/address/phys.spec.rs
+@@ -4,20 +4,23 @@ use vstd::arithmetic:...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^verify" Makefile | head -30
+
+[THINKING] The kernel's placeholder specifications are being replaced with concrete implementations that delegate to the actual architecture quantities, and the assume_specification markers are no longer needed since the real architectural contracts now exist. I'm verifying that the architecture's from_raw_value and into_raw_value specifications match exactly what the kernel was assuming.
+
+Looking at the from_raw_value contract, both the kernel and architecture enforce the same bounds checking and value preservation — the kernel uses spec_max_frame_number() while the architecture uses Self::spec_max(), but these resolve to the same value with proper type coercion. The into_raw_value contract also matches identically across both sides. This confirms there's no weakening of the specification, just a replacement of placeholders with real implementations.
+
+Now I need to run the full cross-module regression to ensure all verified modules still pass.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '560,640p' Makefile | grep -n "verify\|VERUS_CRATES" 
+[RESULT ✓] bash: 25:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+26:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+52:# Pattern rule for verifying individual crates.
+54:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+62:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-d...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running cross-module regression
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -60
+
+[THINKING] I need to run the full verification suite since we've modified kernel spec files, so I'll execute `make verify` to ensure there are no cross-module regressions—this could take a while.
+[RESULT ✓] report_intent: Intent logged
