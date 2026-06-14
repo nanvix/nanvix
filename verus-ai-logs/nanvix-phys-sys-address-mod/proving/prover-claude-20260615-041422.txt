@@ -534,3 +534,61 @@ The script strips the crate prefix. Let me run the full `make verify-sys` (the c
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-sys 2>&1 | grep -iE "error|^\s+[0-9]+ verif|fail|admit|warning|
 
 [THINKING] I'm seeing an issue with how the module path is being stripped. The code removes the crate prefix like `sys::` from module names, so `sys::mm::address` becomes `mm::address`, but Verus's `--verify-module` flag expects the full path including the crate name. The error message is showing that Verus has `sys::mm::address` available but the tool is asking for just `mm::address`, which doesn't exist in Verus's module listing. `mm::address` → same arg `mm::address`... but available modules empty? The emptiness might be due to the second compile reusing cache and not fully loading modules. Rather than overthink this, let me just run the full sys crate verification without specifying a MODULE. That's the canonical command anyway and will give me ground truth on whether address actually verifies.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  6 verified
+  0 errors
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+=== Summary ===
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  status...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Full `make verify-sys` passes: **6 verified, 0 errors, exit 0**, with `admit=0 assume=0 external_body=0`. Let me confirm I made no source changes and inspect the remaining `cfg_gate=1`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== source diff ==="; git --no-pager diff --stat -- '*.rs'; echo "===
+
+[THINKING] The system verification passed with no errors, and the only flag present is a configuration gate in alignment.rs that's already there. I'm wondering whether this pre-existing flag in a different module falls under my responsibility, since my focus is on the address module and its trait methods.
+
+The core issue is that while the verification passes cleanly, the verus-constraints skill says cfg-gating verus constructs is wrong. But this flag has been accepted in all prior commits, and modifying alignment.rs would mean touching code outside my listed functions. I need to think through whether removing that cfg gate from the verus block would actually violate the constraint about not wrapping verus attributes in cfg_attr, or if it's a different pattern altogether. The address module itself has zero cfg gates since the include statements are properly gated with `#[cfg(verus_keep_ghost)]`, so there's no cheating detected in my target files. Running `make verify` should confirm everything passes with no regressions since I only modified mtimes and didn't change any source code. The three target functions are abstract trait methods with complete specifications and no proof bodies needed, so the verification is genuinely complete — there's nothing left to prove.
+
+I should verify the bugs.md file path exists and document that the module is fully verified with zero admit/assume/external_body statements. The one cfg_gate=1 in alignment.rs is pre-existing and out of scope per the hard rules about not touching unlisted functions. My scope is done. Let me check the git diff to make sure there are no unintended source file modifications.
+[RESULT ✓] bash: === source diff ===
+=== which functions verified ===
+verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_04-18-07.log:error: could not find module mm::address specified by --verify-module or --verify-only-module
+verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_04-18-07.log:       - sys::mm::add...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Verification is complete. Here's the situation:
+
+## Summary
+
+The target module **`sys::mm::address`** (`mod.rs`) already verifies cleanly: **6 verified, 0 errors, exit 0**, with `admit=0 assume=0 external_body=0`.
+
+**The three target functions** — `is_aligned`, `into_raw_value`, `from_raw_value` — are **abstract trait methods** in the `Address` trait (no bodies). Each has a complete `#[verus_spec]` contract; abstract declarations impose obligations on *implementors*, not the trait itself, so they require no proof bodies, loop invariants, or lemmas. `mod.proof.rs` is correctly empty, and `mod.spec.rs` defines `spec_addr_is_aligned`.
+
+**Checks performed:**
+- No `admit()` / `assume()` / `external_body` / `trusted` anywhere in the `address/` module files.
+- No source `.rs` changes were needed (zero diff) — no specs weakened.
+- `make verify-sys` → 6 verified, 0 errors.
+
+**Remaining `cfg_gate=1`:** This is a *global* (whole-crate) flag from `src/libs/sys/src/sys/mm/alignment.rs:151` (`#[cfg(verus_keep_ghost)] verus! {`), wrapping the unlisted `spec_align_value` spec fn. It is:
+- **Out of scope** — different module (`mm`), an unlisted function (hard rule: "Do not touch unlisted functions").
+- **Pre-existing** — present in all prior accepted `sys::all` PASS commits.
+- **Not an error** — verification passes with 0 errors.
+
+No bugs were discovered, so no entry in `bugs.md` is required. The target module is fully proven and nothing in scope remains to do.
+
+[THINKING] The verification checks are passing for the target module with all six functions verified and no errors, while the cfg_gate reference points to an unrelated function in a different module that's outside the scope of these changes.
+
+Since there are no bugs to report, I won't create the bugs.md file, and I'm leaving the pre-existing cfg_gate in alignment.rs untouched since modifying it could break the build and falls outside the scope of this task. The work is complete—the target module verifies cleanly with no admit, assume, or external_body flags.
+
+
+=== Session End ===
+Session: 535f2d9b-2db9-45f0-82ac-4bfbfa92c479
+Duration: 324.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/proving/prover-claude-20260615-041422.jsonl
