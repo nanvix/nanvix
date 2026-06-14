@@ -324,3 +324,31 @@ However, the task requires `make verify-sys` to pass cleanly with zero cheating 
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys MODULE=mm::address 2>&1 | tail -30
+[RESULT ✓] bash: - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_from
+    - fmt
+    - new
+    - seconds
+    - nanoseconds
+    - checked_sub
+    - checked_add_duration
+    - checked_sub_duration
+    - part...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-sys MODULE=mm::address 2>&1 | grep -i "module\|chea
+
+[THINKING] I'm noticing a discrepancy in how the MODULE argument flows through the system — the make command passes `--module mm::address` to verus, but I need to trace how verify.sh actually parses this flag and sets the MODULE variable for the cheating directory scope logic.
