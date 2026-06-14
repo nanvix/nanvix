@@ -32,7 +32,13 @@ pub struct IdentityMapView {
     /// writable, supervisor-only**, and reachable at its own physical address
     /// in the kernel address space. Permissions are uniform across all mapped
     /// pages, so they are encoded by membership rather than stored per page.
-    pub mapped: Set<usize>,
+    ///
+    /// Implementation note: realized as `Set<int>` (not `Set<usize>`) in
+    /// `identity_map.spec.rs`, because `PhysicalAddress@` and
+    /// `PageAligned<PhysicalAddress>@` both view as `int`. This keeps
+    /// `mapped.contains(phys_addr@)` and `spec_page_base(..)` typechecking
+    /// directly and matches `FrameAllocView`'s address element type.
+    pub mapped: Set<int>,,
 }
 ```
 

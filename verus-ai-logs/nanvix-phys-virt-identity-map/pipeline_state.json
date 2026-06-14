@@ -32,7 +32,7 @@
       "review_rounds": 0
     }
   },
-  "prover_session_id": "34e0767d-d2e8-4ad8-a9ed-d26464997497",
+  "prover_session_id": "6c6af863-09de-46af-bd04-8709950c5d50",
   "completed": false,
   "base_branch": "verus-ai/arch-frame-number",
   "verus_branch": "verus-ai/virt-identity-map",
