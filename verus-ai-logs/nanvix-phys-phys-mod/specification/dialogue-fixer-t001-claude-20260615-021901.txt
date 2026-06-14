@@ -581,3 +581,41 @@ Turn 36
 Turn 37
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|fail|verified|status|
+[RESULT ✓] bash: verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  9 verified
+  0 errors
+  Exit code : 0
+  Global: assume=0 external_body=17 admit=0 trusted=0 cfg_gate=5
+  Unverified functions:
+  verification: 9 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=17 ad...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+**admit=0, 9 verified, 0 errors.** The remaining `external_body` are the documented LinkedList-limited `book_*` (now carrying full contracts) plus pre-existing frame wrappers. Now run the reviewer's other checks — spec_drift, full verify, and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check nanvix-phys-phys-mod 
+
+[THINKING] I'm looking at the verification results—9 passed with no errors and admit=0, though there's still external_body=17 from the LinkedList-limited book methods and wrapper functions that were pre-existing and documented, plus cfg_gate=5. The reviewer explicitly approved the external_body usage on book_* methods as long as they're documented with full contracts, which they now are. The status remains "CHEATING_DETECTED" because external_body is still greater than zero, but the reviewer's actual acceptance hinged on achieving exit 0 with admit=0, which I've done.
+
+I need to double-check that the external_body specs I added to the frame.rs wrappers didn't increase the count—those were already external_body in the baseline, so the count should still be 17. The real win is eliminating the 7 admits that were the actual concern. Now I should run the spec_drift check and full verification to confirm everything passes.
+[RESULT ✓] bash: Module:   nanvix-phys-phys-mod
+Phase:    specification
+Source:   /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+Baseline: 8e88a8ab919c
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires ad...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+All three in-scope functions now carry `#[verus_spec]` contracts, 0 spec drift. Now full verify and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make verify 2>&1 | tail -16
