@@ -221,3 +221,4 @@ Module: hal-frame-address
 [2026-06-15 05:12:00] [CHEATING] admit: 2
 [2026-06-15 05:12:00] [CHEATING] ❌ Hard cheating detected (attempt 1), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/cheating_report_1.md
 [2026-06-15 05:12:00] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 05:25:31]   ↳ cheating-fix done in 13m31s (exit=0)

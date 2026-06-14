@@ -681,3 +681,92 @@ Address directory has zero admits now; full verify-kernel exits 0. Let me run fu
 [THINKING] The address directory is clean with no admits flagged, and the full kernel verification passed with zero errors. The remaining admits are scattered across other modules outside my scope, and the CHEATING_DETECTED status is also in those out-of-scope areas, so my task area is unaffected. I'm trying to understand what the grader is actually scanning for.
 
 The cheating report only mentioned those two admits from phys.proof.rs that I've already removed, so that should be resolved. Now I need to run a full verification across all crates to make sure I haven't broken anything else.
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+  Crate     : sys
+  Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+  Crate     : nanvix-slab
+  Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+  Crate     : bump-allocato...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+All crates verify with exit 0, no regressions. Now update the reports.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat > verus-ai-logs/nanvix-phys-hal-frame-address/verification_todo.md <<'EOF
+[RESULT ✓] bash: todo written
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat > verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_re
+[RESULT ✓] bash: report written
+66 verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Let me do a final verification that the proof files are clean and view the final state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address; echo "=== admit/assume/external_body in 
+
+[THINKING] I'm doing a final check to make sure phys.proof.rs is clean of any admits, and verifying that the address directory has no admits, assumes, or external_body declarations either.
+[RESULT ✓] bash: === admit/assume/external_body in address dir ===
+NONE
+=== final phys.proof.rs ===
+verus! {
+
+use vstd::arithmetic::div_mod::{
+    lemma_fundamental_div_mod,
+    lemma_mod_bound,
+};
+use vstd::arithmetic::mul::lemma_mul_inequality;
+use vstd::arithmetic::power2::lemma_pow2_pos;
+use vstd::bits::lemma_us...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+All clean — zero admit/assume/external_body in the address directory. Let me check git status for any uncommitted source.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status --short | grep -vE "verus-ai-logs/(verify-kernel|nanvix-phys)" ; e
+
+[THINKING] The comment in lemma_from_number_no_overflow looks accurate since the caller uses into_raw_value which enforces the type invariant, so that's fine. The source changes are ready, and while the task doesn't explicitly require committing, the auto-commit already handled the main files.
+[RESULT ✓] bash: === source files committed? ===
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Done. Summary of this round:
+
+## Result: PASS
+
+**Eliminated both hard admits** in `phys.proof.rs` (flagged for the frame-address task) with real proofs:
+
+1. **`lemma_from_number_no_overflow`** (was `admit()`) → proves `frame@ * PAGE_SIZE ≤ usize::MAX` using `vstd::arithmetic` lemmas (`lemma_mod_bound`, `lemma_fundamental_div_mod`, `lemma_mul_inequality`) + a `nonlinear_arith` block — mirroring `arch`'s verified `pde.proof.rs::lemma_frame_address`.
+
+2. **`lemma_frame_index`** (was `admit()`) → proves the shift-equals-divide identity via `vstd::bits::lemma_usize_shr_is_div`. Corrected `requires shift < 64` → `shift < usize::BITS` (the kernel target is **32-bit**, which is what the vstd lemma needs).
+
+**Supporting deviation (documented, required):** `phys.rs::from_number` was rewritten to bind the multiply operand to a `let` first, so `into_raw_value`'s bound postcondition is in scope for the lemma. This is the pre-approved "intermediate value" deviation, forced by two genuine Verus limitations I hit and captured: cross-crate `use_type_invariant` → *"missing type invariant function"*, and param invariants not auto-assumed → *"precondition not satisfied"*. Effect order, semantics, time/space are identical; non-ghost `cargo build` passes.
+
+**Verification:**
+- Address directory: **zero** admit/assume/external_body.
+- `frame` module & `phys` module: **CLEAN** (6 verified, 0 errors each).
+- `make verify-kernel`: exit 0, global admit 29→27 (rest out-of-scope).
+- `make verify`: all 6 crates exit 0 — no regressions.
+- AST consistency: `frame.rs` 0 mismatches; `phys.rs` 1 documented pre-approved deviation.
+
+Reports updated at `cheating-elimination/fix_report.md` and `verification_todo.md`.
+
+[THINKING] All the source changes are committed and the verification checks are passing across the board—both the frame and phys modules are clean, the kernel verification succeeded, and all crates verified without issues.
+
+
+=== Session End ===
+Session: 04c5a2a9-b9aa-4f23-a96d-eab0822390d5
+Duration: 811.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/cheating-fix-claude-20260615-051200.jsonl
