@@ -94,3 +94,4 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: phys-mod
 ============================================================
+[2026-06-15 00:32:23] [STRIP-EXT] removed 2 external_body attribute(s) from /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs
