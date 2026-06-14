@@ -118,3 +118,9 @@ See turn_001_driver.md for the per-item walkthrough.
 [2026-06-15 06:28:02] ✅ specification: PASS (0/0)
 [2026-06-15 06:28:02] [GATE] Running build: make build
 [2026-06-15 06:28:02] [GATE] Running verify: make verify
+[2026-06-15 06:28:08] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PHASE: proving
+Module: phys-kframe
+============================================================
