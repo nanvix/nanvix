@@ -531,7 +531,6 @@ fn ensure_identity_mapped_range(
         },
 )]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
-    proof! { admit(); }
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
         #[cfg(not(verus_keep_ghost))]
@@ -715,7 +714,6 @@ fn ensure_pte(
         },
 )]
 pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-    proof! { admit(); }
     let phys_addr: usize = phys_addr.into_raw_value();
 
     let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);

@@ -139,3 +139,27 @@ Turn 6
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
+[RESULT ✓] bash: --> src/kernel/src/mm/virt/identity_map.rs:627:1
+error: postcondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:619:13
+    |             ^^^^^ failed this postcondition
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:632:40
+    |             --------...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Core blocker confirmed: L619 (opaque-view `mapped.contains`) plus an arch cross-crate type-invariant limitation for the `read` precondition. Let me capture all three functions' exact errors together, then assess fixability:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/idm.rs.bak src/kernel/src/mm/virt/identity_map.rs; python3 - <<'EOF'
+
+
+[THINKING] I'm looking at two verification errors in the code. The first is a postcondition issue at line 619 where the mapped view needs to contain the spec page base for the physical address. The second is a precondition at line 632 where the page table read operation requires the index to be within bounds, and I need to figure out how to get the TableIndex bound since the type invariant approach causes cross-crate issues.
+
+The core problem is that `ensure_pte` receives `pte_idx` as a bare parameter without any requires clause, so there's no way to prove the bound inside the function unless the type invariant is available. Adding a requires clause would technically restrict callers, which counts as weakening and is forbidden by the review rules. Even though the caller always passes a valid TableIndex, the rules don't allow adding preconditions. This leaves me blocked by both the opaque view fact issue and a Verus limitation with cross-crate type invariants.
+
+The real blocker is that to prove L619, I'd need to establish that `identity_map_view()` equals some previous state after calling `spec_install_page`, but there's no ghost-token mechanism connecting them. Any lemma asserting this equality without proof would be an implicit admit, which is forbidden. The only way forward would be making `identity_map_view()` a concrete function that tracks its own state history, but that's a fundamental architectural change.
+
+The core issue is that `KERNEL_PD_PADDR` is a raw atomic with no spec-readable accessor in Verus. Converting it to a verified atomic would require modifying `init` and `sync_kernel_pdes`, which are out of scope. So I'm genuinely blocked on the primary admits.
+
+Let me check whether the secondary cfg-gating issue on the `error!` macro is actually fixable — the reviewer might be right that removing the gate is harmless if the macro is Verus-compatible.
