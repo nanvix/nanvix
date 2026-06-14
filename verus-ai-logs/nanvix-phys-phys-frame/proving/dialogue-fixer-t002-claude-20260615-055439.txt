@@ -1009,3 +1009,55 @@ Let me verify book and the new lemmas before proceeding to free/share.
 [TOOL] report_intent: Verifying book and transition lemmas
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=19 admit=19 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '20,80p'
+[RESULT ✓] bash: error: struct literals are not allowed here; try surrounding the struct literal with parentheses
+   --> src/kernel/src/mm/phys/frame.proof.rs:271:61
+    |
+271 |           view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == FrameAllocView {
+    |  _____________________________________________________...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Struct literals in `ensures` need parentheses. Let me fix the three lemmas.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && perl -0pi -e 's/(== )(FrameAllocView \{\n(?: {12}.*\n)+ {8}\},)/$1($2)/g' src/kernel/
+[RESULT ✓] bash: 271:        view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == (FrameAllocView {
+359:        view_of(sb.remove(fnx), nb, rc.update(fnx, 0u8)) == (FrameAllocView {
+444:        view_of(sb, nb, rc.update(fnx, nv)) == (FrameAllocView {
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 269.         !sb.contains(fnx),
+270.     ensures
+271.         view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == (FrameAllocView {
+272.             allocated_frames: view_of(sb, nb, rc).allocated_frames.insert(addr),
+273.             free_frames: view_of(sb, nb, rc).free_frames.remove(addr),
+274.  ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -i 's/^        },)$/        }),/' src/kernel/src/mm/phys/frame.proof.rs && grep -
+[RESULT ✓] bash: 275:        }),
+363:        }),
+448:        }),
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

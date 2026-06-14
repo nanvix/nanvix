@@ -268,11 +268,11 @@ proof fn lemma_reserve_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
         0 <= fnx < nb,
         !sb.contains(fnx),
     ensures
-        view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == FrameAllocView {
+        view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == (FrameAllocView {
             allocated_frames: view_of(sb, nb, rc).allocated_frames.insert(addr),
             free_frames: view_of(sb, nb, rc).free_frames.remove(addr),
             refcounts: view_of(sb, nb, rc).refcounts.insert(addr, 1int),
-        },
+        }),
 {
     lemma_aligned_addr_index(addr);
     assert(frame_addr_of(fnx) == addr);
@@ -356,11 +356,11 @@ proof fn lemma_release_one_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, addr:
         0 <= fnx < nb,
         sb.contains(fnx),
     ensures
-        view_of(sb.remove(fnx), nb, rc.update(fnx, 0u8)) == FrameAllocView {
+        view_of(sb.remove(fnx), nb, rc.update(fnx, 0u8)) == (FrameAllocView {
             allocated_frames: view_of(sb, nb, rc).allocated_frames.remove(addr),
             free_frames: view_of(sb, nb, rc).free_frames.insert(addr),
             refcounts: view_of(sb, nb, rc).refcounts.remove(addr),
-        },
+        }),
 {
     lemma_aligned_addr_index(addr);
     assert(frame_addr_of(fnx) == addr);
@@ -441,11 +441,11 @@ proof fn lemma_update_refcount_v(sb: Set<int>, nb: int, rc: Seq<u8>, fnx: int, a
         0 <= fnx < nb,
         sb.contains(fnx),
     ensures
-        view_of(sb, nb, rc.update(fnx, nv)) == FrameAllocView {
+        view_of(sb, nb, rc.update(fnx, nv)) == (FrameAllocView {
             allocated_frames: view_of(sb, nb, rc).allocated_frames,
             free_frames: view_of(sb, nb, rc).free_frames,
             refcounts: view_of(sb, nb, rc).refcounts.insert(addr, nv as int),
-        },
+        }),
 {
     lemma_aligned_addr_index(addr);
     assert(frame_addr_of(fnx) == addr);
