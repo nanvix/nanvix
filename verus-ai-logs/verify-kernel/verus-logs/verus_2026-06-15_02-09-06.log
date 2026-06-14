@@ -1,0 +1,107 @@
+Timestamp: 2026-06-15_02-09-06
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=18
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:104:17
+    |
+104 |         let i = choose|i: int| 0 <= i < extended.len() && extended[i]@ == a;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:104:59
+    |
+104 |         let i = choose|i: int| 0 <= i < extended.len() && extended[i]@ == a;
+    |                                                           ^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:102:5
+    |
+102 |     assert forall|a: int| user_addr_set(extended).contains(a) implies
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:102:27
+    |
+102 |     assert forall|a: int| user_addr_set(extended).contains(a) implies
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:114:21
+    |
+114 |             let i = choose|i: int| 0 <= i < frames.len() && frames[i]@ == a;
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:114:61
+    |
+114 |             let i = choose|i: int| 0 <= i < frames.len() && frames[i]@ == a;
+    |                                                             ^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:109:5
+    |
+109 |     assert forall|a: int| user_addr_set(frames).insert(uf@).contains(a) implies
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:110:9
+    |
+110 |         user_addr_set(extended).contains(a) by {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/manager.proof.rs:200:5
+    |
+200 |     assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |     ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/manager.proof.rs:200:27
+    |
+200 |     assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |                           ^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/manager.proof.rs:200:5
+    |
+200 |     assert forall|x: int| s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |     ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
