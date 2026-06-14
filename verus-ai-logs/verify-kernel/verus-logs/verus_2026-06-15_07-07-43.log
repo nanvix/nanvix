@@ -1,0 +1,223 @@
+Timestamp: 2026-06-15_07-07-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=7
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:757:14
+    |
+756 |     proof {
+    |     ----- while parsing this struct
+757 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+757 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:758:6
+    |
+758 |     }
+    |      ^ help: add `;` here
+759 |     instance().alloc()
+    |     -------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:798:14
+    |
+797 |     proof {
+    |     ----- while parsing this struct
+798 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+798 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:799:6
+    |
+799 |     }
+    |      ^ help: add `;` here
+800 |     instance().alloc_contiguous(count)
+    |     -------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:827:14
+    |
+826 |     proof {
+    |     ----- while parsing this struct
+827 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+827 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/mm/phys/frame.rs:828:6
+    |
+828 |     }
+    |      ^ help: add `;` here
+829 |     let inner = instance();
+    |     --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:851:14
+    |
+850 |     proof {
+    |     ----- while parsing this struct
+851 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+851 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:852:6
+    |
+852 |     }
+    |      ^ help: add `;` here
+853 |     instance().free(frame)
+    |     -------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:896:14
+    |
+895 |     proof {
+    |     ----- while parsing this struct
+896 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+896 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:897:6
+    |
+897 |     }
+    |      ^ help: add `;` here
+898 |     instance().book(phys_addr)
+    |     -------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:920:14
+    |
+919 |     proof {
+    |     ----- while parsing this struct
+920 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+920 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:921:6
+    |
+921 |     }
+    |      ^ help: add `;` here
+922 |     instance().alloc_range(region)
+    |     -------- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/phys/frame.rs:947:14
+    |
+946 |     proof {
+    |     ----- while parsing this struct
+947 |         admit();
+    |         -----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+947 |         admit: admit();
+    |         ++++++
+
+error: expected `;`, found `instance`
+   --> src/kernel/src/mm/phys/frame.rs:948:6
+    |
+948 |     }
+    |      ^ help: add `;` here
+949 |     instance().share(frame)
+    |     -------- unexpected token
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:752:1
+    |
+752 | pub(super) fn alloc() -> Result<FrameAddress, Error> {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:796:1
+    |
+796 | pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:825:1
+    |
+825 | pub(super) fn free_count() -> usize {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:849:1
+    |
+849 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:894:1
+    |
+894 | pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:918:1
+    |
+918 | pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
+    | ^^^
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:945:1
+    |
+945 | pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^
+
+error: could not compile `kernel` (bin "kernel") due to 21 previous errors

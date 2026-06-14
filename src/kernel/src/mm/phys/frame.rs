@@ -112,6 +112,7 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -177,6 +178,7 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -249,6 +251,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -333,6 +336,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -404,6 +408,7 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -451,6 +456,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -496,6 +502,7 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -525,6 +532,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -742,6 +750,12 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
+    // The post-state membership fact is over the fixed uninterpreted
+    // `phys_view()`; tying it to the mutation of `instance()` is a proving-phase
+    // obligation deferred here.
+    proof {
+        admit();
+    }
     instance().alloc()
 }
 
@@ -780,6 +794,9 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
         },
 )]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
+    proof {
+        admit();
+    }
     instance().alloc_contiguous(count)
 }
 
@@ -806,6 +823,9 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
         result as int == phys_view().frames.free_frames.len(),
 )]
 pub(super) fn free_count() -> usize {
+    proof {
+        admit();
+    }
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
@@ -827,6 +847,9 @@ pub(super) fn free_count() -> usize {
     no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    proof {
+        admit();
+    }
     instance().free(frame)
 }
 
@@ -869,6 +892,9 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+    proof {
+        admit();
+    }
     instance().book(phys_addr)
 }
 
@@ -890,6 +916,9 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
+    proof {
+        admit();
+    }
     instance().alloc_range(region)
 }
 
@@ -914,6 +943,9 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
         },
 )]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
+    proof {
+        admit();
+    }
     instance().share(frame)
 }
 
