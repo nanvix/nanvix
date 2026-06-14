@@ -213,3 +213,18 @@ Module: arch-paging-mod
 [2026-06-15 01:01:03] Running final comprehensive review...
 [2026-06-15 01:01:03] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 01:11:10]   ↳ review done in 10m07s (exit=0)
+[2026-06-15 01:11:10] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 01:11:10] [FINAL REVIEW] Cheating report: external_body: 3 (3 on user fns)
+[2026-06-15 01:11:10] [FINAL REVIEW] ⚠ unapproved external_body fn: 3
+[2026-06-15 01:11:10] [FINAL REVIEW] ❌ Overriding to FAIL — cheating: unapproved external_body fn: 3
+[2026-06-15 01:11:10] [FINAL REVIEW] Done (10m07s)
+
+============================================================
+PIPELINE FINISHED: arch-paging-mod (some phases need work)
+  ✅ proving                   dialogue-RESOLVED         5m06s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         4m02s (1 dialogue turns)
+  ❌ final-review              FAIL                     10m07s
+  ──────────────────────────────────────────────────────────
+  Total: 29m28s
+============================================================
+[2026-06-15 01:11:10] [USAGE] Summary: 10 calls, 0 tokens, 44m01s total → /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/usage_summary.json
