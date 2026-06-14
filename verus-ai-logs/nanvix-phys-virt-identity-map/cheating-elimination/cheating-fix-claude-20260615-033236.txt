@@ -391,3 +391,56 @@ The remaining `external_body` at line 151 is just a word in a comment — zero r
 [THINKING] So `external_body` in spec.rs is just a comment artifact, not an actual attribute, meaning there are zero real external_body attributes to worry about. And in identity_map.rs, the diff shows I've restored the missing admit line for ensure_pt that was removed in the HEAD version, bringing the total back to three admits as it should be.
 
 Now I need to run `make verify-kernel` to finalize this restored state. The working tree currently has the correct 3 admits (verifying state), while HEAD is stuck at 2 admits (broken state). Running the verify harness will auto-commit the working tree's correct state, ensuring the repo ends in the proper baseline with the external_body fix persisted.
+[RESULT ✓] bash: 16:verification results:: 76 verified, 0 errors
+25:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+32:=== Summary ===
+33:  verification: 76 verified, 0 errors (exit 0)
+34:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+36:  stat...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/ && echo "=== admits ===" && git show HEAD:src/kerne
+
+[THINKING] I'm seeing 76 verified entries with no errors, and the external_body count dropped from 12 to 11 thanks to the ExPageTableBss fix. There are still 3 admits flagged as part of the larger 31 global set, which is triggering the CHEATING_DETECTED status. Let me verify the auto-commit properly captured this 3-admit state and that the working tree is clean.
+[RESULT ✓] bash: === admits ===
+3
+=== spec external_body attrs (real) ===
+1
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git show HEAD:src/kernel/src/mm/virt/identity_map.spec.rs | grep -nE "verif
+[RESULT ✓] bash: 151:// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB flush),
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Confirmed — line 151 is comment text only; zero real `external_body` attributes remain in the committed spec.rs. Final state is clean and committed.
+
+## Summary
+
+**external_body eliminated (1 → 0):** Removed `#[verifier::external_body]` from `ExPageTableBss` in `identity_map.spec.rs:142`. Since `PageTableBss` is a field-less unit struct (like `ExError`), the bare `external_type_specification` verifies. Whole-crate `external_body` dropped **12 → 11**; module still 9 verified, 0 errors.
+
+**3 admits remain — verified impossibility within scope.** Reproduced this turn (`ensure_pt` alone without admit → `8 verified, 1 errors`):
+- `bump_view(PAGE_TABLE_ALLOCATOR).inv()` is unestablishable — `new()` has no `ensures`, no axiom exposes it (bump_allocator lib, out of scope).
+- `ensure_pte`/`identity_map_page` assert result-dependent **opposite** facts (`Ok ⇒ contains(p)` / `Err ⇒ !contains(p)`) over a **parameterless** `uninterp` constant — unsatisfiable for any fixed value.
+
+Sound elimination needs the deferred cross-module ghost-token framework (forbidden: no exec signature changes, no spec weakening, no new `external_body`/`assume_specification`, `table.rs`+callers off-limits). The reviewer's own `STOP`/`BLOCKED` file independently confirms this.
+
+**Final state:** `make verify-kernel` → 76 verified, **0 errors**, exit 0 (CHEATING_DETECTED: 3 documented admits). AST consistent (14 fns, 1 struct). Reports updated: `fix_report.md`, `turn_002_fixer.md`, `verification_todo.md`.
+
+**Result: external_body FIXED; 3 admits NEEDS_GUIDANCE** (escalated to proving-phase owner).
+
+[THINKING] The grep match was just picking up the comment text itself — the actual `#[verus_verify(external_body)]` attribute isn't present in the code, only mentioned within a comment. So the external_body attribute for ExPageTableBss has been successfully removed and committed, leaving the codebase clean.
+
+
+=== Session End ===
+Session: 8479c69d-e2de-4c1e-abc2-5ca2060868ef
+Duration: 439.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating-fix-claude-20260615-033236.jsonl
