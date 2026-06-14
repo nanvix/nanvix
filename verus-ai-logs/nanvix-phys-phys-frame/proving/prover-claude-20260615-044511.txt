@@ -501,3 +501,93 @@ Let me establish a baseline by running the module verification with the existing
 [THINKING] I'm tracing through how `into_frame_number` works for `PageAligned<PhysicalAddress>`. When calling `phys_addr.into_frame_number()`, it goes through the Deref implementation to reach `PhysicalAddress::into_frame_number`, but since that method takes `self` by value, it consumes the value in the process.
 
 The issue is that `book` only requires `phys_addr.inv()` (which checks alignment for PageAligned), but `into_frame_number` on PhysicalAddress has its own precondition requiring the frame number to be representable. There's a gap between what's being checked at the call site and what the method actually requires. Now I'm working through the relationship between frame addresses and bitmap indices. When a FrameAddress is page-aligned, its frame number equals its physical address divided by page size, which matches the bitmap index used to track allocated frames. I need to establish helper lemmas in the proof file that connect bitmap operations to the Inner view, then run the verification to see the current state with the admits in place.
+[RESULT ✓] bash: - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:298 free: admit
+    - frame.rs:379 share: admit
+    - frame.rs:442 refcount: admit
+    - frame.rs:497 book: admit
+    - frame.rs:535 is_covered: admit
+    - frame.rs:583 alloc_range: admit
+    - kframe.rs:94 new: e...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me see the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\|
+
+[THINKING] Something went wrong with the verus compilation—it exited with code 101. Let me check the error logs to see what actually happened.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2244 ~ kernel[b87f]::mm::phys::frame::INSTANCE))
+26:error: The verifier does not yet support the following R...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '10,40p'
+[RESULT ✓] bash: Cheating patterns:
+  assume=0
+  external_body=9
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutab...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Both `instance` and `init` access `static mut`, unsupported by Verus. Let me check the TCB list for these.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "frame.rs::init\|frame.rs::instance\|::init\b\|frame::init" verus-ai-logs/tcb
+
+[THINKING] I'm looking at two functions that need the `external_body` attribute to prevent Verus from parsing unsupported `static mut` access. The `instance` function is already listed in tcb-allowed.md, so it should get marked as `external_body`. For `init`, it's in the skip list but I need to verify whether it's also in tcb-allowed.md to determine if it needs the same treatment.
+[RESULT ✓] bash: 7:- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+80:- `src/kernel/src/mm/phys/frame.rs::init`
+95:- `src/kernel/src/mm/phys/frame.rs::init` — also listed under skip; callable from verified `init`.
+96:- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '80,96p' src/kernel/src/mm/phys/kframe.rs; echo "---upool---"; sed -n '240,255
+
+[THINKING] I need to check how `external_body` is being applied to these functions—whether they're using the `#[verus_verify(external_body)]` or `#[verifier::external_body]` attribute style. Let me look at how `kframe::new` implements this to understand the pattern.
+[RESULT ✓] bash: // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+        ensures
+            match result {
+                Ok(kf) => {
+                    &&& kf@ == base@
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Both `instance` and `init` are TCB-allowed `external_body`. Adding the attribute:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to add the `#[verus_verify(external_body)]` attribute to both the `instance` and `init` functions since they're in the TCB allowed list, replacing their current `#[verus_spec(...)]` annotations.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now let me re-run to see the actual verification state of the in-scope functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+
+[THINKING] I'm checking whether the free functions like `alloc`, `free`, and `share` are currently marked as external_body or if they're being verified normally. The cheating report didn't flag them, which suggests they're compiling and verifying without admits or external_body annotations.
+
+Now that I've added external_body to the instance initialization, I need to re-run verification to see the actual state. The free functions call instance methods and reference `phys_view().frames` in their ensures clauses, which should be provable given the instance ensures. Let me run the verification again to see what actually fails.

@@ -665,6 +665,7 @@ static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 // `PointsTo` for the `static mut` (mirrors the `bump_allocator` materialization). The `ensures`
 // pins the abstract state of the singleton to the global subsystem view (`phys_view().frames`)
 // and records that the allocator is initialized — the §8 ghost-token attachment realized here.
+#[verus_verify(external_body)]
 #[verus_spec(r =>
     ensures
         (*r).inv(),
@@ -698,6 +699,7 @@ fn instance() -> &'static mut Inner {
 // cannot verify. The dependency contract pins the post-init abstract state to `phys_view()`:
 // on success the frame allocator is initialized and its partition is well formed, which every
 // other free function relies on before it runs.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {

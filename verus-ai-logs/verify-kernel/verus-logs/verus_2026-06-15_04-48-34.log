@@ -1,0 +1,103 @@
+Timestamp: 2026-06-15_04-48-34
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+42 verified
+6 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:761:13
+    |
+761 |             Ok(frame) => {
+    |             ^^^^^^^^^ failed this postcondition
+...
+769 |     instance().alloc()
+    |     ------------------ at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:790:13
+    |
+790 |             Ok(base) => {
+    |             ^^^^^^^^ failed this postcondition
+...
+798 |     instance().alloc_contiguous(count)
+    |     ---------------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:815:9
+    |
+815 |         result as nat == crate::mm::phys::phys_view().frames.free_count(),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+819 |     inner.bitmap.number_of_bits() - inner.bitmap.usage()
+    |     ---------------------------------------------------- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:834:1
+    |
+834 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: callee may open invariants that caller cannot
+   --> src/kernel/src/mm/phys/frame.rs:675:1
+    |
+675 | fn instance() -> &'static mut Inner {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invariants opened by callee
+...
+831 |     opens_invariants none
+    |                      ^^^^ invariants opened by caller
+...
+835 |     instance().free(frame)
+    |     ^^^^^^^^^^ at this call-site
+
+error: cannot show this call will not unwind, in function marked 'no_unwind'
+   --> src/kernel/src/mm/phys/frame.rs:835:5
+    |
+675 | fn instance() -> &'static mut Inner {
+    | ----------------------------------- perhaps you need to mark this function as 'no_unwind'?
+...
+835 |     instance().free(frame)
+    |     ^^^^^^^^^^ call to kernel::mm::phys::frame::instance might unwind
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:871:13
+    |
+871 |             Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
+    |             ^^^^^^ failed this postcondition
+...
+876 |     instance().book(phys_addr)
+    |     -------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:889:13
+    |
+889 |             Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+    |             ^^^^^^ failed this postcondition
+...
+896 |     instance().alloc_range(region)
+    |     ------------------------------ at the end of the function body
+
+verification results:: 42 verified, 6 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 7 previous errors
