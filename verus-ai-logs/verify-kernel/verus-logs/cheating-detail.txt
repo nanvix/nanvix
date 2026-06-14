@@ -11,13 +11,13 @@
     - mm/phys/frame.rs:535 is_covered: admit
     - mm/phys/frame.rs:583 alloc_range: admit
     - mm/phys/frame.rs:675 instance: external_body
-    - mm/phys/frame.rs:702 init: external_body
-    - mm/phys/frame.rs:757 alloc: admit
-    - mm/phys/frame.rs:787 alloc_contiguous: admit
-    - mm/phys/frame.rs:808 free_count: admit
-    - mm/phys/frame.rs:826 free: admit
-    - mm/phys/frame.rs:868 book: admit
-    - mm/phys/frame.rs:889 alloc_range: admit
+    - mm/phys/frame.rs:713 init: external_body
+    - mm/phys/frame.rs:768 alloc: admit
+    - mm/phys/frame.rs:798 alloc_contiguous: admit
+    - mm/phys/frame.rs:819 free_count: admit
+    - mm/phys/frame.rs:837 free: admit
+    - mm/phys/frame.rs:879 book: admit
+    - mm/phys/frame.rs:900 alloc_range: admit
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
@@ -29,8 +29,8 @@
     - mm/phys/manager.proof.rs:119 lemma_kernel_bulk_err_restored: admit
     - mm/phys/manager.rs:104 init: external_body
     - mm/phys/manager.rs:515 kernel_watermark: external_body
-    - mm/phys/mod.proof.rs:9 lemma_frame_initialized: admit
-    - mm/phys/mod.proof.rs:22 lemma_manager_ready: admit
+    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
     - mm/phys/upool.rs:221 Upool (struct): external_body
     - mm/phys/upool.rs:246 new: external_body

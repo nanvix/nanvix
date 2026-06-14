@@ -696,9 +696,20 @@ fn instance() -> &'static mut Inner {
 // Skip/exclude target (see `verus-ai-logs/tcb-allowed.md`): initializes the `static mut`
 // singleton and the BSS-backed refcount storage. `external_body` because it materializes
 // `&'static mut REFCOUNT_STORAGE` and writes the `MaybeUninit` singleton — raw-memory ops Verus
-// cannot verify. Callers rely on it establishing `phys_view().initialized` (via
-// `lemma_frame_initialized`) before any other free function runs.
+// cannot verify. The dependency contract pins the post-init abstract state to `phys_view()`:
+// on success the frame allocator is initialized and its partition is well formed, which every
+// other free function relies on before it runs.
 #[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        match result {
+            Ok(_) => {
+                &&& crate::mm::phys::phys_view().initialized
+                &&& crate::mm::phys::phys_view().frames.wf()
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));

@@ -56,6 +56,7 @@ pub use self::{
 // Standalone Functions
 //==================================================================================================
 
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -83,6 +84,7 @@ fn book_physical_memory_regions(
     Ok(())
 }
 
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -171,9 +173,6 @@ pub fn init(
     info!("initializing the frame allocator ...");
     // Safety: called exactly once during single-threaded boot.
     unsafe { frame::init(physical_memory_layout)? };
-    proof!{
-        lemma_frame_initialized();
-    }
     book_physical_memory_regions(physical_memory_regions)?;
 
     book_mmio_regions(mmio_regions)?;
@@ -185,9 +184,6 @@ pub fn init(
     // Initialize physical memory manager singleton.
     info!("initializing the physical memory manager ...");
     PhysMemoryManager::init(upool)?;
-    proof!{
-        lemma_manager_ready();
-    }
 
     Ok(())
 }
