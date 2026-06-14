@@ -217,3 +217,20 @@ Turn 3
 
 Looking at spec.rs, there's a constraint that `spec_page_size() == pow2(FRAME_SHIFT)`, and with the concrete value of 4096, this means `FRAME_SHIFT` must equal 12—which is exactly what the assume_specification enforces, so that's consistent. Making an uninterpreted function concrete actually strengthens the proofs rather than weakening them, since anything that depended on the equality still holds. The remaining kernel assume_specifications appear to be external dependencies, so this change is legitimate. I should run the full verification to confirm everything passes.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+  Crate     : sys
+  Exit code : 0
+  cheating: assume=0 external_body=0 admi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "verified|errors|status|cheating:|coverage|Exit" | head; ec
+
+[THINKING] All the crates are passing cleanly with no new cheating introduced—the kernel's metrics match the baseline exactly with admit=28, external_body=11, and cfg_gate=15. The arch assume count actually improved from 1 down to 0. Now I need to verify the arch verification process itself and check the build, plus review any remaining assume values in the kernel.
+
+The specifications are all external—the frame.spec.rs ones are just PageAligned trait implementations from sys/core, nothing workspace-internal. Let me run the verification command to get the explicit and verified counts along with the build results.
