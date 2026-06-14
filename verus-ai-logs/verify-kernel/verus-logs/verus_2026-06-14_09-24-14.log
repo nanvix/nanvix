@@ -1,0 +1,57 @@
+Timestamp: 2026-06-14_09-24-14
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=26
+  admit=36
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+warning: cannot use external trait arch::x86::mem::paging::table::TableEntry as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+   --> src/kernel/src/mm/virt/identity_map.spec.rs:191:1
+    |
+191 | pub assume_specification<E: TableEntry>[ Table::<E>::from_address ](base: usize) -> Table<E>;
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: cannot use external trait arch::x86::mem::paging::table::TableEntry as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+   --> src/kernel/src/mm/virt/identity_map.spec.rs:193:1
+    |
+193 | / pub assume_specification<E: TableEntry>[ Table::<E>::read ](
+194 | |     table: &Table<E>,
+195 | |     index: TableIndex,
+196 | | ) -> Option<E>;
+    | |______________^
+
+warning: cannot use external trait arch::x86::mem::paging::table::TableEntry as a bound without declaring the trait (use #[verifier::external_trait_specification] to declare the trait); this is a warning for now but will eventually be an error
+   --> src/kernel/src/mm/virt/identity_map.spec.rs:198:1
+    |
+198 | / pub assume_specification<E: TableEntry>[ Table::<E>::write ](
+199 | |     table: &Table<E>,
+200 | |     index: TableIndex,
+201 | |     entry: E,
+202 | | );
+    | |_^
+
+error: disallowed: constructor for an opaque datatype
+   --> src/kernel/src/mm/virt/identity_map.rs:560:13
+    |
+560 |             PresentFlag::Present,
+    |             ^^^^^^^^^^^^^^^^^^^^ this constructor is disallowed
+    |
+   ::: src/kernel/src/mm/virt/identity_map.spec.rs:143:1
+    |
+143 | pub struct ExPresentFlag(PresentFlag);
+    | -------------------------------------- Verus treats this datatype as 'opaque' because it is marked 'external_body'
+
+warning: `kernel` (bin "kernel") generated 3 warnings
+error: could not compile `kernel` (bin "kernel") due to 1 previous error; 3 warnings emitted

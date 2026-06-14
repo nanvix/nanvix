@@ -95,4 +95,155 @@ impl IdentityMapView {
     }
 }
 
+//==================================================================================================
+// Dependency contracts for not-yet-verified modules
+//
+// The kernel HAL paging layer (`arch::mem::paging` types/functions) and the kernel
+// `page_table_allocator` storage marker are not verified yet. They are registered as external
+// types / given trusted external specifications here so that the in-scope identity-map bodies can
+// be translated. These are placeholders: when the underlying modules are verified, their real
+// `#[verus_spec]` contracts supersede them. The intra-call obligations they would discharge are
+// currently `admit()`-ed in the exec bodies, so minimal (state-free) contracts suffice.
+//==================================================================================================
+
+use ::arch::mem::paging::TableEntry;
+use super::page_table_allocator::PageTableBss;
+
+// --- Page-table structure types ---
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(E)]
+pub struct ExTable<E: TableEntry>(Table<E>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExTableIndex(TableIndex);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageDirectoryEntry(PageDirectoryEntry);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageTableEntry(PageTableEntry);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageDirectoryEntryFlags(PageDirectoryEntryFlags);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageTableEntryFlags(PageTableEntryFlags);
+
+// --- Flag enums ---
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPresentFlag(PresentFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExReadWriteFlag(ReadWriteFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExUserSupervisorFlag(UserSupervisorFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageWriteThroughFlag(PageWriteThroughFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageCacheDisableFlag(PageCacheDisableFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExAccessedFlag(AccessedFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExDirtyFlag(DirtyFlag);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageSizeFlag(PageSizeFlag);
+
+// --- BSS page-table storage marker (kernel `page_table_allocator`) ---
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageTableBss(PageTableBss);
+
+// --- Paging index helpers ---
+
+pub assume_specification[ ::arch::mem::paging::pd_index ](vaddr: usize) -> TableIndex;
+
+pub assume_specification[ ::arch::mem::paging::pt_index ](vaddr: usize) -> TableIndex;
+
+// --- TLB maintenance ---
+
+pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);
+
+// --- `Table` raw accessors (trusted HAL boundary) ---
+
+pub assume_specification<E: TableEntry>[ Table::<E>::from_address ](base: usize) -> Table<E>;
+
+pub assume_specification<E: TableEntry>[ Table::<E>::read ](
+    table: &Table<E>,
+    index: TableIndex,
+) -> Option<E>;
+
+pub assume_specification<E: TableEntry>[ Table::<E>::write ](
+    table: &Table<E>,
+    index: TableIndex,
+    entry: E,
+);
+
+// --- Page-directory-entry operations ---
+
+pub assume_specification[ PageDirectoryEntryFlags::new ](
+    present: PresentFlag,
+    read_write: ReadWriteFlag,
+    user_supervisor: UserSupervisorFlag,
+    page_write_through: PageWriteThroughFlag,
+    page_cache_disable: PageCacheDisableFlag,
+    accessed: AccessedFlag,
+    dirty: DirtyFlag,
+    page_size: PageSizeFlag,
+) -> PageDirectoryEntryFlags;
+
+pub assume_specification[ PageDirectoryEntry::new ](
+    flags: PageDirectoryEntryFlags,
+    frame: FrameNumber,
+) -> PageDirectoryEntry;
+
+pub assume_specification[ PageDirectoryEntry::is_present ](pde: &PageDirectoryEntry) -> bool;
+
+pub assume_specification[ PageDirectoryEntry::frame_address ](pde: &PageDirectoryEntry) -> usize;
+
+// --- Page-table-entry operations ---
+
+pub assume_specification[ PageTableEntryFlags::new ](
+    present: PresentFlag,
+    read_write: ReadWriteFlag,
+    user_supervisor: UserSupervisorFlag,
+    page_write_through: PageWriteThroughFlag,
+    page_cache_disable: PageCacheDisableFlag,
+    accessed: AccessedFlag,
+    dirty: DirtyFlag,
+) -> PageTableEntryFlags;
+
+pub assume_specification[ PageTableEntry::new ](
+    flags: PageTableEntryFlags,
+    frame: FrameNumber,
+) -> PageTableEntry;
+
+pub assume_specification[ PageTableEntry::is_present ](pte: &PageTableEntry) -> bool;
+
+// --- Slice base pointer (std, not covered by vstd) ---
+
+pub assume_specification<T>[ <[T]>::as_ptr ](s: &[T]) -> *const T;
+
 } // verus!
