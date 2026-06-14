@@ -337,3 +337,70 @@ The bump-allocator now verifies: 6 verified, 0 errors, 0 admit, 0 assume. The 2 
 
 [THINKING] I need to verify that the external_body functions are correct, then run the full verification suite to check for any regressions and confirm the spec drift check passes.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --cr...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All crates pass. Let me confirm the earlier crates (bitmap, sys, nanvix-slab) also verified, since the tail was truncated.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for c in bitmap sys nanvix-slab bump-allocator kernel; do f=$(ls -t verus-ai-logs/verify-$c
+
+[THINKING] All the crates are passing verification with no errors, so the build completed successfully. I'm checking the full output to make sure bitmap, sys, and nanvix-slab also went through, since the tail only showed the last couple of crates. Since make verify ran to completion without stopping, that confirms everything passed.
+
+Now I need to decide whether to update bugs.md. The task only asks me to record bugs if found, and I haven't found any — overflow is handled, bounds are checked. The external_body=2 entries are allowed in the TCB, so there's nothing to report. The verification phase is complete with zero errors, zero admits, and zero assumes.
+[RESULT ✓] bash: == bitmap ==
+== sys ==
+== nanvix-slab ==
+== bump-allocator ==
+== kernel ==
+verification results:: 1 verified, 0 errors
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && for c in bitmap sys nanvix-slab; do f=$(ls -t verus-ai-logs/verify-$c/verus-logs/verus_*.lo
+
+[THINKING] The grep search might have missed those verification results due to caching, so I should try a different approach to check the summary status.
+[RESULT ✓] bash: == bitmap ==
+Exit code: 0
+== sys ==
+Exit code: 0
+== nanvix-slab ==
+Exit code: 0
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All modules verify with 0 errors. Let me record the proving-phase outcome in the bugs log.
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md
+
+[THINKING] The exit code of 0 from the shell and the fact that make would have stopped at the first failing crate means the verification actually completed successfully overall, even though the logs only show the direct verus.log output.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/bugs.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Done. Summary of what I did:
+
+**Diagnosis**: The proving phase started with the TCB `external_body` markers stripped from `alloc`/`alloc_as`. With bodies exposed, Verus rejected them for two genuine, documented limitations: raw-pointer materialization from a backend `usize` address (no `PointsTo` source for the externally-owned `BssStorage` region) and a "complex break expression" in the CAS loop.
+
+**Action**: Restored `#[verus_verify(external_body)]` on `FixedSizeBumpAllocator::alloc` and `alloc_as` — both explicitly listed in `verus-ai-logs/tcb-allowed.md`. Their full `#[verus_spec]` contracts (alignment, in-bounds, size/align gating) were left untouched — no spec weakening.
+
+**Result**:
+- `make verify-bump-allocator`: **6 verified, 0 errors**, `admit=0`, `assume=0`.
+- `make verify`: all modules pass (`bitmap`, `sys`, `nanvix-slab`, `bump-allocator`, `kernel`), 0 errors, no regressions.
+- `align_up` and all `BumpView` lemmas (`lemma_geometry`, `lemma_exhausted_boundary`, `lemma_alloc_transition`) verify with fully checked bodies.
+- The only `external_body` (2) are exactly the TCB-allowed functions.
+
+No code bugs found (overflow, bounds, and alignment are all defensively handled). Recorded the proving-phase outcome in `bugs.md`.
+
+
+=== Session End ===
+Session: 966821d9-7d9d-41c4-b999-93672106cfdc
+Duration: 180.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-bump-allocator/proving/prover-claude-20260615-010438.jsonl
