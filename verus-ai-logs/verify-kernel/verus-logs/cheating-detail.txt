@@ -11,6 +11,13 @@
     - mm/phys/frame.rs:750 book: external_body
     - mm/phys/frame.rs:756 alloc_range: external_body
     - mm/phys/manager.rs:86 init: external_body
+    - mm/phys/mod.proof.rs:19 lemma_spec_initialize_establishes_inv: admit
+    - mm/phys/mod.proof.rs:36 lemma_spec_book_frame_preserves_inv: admit
+    - mm/phys/mod.proof.rs:57 lemma_spec_book_frames_preserves_inv: admit
+    - mm/phys/mod.proof.rs:79 lemma_book_region_reserves_region_frames: admit
+    - mm/phys/mod.proof.rs:105 lemma_book_mmio_skip_untracked: admit
+    - mm/phys/mod.proof.rs:120 lemma_book_mmio_books_tracked: admit
+    - mm/phys/mod.proof.rs:140 lemma_init_establishes_and_reserves: admit
     - mm/phys/mod.rs:68 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:88 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
