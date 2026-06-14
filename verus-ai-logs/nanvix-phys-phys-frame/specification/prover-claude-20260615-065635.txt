@@ -882,3 +882,23 @@ The solution is to relax `instance()`'s precondition down to just `phys_view().i
 Turn 50
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -vE "
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+verification results:: 31 verified, 0 error...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+0 errors, 31 verified. Now I must record the new `external_body` functions (8 `Inner` methods + `instance`) in `tcb-allowed.md`, since the rule requires every `external_body` to be listed. Let me see the final status:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -vE "
+
+[THINKING] The verification passed with 31 items confirmed and no errors. The external_body count shows 20 from the module with 7 admits, which breaks down to the 8 Inner methods plus instance and init from frame.rs, plus what was already in kframe/manager/mod. Now I need to update tcb-allowed.md to formally document these new external_body functions—the 8 Inner methods and instance, since init is already listed under the exclusions. The hard rule requires external_body entries to be registered in tcb-allowed.md, so I'm checking what needs to be added there.
