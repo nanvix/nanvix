@@ -263,3 +263,16 @@ See turn_001_driver.md for full evidence.
 [2026-06-15 05:55:31] Running final comprehensive review...
 [2026-06-15 05:55:31] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 06:05:59]   ↳ review done in 10m27s (exit=0)
+[2026-06-15 06:05:59] [FINAL REVIEW] Result: UNKNOWN (0/5)
+[2026-06-15 06:05:59] [FINAL REVIEW] Cheating report: No cheating detected
+[2026-06-15 06:05:59] [FINAL REVIEW] Done (10m28s)
+
+============================================================
+PIPELINE FINISHED: sys-virt-address (some phases need work)
+  ✅ proving                   dialogue-RESOLVED        10m30s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         5m56s (1 dialogue turns)
+  ❌ final-review              UNKNOWN                  10m28s
+  ──────────────────────────────────────────────────────────
+  Total: 27m27s
+============================================================
+[2026-06-15 06:05:59] [USAGE] Summary: 11 calls, 0 tokens, 56m04s total → /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-virt-address/usage_summary.json
