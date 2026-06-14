@@ -330,3 +330,258 @@ Now let me run the baseline verification.
 [TOOL] report_intent: Running baseline verification
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | tail -40
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize && grep -rn "div_ceil" /home/ruize/.cargo/git/checkouts/verus-*/*/source/vstd/ 2>/dev/null | head -20; ec
+
+[THINKING] The baseline verification passes with exit code 0, and the external body allocations are allowed according to the tcb-allowed rules. The cached result shows no recompilation was needed, confirming the verification succeeded. Now I need to figure out the assume_specification for the div_ce function.
+
+The guardrails gate doesn't flag the assume parameter, so technically the current verification already passes. But the task demands eliminating all cheating items—including assume_specification, which counts as a trust assumption. I need to determine if I can remove it. The constraint is that I can't write assume_specification myself unless it's human-approved, but this existing one was presumably added earlier. Let me explore two options: either use vstd's built-in div_ceil specification if available, or refactor align_up to avoid needing div_ceil altogether. I should search vstd to see what's available.
+[RESULT ✓] bash: === alt vstd location ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -type d -name "vstd" 2>/dev/null | head; echo "==="; find / -name "std_specs" -type d 2>/dev/null | head
+[RESULT ✓] bash: /mnt/toolchain/verus/vstd
+/mnt/shared/verus-ai-improve4/vstd
+/mnt/shared/verus-ai-improve5-argus-exp2/vstd
+/mnt/shared/view-design-exp/kheap-worker7-clean/vstd
+/mnt/shared/verus-ai-improve5-kheap-claw/target-systems/nanvix-kheap0404/toolchain/verus/vstd
+/mnt/shared/verus-ai-improve5-kheap-claw/vstd
+...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls -la /home/ruize/toolchain/verus 2>/dev/null | head; echo "=== div_ceil in toolchain vstd ==="; grep -rn "div_ceil" /h
+
+[THINKING] I'm checking the toolchain setup at /home/ruize/toolchain/verus, which appears to be a symlink pointing to /mnt/toolchain/verus, and I need to verify which vstd library is actually being used by the verus binary.
+[RESULT ✓] bash: total 111128
+drwxr-xr-x 1 ruize ruize      450 May 24 11:12 .
+drwxrwxr-x 1 ruize ruize       10 Jun  9 16:48 ..
+-rw-r--r-- 1 ruize ruize      155 May 24 11:12 .vstd-fingerprint
+drwxr-xr-x 1 ruize ruize       26 May 24 11:12 builtin
+drwxr-xr-x 1 ruize ruize       26 May 24 11:12 builtin_macros
+-rwxr-...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "vstd" src/libs/bump_allocator/Cargo.toml Cargo.toml 2>/dev/null; echo "=== Cargo.
+
+[THINKING] I'm checking which version of vstd is being used from the cargo registry and whether it includes the div_ceil function. The earlier search didn't find it in the registry version, so I need to look at the git checkout instead.
+[RESULT ✓] bash: src/libs/bump_allocator/Cargo.toml:17:vstd = { workspace = true }
+Cargo.toml:231:vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false, features = ["alloc"] }
+=== Cargo.lock vstd ===
+name = "vstd"
+version = "0.0.0-2026-05-31-0205"
+source = "registry+https://github.com/rust-lang/crate...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: VSTD=/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205; echo "=== div_ceil ===
+[RESULT ✓] bash: === div_ceil ===
+=== std_specs num/usize ===
+alloc.rs
+atomic.rs
+bits.rs
+borrow.rs
+btree.rs
+clone.rs
+cmp.rs
+control_flow.rs
+convert.rs
+core.rs
+default.rs
+hash.rs
+iter.rs
+manually_drop.rs
+maybe_uninit.rs
+mod.rs
+num.rs
+ops.rs
+option.rs
+range.rs
+result.rs
+slice.rs
+smart_ptrs.rs
+vec.rs
+vecdeque.rs
+=== gr...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/spec-design/*.md 2>/dev/null | sed -n '1,160p'
+
+[THINKING] The issue is that `vstd` doesn't define `usize::div_ceil`, so the current `assume_specification` is the only way to give it meaning. But since the task requires zero cheating and `assume_specification` is human-approved only, I need to rewrite `align_up` to avoid using `div_ceil` altogether.
+
+The standard approach would be `(value + alignment - 1) / alignment`, but that risks overflow if the addition overflows. The original `div_ceil` handles this safely for `usize`, so I need to find a way to compute the ceiling division without overflow while staying within what Verus can verify.
+
+I can use the division and modulo approach instead: divide `value` by `alignment`, then if there's a remainder, add one to the quotient. This avoids the addition overflow and is semantically equivalent to `div_ceil` with the same complexity. But I'm second-guessing whether rewriting the exec code is justified under the ast-consistency rule—the task says to eliminate all cheating with zero exceptions, and `assume_specification` is explicitly listed as something that must go.
+
+Let me check the spec-design and ast-consistency documentation to see if `assume_specification` in standard library functions is treated as a legitimate trust boundary like `external_body` is.
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/spec-design/*.md 2>/dev/null | sed -n '160,320p'
+
+[THINKING] I need to check Part 2 of the spec to see if the div_ceil assume_specification represents a valid trust boundary that should stay in place.
+[RESULT ✓] bash: ---
+
+## Part 2: Spec Classification
+
+Specifications fall into three categories with different ownership:
+
+### Internal
+
+Specs that exist solely to help the verifier: helper lemmas, loop
+invariants, intermediate assertions, proof-function pre/postconditions.
+**The AI generates these freely during pro...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+This `assume_specification` for `div_ceil` is unapproved (not in tcb-allowed.md), so it counts as cheating. vstd has no `div_ceil` spec, so I'll rewrite `align_up` to avoid `div_ceil` and prove it. Let me develop the proof in an isolated reproducer first.
+[TOOL] report_intent: Building align_up reproducer
+[TOOL] bash: ls /home/ruize/nanvix-phy/docs/examples/ 2>/dev/null; echo "---"; find /home/ruize/nanvix-phy -name "*.rs" -path "*binar
+
+[THINKING] The policy is clear: only approved assumptions can become assume_specification code, otherwise it's treated as cheating. The div_ceil assume_specification isn't listed in the tcb-allowed.md file, so it's unapproved and counts as cheating—I need to remove it along with all other violations.
+
+Since vstd doesn't provide a div_ceil spec and I can't assume one, I need to rewrite align_up's implementation using arithmetic that Verus can verify directly. The escalation ladder requires an equivalent rewrite, and since align_up is in scope for verification, I'm allowed to make this change. I'll need to implement the same logic—rounding up to the nearest alignment boundary—but using only operations Verus can reason about without external specs.
+
+I'm computing the ceiling division manually: dividing value by alignment, then adding 1 if there's a remainder, which avoids overflow since the quotient is at most value/2 when alignment ≥ 2. Then I multiply by alignment with an overflow check. The key is proving that this manual ceiling division matches the spec's formula (value + alignment - 1) / alignment, which is a standard identity I can establish in Verus. I need to avoid using div_ceil since I can't give it a proper spec without forbidden approaches, so I'll rewrite align_up directly and prove the postcondition using division-modulo lemmas. The key is computing the result and then proving it matches the spec formula `(value + alignment - 1) / alignment`, while also handling the overflow check that `checked_mul` provides. Let me set up a standalone reproducer to develop and test the proof before integrating it into the actual file.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ---
+--- how verus is run for standalone ---
+/home/ruize/verus-bin/verus
+Verus
+  Version: 0.2026.05.24.ecee80a
+  Profile: release
+  Platform: linux_x86_64
+  Toolchain: 1.95.0-x86_64-unknown-linux-gnu
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && cat > repro_align.rs <<'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+pub open spec fn align_up_spec(value: nat, alig
+[RESULT ✓] bash: error[E0283]: type annotations needed
+  --> repro_align.rs:33:70
+   |
+33 |                 q == value / alignment + if value % alignment == 0 { 0 } else { 1 },
+   |                                                                      ^ cannot infer type of the type parameter `hint_please_add_suffix_...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && cat > repro_align.rs <<'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+pub open spec fn align_up_spec(value: nat, alig
+
+[THINKING] I need to restructure the proof to avoid putting the entire exec expression in the requires clause. Instead, I'll compute the components separately and use the div_mod lemmas from vstd to reason about them more cleanly. Let me define ghost values for the value and alignment as integers, then establish the division identity v = d*(v/d) + v mod d directly.
+[RESULT ✓] bash: error: possible arithmetic underflow/overflow
+  --> repro_align.rs:51:44
+   |
+51 |     let q: usize = if r == 0 { qd } else { qd + 1 };
+   |                                            ^^^^^^
+
+verification results:: 4 verified, 1 errors
+error: aborting due to 1 previous error
+<shellId: 22 completed w...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && cat > repro_align.rs <<'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+pub open spec fn align_up_spec(value: nat, alig
+
+[THINKING] I need to establish that qd + 1 won't overflow in the else branch where r ≠ 0. Since r is nonzero, alignment must be at least 2, which means qd = value/alignment ≤ value/2, safely below usize::MAX. So qd + 1 will always fit within the bounds. I'll add this proof before computing q.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Reproducer verifies. Now let me check how in-function proof blocks are written in this codebase's attribute style.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "proof!\|proof_decl\|proof_with\|with_proof" src/ --include="*.rs" | grep -v "veru
+
+[THINKING] I've verified the reproducer works. Now I need to integrate this into the actual codebase, but there's a mismatch: the existing code uses attribute-style annotations like `#[verus_spec(...)]` while the skill recommends `verus! {}` blocks. I need to adapt the approach to work with the attribute syntax that's already in place, starting by removing the unnecessary `assume_specification` for `<usize>::div_ceil`.
+
+The real question is how to add the proof block inside the exec function body when using attribute-style specs. Verus provides a `proof!{ }` macro for this, but I should check how the codebase already handles in-function proofs in attribute-style functions to stay consistent.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.rs:116:        proof! {
+src/libs/bitmap/src/lib.rs:128:        proof! {
+src/libs/bitmap/src/lib.rs:187:        proof! {
+src/libs/bitmap/src/lib.rs:271:        proof! {
+src/libs/bitmap/src/lib.rs:333:            proof! {
+src/libs/bitmap/src/lib.rs:344:            proof! {
+src/...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/src/lib.rs
+
+[THINKING] I'm looking at how the `proof!` macro works in attribute style for in-function proofs, and I need to check the bitmap example to see the syntax for calling lemmas and using assertions with nonlinear arithmetic tactics.
+[RESULT ✓] view: 110.             return Err(Error::new(ErrorCode::InvalidArgument, reason));
+111.         }
+112. 
+113.         // Allocate the bitmap.
+114.         // Note: RawArray::new() guarantees zero-initialization of the backing storage.
+115.         let len: usize = number_of_bits / u8::BITS as usize;
+116.  ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Reproducer verifies cleanly. Now I'll apply the changes to the real files.
+[TOOL] report_intent: Eliminating div_ceil assume_specification
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs
+
+[THINKING] I'm checking whether the `assert` macro with the `by (nonlinear_arith)` tactic works inside the `proof!` block—it should since `proof!` just wraps proof-mode code. The helper lemma `lemma_ceil_div` will be defined separately in the lib.proof.rs file within the `verus!` macro. There's a subtlety I need to work through with the conditional block that contains assertions inside the proof block. Checking that const fn works with proof! blocks under both normal and Verus compilation. Now I'm rewriting the align_up function body to manually compute the division and remainder, then establish the overflow bound in a proof block before computing q, which keeps the exec changes minimal while satisfying Verus's verification requirements. I need to verify the proof structure works correctly—specifically, whether Verus can derive that alignment >= 2 from the fact that r != 0, since r = value % alignment and if alignment were 1, the remainder would always be 0. I'll keep the explicit assertion to be safe and ensure the nonlinear arithmetic solver has all the constraints it needs.
+
+Now I'm ready to apply the changes: adding the lemma_ceil_div function inside the verus! block in lib.proof.rs and removing the assume_specification block from lib.spec.rs.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now add the helper lemma to the proof file:
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Verifying after div_ceil change
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-bump-allocator 2>&1 | tail -30
+[RESULT ✓] report_intent: Intent logged

@@ -1,2 +1,2 @@
-    - lib.rs:286 alloc: external_body
-    - lib.rs:373 alloc_as: external_body
+    - lib.rs:309 alloc: external_body
+    - lib.rs:396 alloc_as: external_body

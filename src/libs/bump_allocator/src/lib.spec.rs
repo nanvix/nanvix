@@ -19,20 +19,6 @@
 verus! {
 
 //==================================================================================================
-// std-library specifications not yet covered by vstd
-//==================================================================================================
-
-// `usize::div_ceil` rounds the quotient towards positive infinity. It panics on a
-// zero divisor, hence the `y != 0` precondition. For unsigned operands the result
-// never overflows, and equals `ceil(x / y) == (x + y - 1) / y`.
-pub assume_specification [ <usize>::div_ceil ](x: usize, y: usize) -> (result: usize)
-    requires
-        y != 0,
-    ensures
-        result as int == (x as int + y as int - 1) / (y as int),
-;
-
-//==================================================================================================
 // align_up - numeric specification
 //==================================================================================================
 

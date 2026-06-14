@@ -134,7 +134,30 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
     }
-    value.div_ceil(alignment).checked_mul(alignment)
+    // Overflow-free `value.div_ceil(alignment)`: Verus has no spec for the
+    // `usize::div_ceil` intrinsic, so the ceiling division is open-coded to be
+    // verifiable. `qd + 1` cannot overflow because a non-zero remainder forces
+    // `alignment >= 2`, hence `qd <= value / 2 < usize::MAX`.
+    let r: usize = value % alignment;
+    let qd: usize = value / alignment;
+    proof! {
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(value as int, alignment as int);
+        if r != 0 {
+            assert(alignment >= 2);
+            assert((alignment as int) * (qd as int) <= value as int);
+            assert(2 * (qd as int) <= (alignment as int) * (qd as int)) by (nonlinear_arith)
+                requires
+                    alignment >= 2,
+                    qd >= 0,
+            ;
+            assert(qd < usize::MAX);
+        }
+    }
+    let q: usize = if r == 0 { qd } else { qd + 1 };
+    proof! {
+        lemma_ceil_div(value as int, alignment as int, qd as int, r as int);
+    }
+    q.checked_mul(alignment)
 }
 
 ///

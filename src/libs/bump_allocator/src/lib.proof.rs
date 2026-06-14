@@ -11,6 +11,49 @@
 verus! {
 
 //==================================================================================================
+// align_up - ceiling-division lemma
+//==================================================================================================
+
+/// Open-coded ceiling division matches the spec-level `(v + d - 1) / d`.
+///
+/// Backs the body of `align_up`, which computes `value.div_ceil(alignment)` as
+/// `value / alignment` adjusted by one when the remainder is non-zero. Verus has
+/// no specification for the `usize::div_ceil` intrinsic, so the equivalence is
+/// proven here explicitly.
+pub proof fn lemma_ceil_div(v: int, d: int, qd: int, r: int)
+    requires
+        d > 0,
+        v >= 0,
+        qd == v / d,
+        r == v % d,
+    ensures
+        (if r == 0 {
+            qd
+        } else {
+            qd + 1
+        }) == (v + d - 1) / d,
+{
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(v, d);
+    assert(0 <= r < d);
+    assert(v == d * qd + r);
+    if r == 0 {
+        assert((v + d - 1) / d == qd) by (nonlinear_arith)
+            requires
+                d > 0,
+                v == d * qd,
+                0 <= 0 < d,
+        ;
+    } else {
+        assert((v + d - 1) / d == qd + 1) by (nonlinear_arith)
+            requires
+                d > 0,
+                v == d * qd + r,
+                0 < r < d,
+        ;
+    }
+}
+
+//==================================================================================================
 // Geometry lemmas (uniqueness / in-bounds / alignment)
 //==================================================================================================
 
