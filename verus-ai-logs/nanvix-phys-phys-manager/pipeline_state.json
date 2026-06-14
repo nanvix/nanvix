@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "4ee9ce2f-d8c1-45fe-a439-ebf2452a107c",
   "completed": false,
   "base_branch": "verus-ai/phys-mod",
   "verus_branch": "verus-ai/phys-manager",
