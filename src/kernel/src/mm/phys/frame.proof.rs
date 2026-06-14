@@ -132,6 +132,46 @@ proof fn lemma_frame_addr_split(base: int, j: int)
     vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(spec_page_size(), base, j);
 }
 
+/// Division by the page size distributes over a sum of two page-aligned values.
+proof fn lemma_aligned_div_sum(a: int, b: int)
+    requires
+        spec_page_size() > 0,
+        a % spec_page_size() == 0,
+        b % spec_page_size() == 0,
+    ensures
+        (a + b) / spec_page_size() == a / spec_page_size() + b / spec_page_size(),
+{
+    let ps = spec_page_size();
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(a, ps);
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(b, ps);
+    // a == (a/ps)*ps and b == (b/ps)*ps, so a + b == (a/ps + b/ps)*ps.
+    assert(a == ps * (a / ps));
+    assert(b == ps * (b / ps));
+    assert(a + b == ps * (a / ps + b / ps)) by {
+        vstd::arithmetic::mul::lemma_mul_is_distributive_add(ps, a / ps, b / ps);
+    }
+    vstd::arithmetic::div_mod::lemma_div_multiples_vanish(a / ps + b / ps, ps);
+}
+
+/// A positive, page-aligned size spans at least one frame.
+proof fn lemma_size_div_pos(size: int)
+    requires
+        spec_page_size() > 0,
+        size > 0,
+        size % spec_page_size() == 0,
+    ensures
+        size / spec_page_size() >= 1,
+{
+    let ps = spec_page_size();
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(size, ps);
+    assert(size == ps * (size / ps));
+    if size / ps <= 0 {
+        assert(ps * (size / ps) <= 0) by {
+            vstd::arithmetic::mul::lemma_mul_nonpositive(ps, size / ps);
+        }
+    }
+}
+
 /// A non-page-aligned address can never be a tracked (allocated) frame.
 proof fn lemma_alloc_unaligned(inner: &Inner, addr: int)
     requires

@@ -2240,3 +2240,365 @@ Turn 165
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "[verus-ai] phys-frame: prove alloc_contiguous + range
 
 [THINKING] I've got alloc_contiguous fully verified with 56 passing checks, and now only alloc_range is left to handle in this file. Let me save this progress before moving on to that next function.
+[RESULT ✓] bash: committed
+<shellId: 74 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 166
+────────────────────────────────────────────────────────────
+Now the harder `alloc_range`. Let me re-read the turn 3 driver request and region specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_003_driver.md
+
+[THINKING] Now I'm working through the `alloc_range` logic, which is the most complex part. I need to carefully trace through the specification: calculating frame numbers from the region's start and size, creating a half-open range of those frames, mapping them back to actual frame offsets, and then verifying that all resulting frames are available in the free set.
+
+Looking at the implementation details, the region invariants guarantee that start and size are both page-aligned and size is positive. The execution code performs two passes: first checking that all frame indices are within bounds and currently unallocated, then actually marking them as allocated and setting their refcounts to 1. The key insight is that the inclusive end frame in the exec code (`start_fn + size/PS - 1`) corresponds exactly to the exclusive end in the spec (`start_fn + size/PS`), so the frame ranges match up correctly.
+
+I'm now thinking about how to structure the proof around the inclusive range loops in Verus, particularly handling the edge cases where the loop variable might overflow at the boundaries. or maybe the reviewer already scoped it. Let me check what the driver request is actually asking for.
+[RESULT ✓] bash: ## Turn 3: Verify fixer turn 2, re-walk checklist
+
+### Progress
+- FIXED (carried): Verus runs (parse OK).
+- FIXED this turn:
+  - **Inner::refcount** now verifies (the turn-2 precondition error at frame.rs:452 is gone; the
+    fixer added the unaligned-address rejection guard).
+  - **Inner::book** no...
+
+────────────────────────────────────────────────────────────
+Turn 167
+────────────────────────────────────────────────────────────
+Now `alloc_range` must be proven. Let me check the region/`TruncatedMemoryRegion` specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "TruncatedMemoryRegion\|struct.*MemoryRegion" src/kernel/src/hal/ src/kerne
+
+[THINKING] I've finished the first two fixes and now need to tackle the last one by removing alloc_range. Let me check the region.inv() and TruncatedMemoryRegion specifications to understand the geometry constraints.
+[RESULT ✓] bash: src/kernel/src/hal/io/mmio/allocator.rs
+src/kernel/src/hal/io/mmio/region.rs
+src/kernel/src/hal/mem/types/region.rs
+src/kernel/src/hal/mem/types/region.spec.rs
+src/kernel/src/hal/platform/microvm/mod.rs
+src/kernel/src/hal/platform/bootinfo.rs
+src/kernel/src/hal/mod.rs
+src/kernel/src/mm/phys/mod.rs
+s...
+
+────────────────────────────────────────────────────────────
+Turn 168
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,120p' src/kernel/src/hal/mem/types/region.spec.rs
+[RESULT ✓] bash: verus! {
+
+use crate::hal::mem::spec_page_size;
+
+//==================================================================================================
+// View
+//==================================================================================================
+
+/// Abstract state of a memory region: th...
+
+────────────────────────────────────────────────────────────
+Turn 169
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn start\|fn size\|verus_spec\|ensures\|result" src/kernel/src/hal/mem/types
+
+[THINKING] I'm looking at what `region.inv()` returns for a TruncatedMemoryRegion—it validates that the size is positive and that both the start and size are page-aligned. Now I need to track down the specs for the `region.start()` and `region.size()` methods.
+[RESULT ✓] bash: 210:    #[verus_spec(result =>
+211:        ensures
+212:            result@ == self@.start,
+214:    pub fn start(&self) -> T {
+219:    #[verus_spec(result =>
+220:        ensures
+221:            result as int == self@.size,
+223:    pub fn size(&self) -> usize {
+370:    #[verus_spec(result =>
+371:     ...
+
+────────────────────────────────────────────────────────────
+Turn 170
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 365.     pub fn name(&self) -> String {
+366.         self.0.name()
+367.     }
+368. 
+369.     /// Returns the first valid address that lies in the target memory region.
+370.     #[verus_spec(result =>
+371.         ensures
+372.             result@ == self@.start,
+373.     )]
+374.     pub fn start(&sel...
+
+────────────────────────────────────────────────────────────
+Turn 171
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SIZE\|spec_page_size\|PAGE_SIZE" src/kernel/src/hal/mem/mod.rs src/ke
+
+[THINKING] I'm tracing through the method calls to understand the address calculations. `region.start()` returns a page-aligned value, and calling `into_raw_value()` on it gives me the raw usize address. Similarly, `region.size()` directly gives me the size as a usize. So the start frame number is computed by dividing the region's start address by the frame size.
+
+The key insight is that `mem::FRAME_SIZE` in the executable code corresponds to `spec_page_size()` in the specification — they're equal according to the proof. Since `region.start()` has a view equal to `region@.start`, and `into_raw_value()` preserves that value, the division `region.start().into_raw_value() / mem::FRAME_SIZE` matches the spec's `region@.start / spec_page_size()`. This establishes the correspondence between the executable and specification versions of the start frame number calculation.
+
+Now I need to set up the geometric facts carefully: the region's start and size are both page-aligned with positive size, which means the number of frames is at least one. The end frame number in the spec is `(rstart + rsize) / ps`, which equals `start_fn + nframes` since both components are aligned multiples. The frame numbers form a range from `start_fn` to `start_fn + nframes - 1` inclusive, and I can map each frame number to its corresponding physical address by multiplying by the page size. I'm going to leverage an existing lemma about reserving ranges to complete this proof.
+
+For that lemma to work, I need to establish three conditions: first, that `start_fn + nframes` doesn't exceed the bit count (which follows from the first loop ensuring all indices stay within bounds); second, that the bit vector has no bits set in the range from `start_fn` to `start_fn + nframes` (which the first loop confirms by testing each index); and third, a characterization of the result from the second loop. The frame set from the spec should match what I get by mapping each frame number to its address, and since both represent the same range of frame indices multiplied by the page size, they're equivalent. The tricky part now is handling the inclusive range loops—I need to figure out whether I can work with Verus's inclusive range syntax to avoid complexity. I'm working through how Verus handles inclusive range loop invariants and the relationship between the loop index and what's been processed. The challenge is that for `..=` loops, I need to prove that after the loop completes, all elements from start to end (inclusive) have been verified, but Verus's model of how the iterator exposes this isn't straightforward. Rather than relying on the post-loop index value, I should accumulate a forall statement directly in the invariant that tracks which elements have been processed, then ensure the final state covers the entire inclusive range. Given the complexity and the risk of breaking the proof, I'm considering whether to attempt this carefully or stick with a safer approach.
+[RESULT ✓] bash: === set_int_range ===
+1161:pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+<shellId: 79 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 172
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SIZE\|spec_page_size" src/kernel/src/hal/mem/*.rs src/kernel/src/hal/
+[RESULT ✓] bash: ===
+
+/// Creates a finite set of integers in the range [lo, hi).
+pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+    Set::new(|i: int| lo <= i && i < hi)
+}
+
+/// If a set solely contains integers in the range [a, b), then its size is
+<shellId: 80 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 173
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SIZE" src/kernel/src/hal/mem/ | grep -iv "into_raw\|debug\|error\|//"
+[RESULT ✓] bash: === link ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:9:        ::sys::mm::spec_align_value(result) == spec_page_size(),
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:16:    addr_view % spec_page_size() == 0
+src/kernel/src/hal/mem/types/address/aligned/page.rs:227:      ...
+
+────────────────────────────────────────────────────────────
+Turn 174
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '40,55p' src/kernel/src/hal/mem/types/address/frame.rs; echo "=== FRAME_SIZE c
+[RESULT ✓] bash: // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+// that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+// definition names the same concrete value the proofs already relied on.
+pub open spec fn spec_page...
+
+────────────────────────────────────────────────────────────
+Turn 175
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "PAGE_SIZE\|FRAME_SHIFT\|MAX_ADDRESS" src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I'm verifying that `mem::FRAME_SIZE` equals `PAGE_SIZE` and that this matches `spec_page_size()`, which the proof relies on. Now I need to trace through the `use` statements in frame.rs to see how `mem::FRAME_SIZE` is actually defined.
+
+For `alloc_range`, I'm thinking through a cleaner structure: compute the number of frames as an exec local, then use `start_frame_number + nframes - 1` for the end frame, which lets me iterate with an inclusive range. I'll set up the function with proof declarations to establish the preconditions and ghost state.
+
+Writing the function implementation... I'm weighing whether to introduce `nframes` as a named intermediate or keep the original inline computation. Extracting it as a local variable is cleaner and equivalent, so I'll compute it separately and use it in the `end_frame_number` calculation. Now I need to verify overflow safety: `start_frame_number + nframes - 1` requires `nframes >= 1` (which geometry guarantees) and the sum must stay within `usize::MAX`, but I don't yet know if the final frame number is guaranteed to fit. Most usize values fit within usize::MAX / 4096, so adding two of them stays well under the limit—roughly usize::MAX / 2048. To prove this in Verus, I need to establish that both start_frame_number and nframes are bounded by usize::MAX / 4096, then show their sum doesn't overflow. The challenge is whether Verus can see that PAGE_SIZE is concretely 4096, since that's what makes the arithmetic work out.
+
+The real issue is that the original exec code already has this overflow obligation—once I remove the `admit()` at the top of the function, Verus will demand a proof that `start_frame_number + nframes` doesn't overflow, since `admit()` currently masks all downstream verification obligations by introducing `false` into the proof context.
+[RESULT ✓] bash: 39:/// Log2 PAGE_SIZE
+50:pub const PAGE_SIZE: usize = 4096;
+51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+58:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+82:pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+97:pub const MAX_ADDRESS: usize = usize::MAX;
+105:pub const FRAM...
+
+────────────────────────────────────────────────────────────
+Turn 176
+────────────────────────────────────────────────────────────
+This is a large proof. Let me view the exact current `alloc_range` lines and write the full proof.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm thinking through how Verus handles the `PAGE_SIZE` constant and whether it gets inlined into spec reasoning—it's defined as a `pub const` literal with value 4096, and there's a `spec_page_size()` function that returns it as an integer for specification purposes.
+
+Looking at the overflow check for `start_frame_number + nframes <= usize::MAX`, I need to establish that `spec_page_size() >= 2` to guarantee the sum doesn't overflow. Since `start_frame_number` and `nframes` are both bounded by `usize::MAX / ps`, their sum stays within bounds when `ps >= 2`. I'm checking if there's an existing lemma that gives me either the concrete value of `spec_page_size()` or at least the lower bound I need.
+
+For the region's start value, I can trace through the types: `region.start()` returns a `PageAligned<PhysicalAddress>`, and calling `into_raw_value()` gives me a `usize`. Since that `usize` came from the spec value `region@.start`, I know `region@.start` is bounded by `usize::MAX` automatically. The frame number calculation `raw / FRAME_SIZE` is just integer division, so there's no overflow there either.
+
+Now for the actual overflow check on `start_frame_number + nframes - 1`: I need to verify that `nframes >= 1` (so the subtraction is valid) and that the sum doesn't overflow. From the region's invariant, `size > 0` and `size % page_size == 0`, which means `size >= page_size`, so `nframes = size / page_size >= 1`. Both `start_frame_number` and `nframes` are at most `usize::MAX / 4096`, so their sum is at most `2 * (usize::MAX / 4096)`, which is clearly less than `usize::MAX` in integer arithmetic.
+
+Rather than getting bogged down in formal lemmas, I'll write the proof incrementally, using concrete values and nonlinear arithmetic assertions where needed, then iterate on any verifier errors.
+[RESULT ✓] view: 968.             assert(spec_refcount_seq(self) == pre_rc);
+969.             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+970.             lemma_free_contains(self, addr);
+971.         }
+972.         match self.bitmap.set(frame_number) {
+973.             Ok(()) => {
+974.                 #[cfg(n...
+
+────────────────────────────────────────────────────────────
+Turn 177
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn alloc_range\|admit()" src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to check the current line numbers for the alloc_range function body since the previous edits to alloc_contiguous shifted things around.
+[RESULT ✓] bash: 1081:    fn alloc_range(
+1085:        proof! { admit(); }
+1401:pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
+<shellId: 84 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 178
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1081.     fn alloc_range(
+1082.         &mut self,
+1083.         region: &TruncatedMemoryRegion<PhysicalAddress>,
+1084.     ) -> Result<(), Error> {
+1085.         proof! { admit(); }
+1086.         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+1087.         // ali...
+
+────────────────────────────────────────────────────────────
+Turn 179
+────────────────────────────────────────────────────────────
+Let me check `bitmap.test` and `bitmap.set` specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn test\|fn set\b" src/libs/bitmap/src/lib.rs; echo "=== test ==="; sed -n '
+
+[THINKING] I'm looking at the test specifications for the `bitmap.test` and `bitmap.set` methods.
+[RESULT ✓] bash: 543:    pub fn set(&mut self, index: usize) -> Result<(), Error> {
+659:    pub fn test(&self, index: usize) -> Result<bool, Error> {
+=== test ===
+1:    pub fn test(&self, index: usize) -> Result<bool, Error> {
+3:        Ok((self.bits[word] & (1 << bit)) != 0)
+20:    #[verus_spec(result =>
+21:       ...
+
+────────────────────────────────────────────────────────────
+Turn 180
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 505.     ///
+506.     /// Sets a bit at a given index in the bitmap.
+507.     ///
+508.     /// # Parameters
+509.     ///
+510.     /// - `index`: Index of the bit to set.
+511.     ///
+512.     /// # Returns
+513.     ///
+514.     /// Upon success, `Ok(())` is returned. Upon failure, an error is return...
+
+────────────────────────────────────────────────────────────
+Turn 181
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 640.     /// - `index`: Index of the bit to test.
+641.     ///
+642.     /// # Returns
+643.     ///
+644.     /// Upon success, `Ok(true)` is returned if the bit is set, `Ok(false)` is returned otherwise.
+645.     /// Upon failure, an error is returned instead.
+646.     ///
+647.     #[verus_spec(resul...
+
+────────────────────────────────────────────────────────────
+Turn 182
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "RangeInclusive\|ForLoopGhostIterator" /home/ruize/verus-ai-exp/verus-ai/vst
+
+[THINKING] Looking at the `set` method's contract: it requires the invariant to hold, and succeeds only when the index is within bounds and the bit isn't already set, updating the set of bits accordingly. In the loop where we call `set` for each index from start to end, we're guaranteed from the previous loop that all indices are valid and not yet in the set, so the preconditions should be satisfied as we iterate through.
+
+Now I need to figure out how Verus handles inclusive-range loops with ghost iterators, particularly for `RangeInclusive`.
+[RESULT ✓] bash: 4:use core::ops::{Range, RangeInclusive};
+15:pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
+17:pub struct RangeInclusiveView<Idx> {
+29:impl<Idx, U> ContainsSpec<Idx, U> for RangeInclusive<Idx> where
+59:impl<Idx> View for RangeInclusive<Idx> {
+60:    type V = RangeInclusiveView<Idx>;
+102:pub ...
+
+────────────────────────────────────────────────────────────
+Turn 183
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "ForLoopGhostIterator\|next_spec\|ghost_iter\|impl.*Iterator.*RangeInclusive
+[RESULT ✓] bash: 125:impl<A: StepSpec> super::super::pervasive::ForLoopGhostIteratorNew for Range<A> {
+128:    open spec fn ghost_iter(&self) -> RangeGhostIterator<A> {
+135:> super::super::pervasive::ForLoopGhostIterator for RangeGhostIterator<A> {
+<shellId: 87 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 184
+────────────────────────────────────────────────────────────
+Inclusive ranges lack a Verus ghost iterator, so I'll rewrite the two loops as exclusive ranges (behaviorally identical). First, add geometry helper lemmas.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm realizing that `Range<A>` with the exclusive `..` operator supports `ForLoopGhostIterator`, but `RangeInclusive` using `..=` doesn't have this capability. This means my `for index in start..=end` loops with Verus spec invariants likely won't work as intended since Verus can't provide a ghost iterator for inclusive ranges. The `invariant false` in my current code probably only appears to work because `admit()` bypasses verification entirely, making the false invariant irrelevant in an unreachable context. So I'm stuck — I can't easily verify the inclusive range loops.
+
+My best path forward is to rewrite both loops using exclusive ranges instead. I can convert `start_frame_number..=end_frame_number` to `start_frame_number..(start_frame_number + nframes)`, which is behaviorally identical but uses the exclusive range that Verus can actually verify. Since the existing code already has equivalent exec rewrites marked with `// VERUS BUG FIX` comments, and the goal is to remove admits with real proofs, this loop bound rewrite is justified. I'll update both loop headers to use the exclusive range form with `end_exclusive = start_frame_number + nframes`. I need to prove that `start_frame_number + nframes` won't overflow usize. Since both values are bounded by `usize::MAX / 4096`, their sum is at most `2 * (usize::MAX / 4096)`, which is less than `usize::MAX` even on 32-bit targets. I'll need to assert this bound so Verus can verify the loop header doesn't overflow. I need to establish bounds on the frame number arithmetic before the loop. The key insight is that both `start_frame_number` and `nframes` are each at most `usize::MAX / 4096`, so their sum stays within bounds. I'll assert these individual bounds first using division monotonicity lemmas from the standard library, then use those to prove the sum doesn't overflow. The verifier might need explicit computation or nonlinear arithmetic tactics to confirm that `2 * (usize::MAX / 4096) <= usize::MAX`, but I'll start with straightforward assertions and add proof hints if needed.
+
+Rather than computing the end frame directly, I could reorganize around the frame address reasoning, but the loop still needs a concrete bound, so I'll stick with the exclusive-range approach and prove the overflow properties systematically. I'm going to write out the full `alloc_range` proof now, starting with a helper lemma that shows how division distributes over aligned sums—since both the raw start and raw size are page-aligned, their sum divided by page size equals the sum of their individual divisions.
+
+For the overflow check, instead of the abstract factor-of-2 argument, I can bound `start_frame_number + nframes` directly by leveraging that both components stay within representable bounds: the start frame number is at most `usize::MAX / 4096`, and the number of frames is similarly bounded, so their sum won't overflow. I should stop overthinking the arithmetic constraints and just write out the proof with my best approach, then run the verifier to see what actually fails. I'll add the two helper lemmas for aligned division and positive division to the proof file, then rewrite the alloc_range function with those lemmas in place.
+[RESULT ✓] view: 125. 
+126. /// Frame addresses split additively over the index: `frame_addr_of(base + j)` is
+127. /// `frame_addr_of(base) + j * spec_page_size()`.
+128. proof fn lemma_frame_addr_split(base: int, j: int)
+129.     ensures
+130.         frame_addr_of(base + j) == frame_addr_of(base) + j * spec_page_siz...
+
+────────────────────────────────────────────────────────────
+Turn 185
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 186
+────────────────────────────────────────────────────────────
+Now I'll rewrite `alloc_range` with the full proof. First the loop multiplications need overflow-safe handling. Let me write it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm laying out the structure for the alloc_range proof, starting with computing the execution values like start_frame_number and nframes using exclusive ranges, then snapshotting ghosts before moving into the geometry proof block. After that comes the overflow proof for the loop bound, followed by the first loop with its invariants and exclusive range handling, then deriving the end bound and range-clear facts before the second loop handles the booking logic with reserve-one operations per iteration.
+
+For the error cases, I need to handle the early returns carefully—the Err postcondition requires both that the final state equals the old state and that the frames aren't a subset of the old free frames. For loop1 early returns where the index is out of bounds or already allocated, I'll prove the subset condition fails. The loop2 set failure case is unreachable since loop1 already verified the range is clear and in bounds, and the test error arm is also unreachable because the guard prevents calling test when index is out of bounds. I need to establish that `end_frame_number` equals `start_fn + nframes` and show that `frames` contains the address of each frame by reconstructing the ghost variables from the spec. I'm defining local ghost variables for the frame number range and the mapped frame addresses that exactly match the spec's definitions, so the postcondition unifies correctly. The loop range is exclusive from `start_frame_number` to `start_frame_number + nframes`, where the execution value matches the spec value.
+
+Writing loop invariant... After loop1 finishes, all frame numbers in the range are confirmed to be within bounds and not yet set. Now for loop2, I'm setting up the booking invariant to track which bits get set as we iterate through the range, accumulating them into the bitmap's set_bits while preserving the refcount constraints and the property that no frame in our target range was previously booked.
+
+In the loop body, I'm setting each bit and initializing its refcount to 1. To prove the set operation never fails, I need to show the index is within bounds and the bit isn't already set—both follow from the invariant and the preconditions carried from loop1. The Err arm is unreachable, so I'll use the set operation's own error ensures to derive a contradiction and prove the assertion.
+
+After the loop completes, the bitmap contains all the newly set bits in the range, and I can apply the reserve lemma to establish the final frame allocator state.
+
+For the overflow check on `start_frame_number + nframes`, I need to prove the bound holds before computing `end_exclusive`. I'll extract the raw start and size values from the region first, then establish the overflow safety in a proof block before the addition happens. This requires reordering slightly to bind the intermediate values, but it's equivalent and lets Verus verify the arithmetic is safe. I need to verify the division lemmas in Verus and handle the overflow risk in the uncovered branch. The real issue is that when computing `index * mem::FRAME_SIZE` for the error message, index could be large enough to cause multiplication overflow since it can reach up to `start_frame_number + nframes`, which might exceed `usize::MAX / FRAME_SIZE`. I should write out the full proof and let the verifier guide me on which lemmas are needed, but I need to be careful about that multiplication overflow in the uncovered case. The code computes `uncovered_addr` unconditionally even though it's only used in a gated error message, so Verus still needs to verify the multiplication won't overflow. The real question is whether `index * FRAME_SIZE` can provably stay within bounds—if `index` comes from a region where `rstart + rsize ≤ usize::MAX`, then the frame index should be bounded, but the region invariant doesn't explicitly guarantee this, leaving a potential overflow bug that either needs a proof or a fix. The key insight is that `uncovered_addr` is only used inside a gated error log, so I can gate the entire `let` binding with `#[cfg(not(verus_keep_ghost))]` to remove it from verification entirely. This avoids the overflow without changing the functional behavior—it's purely diagnostic code that Verus doesn't need to check. I could use `saturating_mul` for `conflicting_addr` too to keep things consistent and avoid needing to prove the overflow safety from the internal invariant, though technically it's provably safe since `index < num_bits` and the invariant guarantees `frame_addr_of(index) <= usize::MAX`. Let me go with saturating multiplication for both to keep the fix simple and uniform. Writing the loop structure... I'm working through how to connect the raw value from `region.start()` to the frame number calculation—Verus chains the ensures clauses so that when I call `region.start().into_raw_value()`, I get a usize result whose integer interpretation equals `rstart`. Since Verus already knows that `mem::FRAME_SIZE as int` equals the spec page size, the division should work out directly. Now I'm setting up the overflow assertion to verify that the frame number plus count doesn't exceed `usize::MAX`. I need to establish that `spec_page_size()` equals 4096 concretely so I can verify the overflow arithmetic. Since `spec_page_size()` is an open spec function that reduces to `PAGE_SIZE` (a const usize of 4096), Verus should be able to const-evaluate it, allowing me to assert the equality directly. With that concrete value, the overflow check `2*(usize::MAX/4096) <= usize::MAX` becomes computable arithmetic that Verus can verify, and I can then bound `rstart/4096` and `rsize/4096` accordingly.
+
+For the actual implementation, I'll write out the full `alloc_range` function carefully, defining ghost variables that match the spec's frame definitions and using `vstd::arithmetic::div_mod::lemma_div_is_ordered` to establish monotonicity of division where needed. The spec binds frame numbers and their corresponding addresses through a set range and map operation, so I'll prove my computed frames match that specification exactly.
+
+Now I'm working through the set membership proof — showing that `frames.contains(addr)` holds in both directions by leveraging the map axiom and the fact that frame addresses are just frame numbers multiplied by page size.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 187
+────────────────────────────────────────────────────────────
+I referenced an undefined `frames_of`. Let me fix the loop1 Err arms to reconstruct the spec's map-form `frames` inline.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm realizing I referenced a helper function `frames_of` that I haven't actually defined yet, and I need to work with the actual spec expression for frames instead—which is `frame_numbers.map(|i| i*ps)`. This gets complicated inside the loop logic, so I should define that helper to keep things cleaner.
+
+For the Err postcondition in loop1, I need to show that the spec's frames aren't a subset of the free frames by finding a witness address that's in frames but not in free. The witness would be `frame_addr_of(index) = index*ps`, and I can prove it's in frames by showing the index is in frame_numbers.
+
+Rather than introduce a separate helper, I'll reconstruct the spec's frames directly in the proof using the exact same map-form expression: binding `frame_numbers = set_int_range(rstart/ps, (rstart+rsize)/ps)` and `frames = frame_numbers.map(|i| i * spec_page_size())`. Since this matches the spec's let-binding exactly, Verus will unify them when checking the postcondition. Then I can prove the witness is in frames and not in free, establishing that frames isn't a subset of the free frames. I'm thinking through whether the set map's forward axiom will automatically prove membership when I provide a witness. The idea is that if I assert `frame_numbers.contains(index as int)` first, then asserting `frames.contains(index*ps)` should follow from Verus's trigger-based axioms for set map. Let me patch the loop1 region and try this approach.
+[RESULT ✓] view: 1130.         // The coverage check runs unconditionally — including optimized builds —
+1131.         // because out-of-bounds indices must be rejected before attempting to set them.
+1132.         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
+1133.       ...
+
+────────────────────────────────────────────────────────────
+Turn 188
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "use vstd\|set_int_range\|use.*set_lib" src/kernel/src/mm/phys/frame.rs | hea
+
+[THINKING] I'm reconsidering the approach—instead of defining a separate helper function, I should reconstruct the inline frame expression directly in each error branch of the proof to match what the spec expects, which will make unification work properly. I need to ensure the loop bounds are properly captured as facts — the for-loop gives me `start_frame_number <= index < end_exclusive`, and since `end_exclusive` equals `start_fn + nfr`, I have `start_fn <= index < start_fn + nfr`. Now I'm rewriting those two error arms to use these bounds when asserting that `index` falls within the frame range, and I need to make sure `set_int_range` is properly qualified from the vstd library.
+[RESULT ✓] bash: 1061:                let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+1153:                    assert(set_int_range(start_fn, start_fn + nfr).contains(index as int));
+1155:                        assert(set_int_range(start_fn, start_fn + nfr).contains(index as ...
+
+────────────────────────────────────────────────────────────
+Turn 189
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see that `set_int_range` needs to be fully qualified with the namespace path since it won't resolve unqualified without an import. I'm going to update all the uses throughout the code to use the complete `vstd::set_lib::set_int_range` path, including the error handling arms in the loop and the final block.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 190
+────────────────────────────────────────────────────────────
+Now fix the unqualified `set_int_range` in the final block.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 191
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8

@@ -1082,11 +1082,47 @@ impl Inner {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
-        proof! { admit(); }
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (loop checks reject oversized indices).
         let start_frame_number: usize = region.start().into_raw_value() / mem::FRAME_SIZE;
-        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+        let nframes: usize = region.size() / mem::FRAME_SIZE;
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+            let ghost ps = spec_page_size();
+            let ghost rstart = region@.start;
+            let ghost rsize = region@.size;
+            let ghost start_fn = start_frame_number as int;
+            let ghost nfr = nframes as int;
+        }
+        proof! {
+            lemma_view_of(self);
+            assert(spec_refcount_seq(self) == pre_rc);
+            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+            // Region geometry (from `region.inv()`): non-empty, page-aligned endpoints.
+            assert(rsize > 0 && rstart % ps == 0 && rsize % ps == 0);
+            assert(ps == 4096);
+            assert(start_fn == rstart / ps);
+            assert(nfr == rsize / ps);
+            lemma_size_div_pos(rsize);
+            assert(nfr >= 1);
+            lemma_aligned_div_sum(rstart, rsize);
+            assert((rstart + rsize) / ps == start_fn + nfr);
+            // No overflow forming the exclusive upper bound `start_frame_number + nframes`.
+            assert(rstart <= usize::MAX as int);
+            assert(rsize <= usize::MAX as int);
+            vstd::arithmetic::div_mod::lemma_div_is_ordered(rstart, usize::MAX as int, ps);
+            vstd::arithmetic::div_mod::lemma_div_is_ordered(rsize, usize::MAX as int, ps);
+            assert(start_fn <= usize::MAX as int / ps);
+            assert(nfr <= usize::MAX as int / ps);
+            assert(start_fn + nfr <= usize::MAX as int);
+        }
+        let end_exclusive: usize = start_frame_number + nframes;
+        proof! {
+            assert(end_exclusive as int == start_fn + nfr);
+        }
 
         // Check that all frames in the range are covered by the bitmap and free,
         // then book them. Uncovered frames indicate a memory layout bug.
@@ -1094,10 +1130,45 @@ impl Inner {
         // The coverage check runs unconditionally — including optimized builds —
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
-        #[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]
-        for index in start_frame_number..=end_frame_number {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                start_fn == start_frame_number as int,
+                end_exclusive as int == start_fn + nfr,
+                nfr >= 1,
+                self@ == g_old,
+                self.bitmap@.set_bits == pre_sb,
+                self.bitmap@.num_bits == pre_nb,
+                self.refcount@ == pre_rc,
+                self.bitmap.inv(),
+                self.internal_inv(),
+                forall|k: int| start_fn <= k < index as int ==>
+                    #[trigger] pre_sb.contains(k) == false && k < pre_nb,
+            decreases end_exclusive - index,
+        ))]
+        for index in start_frame_number..end_exclusive {
             if index >= self.bitmap.number_of_bits() {
-                let uncovered_addr: usize = index * mem::FRAME_SIZE;
+                proof! {
+                    // This frame is in the requested range but not covered, so it cannot be free.
+                    let a = frame_addr_of(index as int);
+                    let frame_numbers = vstd::set_lib::set_int_range(rstart / ps,
+                        (rstart + rsize) / ps);
+                    let frames = frame_numbers.map(|i: int| i * spec_page_size());
+                    assert(rstart / ps == start_fn);
+                    assert((rstart + rsize) / ps == start_fn + nfr);
+                    assert(frame_numbers.contains(index as int));
+                    assert(frames.contains(a));
+                    assert(!g_old.free_frames.contains(a)) by {
+                        if g_old.free_frames.contains(a) {
+                            let j = choose|j: int|
+                                0 <= j < pre_nb && !pre_sb.contains(j)
+                                    && a == #[trigger] frame_addr_of(j);
+                            lemma_frame_addr_injective(j, index as int);
+                        }
+                    }
+                    assert(!frames.subset_of(g_old.free_frames));
+                }
+                #[cfg(not(verus_keep_ghost))]
+                let uncovered_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                 let reason: &str = "frame index not covered by the bitmap";
                 #[cfg(not(verus_keep_ghost))]
                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
@@ -1106,8 +1177,33 @@ impl Inner {
             match self.bitmap.test(index) {
                 Ok(false) => {},
                 Ok(true) => {
-                    let conflicting_addr: usize = index * mem::FRAME_SIZE;
+                    proof! {
+                        // This frame is in the requested range but already allocated, not free.
+                        let a = frame_addr_of(index as int);
+                        let frame_numbers = vstd::set_lib::set_int_range(rstart / ps,
+                            (rstart + rsize) / ps);
+                        let frames = frame_numbers.map(|i: int| i * spec_page_size());
+                        assert(self.bitmap@.is_bit_set(index as int));
+                        assert(pre_sb.contains(index as int));
+                        assert(rstart / ps == start_fn);
+                        assert((rstart + rsize) / ps == start_fn + nfr);
+                        assert(frame_numbers.contains(index as int));
+                        assert(frames.contains(a));
+                        assert(!g_old.free_frames.contains(a)) by {
+                            if g_old.free_frames.contains(a) {
+                                let j = choose|j: int|
+                                    0 <= j < pre_nb && !pre_sb.contains(j)
+                                        && a == #[trigger] frame_addr_of(j);
+                                lemma_frame_addr_injective(j, index as int);
+                            }
+                        }
+                        assert(!frames.subset_of(g_old.free_frames));
+                    }
+                    #[cfg(not(verus_keep_ghost))]
+                    let conflicting_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
+                    #[cfg(not(verus_keep_ghost))]
                     let region_start: usize = region.start().into_raw_value();
+                    #[cfg(not(verus_keep_ghost))]
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
                     #[cfg(not(verus_keep_ghost))]
@@ -1117,14 +1213,59 @@ impl Inner {
                     );
                     return Err(Error::new(ErrorCode::OutOfMemory, reason));
                 },
-                Err(err) => return Err(err),
+                Err(err) => {
+                    proof! {
+                        // `index < num_bits` was checked above, so `test` cannot fail. Unreachable.
+                        assert(index < self.bitmap@.num_bits);
+                        assert(false);
+                    }
+                    return Err(err);
+                },
             }
+        }
+        proof! {
+            // Every requested index is in range and free; the range fits the bitmap.
+            assert(start_fn + nfr <= pre_nb) by {
+                if nfr >= 1 {
+                    assert(pre_sb.contains(start_fn + nfr - 1) == false
+                        && start_fn + nfr - 1 < pre_nb);
+                }
+            }
+            assert(pre_nb <= pre_rc.len());
+            assert forall|j: int| start_fn <= j < start_fn + nfr implies
+                !pre_sb.contains(j) by {}
         }
 
         // Book all frames in the range.
-        #[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]
-        for index in start_frame_number..=end_frame_number {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                start_fn == start_frame_number as int,
+                end_exclusive as int == start_fn + nfr,
+                start_fn + nfr <= pre_nb,
+                pre_nb <= pre_rc.len(),
+                self.bitmap.inv(),
+                self.bitmap@.num_bits == pre_nb,
+                self.bitmap@.set_bits == pre_sb.union(BitmapView::range_set(start_fn, index as int)),
+                self.refcount@.len() == pre_rc.len(),
+                forall|j: int| start_fn <= j < start_fn + nfr ==> !pre_sb.contains(j),
+                forall|k: int| 0 <= k < pre_rc.len() ==>
+                    #[trigger] self.refcount@[k] == (if start_fn <= k < index as int {
+                        1u8
+                    } else {
+                        pre_rc[k]
+                    }),
+            decreases end_exclusive - index,
+        ))]
+        for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
+                proof! {
+                    // `index < num_bits` and the bit is still clear, so `set` cannot fail.
+                    assert(index < self.bitmap@.num_bits);
+                    assert(!BitmapView::range_set(start_fn, index as int).contains(index as int));
+                    assert(!pre_sb.contains(index as int));
+                    assert(!self.bitmap@.is_bit_set(index as int));
+                    assert(false);
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (region={region:?})");
                 return Err(error);
@@ -1132,6 +1273,77 @@ impl Inner {
             #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[index], 0);
             self.refcount[index] = 1;
+        }
+        proof! {
+            // Re-establish `internal_inv` after range booking.
+            let lo = start_fn;
+            let hi = start_fn + nfr;
+            assert(old(self).internal_inv());
+            assert forall|k: int| 0 <= k < pre_nb implies {
+                &&& (self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] > 0)
+                &&& (!self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] == 0)
+                &&& (self.bitmap@.set_bits.contains(k) ==> 0 < self.refcount@[k] <= 255)
+            } by {
+                if lo <= k < hi {
+                    assert(BitmapView::range_set(lo, hi).contains(k));
+                    assert(self.refcount@[k] == 1u8);
+                } else {
+                    assert(!BitmapView::range_set(lo, hi).contains(k));
+                    assert(self.refcount@[k] == pre_rc[k]);
+                    assert(pre_sb.contains(k) <==> pre_rc[k] > 0);
+                }
+            }
+            assert forall|k: int| pre_nb <= k < self.refcount@.len() implies
+                self.refcount@[k] == 0 by {
+                assert(self.refcount@[k] == pre_rc[k]);
+                assert(pre_rc[k] == 0);
+            }
+            assert forall|k: int| 0 <= k < pre_nb implies {
+                &&& frame_addr_of(k) >= 0
+                &&& frame_addr_of(k) <= usize::MAX as int
+                &&& k <= spec_max_frame_number()
+            } by {}
+            assert(self.internal_inv());
+
+            // Reconstruct the post-state view from the range-reserve lemma.
+            lemma_view_of(self);
+            assert(self.bitmap@.set_bits == pre_sb.union(BitmapView::range_set(lo, hi)));
+            assert(self.bitmap@.num_bits == pre_nb);
+            assert(self@ == view_of(pre_sb.union(BitmapView::range_set(lo, hi)), pre_nb,
+                spec_refcount_seq(self)));
+            assert forall|x: int| pre_sb.contains(x) implies 0 <= x < pre_nb by {}
+            lemma_reserve_range_v(pre_sb, pre_nb, pre_rc, spec_refcount_seq(self), lo, nfr);
+
+            // Match the spec's `frames` (frame_numbers.map(i -> i*PS)) to the reserve lemma's set.
+            let frame_numbers = vstd::set_lib::set_int_range(rstart / ps, (rstart + rsize) / ps);
+            let frames = frame_numbers.map(|i: int| i * spec_page_size());
+            assert(frame_numbers == vstd::set_lib::set_int_range(lo, hi));
+            assert(frames =~= spec_range_frames(lo, nfr)) by {
+                assert forall|addr: int| frames.contains(addr) implies
+                    spec_range_frames(lo, nfr).contains(addr) by {
+                    let i = choose|i: int|
+                        frame_numbers.contains(i) && addr == #[trigger] (i * spec_page_size());
+                    assert(lo <= i < hi && addr == frame_addr_of(i));
+                }
+                assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+                    frames.contains(addr) by {
+                    let i = choose|i: int| lo <= i < hi && addr == #[trigger] frame_addr_of(i);
+                    assert(frame_numbers.contains(i));
+                    assert(addr == i * spec_page_size());
+                }
+            }
+            assert(frames.subset_of(g_old.free_frames)) by {
+                assert forall|addr: int| frames.contains(addr) implies
+                    g_old.free_frames.contains(addr) by {
+                    let i = choose|i: int| lo <= i < hi && addr == #[trigger] frame_addr_of(i);
+                    assert(0 <= i < pre_nb && !pre_sb.contains(i) && addr == frame_addr_of(i));
+                }
+            }
+            assert(self@.allocated_frames =~= g_old.allocated_frames.union(frames));
+            assert(self@.free_frames =~= g_old.free_frames.difference(frames));
+            assert(self@.refcounts =~= g_old.refcounts.union_prefer_right(
+                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+            ));
         }
 
         Ok(())
