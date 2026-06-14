@@ -233,3 +233,28 @@ The proof appears complete already. Let me run the verification to check the cur
 [THINKING] The plan file doesn't have anything for that path, but the proof file is already done, so I'll run the verification to establish a baseline.
 [RESULT ✓] bash: 
 <shellId: 9 completed with exit code 1>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== cheating detail ==="; cat verus-ai-logs/verify-arch/verus-logs/chea
+
+[THINKING] The verification shows it ran successfully with exit code 0, though the "cached" message is making me second-guess whether it actually recompiled. The external_body count is 3, which should just be the table.rs operations that are allowed in the TCB, but I want to double-check the cheating details to confirm nothing unexpected is in pde.rs. Since there are no admit or assume statements in the pde files, I should force a clean rebuild to verify the verification actually ran properly.
+[RESULT ✓] bash: === cheating detail ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All 3 `external_body` are outside my scope (table.rs read/write are TCB-allowed; invlpg in mod.rs). The pde files have 0 admit/assume. The result was "cached" — let me force a fresh verification to confirm pde actually verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; touch src/libs/arch/src/x86/mem/paging/pde.rs; timeout 600 make verify-arch 2
+
+[THINKING] The external functions referenced in the pde module are all pre-existing and outside my scope, so there's nothing to address there. I'm running a fresh verification targeting just the pde module to confirm it passes cleanly, and the build completes successfully with exit 0.
