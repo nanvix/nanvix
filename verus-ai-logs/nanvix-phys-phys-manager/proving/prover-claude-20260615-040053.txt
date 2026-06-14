@@ -463,3 +463,41 @@ Turn 21
 ────────────────────────────────────────────────────────────
 Now let me run the full crate verification to confirm no regressions.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -25
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=22 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  Detail: v...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Let me run the broader `make verify` as instructed to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^verify[:-]|^verify:" Makefile | head
+
+[THINKING] The kernel verification ran and flagged CHEATING_DETECTED due to external_body=22, but those are all authorized. I'm noticing it says "cached (no recompilation)" which suggests it might not have executed the full module-by-module verification. I need to run `make verify` properly to ensure the entire repository verifies without regressions, as the task requires.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "VERUS_CRATES" Makefile | head
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify 2>&1 | grep -iE "note: verifying|Exit code|verification:|errors|st
