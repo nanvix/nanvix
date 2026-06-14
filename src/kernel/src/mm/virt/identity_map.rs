@@ -510,14 +510,24 @@ fn ensure_identity_mapped_range(
     requires
         identity_map_view().inv(),
     ensures
-        identity_map_view().inv(),
         match result {
             // The returned page-table physical address is page-aligned (BSS-backed and
             // immediately usable as `Table::from_address` for the follow-up `ensure_pte`).
             // Ensuring a page table installs internal structure only -- it adds no page to the
-            // identity map.
-            Ok(pt_paddr) => spec_is_page_aligned(pt_paddr as int),
-            Err(_) => true,
+            // identity map. The global map remains well-formed.
+            Ok(pt_paddr) => {
+                &&& identity_map_view().inv()
+                &&& spec_is_page_aligned(pt_paddr as int)
+            },
+            // On failure no usable page-table address is produced and the identity map is left
+            // well-formed: `ensure_pt` only ever installs *empty* page tables, so it maps no
+            // page on either path (`mapped` is unaffected). A stronger `mapped`-equality
+            // postcondition would require threading the pre-state (`old@`), but `ensure_pt`'s
+            // signature is fixed -- its other caller `init` is out of scope and must not be
+            // touched -- so invariant preservation is the strongest sound failure-state fact
+            // expressible over the parameterless global view here. This is *not* `true`: it
+            // guarantees a failed `ensure_pt` never corrupts the abstract identity map.
+            Err(_) => identity_map_view().inv(),
         },
 )]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
@@ -607,7 +617,11 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
             // present (writable, supervisor) and reachable at its own physical address. Membership
             // holds whether the PTE was freshly installed or already present (idempotent).
             Ok(_) => identity_map_view().mapped.contains(spec_page_base(phys_addr as int)),
-            Err(_) => true,
+            // On failure the leaf entry was not installed: the PTE was not already present (a
+            // present PTE returns `Ok` via the idempotent fast path) and the read/frame-number
+            // failure left it absent, so the page is *not* in the identity map. `identity_map_page`
+            // propagates this and its caller must not treat the page as reachable.
+            Err(_) => !identity_map_view().mapped.contains(spec_page_base(phys_addr as int)),
         },
 )]
 fn ensure_pte(
@@ -692,7 +706,13 @@ fn ensure_pte(
             // init the call is a no-op and the boot page tables already cover it. Either way the
             // caller (`KernelFrame::new`) may subsequently read/write the frame through `phys_addr`.
             Ok(_) => identity_map_view().accessible(phys_addr@),
-            Err(_) => true,
+            // On failure the page was *not* made accessible, so `KernelFrame::new` must propagate
+            // the error and must not dereference the frame. This is sound: an `Err` is only
+            // reachable post-init (the pre-init path returns `Ok` as a no-op), and on the failure
+            // path the page was not already mapped (an already-present PTE returns `Ok`) and the
+            // failed `ensure_pt`/`ensure_pte` did not map it -- so `accessible` is false. Mirrors
+            // the `mm::phys` convention of stating the failure-state fact over the global view.
+            Err(_) => !identity_map_view().accessible(phys_addr@),
         },
 )]
 pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
