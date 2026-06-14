@@ -8,12 +8,12 @@
     - mm/phys/frame.rs:565 alloc_range: external_body
     - mm/phys/frame.rs:668 init: external_body
     - mm/phys/frame.rs:731 alloc: external_body
-    - mm/phys/frame.rs:773 free: external_body
-    - mm/phys/frame.rs:797 is_covered: external_body
-    - mm/phys/frame.rs:817 book: external_body
-    - mm/phys/frame.rs:839 alloc_range: external_body
-    - mm/phys/frame.rs:864 share: external_body
-    - mm/phys/frame.rs:889 refcount: external_body
+    - mm/phys/frame.rs:778 free: external_body
+    - mm/phys/frame.rs:802 is_covered: external_body
+    - mm/phys/frame.rs:822 book: external_body
+    - mm/phys/frame.rs:844 alloc_range: external_body
+    - mm/phys/frame.rs:869 share: external_body
+    - mm/phys/frame.rs:894 refcount: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
     - mm/phys/manager.rs:267 alloc_user_frame: external_body

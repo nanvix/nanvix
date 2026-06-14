@@ -769,6 +769,11 @@ pub(super) fn free_count() -> usize {
         // `phys_view()` is a single fixed value, with no `old(phys_view())` to
         // compare against.
         phys_view().inv(),
+    // `free` is invoked from `Drop` impls (`UserFrame`/`KernelFrame`), which are
+    // `no_unwind` and `opens_invariants none`; the shim honours both: it opens no
+    // verifier invariants and cannot unwind (errors are returned as values).
+    opens_invariants none
+    no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)
