@@ -1017,3 +1017,81 @@ Makefile
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Verification passed (exit 0, CLEAN). The cheating counts are crate-wide. Let me confirm the exact verified/errors line and that those admits/external_bodies are outside microvm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1); echo "
+[RESULT ✓] bash: LOG=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-21-32.log
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1); wc -l 
+[RESULT ✓] bash: 19 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-21-32.log
+--- tail ---
+Timestamp: 2026-06-15_06-21-32
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::platform::microvm
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=27
+  trusted=...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The result was cached. Let me force a fresh verification to capture the exact "verified, errors" line.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '600,635p' Makefile
+[RESULT ✓] bash: if [ ! -f "$$verus_path" ]; then \
+		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no $(VERUS_BINARY) found there."; \
+		exit 1; \
+	fi; \
+	if [ "$(IS_WINDOWS)" != "yes" ] && [ ! -x "$$verus_path" ]; then \
+		echo "Error: $(VERUS_BINARY) at '$$verus_path' is not executable...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat > verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_rev
+[RESULT ✓] bash: 
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review: hal-platform-microvm (gpt-5.3-codex)
+2. 
+3. ## Checklist
+4. ### Caller Analysis
+5. - [x] All pub functions have callers searched (tool-verified, not manual claim).
+6. - [x] Caller expectations (success + failure) documented for each in-scope pub function.
+7. - [x] Ab...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/platform/microvm/mod.rs && make verify-kernel MODU
