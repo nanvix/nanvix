@@ -644,3 +644,21 @@ The reorder is the standard, minimal fix I'll stick with, documented as a requir
 Turn 40
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | 
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::frame.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Frame module CLEAN, global admit 29→27. Let me confirm the two phys.proof.rs admits are gone from the detail, then run full crate verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== address dir admits remaining ==="; grep -n "address" verus-ai-logs/
+
+[THINKING] The frame module is now clean with the global admit count reduced from 29 to 27 after eliminating the two target admits. I'm running the full verification suite to check for regressions and then verifying that those two physical proof admits no longer appear in the cheating-detail output.
