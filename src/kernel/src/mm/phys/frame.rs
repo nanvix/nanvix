@@ -545,14 +545,44 @@ impl Inner {
         // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
         // aligned address; compute the index totally (bitmap.set rejects oversized indices).
         let frame_number: usize = phys_addr.into_raw_value() / mem::FRAME_SIZE;
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            let addr = phys_addr@;
+            let fnx = frame_number as int;
+            assert(addr >= 0);
+            assert(addr % spec_page_size() == 0);
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
+            assert(fnx == addr / spec_page_size());
+            lemma_view_of(self);
+            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+            lemma_free_contains(self, addr);
+        }
         match self.bitmap.set(frame_number) {
             Ok(()) => {
                 #[cfg(not(verus_keep_ghost))]
                 debug_assert_eq!(self.refcount[frame_number], 0);
                 self.refcount[frame_number] = 1;
+                proof! {
+                    let addr = phys_addr@;
+                    let fnx = frame_number as int;
+                    lemma_view_of(self);
+                    assert(self.bitmap@.set_bits == pre_sb.insert(fnx));
+                    assert(self.bitmap@.num_bits == pre_nb);
+                    assert(self.refcount@ == pre_rc.update(fnx, 1u8));
+                    lemma_reserve_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
+                }
                 Ok(())
             },
             Err(error) => {
+                proof! {
+                    lemma_view_of(self);
+                    assert(self@ == g_old);
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)

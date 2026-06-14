@@ -941,3 +941,71 @@ Turn 23
 ────────────────────────────────────────────────────────────
 Let me commit item 1, then tackle book/free/share. First commit:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "[verus-ai] phys-frame: restore PageAligned dep contra
+[RESULT ✓] bash: committed
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me study how manager.rs handles `old(self)` in proofs and its transition reasoning patterns.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "old(self)\|proof!\|=~=\|assert_sets_equal\|assert_maps_equal\|lemma_" src/ke
+[RESULT ✓] bash: 181:                    &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
+184:                    &&& old(self)@.all_free(user_addr_set(final(frames)@))
+185:                    &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
+188:                    &&& final(self)@ ==...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "proof fn\|spec fn\|requires\|ensures" src/kernel/src/mm/phys/manager.proof.r
+[RESULT ✓] bash: 12:pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
+13:    ensures
+27:pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+28:    requires
+30:    ensures
+40:pub proof fn lemma_kernel_alloc_contiguous(
+46:    requires
+48:    ensures
+62:pub proof fn lemma...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+This requires building reusable transition lemmas. Let me add a `view_of` helper plus reserve/release/update lemmas to frame.proof.rs.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 203. 
+204. /// The integer value of the refcount slot for index `i`. A spec-fn wrapper so the value can be
+205. /// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
+206. /// (which Verus rejects in an `ensures`); reading the field in a spec-fn body is t...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now let me rewrite the `book` method body with the transition proof.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 529.             match result {
+530.                 Ok(()) => {
+531.                     &&& old(self)@.free_frames.contains(phys_addr@)
+532.                     &&& final(self)@ == FrameAllocView {
+533.                         allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
+534. ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Let me verify book and the new lemmas before proceeding to free/share.
+[TOOL] report_intent: Verifying book and transition lemmas
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+[RESULT ✓] report_intent: Intent logged

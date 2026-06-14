@@ -1,0 +1,31 @@
+Timestamp: 2026-06-15_06-16-45
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: struct literals are not allowed here; try surrounding the struct literal with parentheses
+   --> src/kernel/src/mm/phys/frame.proof.rs:271:61
+    |
+271 |           view_of(sb.insert(fnx), nb, rc.update(fnx, 1u8)) == FrameAllocView {
+    |  _____________________________________________________________^
+272 | |             allocated_frames: view_of(sb, nb, rc).allocated_frames.insert(addr),
+273 | |             free_frames: view_of(sb, nb, rc).free_frames.remove(addr),
+274 | |             refcounts: view_of(sb, nb, rc).refcounts.insert(addr, 1int),
+275 | |         },
+    | |_________^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
