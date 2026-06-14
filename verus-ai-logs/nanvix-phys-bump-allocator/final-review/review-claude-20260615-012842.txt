@@ -1145,3 +1145,27 @@ Turn 14
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' PATH="/home/ruize/toolchain/ver
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : bump-allocator
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bump_allocator/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-targ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && RUSTFLAGS='-C relocation-model=static -C prefer-dynamic=no' PATH="/home/ruize/toolchain/ver
+Let me confirm which proof lemmas are actually invoked by exec code.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for l in lemma_ceil_div lemma_geometry lemma_exhausted_boundary lemma_alloc_transition bump
+[RESULT ✓] bash: === lemma_ceil_div ===
+src/libs/bump_allocator/src/lib.rs:149:    // (see `lemma_ceil_div`).
+src/libs/bump_allocator/src/lib.rs:167:        lemma_ceil_div(value as int, alignment as int, qd as int, r as int);
+=== lemma_geometry ===
+=== lemma_exhausted_boundary ===
+=== lemma_alloc_transition ===
+src/...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
