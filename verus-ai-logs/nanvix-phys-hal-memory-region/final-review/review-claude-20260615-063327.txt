@@ -942,3 +942,59 @@ This is a real undocumented exec-code change on an in-scope function. Now let me
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1500 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail 
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json" \
+/hom...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat > verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.gpt5.md
+[RESULT ✓] view: 1. # Final Comprehensive Review: hal-memory-region (gpt-5.3-codex)
+2. 
+3. ## Checklist
+4. ### Caller Analysis
+5. - [x] Read `caller_analysis.md`; scope matches exactly the 4 getters (`start/size` on `MemoryRegion` + `TruncatedMemoryRegion`).
+6. - [x] Verified each getter has an external-top `#[verus...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Module verify cached with exit 0, no cheating in module. Let me confirm the actual verification result line and force a non-cached run for rigor.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== last log results ==="; grep -i "verification results\|verified\|e
+[RESULT ✓] bash: === last log results ===
+=== cheating-detail (region only) ===
+    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Done. I wrote the full review to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.gpt5.md`
+
+Summary:
+- **Final Result:** **FAIL**
+- **Guardrail counts (region files only):**  
+  - admit: **0**  
+  - assume: **0**  
+  - external_body: **0**  
+  - assume_specification: **0**  
+  - cfg-gated exec: **0** (ghost include guards excluded per rule)
+- **verify-kernel:** **PASS** (`make verify-kernel MODULE=hal::mem::types::region` exit 0, CLEAN)
+- **Blockers:**  
+  1) AST mismatch in `MemoryRegion::start` (`clone` vs `clone_address`)  
+  2) Caller-expectation coverage incomplete (reported 4/10 covered).
+Let me force a fresh (non-cached) verification to get an explicit result line.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/region.spec.rs && timeout 1500 make veri
