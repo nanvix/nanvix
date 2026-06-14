@@ -431,3 +431,22 @@ Turn 21
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch MODULE=x86::mem::paging::frame::number 2>&1 | grep -iE "ve
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate arch --module x86::mem::paging::frame::number --log-dir verus-ai-logs/verify-arch
+  Module    : x86::mem::paging::frame::number
+note: verifying module x86::mem::paging::frame::number
+verification results:: 5 verified, 0 errors (partial...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The number module already verifies cleanly (5 verified, 0 errors, no admit/assume/external_body). Let me confirm the files contain no forbidden patterns and run the full crate + full verify to ensure no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "admit\(|assume\(|external_body|trusted" src/libs/arch/src/x86/mem
+
+[THINKING] The number module is clean with all five functions verified and no admits or assumes anywhere. The proofs are already complete, so I just need to double-check that there are no weakened proofs hiding in the three files.
+[RESULT ✓] bash: exit: 1 (1=none found)
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-arch 2>&1 | grep -iE "verified|errors|status|cheating: " | head
