@@ -1282,3 +1282,163 @@ Turn 68
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -15
 
 [THINKING] I need to investigate why the cheating gate is flagging this as CHEATING_DETECTED — it's likely checking whether the external_body is listed in tcb-allowed.md by function name or path. Let me re-run the verification to see if the status changes.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  7/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/ve...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | head -40; echo "==="; grep -rl "CHEATING_DETECTED\|external_body\|tcb-al
+
+[THINKING] The cheating gate is flagging external_body regardless of what's in tcb-allowed.md — it just reports raw counts without cross-referencing the allowlist. I need to check how the phys-mm phase handled this same situation with their external_body instances to see if they also got marked as CHEATING_DETECTED or if there's a different pattern I'm missing.
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "CHEATING_DETECTED\|tcb-allowed\|external_body\|status" /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh | he
+[RESULT ✓] bash: 268:    echo "  status: VERIFY_FAILED (continuing to guardrail checks for feedback)"
+295:combined = {"assume": 0, "external_body": 0, "admit": 0, "trusted": 0, "no_decreases": 0}
+299:    combined["external_body"] += r.external_body_count
+312:# merely *mentioned* `external_body`, `admit()`, or `assum...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+The cheating gate flags any `external_body` (informational); both are now documented in tcb-allowed.md with the int-to-ptr rationale — consistent with the phys-mm precedent. 0 Verus errors is the acceptance bar. Let me capture the exact unsupported-cast error and create the docs.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] The gate flags any external_body greater than zero as CHEATING_DETECTED regardless of what's in tcb-allowed.md — that's the standard behavior, and the phys-mm phase would've done the same. The tcb-allowed.md file serves as the methodology record that justifies these cases, and the human reviewer reconciles them. The constraint here is that I shouldn't add external_body unless the function appears in verus-ai-log.
+
+md, which I've now done.
+
+The acceptance criteria are zero Verus errors (admit() in proof bodies is acceptable) and confirming that with make verify-arch — I've got zero errors. The CHEATING_DETECTED gate is just informational about external_body, and it's justified and documented, consistent with how the phys-mm work handled it. The int-to-ptr cast in read/write is unsupported by Verus, so external_body is the right trust boundary here.
+
+Now I need to work through the remaining tasks: document the unsupported cast in verus-unsupported.md, update bugs.md and view_design.md, remove conflicting placeholders from identity_map.spec.rs, run make verify and make build, then clean up /tmp. Let me check the exact error in table.rs's read/write functions to capture for the unsupported documentation.
+[RESULT ✓] view: 180.     ///
+181.     /// Reads the entry at `index`.
+182.     ///
+183.     /// Returns `None` if the raw value is invalid according to `E::from_raw()`.
+184.     ///
+185.     /// # Safety
+186.     ///
+187.     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile read....
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp && cat > vt_cast.rs <<'EOF'
+use vstd::prelude::*;
+fn main() {}
+#[verus_spec]
+pub fn load(base: usize) -> u32 {
+ 
+
+[THINKING] I need to reproduce the unsupported-cast error and capture the exact error message to document it properly.
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u32`
+ --> vt_cast.rs:5:27
+  |
+5 |     let ptr: *const u32 = base as *const u32;
+  |                           ^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+Now let me create the supporting docs.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md with 2202 characters
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md 2>/dev/null; echo "=== VIEW DESIGN 
+[RESULT ✓] bash: === VIEW DESIGN ===
+# View Design: `arch::x86::mem::paging::table`
+
+## Abstract Resource
+
+To callers this module is **a single hardware page-table page**: a fixed-length
+array of `PAGE_TABLE_LENGTH` (= 1024) typed entries, addressed by a *validated*
+in-range index (`TableIndex`) and backed by volati...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+The view_design.md documents the full target. Let me append an "as-built" addendum documenting the addr-only realization decision rather than rewriting the design.
+[TOOL] bash: cat >> /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md <<'EOF'
+
+---
+
+## As-Built Decis
+
+[THINKING] I need to update view_design.md to reflect what I actually built rather than the original design. The current implementation uses a simple addr-only TableView struct without the entries map, and the read/write operations are external_body boundaries without the round-trip law. I'll add an "As-Built Decision" section to the existing document that explains this divergence and notes that the entries map and round-trip guarantees are deferred to the permission layer.
+[RESULT ✓] bash: done
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+Now create bugs.md and check the spec file's `spec_table_index` for the `as nat` consistency.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // TableIndex — a validated page-table slot number
+5. //==================================================================================================
+6. 
+7. // A `TableInde...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md
+
+[THINKING] The spec file is consistent with the page table indexing using the correct cast for the spec context, and the verification confirms that the pd_index and pt_index calculations match the specification. Now I need to create a bugs.md file documenting the findings — though there weren't any actual code bugs discovered, just the Verus limitation around integer-to-pointer conversions.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md with 1516 characters
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Now the cross-crate conflict cleanup. Let me inspect identity_map.spec.rs placeholders.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "Table\|pd_index\|pt_index\|from_address\|paging\|TableIndex\|TableEntry\|assume_sp
+
+[THINKING] Now I need to check the identity_map.spec.rs file to identify and remove the conflicting placeholder declarations.
+[RESULT ✓] bash: 101:// The kernel HAL paging layer (`arch::mem::paging` types/functions) and the kernel
+109:use ::arch::mem::paging::TableEntry;
+110:use super::page_table_allocator::PageTableBss;
+112:// The `TableEntry` trait bound must be declared before it can appear in external specs.
+113:#[verifier::external_tr...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Let me run `make verify` to see whether the new arch specs actually conflict cross-crate before editing the kernel placeholders.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -40
+
+[THINKING] I'm realizing there's a potential conflict here — identity_map.spec.rs declares external type and trait specifications for Table, TableIndex, and TableEntry, along with assume specifications for various functions. Now that the arch's table module has actual Verus specs with the proper annotations, these declarations will clash. I need to figure out whether identity_map.spec.rs is even part of the verification build.
+
+The real question is whether marking Table with `#[verus_verify]` in the arch crate actually exports its specification across the crate boundary, which would create a duplicate specification conflict in the kernel. The safest approach is to run `make verify` as-is with the arch specs added and see if conflicts actually occur — if it passes, no changes needed; if it fails, then I'll remove the placeholder specifications.

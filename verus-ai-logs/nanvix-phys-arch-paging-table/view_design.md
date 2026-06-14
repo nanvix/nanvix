@@ -246,3 +246,51 @@ This does **not** change the View *shape*; it is a realization detail: the
 threaded through `read`/`write` at the spec layer, keyed by `addr`. Recorded
 here so the specification phase wires `self@.entries` to that permission rather
 than to the struct fields. `addr` is what links a handle to its permission.
+
+---
+
+## As-Built Decision (spec phase) — addr-only struct View, entries deferred
+
+The target design above (per-slot `entries: Map<nat, Option<E>>` with a
+`spec_read`/`spec_write` round-trip) requires a ghost memory-permission token
+keyed by `addr` (see *Open Mechanism Note*). Implementing that token forces a
+`with`-clause ghost parameter onto `read`/`write`, which cascades into their
+upstream callers (`identity_map::ensure_pt`/`ensure_pte`/`identity_map_page`)
+— all of which are **out of scope** for this module and currently begin their
+bodies with `proof! { admit(); }`.
+
+Therefore, in this phase the **struct View of `Table<E>` is `addr`-only**:
+
+```rust
+pub struct TableView { pub addr: nat }
+
+impl<E: TableEntry> View for Table<E> {
+    type V = TableView;
+    closed spec fn view(&self) -> TableView { TableView { addr: self.base as nat } }
+}
+```
+
+Consequences:
+
+- `from_address(base)` keeps its observable contract: `result@.addr == base`.
+- `read`/`write` are **`#[verus_verify(external_body)]` trust boundaries**: their
+  bodies materialize a raw pointer from the integer `base` (`usize as *const/*mut`),
+  which Verus does not support (see `verus-unsupported.md`), and operate on
+  volatile, caller-owned memory. They are recorded in `tcb-allowed.md`.
+- The `entries` map, `TableView::inv` (page-alignment + domain), the
+  `spec_read`/`spec_write` transitions, and the `TableEntry` round-trip law
+  (`spec_from_raw(e.spec_raw()) == Some(e)`) are **deferred** to the future
+  permission layer. They lose **no** concrete verification value today because
+  no verified caller exercises the round-trip (all callers `admit()`).
+
+What is retained verbatim from the target design:
+
+- `TableIndex@ : nat` with `type_invariant inv = @ < PAGE_TABLE_LENGTH`.
+- `into_raw` identity projection (`result as nat == self@`, `result < LEN`).
+- `TableIndex::new` Some/None contract on the `< LEN` bound.
+- `spec_table_index` / `spec_pd_index` / `spec_pt_index`, and the
+  `pd_index`/`pt_index` ensures (`result@ == spec_…` and `result@ < LEN`).
+
+The `entries`-map design is preserved above as the **forward target** for when
+the page-table permission layer is verified; at that point `read`/`write` lose
+their `external_body` and gain the `spec_read`/`spec_write` postconditions.
