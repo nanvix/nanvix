@@ -1,0 +1,132 @@
+Timestamp: 2026-06-15_04-53-06
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+41 verified
+7 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=23
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:535:5
+    |
+535 |     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:530:13
+    |
+530 | /             ret <==> (
+531 | |                 self@.allocated_frames.contains(phys_addr@)
+532 | |                 || self@.free_frames.contains(phys_addr@)
+533 | |             ),
+    | |_____________^ failed this postcondition
+...
+537 |           frame_number < self.bitmap.number_of_bits()
+    |           ------------------------------------------- at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:536:35
+    |
+536 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.rs:152:13
+    |
+152 |             self.inv(),
+    |             ---------- failed precondition
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:760:13
+    |
+760 |             Ok(frame) => {
+    |             ^^^^^^^^^ failed this postcondition
+...
+768 |     instance().alloc()
+    |     ------------------ at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:789:13
+    |
+789 |             Ok(base) => {
+    |             ^^^^^^^^ failed this postcondition
+...
+797 |     instance().alloc_contiguous(count)
+    |     ---------------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:814:9
+    |
+814 |         result as nat == crate::mm::phys::phys_view().frames.free_count(),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+818 |     inner.bitmap.number_of_bits() - inner.bitmap.usage()
+    |     ---------------------------------------------------- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:833:1
+    |
+833 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: callee may open invariants that caller cannot
+   --> src/kernel/src/mm/phys/frame.rs:674:1
+    |
+674 | fn instance() -> &'static mut Inner {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invariants opened by callee
+...
+830 |     opens_invariants none
+    |                      ^^^^ invariants opened by caller
+...
+834 |     instance().free(frame)
+    |     ^^^^^^^^^^ at this call-site
+
+error: cannot show this call will not unwind, in function marked 'no_unwind'
+   --> src/kernel/src/mm/phys/frame.rs:834:5
+    |
+674 | fn instance() -> &'static mut Inner {
+    | ----------------------------------- perhaps you need to mark this function as 'no_unwind'?
+...
+834 |     instance().free(frame)
+    |     ^^^^^^^^^^ call to kernel::mm::phys::frame::instance might unwind
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:870:13
+    |
+870 |             Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
+    |             ^^^^^^ failed this postcondition
+...
+875 |     instance().book(phys_addr)
+    |     -------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:888:13
+    |
+888 |             Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+    |             ^^^^^^ failed this postcondition
+...
+895 |     instance().alloc_range(region)
+    |     ------------------------------ at the end of the function body
+
+verification results:: 41 verified, 7 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 9 previous errors
