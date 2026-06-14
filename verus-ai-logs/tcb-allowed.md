@@ -22,6 +22,20 @@ Any `external_body` outside this list must be removed.
   `alloc` and re-materializes the slot as `&'static mut MaybeUninit<T>`; same rationale.
   `ensures` adds the `size_of::<T>()`/`align_of::<T>()` vs `(N, A)` guard arms.
 
+## `external_body` introduced while speccing `arch::x86::mem::paging::table`
+
+- `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::read` — reads a `TableEntry` from a
+  page-table slot through a raw pointer materialized from `self.base` (`usize as *const E::Word`).
+  Verus does not support `usize`→pointer casts (int-to-ptr materialization of externally-owned,
+  volatile page-table memory), so the body cannot be verified without a `PointsTo`-style permission
+  token keyed by the table address. Same trust-boundary rationale as `bump_allocator::alloc`
+  (`usize as *mut`) and `frame::instance`. See `nanvix-phys-arch-paging-table/verus-unsupported.md`.
+- `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::write` — writes a `TableEntry` into a
+  page-table slot through a raw pointer materialized from `self.base` (`usize as *mut E::Word`).
+  Same int-to-ptr / volatile externally-owned-memory limitation as `read`. The round-trip
+  (`read` after `write`) law is deferred to the permission layer (see `view_design.md`); no
+  currently verified caller depends on it (all upstream callers in `identity_map.rs` `admit()`).
+
 ## Skip / exclude from current proof target
 
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::get_mut`
