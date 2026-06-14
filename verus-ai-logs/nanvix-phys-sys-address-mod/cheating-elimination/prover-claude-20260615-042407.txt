@@ -821,3 +821,34 @@ Let me do a final confirmation run of `make verify-sys`.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 300 make verify-sys 2>&1 | grep -E "verified|errors|cheating|status
 
 [THINKING] Running a final verification to confirm the report is clean and there are no remaining issues to address.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  status: CLEAN
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Done. **Result: PASS**
+
+## Summary
+
+The in-scope address-module functions (`is_aligned`, `into_raw_value`, `from_raw_value` and their `VirtualAddress` impls) were already free of `assume`/`admit`/`external_body`. The sole cheating item in the `sys` crate was **1 cfg-gated exec** flag at `alignment.rs:151` — a redundant `#[cfg(verus_keep_ghost)]` on a spec-only `verus!{}` block.
+
+**Fix:** removed the redundant gate so it's a bare `verus!{}` block, matching the same module's existing convention (`address/virt.rs:319`'s `impl View` block is already bare). The `verus!` macro strips spec items in non-verus builds, so the gate was never needed; `spec_align_value` is referenced only from spec code. Body/signature/visibility are byte-identical.
+
+**Verification:**
+- `make verify-sys` → `6 verified, 0 errors`, **status: CLEAN** (`cfg_gate=0`, all counters 0).
+- `make verify` (full workspace) → all crates **0 errors**, no regressions.
+- AST consistency: `alignment.rs` ✅ 12 functions match (no exec-AST change). The `virt.rs` "mismatches" are a pre-existing tool name-collision artifact on untouched, byte-identical code.
+
+No verification TODOs remain (zero proof gaps). Report written to `verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: eab8ff4a-f839-4897-8c17-8d3e1844706c
+Duration: 661.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/prover-claude-20260615-042407.jsonl
