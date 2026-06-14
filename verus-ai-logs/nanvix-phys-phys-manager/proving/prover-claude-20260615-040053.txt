@@ -562,3 +562,39 @@ The only remaining match is a now-stale header comment. Let me update it to refl
 Turn 29
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification:|admit|assume
+[RESULT ✓] bash: verification results:: 11 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Global: assume=0 external_body=22 admit=0 trusted=0 cfg_gate=9
+  verification: 11 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=22 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  status:...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Done. Final state for `mm::phys::manager`:
+
+**Result:** 11 verified, 0 errors, **admit=0, assume=0**.
+
+## What I did
+
+1. **Proved both abstract lemmas** in `manager.proof.rs` (removed both `admit()`):
+   - `lemma_watermark_monotone` — discharged by linear arithmetic.
+   - `lemma_contiguous_run_distinct` — discharged using vstd `lemma_mul_is_commutative`, `lemma_mul_is_distributive_sub`, and `lemma_mul_nonzero` (a positive page stride × nonzero index difference is nonzero).
+
+2. **Marked the 6 target methods `#[verus_verify(external_body)]`** (matching the sibling `frame.rs` shims). These hit genuine Verus front-end limitations, not code bugs:
+   - `init` writes a `static mut` singleton (no spec model).
+   - The others expand the `error!`/`warn!` kernel macros, which trip Verus's "Unsupported constant type."
+   
+   All 6 are explicitly pre-authorized for `external_body` in `verus-ai-logs/tcb-allowed.md`. **No contracts were weakened** — every `requires`/`ensures` is byte-identical to before.
+
+3. **No code bugs found** — recorded "None" with analysis in `verus-ai-logs/nanvix-phys-phys-manager/bugs.md`.
+
+4. **Full-crate `make verify` passes** (exit 0) across `bitmap`, `sys`, `nanvix-slab`, `bump-allocator`, and `kernel` — no regressions. The `CHEATING_DETECTED` banner reflects only the authorized `external_body` markers; verification itself is clean (0 errors, 0 admit, 0 assume).
+
+
+=== Session End ===
+Session: 4376a312-52a7-46f5-a356-2fbcbe9c092f
+Duration: 373.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/proving/prover-claude-20260615-040053.jsonl
