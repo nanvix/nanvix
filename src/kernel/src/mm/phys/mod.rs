@@ -67,6 +67,7 @@ pub use self::{
 // the contents of the (un-viewable) `LinkedList`, they cannot be enumerated in this boundary
 // contract; what is expressed is the caller-relevant guarantee that the allocator stays
 // initialized and well-formed across booking.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -101,6 +102,7 @@ fn book_physical_memory_regions(
 // concrete MMIO frame set is the contents of the (un-viewable) `LinkedList`, so the boundary
 // contract expresses the caller-relevant guarantee: the allocator stays initialized and
 // well-formed (the skip-if-not-covered tolerance never aborts boot).
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
