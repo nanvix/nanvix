@@ -699,3 +699,17 @@ Normal build and tests pass. Let me run the final verifications.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make verify-bump-allocator 2>&1 | grep -E "verified|errors|cheating|status"
 
 [THINKING] The build and tests are passing, so now I need to run the full verification suite to check for any regressions—first re-running the allocator verification to be safe after the comment change, then running the complete project verification.
+[RESULT ✓] bash: verification results:: 10 verified, 0 errors
+  10 verified
+  0 errors
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+  Unverified function list written to: verus-ai-logs/verify-bump-allocat...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+All non-allowed cheating eliminated. The two remaining `external_body` are the tcb-allowed `alloc`/`alloc_as`. Now running the full `make verify` to check for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | grep -E "Verification|Crate|verified|errors|status|FAIL|err
+
+[THINKING] The CHEATING_DETECTED status is just from those two allowed external_body allocations in the tcb-allowed.md file, so everything else checks out—10 verified with no errors. Now I'm running the full verify suite to make sure there are no regressions, which might take a bit, but since we're on the verus-ai/bump-allocator branch it should auto-commit fine.
