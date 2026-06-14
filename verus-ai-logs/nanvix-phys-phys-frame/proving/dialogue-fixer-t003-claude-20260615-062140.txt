@@ -1620,3 +1620,84 @@ Now let me run verification to confirm the new lemma proves (functions still hav
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
 
 [THINKING] I've defined range_set to use a half-open interval from start to start+count, which matches what my lemma needs. Now I'm running a verification to test whether the lemma holds—it's going to take a few minutes to complete.
+[RESULT ✓] bash: === Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=19 admit=18 trusted=0 no_decreases=0 cfg_gate=15
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "error\[
+[RESULT ✓] bash: 20:error[E0433]: cannot find type `BitmapView` in this scope
+32:error[E0433]: cannot find type `BitmapView` in this scope
+45:error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "range_set\|BitmapView\|use bitmap\|use crate::.*[Bb]itmap" src/kernel/src/mm
+
+[THINKING] I need to check how BitmapView is imported elsewhere in the file to use the correct import path.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.proof.rs:393:        view_of(sb.union(BitmapView::range_set(start, start + count)), nb, rc2) == (FrameAllocView {
+src/kernel/src/mm/phys/frame.proof.rs:408:    let range = BitmapView::range_set(start, start + count);
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "BitmapView" src/libs/bitmap/src/lib.spec.rs | head -3; echo ---; grep -n "^
+[RESULT ✓] bash: 6:// This file contains specification functions, BitmapView, and View trait for Bitmap.
+11:// BitmapView - Abstract Specification Model
+16:pub struct BitmapView {
+---
+3:use super::FrameAllocView;
+4:use crate::hal::mem::spec_page_size;
+5:use crate::hal::mem::spec_max_frame_number;
+6:use vstd::map::*;...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "BitmapView" src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/*.rs 2>/
+[RESULT ✓] bash: ---
+30:use ::bitmap::Bitmap;
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "pub use\|BitmapView" src/libs/bitmap/src/lib.rs | head
+[RESULT ✓] bash: 319:                        BitmapView::range_set(start as int, start + (size as int)),
+<shellId: 48 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "mod \|include\|BitmapView" src/libs/bitmap/src/lib.rs | grep -i "mod\|spec"
+[RESULT ✓] bash: 16:mod test;
+36:include!("lib.spec.rs");
+---
+            match result {
+                Ok(start) => {
+                    &&& 0 <= start < final(self)@.num_bits
+                    &&& 0 < size <= final(self)@.num_bits
+                    &&& start + (size as int) <= final(self)@.num_bits
+         ...
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to import BitmapView from the bitmap crate into the kernel crate, so I'll add the appropriate import statement.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
