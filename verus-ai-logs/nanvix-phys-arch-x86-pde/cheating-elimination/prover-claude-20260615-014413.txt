@@ -1109,3 +1109,84 @@ All 23 functions and 2 structs MATCH — zero AST mismatches. Now let me run the
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify 2>&1 | tail -60
 
 [THINKING] All 23 functions and 2 structs are matching perfectly—the AST consistency check shows zero mismatches, and the impl-block split with `#[verus_verify]` annotations are being stripped correctly while exec code remains untouched. I should run the full verification suite, though the task scope seems to focus on verify-arch which already passed, and running `make verify` across the entire crate including the kernel would be beyond what's needed here.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have ...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+Full `make verify` passed: arch **47 verified, 0 errors**; kernel 76 verified, 0 errors (its admit=36/external_body=12 are pre-existing, out of scope). My pde module is fully clean. Let me write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; mkdir -p verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination; git --n
+
+[THINKING] The full verification run completed successfully with no errors across both the architecture and kernel modules. The kernel has some pre-existing cheating instances that were already present before my changes, so those aren't regressions. The architecture side is completely clean. I'm checking that all the other crates in the verification suite also passed.
+
+My scope in the pde module is now fully clean with no cfg_gate violations, no external_body references, and no admit/assume statements. The counts show I've reduced cfg_gate from 2 to 0 in the pde module while keeping the TCB's external_body count at 3. Now I'll write up the fix report and create the output directory with the verification summary.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+<shellId: 48 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff 39e930c91 -- src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] bash: diff --git a/src/libs/arch/src/x86/mem/paging/pde.rs b/src/libs/arch/src/x86/mem/paging/pde.rs
+index e73aa3b60..f2b3d1b33 100644
+--- a/src/libs/arch/src/x86/mem/paging/pde.rs
++++ b/src/libs/arch/src/x86/mem/paging/pde.rs
+@@ -59,6 +59,7 @@ pub struct PageDirectoryEntryFlags {
+     page_size: PageSize...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+Clean, minimal diff. Now writing the report and an empty verification_todo.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md with 3841 characters
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/verification_todo.md with 407 characters
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating elimination for **arch-x86-pde**:
+
+## Result: PASS
+
+**In-scope cheating eliminated:** 2 `cfg-gated exec` items in `pde.rs` → **0**.
+
+These were `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` manually placed on the two `new` constructors. Root cause: the no-`self` constructor needs the macro's impl-method marker (else `error[E0425]: cannot find function 'new'`), and the marker was being injected via a `verus_keep_ghost` cfg-gate (which the detector flags).
+
+**Fix (idiomatic, matching sibling `pte.rs`):** moved each `new` into its own `#[verus_verify]` impl block — that attribute auto-injects the marker for spec'd methods, and is `cfg_erase()`-based (erased in normal builds). The `from_raw_value`/`into_raw_value` methods (which call un-spec'd external flag helpers) stay in plain impl blocks so they aren't force-verified. The manual cfg-gated markers were removed.
+
+**Verification:**
+- `make verify-arch`: **47 verified, 0 errors** — `admit=0 assume=0 cfg_gate=0`.
+- `make verify` (full): arch 47/0, kernel 76/0 — no regressions (kernel's pre-existing admit/external_body untouched).
+- AST consistency vs baseline: **matched=23, mismatched=0** — exec code byte-identical (semantics/time/space preserved).
+
+The 3 crate-wide `external_body` (`invlpg`, `Table::read`, `Table::write`) are out of scope and on the TCB-allowed list; none are in `pde.rs`.
+
+**Reports written:**
+- `verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md`
+- `verus-ai-logs/nanvix-phys-arch-x86-pde/verification_todo.md` (no remaining gaps)
+
+[THINKING] Running a final verification to confirm the architecture is clean with 47 verified items and zero errors, then marking the task as complete with a PASS result since the module scope is fully clean.
+
+
+=== Session End ===
+Session: 59d018d8-eb57-4086-b516-a11772186786
+Duration: 720.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/prover-claude-20260615-014413.jsonl
