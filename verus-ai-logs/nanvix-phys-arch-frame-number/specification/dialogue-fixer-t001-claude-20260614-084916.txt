@@ -307,3 +307,61 @@ Arch: 8 verified, 0 errors, CLEAN, **no assume_specification** and the `MAX` bin
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "error|duplicat
 
 [THINKING] I've got 8 verified specs now with the constants included and no errors, so the architecture is clean. Next I need to replace those kernel placeholders for PAGE_SIZE and FRAME_SIZE, then deal with spec_page_size. Let me run the verification to see what duplicate-spec error comes up.
+[RESULT ✓] bash: Crate     : bitmap
+  Crate     : sys
+  Crate     : nanvix-slab
+  Crate     : bump-allocator
+  Crate     : arch
+  Crate     : kernel
+verification results:: 8 verified, 0 errors
+error: duplicate specification for `arch::x86::mem::constants::PAGE_SIZE`
+error: could not compile `kernel` (bin "kernel") d...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+As expected: duplicate spec for `PAGE_SIZE`. Now supersede the kernel placeholders. Let me view the frame.rs context around `spec_page_size`.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 36. #[cfg(verus_keep_ghost)]
+37. verus! {
+38. 
+39. pub uninterp spec fn spec_page_size() -> int;
+40. 
+41. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+42.     ensures
+43.         result == spec_page_size(),
+44. ;
+45. 
+46. impl View for FrameAddress
+47. {
+48.     type V = int...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm replacing `spec_page_size()` with a concrete implementation that delegates to the architecture's verified PAGE_SIZE constant, and cleaning up the PAGE_SIZE and FRAME_SIZE placeholders. But I need to reconcile this with the FRAME_SHIFT constraint that expects `spec_page_size() == pow2(result)` — if spec_page_size becomes concrete, I need to verify that relationship still holds.
+
+Let me make the edits: update frame.rs to have spec_page_size delegate to arch's PAGE_SIZE, remove the placeholders from frame.spec.rs, and verify that FRAME_SIZE equals spec_page_size() by relying on the architecture's verified constants providing concrete values for both.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] view: 20. // Note: `FrameNumber` (the `arch` crate) now carries its own verified `#[verus_spec]` contracts
+21. // (`View` + `FrameNumber::spec_max()`), so its placeholder `external_type_specification`
+22. // (`ExFrameNumber`) was removed — the real datatype specification supersedes it.
+23. // ============...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -E "error|duplicat

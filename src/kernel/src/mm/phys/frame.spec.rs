@@ -22,10 +22,11 @@ impl Inner {
 // (`ExFrameNumber`) was removed — the real datatype specification supersedes it.
 // =================================================================================================
 
-pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
-    ensures
-        result == crate::hal::mem::spec_page_size(),
-;
+// `::arch::mem::FRAME_SIZE` now carries its own verified spec in the `arch` crate (it equals
+// `PAGE_SIZE`), so the placeholder `assume_specification[FRAME_SIZE]` is superseded and removed.
+// Callers that relied on `FRAME_SIZE == spec_page_size()` still get it: `spec_page_size()` is now
+// defined as `::arch::mem::PAGE_SIZE as int` and `FRAME_SIZE == PAGE_SIZE` holds by the verified
+// constants.
 
 pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
     a: crate::hal::mem::PageAligned<T>,
