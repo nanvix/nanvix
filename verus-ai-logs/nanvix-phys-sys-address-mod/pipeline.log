@@ -134,3 +134,9 @@ Module: sys-address-mod
 [2026-06-15 04:23:43] ✅ proving: PASS (0/0)
 [2026-06-15 04:23:43] [GATE] Running build: make build
 [2026-06-15 04:23:43] [GATE] Running verify: make verify
+[2026-06-15 04:24:07] [GATE] ✅ Build + Verify passed after proving
+
+============================================================
+PHASE: cheating-elimination
+Module: sys-address-mod
+============================================================
