@@ -51,3 +51,6 @@ Module: arch-paging-mod
 [2026-06-14 12:07:49]   ↳ dialogue-reviewer-t1 done in 3m46s (exit=0)
 [2026-06-14 12:07:49] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-14 12:07:49] [DIALOGUE] specification ended after 1 turns: RESOLVED (227s)
+[2026-06-14 12:07:49] [PHASE] specification: dialogue-RESOLVED (10m55s)
+[2026-06-14 12:07:49] [SPEC DRIFT] (within specification) Comparing 4c73acbb → 6efbee5d
+[2026-06-14 12:07:49] [SPEC DRIFT] (within specification) No changes detected
