@@ -13,7 +13,6 @@ pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
     ensures
         m@ == phys_view().frames,
 {
-    admit();
 }
 
 //==================================================================================================
