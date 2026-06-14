@@ -156,3 +156,65 @@ Turn 2
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`- `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc` — materializes a
 ## Allowed `external_body` — not-yet-ve...
+[RESULT ✓] bash: - frame.rs:731 alloc: external_body
+    - frame.rs:778 free: external_body
+    - frame.rs:802 is_covered: external_body
+    - frame.rs:822 book: external_body
+    - frame.rs:844 alloc_range: external_body
+    - frame.rs:869 share: external_body
+    - frame.rs:894 refcount: external_body
+    - manage...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -iE "error|warnin
+
+[THINKING] Something went wrong with the verus compilation—I need to check the actual error message in the logs to see what happened.
+[RESULT ✓] bash: compilation/setup error (verus did not run)
+error: Verus does not support this cast: `usize` to `*mut u8`
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short && echo "---log---" && git log --oneline -5 && echo "---diff---" && git 
+
+[THINKING] I'm noticing the `clear` function at line 141 is casting `self.base.into_raw_value()` to a mutable pointer, but checking the code, this function isn't actually marked with the `external_body` attribute even though it's listed in tcb-allowed.md.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-kframe/proving/prover-claude-20260615-062809.jsonl
+ M verus-ai-logs/nanvix-phys-phys-kframe/proving/prover-claude-20260615-062809.txt
+---log---
+c607ede57 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+e890d1974 [verus-...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager show e890d1974 -- src/kernel/src/mm/phys/kframe.rs | head -120
+
+[THINKING] The commit stripped external_body from functions as part of the proving workflow, but it looks like `clear` got caught in that too even though it should've stayed external_body since it's in the tcb-allowed list. I need to check the actual diff from that commit to see what happened.
+[RESULT ✓] bash: commit e890d1974f69085f6597e069e381e2b2e57aafa6
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 06:28:09 2026 +0800
+
+    [verus-ai] proving strip-external-body: phys-kframe (1)
+
+diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/phys/kframe.rs
+index 595f8a47b..7323380c3 1006...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The strip process wrongly removed `external_body` from `clear`, which is explicitly TCB-allowed. Restoring it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[TOOL] report_intent: Restoring TCB external_body on clear
+
+[THINKING] I see the issue — the `strip-external-body` process removed the `#[verus_verify(external_body)]` attribute from `clear`, but since it's listed in tcb-allowed.md, it should have been preserved. I need to restore that attribute since `clear` legitimately can't be verified due to the raw pointer cast and is explicitly allowed as an external body function.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
