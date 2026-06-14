@@ -2,9 +2,11 @@
   "module_name": "arch-frame-number",
   "log_name": "nanvix-phys-arch-frame-number",
   "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "0fa1059ce1a5e475705a624d363fe7cd15d36174"
   },
   "phase_start_shas": {
-    "proving": "5653edde097863a3eb8706cc8f6fe9d6f0e95aea"
+    "proving": "5653edde097863a3eb8706cc8f6fe9d6f0e95aea",
+    "cheating-elimination": "09a2ae128cf07214e4c5e3668d41f76daa75d616"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "0fa1059ce1a5e475705a624d363fe7cd15d36174",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "09a2ae128cf07214e4c5e3668d41f76daa75d616",
       "rollback_iter": 0
     }
   ],
