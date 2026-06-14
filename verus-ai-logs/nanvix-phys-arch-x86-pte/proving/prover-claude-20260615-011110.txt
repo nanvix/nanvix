@@ -352,3 +352,31 @@ Fresh verification: 6 verified, 0 errors. Now the full crate to confirm no regre
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-arch 2>&1 | grep -iE "verified|errors|exit code|admit
 
 [THINKING] Six functions verified without issues, so the module's looking good. Let me run a full crate verification to make sure nothing else broke.
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=4
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=3 admit=0 truste...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Full crate passes (exit 0). The `CHEATING_DETECTED` is only from pre-existing TCB-allowed `external_body=3` (invlpg, table read/write) and non-semantic `cfg_gate=4`. Let me confirm the cfg-gates are all non-semantic markers.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "cfg(verus_keep_ghost)\|cfg_attr(verus_keep_ghost\|cfg(not(verus_kee
+
+[THINKING] The arch crate passes cleanly, and the "CHEATING_DETECTED" flag is coming from two sources: external_body=3 (which are all TCB-allowed operations like invlpg and table access) and cfg_gate=4 (non-semantic include and allow markers). Now I'm verifying that these cfg_gate items are indeed non-semantic across the crate and checking the detail file to make sure I'm accounting for everything correctly.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+85:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+307:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+All 4 cfg-gates are non-semantic (the standard `include!` spec/proof pattern and `allow` markers) — not exec-code gating. The work is already complete. Let me run the full `make verify` to confirm no cross-module regressions per the ultimate goal.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify 2>&1 | tail -25
+
+[THINKING] Looking at the cfg-gates in pte.rs, all four are non-semantic: the first two use the standard include pattern with `#[cfg(verus_keep_ghost)]`, while the other two are just allow attributes that don't affect semantics. These are exactly the kinds of non-semantic items the cheating detector is designed to count.
+
+All four in-scope functions verify with their full contracts, with zero admits and zero assumes. The three pre-existing external_body declarations are TCB-allowed in unlisted functions, and the full arch crate verifies cleanly. Since no bugs were found, there's nothing to record in bugs.md. Now I should run the full `make verify` command to confirm there are no regressions in other modules.
