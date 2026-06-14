@@ -53,22 +53,14 @@ impl TableIndex {
     /// Creates a [`TableIndex`] from a raw `usize`, returning `None` if the value is out of
     /// bounds.
     ///
-    pub const fn new(index: usize) -> Option<Self> {
-        if index < crate::mem::PAGE_TABLE_LENGTH {
-            Some(Self(index))
-        } else {
-            None
-        }
-    }
+    pub const fn new(index: usize) -> Option<Self> { ... }
 
     ///
     /// # Description
     ///
     /// Returns the underlying index value.
     ///
-    pub const fn into_raw(self) -> usize {
-        self.0
-    }
+    pub const fn into_raw(self) -> usize { ... }
 }
 
 //==================================================================================================
@@ -76,18 +68,10 @@ impl TableIndex {
 //==================================================================================================
 
 /// Extracts the PD index (bits 22-31) from a virtual address as a [`TableIndex`].
-pub const fn pd_index(vaddr: usize) -> TableIndex {
-    // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
-    let index: usize = (vaddr >> crate::mem::PGTAB_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
-    TableIndex(index)
-}
+pub const fn pd_index(vaddr: usize) -> TableIndex { ... }
 
 /// Extracts the PT index (bits 12-21) from a virtual address as a [`TableIndex`].
-pub const fn pt_index(vaddr: usize) -> TableIndex {
-    // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
-    let index: usize = (vaddr >> crate::mem::PAGE_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
-    TableIndex(index)
-}
+pub const fn pt_index(vaddr: usize) -> TableIndex { ... }
 
 //==================================================================================================
 // Table
@@ -125,12 +109,7 @@ impl<E: TableEntry> Table<E> {
     /// `base` must be a valid, page-aligned address with at least one page of readable/writable
     /// memory.
     ///
-    pub const unsafe fn from_address(base: usize) -> Self {
-        Self {
-            base,
-            _marker: ::core::marker::PhantomData,
-        }
-    }
+    pub const unsafe fn from_address(base: usize) -> Self { ... }
 
     ///
     /// # Description
@@ -143,11 +122,7 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile read.
     ///
-    pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
-        let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
-        let ptr: *const PteWord = (self.base + offset) as *const PteWord;
-        E::from_raw(::core::ptr::read_volatile(ptr))
-    }
+    pub unsafe fn read(&self, index: TableIndex) -> Option<E> { ... }
 
     ///
     /// # Description
@@ -158,9 +133,5 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile write.
     ///
-    pub unsafe fn write(&self, index: TableIndex, entry: E) {
-        let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
-        let ptr: *mut PteWord = (self.base + offset) as *mut PteWord;
-        ::core::ptr::write_volatile(ptr, entry.raw());
-    }
+    pub unsafe fn write(&self, index: TableIndex, entry: E) { ... }
 }
