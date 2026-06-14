@@ -1263,3 +1263,23 @@ The struct needs `#[verus_verify]` so Verus treats it as a datatype. Let me add 
 Turn 72
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -45
+[RESULT ✓] bash: Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-14_08-13-34
+
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::add...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+The `pub open` type invariant conflicts with the opaque type's `NULL` constructor. Let me make `inv()` closed (the bound is still exposed to callers via `into_raw_value`'s explicit ensures).
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+
+[THINKING] I'm hitting a constraint where the `NULL` constant tries to use the constructor for an opaque datatype, but since `inv()` is marked as `pub open` and serves as the type invariant, the constructor needs to be well-formed everywhere it's used—which creates a conflict with the private field that makes the type opaque outside the module. The real insight is that the kernel's contract on `into_raw_value` already exposes the bound `0 <= spec_frame_raw_value(frame) <= spec_max_frame_number()` as an explicit ensures clause, not through the invariant. So PTE/PDE get the bound they need from that ensures clause directly, meaning `inv()` doesn't actually need to be `pub open` for them to work. I could make `inv()` use `closed` visibility instead, which would restrict the constructor check to just the module where it's defined, sidestepping the conflict between the opaque datatype and the pub const. Inside the module, a closed spec function's body is visible, so `into_raw_value` can still unfold `inv()` to prove its ensures clause. The key insight is that downstream code like PTE/PDE doesn't actually need to see the invariant's definition—they just need `use_type_invariant` to give them the bound, which they get from `into_raw_value`'s explicit ensures. So switching `inv()` to `pub closed` should resolve the NULL const issue while keeping the type invariant functional. The real issue is that `pub const NULL` forces the constructor to be well-formed everywhere, which conflicts with the type invariant. I could avoid the type invariant altogether and handle the bound differently, but the kernel's `into_raw_value` contract genuinely needs an unconditional bound — and my real spec should be compatible with that. The cleanest approach is to stick with the type invariant since it matches the caller analysis (tokens are always valid), and just mark the invariant as `closed` to sidestep the NULL constructor problem.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -45

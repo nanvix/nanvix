@@ -35,7 +35,7 @@ impl FrameNumber {
     // bound holds unconditionally for any value callers hold (PTE/PDE treat it as an always-valid
     // token), which is exactly what lets `into_raw_value() << FRAME_SHIFT` not overflow `usize`.
     #[verifier::type_invariant]
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         0 <= self@ <= spec_max_frame_number()
     }
 }

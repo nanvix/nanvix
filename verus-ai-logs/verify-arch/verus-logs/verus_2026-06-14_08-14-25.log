@@ -1,0 +1,35 @@
+Timestamp: 2026-06-14_08-14-25
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: disallowed: constructor for an opaque datatype
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:39:28
+   |
+28 | pub struct FrameNumber(usize);
+   | ------------------------------ Verus treats this datatype as 'opaque' outside `arch::x86::mem::paging::frame::number` (note that Verus always considers the most restrictive field for determining this)
+...
+39 |     pub const NULL: Self = Self(0);
+   |                            ^^^^^^^ this constructor is disallowed because of datatype opaqueness
+   |
+   = help: note that because this is a pub open spec function, this constructor must be well-formed everywhere, which is wider than `arch::x86::mem::paging::frame::number`
+
+error: could not compile `arch` (lib) due to 1 previous error
