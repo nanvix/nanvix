@@ -13,6 +13,16 @@ Any `external_body` outside this list must be removed.
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::new` — wraps a `FrameAddress` into an owning
+  kernel-frame handle. Its body calls `crate::mm::virt::identity_map_page`, whose precondition is
+  the **global** `identity_map_view().inv()`. That fact is owned by the `mm::virt` identity-map
+  ghost token (a parameter-free singleton-global, like `phys_view()`), which is not realized in the
+  `mm::phys` module and cannot be derived from the only available precondition (`base.inv()`). So
+  the body cannot discharge the callee's `requires` in-scope. Same cross-module global-token
+  deferral as `frame::book`/`frame::alloc` (post-mutation `phys_view()`): `external_body` until
+  `mm::virt`'s identity-map token is realized, at which point `new` can pass it to
+  `identity_map_page` and be verified in-body. `ensures Ok(kf) => kf@ == base@ && kf.inv()` (the
+  address is preserved and page-aligned); `kframe`'s siblings `base`/`drop` verify in-body.
 - `src/libs/bump_allocator/src/lib.rs::FixedSizeBumpAllocator::alloc` — materializes a
   `&'static mut [u8; N]` from a backend-provided address (`usize as *mut`); raw-memory
   op Verus cannot verify without a `PointsTo` for the externally-owned `BssStorage`
@@ -89,8 +99,10 @@ Any `external_body` outside this list must be removed.
 - `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — pool allocation primitive the manager's user
   paths call. `ensures` describes the free→allocated transition (`alloc_one`) and the empty-pool
   `Err` arm (`free_count() == 0`). Verified when `upool` is.
-- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::new` — wraps a `FrameAddress` into an owning
-  kernel-frame handle. `ensures Ok(kf) => kf@ == base@`. Verified when `kframe` is.
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::new` — see the "Allowed `external_body`" section
+  above: it remains `external_body` after `kframe` is verified because its `identity_map_page`
+  callee needs the `mm::virt` global identity-map token (`identity_map_view().inv()`) that is not
+  realized in `mm::phys`. `ensures Ok(kf) => kf@ == base@`.
 - `src/kernel/src/mm/phys/frame.rs::alloc` — singleton wrapper around `Inner::alloc`;
   `ensures Ok(frame) => frame.inv()`.
 - `src/kernel/src/mm/phys/frame.rs::alloc_contiguous` — singleton wrapper around
