@@ -252,3 +252,52 @@ s=open(p).read()
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; touch src/kernel/src/mm/phys/manager.proof.rs; make verify-kernel MODULE=mm::phys 2>&1 
+[RESULT ✓] bash: error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:9
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in th...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Empirically confirmed: removing the admits yields **"postcondition not satisfied"** at lines 14, 30, 31, 47, 48, 211 — the transition postconditions (`m@ == phys_view().frames`, `pre.free_frames.contains(addr)`, `post == pre.alloc_one(addr)`, `m@ == pre`) are mathematically **not derivable** from the lemmas' preconditions. Let me restore the file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs; echo "restored"; 
+
+[THINKING] I've confirmed empirically that removing those four admits triggers postcondition failures at specific locations in the lemmas—the manager attachment check, kernel allocation operations, their contiguous variants, and the user bulk error restoration. These postconditions appear to be genuinely unsatisfiable without the admits.
+
+The deeper issue is that these postconditions encode a global ghost-token transition and Drop semantics that can't be derived from the preconditions alone—for instance, proving an arbitrary address belongs to `free_frames` is impossible given only the well-formedness precondition. The only way to make them provable is to add the transition facts as preconditions, but callers can't discharge those without access to the global token. This represents a genuine external trust boundary that would require a human-approved axiom or specification assumption, which I'm not authorized to write unilaterally.
+
+I'm going to restore the backup and reconsider the whole approach one more time. The core problem is that the design uses a parameter-free global `phys_view()` singleton for the frame allocator, with the manager brokering access, and the cross-call transition is supposed to be realized through a ghost token over those singletons—but that token hasn't actually been implemented. Realizing it would require tracked ghost state on the singletons themselves, and I'm exploring whether there's a way to do this without changing the execution signatures.
+
+The attachment point is `frame::instance()`, which is already marked as external_body and materializes the singleton reference while pinning its abstract state to `phys_view().frames`. However, `frame::alloc()` calls `instance().alloc()` and is itself external_body, so the post-mutation `phys_view()` state can't be expressed—there's no old/new linkage at the free-function boundary. This is a deep architectural deferral that can't be resolved in a single phase without either human-approved axioms or major restructuring that's forbidden.
+
+The four admits are pre-existing from the phys-manager phase, they're outside the phys-frame target scope, they're genuinely unprovable in-module, and they're only resolvable through human-approved external-bottom axioms or the global ghost-token realization that requires tracked parameters.
+
+The honest path forward is to restore manager.proof.rs with the admits intact (so verification still passes with the cheating flagged), confirm frame.rs is clean, document the four blocked admits precisely in verification_todo.md, and report this as a genuine blocker. The task explicitly anticipates this scenario—verification_todo.md is meant to be an honest hand-off of genuinely-stuck proofs. Since frame.rs is already clean and the cheating is entirely in manager's external_body assumptions, there's nothing in frame.rs itself to fix.
+
+I'm also considering whether I could make these lemmas provable by adding minimal honest `requires` clauses that match what the call sites already establish—checking if the facts available at each call site (like the allocated_frames information from frame::alloc) could satisfy the lemma's preconditions and turn the admit into a real proof.
+
+But after examining the call sites, there's no legitimate path forward: I'd need to establish the attachment relationship between `self@` and `phys_view`, plus the pre/post linkage to `g_old.alloc_one(addr)`, and those facts simply aren't available at the call sites.
+
+No tractable partial proof exists, so I'm restoring the file and documenting the honest blocker.
+[RESULT ✓] bash: restored
+4
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Restored. The analysis is conclusive. Let me verify the restored module still passes, then document. Let me run a final confirmation that frame.rs is clean and the module verifies with the pre-existing admits.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== diff vs backup ==="; diff /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/ma
+
+[THINKING] I've confirmed these four admits in manager.proof.rs are genuinely unprovable from their preconditions—they encode the global ghost-token deferral from §8. Now I'm weighing whether to actually eliminate them by finding a legitimate proof mechanism that doesn't require human-approved axioms or runtime changes. The fundamental issue is that `frame::alloc()` mutates a global singleton without borrowing `self`.
+
+I'm realizing the lemmas might be restructured so their postconditions become provable by adding the actually-available facts as preconditions—facts the call sites already have. For `lemma_kernel_alloc_one`, the manager needs `self@ == g_old.alloc_one(addr)`, but after `frame::alloc()`, Verus sees `self@` as unchanged while reality has the global changed. The key insight: `frame::alloc()` operates on the kernel's global frame instance, not on `self.upool@`, so the user pool's view genuinely doesn't change. But then there's a tension—`lemma_manager_attached` claims `self@ == phys_view().frames` (the global frame partition), yet in the kernel alloc path, the frame instance and upool are separate objects, so the lemma's claim that `self@` changes seems inconsistent with what actually happens to the user pool.
+
+This whole abstraction only makes sense under a ghost token that ties the upool, frame instance, and phys_view together—a major architectural addition that belongs in the phys-manager phase, not phys-frame. So these admits are genuinely out of scope for the frame deliverable, and the honest conclusion is that frame.rs itself is clean; the 4 admits are pre-existing manager obligations that should be documented as such.
+
+Before I finalize the blocker report, let me trace through one more angle: could I make these lemmas provable by adding requires clauses that capture the exact transition, letting call sites discharge them via the facts they already have from frame::alloc's ensures and lemma_manager_attached? I need to look precisely at where lemma_kernel_alloc_one is called in manager.rs and see if the preconditions are actually available there.
+
+At the call site, Verus knows self hasn't been mutably borrowed, so self@ still equals its pre-state. But the lemma's conclusion claims self@ equals the old state with one frame allocated—which directly contradicts what Verus believes. This means the admit is injecting a fact that, combined with self@ == g_old, creates an inconsistency: the same address would be both free and allocated simultaneously, violating the manager's well-formedness invariant. The manager's proof after these admits is operating in an unsound context where anything becomes provable.
+
+This is a fundamental architectural issue—the manager needs a proper ghost token to make self actually mutated so Verus can track the state change. Without that, the admits can't be legitimately eliminated in the phys-frame phase alone. I'm confident this is a blocker requiring the token-based approach. Let me verify the current state still passes and then document the findings.
