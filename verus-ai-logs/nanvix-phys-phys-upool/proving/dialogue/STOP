@@ -1,0 +1,23 @@
+RESOLVED
+
+All proving-phase checklist items for phys-upool are PASS with tool evidence
+(see turn_001_driver.md):
+
+1. No specs weakened   — spec_drift.py check phys-upool: 0 drift; vs spec END
+                         boundary 8d4e65c: 0 drift.
+2. Zero admit()        — admit=0 (crate + upool files).
+3. Zero external_body  — upool external_body=0; UserFrame::drop's external_body
+   (unless TCB)          REMOVED this phase and now fully verifies. The 25
+                         crate-wide are all TCB-listed and out of scope.
+4. Zero assume         — assume=0 (crate + upool files).
+5. No cfg-gated exec   — upool's 1 cfg gate wraps a `verus!` View spec block;
+   code                  all 10 crate gates are spec/ghost (verus!/requires/macro).
+6. Cheating audit      — upool: admit/assume/external_body/trusted=0; cfg_gate=1
+                         (spec). Out-of-scope counts enumerated + TCB-justified.
+7. Verus limitation    — none claimed; prior drop/error! limitation eliminated by
+   reproducer            removing external_body (drop verifies). N/A.
+8. Exec rewrites min.   — no // VERUS REWRITE; only one attribute line deleted.
+9. Cross-module        — make verify-kernel: all phys modules pass, exit 0.
+   regression            Fresh log: 19 verified, 0 errors.
+10. Verification+build — verus 0 errors (19 verified); make all-kernel exit 0,
+                         0 warnings.
