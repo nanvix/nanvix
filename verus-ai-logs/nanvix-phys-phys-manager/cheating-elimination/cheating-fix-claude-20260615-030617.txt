@@ -159,3 +159,18 @@ Now I need to verify the baseline state, ensure the documentation is complete an
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys::manager 2>&1 | grep -iE "postconditio
+[RESULT ✓] bash: error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:9
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+  --> src/kernel/src/mm/phys/manager.proof.rs:27:1
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:31:9
+   |         ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Restored. Confirmed identical to prior rounds: removing the 4 admits → exactly 4 postcondition failures (15 verified, 4 errors). Let me confirm the clean baseline and that source is byte-identical, then write the turn_003 response with this round's sharper root-cause finding.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff a8d643993 -- src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/phys/manage
+
+[THINKING] Removing those 4 admits leaves exactly 4 lemma failures, all at the ensures clauses where the assertions about `self.upool@` and the global partition can't be proven. I've restored the admits and need to verify the baseline is clean and the source matches byte-for-byte before writing up the turn_003 response.
