@@ -89,18 +89,7 @@ impl PageTableEntryFlags {
         page_cache_disable: PageCacheDisableFlag,
         accessed: AccessedFlag,
         dirty: DirtyFlag,
-    ) -> Self {
-        Self {
-            present,
-            read_write,
-            user_supervisor,
-            page_write_through,
-            page_cache_disable,
-            accessed,
-            dirty,
-            cow: CopyOnWriteFlag::NotCopyOnWrite,
-        }
-    }
+    ) -> Self { ... }
 
     ///
     /// # Description
@@ -115,18 +104,7 @@ impl PageTableEntryFlags {
     ///
     /// A [`PageTableEntryFlags`].
     ///
-    fn from_raw_value(value: PteWord) -> Self {
-        Self {
-            present: PresentFlag::from_raw_value(value),
-            read_write: ReadWriteFlag::from_raw_value(value),
-            user_supervisor: UserSupervisorFlag::from_raw_value(value),
-            page_write_through: PageWriteThroughFlag::from_raw_value(value),
-            page_cache_disable: PageCacheDisableFlag::from_raw_value(value),
-            accessed: AccessedFlag::from_raw_value(value),
-            dirty: DirtyFlag::from_raw_value(value),
-            cow: CopyOnWriteFlag::from_raw_value(value),
-        }
-    }
+    fn from_raw_value(value: PteWord) -> Self { ... }
 
     ///
     /// # Description
@@ -137,20 +115,7 @@ impl PageTableEntryFlags {
     ///
     /// The raw value.
     ///
-    fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.present.into_raw_value();
-        value |= self.read_write.into_raw_value();
-        value |= self.user_supervisor.into_raw_value();
-        value |= self.page_write_through.into_raw_value();
-        value |= self.page_cache_disable.into_raw_value();
-        value |= self.accessed.into_raw_value();
-        value |= self.dirty.into_raw_value();
-        value |= self.cow.into_raw_value();
-
-        value
-    }
+    fn into_raw_value(self) -> PteWord { ... }
 
     ///
     /// # Description
@@ -162,9 +127,7 @@ impl PageTableEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_present(&self) -> bool {
-        matches!(self.present, PresentFlag::Present)
-    }
+    pub fn is_present(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -176,9 +139,7 @@ impl PageTableEntryFlags {
     /// `true` if the user flag is set, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_user(&self) -> bool {
-        matches!(self.user_supervisor, UserSupervisorFlag::User)
-    }
+    pub fn is_user(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -190,9 +151,7 @@ impl PageTableEntryFlags {
     /// `true` if the page is writable, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_writable(&self) -> bool {
-        matches!(self.read_write, ReadWriteFlag::ReadWrite)
-    }
+    pub fn is_writable(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -204,9 +163,7 @@ impl PageTableEntryFlags {
     /// - `read_write`: The read/write flag.
     ///
     #[inline(always)]
-    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
-        self.read_write = read_write;
-    }
+    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) { ... }
 
     ///
     /// # Description
@@ -218,9 +175,7 @@ impl PageTableEntryFlags {
     /// - `user_supervisor`: The user/supervisor flag.
     ///
     #[inline(always)]
-    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
-        self.user_supervisor = user_supervisor;
-    }
+    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) { ... }
 
     ///
     /// # Description
@@ -232,9 +187,7 @@ impl PageTableEntryFlags {
     /// `true` if the copy-on-write flag is set, `false` otherwise.
     ///
     #[inline(always)]
-    pub fn is_cow(&self) -> bool {
-        matches!(self.cow, CopyOnWriteFlag::CopyOnWrite)
-    }
+    pub fn is_cow(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -246,9 +199,7 @@ impl PageTableEntryFlags {
     /// - `cow`: The copy-on-write flag.
     ///
     #[inline(always)]
-    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) {
-        self.cow = cow;
-    }
+    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) { ... }
 }
 
 //==================================================================================================
@@ -286,9 +237,7 @@ impl PageTableEntry {
     ///
     /// A [`PageTableEntry`].
     ///
-    pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self {
-        Self { flags, frame }
-    }
+    pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self { ... }
 
     ///
     /// # Description
@@ -304,12 +253,7 @@ impl PageTableEntry {
     /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
     /// - `None`: Otherwise.
     ///
-    pub fn from_raw_value(value: PteWord) -> Option<Self> {
-        Some(Self {
-            flags: PageTableEntryFlags::from_raw_value(value),
-            frame: FrameNumber::from_raw_value(value as usize >> mem::FRAME_SHIFT)?,
-        })
-    }
+    pub fn from_raw_value(value: PteWord) -> Option<Self> { ... }
 
     ///
     /// # Description
@@ -320,14 +264,7 @@ impl PageTableEntry {
     ///
     /// The raw value.
     ///
-    pub fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
-
-        value
-    }
+    pub fn into_raw_value(self) -> PteWord { ... }
 
     ///
     /// # Description
@@ -338,9 +275,7 @@ impl PageTableEntry {
     ///
     /// The flags.
     ///
-    pub fn flags(&self) -> PageTableEntryFlags {
-        self.flags
-    }
+    pub fn flags(&self) -> PageTableEntryFlags { ... }
 
     ///
     /// # Description
@@ -351,9 +286,7 @@ impl PageTableEntry {
     ///
     /// The frame number associated with the target page table entry.
     ///
-    pub fn frame_number(&self) -> FrameNumber {
-        self.frame
-    }
+    pub fn frame_number(&self) -> FrameNumber { ... }
 
     ///
     /// # Description
@@ -364,9 +297,7 @@ impl PageTableEntry {
     ///
     /// The physical address.
     ///
-    pub fn frame_address(&self) -> usize {
-        self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
-    }
+    pub fn frame_address(&self) -> usize { ... }
 
     ///
     /// # Description
@@ -378,9 +309,7 @@ impl PageTableEntry {
     /// `true`: If the target page table entry is marked as present.
     /// `false`: Otherwise.
     ///
-    pub fn is_present(&self) -> bool {
-        self.flags.is_present()
-    }
+    pub fn is_present(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -391,9 +320,7 @@ impl PageTableEntry {
     ///
     /// - `read_write`: The read/write flag.
     ///
-    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) {
-        self.flags.set_read_write(read_write);
-    }
+    pub fn set_read_write(&mut self, read_write: ReadWriteFlag) { ... }
 
     ///
     /// # Description
@@ -404,9 +331,7 @@ impl PageTableEntry {
     ///
     /// - `user_supervisor`: The user/supervisor flag.
     ///
-    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
-        self.flags.set_user_supervisor(user_supervisor);
-    }
+    pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) { ... }
 
     ///
     /// # Description
@@ -417,9 +342,7 @@ impl PageTableEntry {
     ///
     /// `true` if the entry is marked copy-on-write, `false` otherwise.
     ///
-    pub fn is_cow(&self) -> bool {
-        self.flags.is_cow()
-    }
+    pub fn is_cow(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -430,17 +353,11 @@ impl PageTableEntry {
     ///
     /// - `cow`: The copy-on-write flag.
     ///
-    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) {
-        self.flags.set_cow(cow);
-    }
+    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) { ... }
 }
 
 impl TableEntry for PageTableEntry {
-    fn from_raw(raw: PteWord) -> Option<Self> {
-        Self::from_raw_value(raw)
-    }
+    fn from_raw(raw: PteWord) -> Option<Self> { ... }
 
-    fn raw(self) -> PteWord {
-        self.into_raw_value()
-    }
+    fn raw(self) -> PteWord { ... }
 }
