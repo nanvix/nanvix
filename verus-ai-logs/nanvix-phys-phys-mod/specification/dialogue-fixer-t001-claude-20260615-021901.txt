@@ -400,3 +400,24 @@ Now run module verification to see where `init` and the lemmas stand:
 [THINKING] I need to add a proof assertion in init's body to establish the disjoint clause, checking what postconditions we get from book_mmio. The function ensures phys_view().inv() and phys_view().initialized, so I need to verify we can derive both the well-formedness and disjointness requirements at the final Ok return.
 
 Let me run the verification on the mm::phys module to see if init proves automatically or if I need to add explicit assertions.
+[RESULT ✓] bash: error: in 'ensures' clause of public function, cannot refer to private function
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 veri...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+`init` is `pub`, so `phys_view()` must be `pub` too. Let me fix:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I'm running into a visibility issue where `init` is a public function that references `phys_view()` in its ensures clause, but `phys_view` is currently `crate`-private. Since public functions can only reference functions that are at least as visible, I need to make `phys_view` public as well. The `PhysMemView` methods and `frames` field are already public, so bumping `phys_view` to `pub` should resolve this.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|warning:|verified|sta

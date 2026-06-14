@@ -168,7 +168,7 @@ impl PhysMemView {
 /// a successful `init`, `phys_view().initialized` and `phys_view().inv()` hold, so
 /// every later `frame::*` / `PhysMemoryManager::*` operation may rely on the
 /// frame-allocator invariant.
-pub(crate) uninterp spec fn phys_view() -> PhysMemView;
+pub uninterp spec fn phys_view() -> PhysMemView;
 
 } // end verus!
 
