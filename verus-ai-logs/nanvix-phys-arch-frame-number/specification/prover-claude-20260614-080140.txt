@@ -873,3 +873,33 @@ Turn 45
 Turn 46
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -50
+[RESULT ✓] bash: 82 |         proof { use_type_invariant: use_type_invariant(self); }
+   |                 +++++++++++++++++++
+
+error: expected `;`, found keyword `self`
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:82:44
+   |
+82 |         proof { use_type_invariant(self); }
+   |                            ...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+The inline proof needs the `proof!{}` macro, not a bare `proof {}` block. Let me check the syntax skill.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -n "proof!\|use_type_invariant\|proof_with\|inline proof" docs/skills/verus-s
+
+[THINKING] The compilation got pretty far, but there's a syntax error with `proof { use_type_invariant(self); }` inside an exec body. The problem is that inside a `proof!` macro block, the syntax needs to be `proof!{ ... }` not `proof { ... }`. The parser is interpreting `use_type_invariant` as a `use` keyword statement, which is why it's complaining about the unexpected `self` token.
+[RESULT ✓] bash: 3:description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example."
+22:| Proof blocks inside exec | `proof! { ... }` |
+32:`proof! { }`...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | tail -40

@@ -1,0 +1,31 @@
+Timestamp: 2026-06-14_08-10-07
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error[E0425]: cannot find function `from_raw_value` in this scope
+  --> src/libs/arch/src/x86/mem/paging/frame/number.rs:59:12
+   |
+59 |     pub fn from_raw_value(value: usize) -> Option<Self> {
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `arch` (lib) due to 1 previous error
