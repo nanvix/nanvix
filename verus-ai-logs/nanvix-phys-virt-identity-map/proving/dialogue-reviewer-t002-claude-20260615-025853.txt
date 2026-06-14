@@ -222,3 +222,28 @@ s=op
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | grep -iE "error|verified|Unsupported|exit|status"
+[RESULT ✓] bash: error: Unsupported constant type
+191 | |                     crate::klog::KlogLevel::Error,
+537 |           error!("ensure_pt(): {reason}");
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Confirmed: ungating `error!` produces "Unsupported constant type" — Verus genuinely cannot compile logging macros. Claim verified. Now revert and test removing an admit:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/idmap_backup.rs src/kernel/src/mm/virt/identity_map.rs && echo "rev
+
+[THINKING] I've confirmed that ungating the `error!` macro triggers an "Unsupported constant type" compile error in Verus, so cfg-gating logging macros is the only workable solution here. This isn't a fixable issue but rather a genuine limitation of Verus, and the pattern of cfg-gated logging is consistent across all the sibling modules, making item 5 a justified exception rather than a failure.
+
+Now I'm going to revert the changes and test what happens when I remove the `admit` from `ensure_pte`.
+[RESULT ✓] bash: reverted
+=== now remove admit from ensure_pte (line 632) ===
+line632: '    proof! { admit(); }'
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'EOF'
+f="src/kernel/src/mm/virt/identity_map.rs"
+s=open(f).read

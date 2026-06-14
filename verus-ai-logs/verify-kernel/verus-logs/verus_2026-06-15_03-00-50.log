@@ -1,0 +1,51 @@
+Timestamp: 2026-06-15_03-00-50
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+75 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=30
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:627:1
+    |
+627 | / fn ensure_pte(
+628 | |     pt: Table<PageTableEntry>,
+629 | |     pte_idx: TableIndex,
+630 | |     phys_addr: usize,
+631 | | ) -> Result<(), Error> {
+    | |______________________^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:619:13
+    |
+619 |             Ok(_) => identity_map_view().mapped.contains(spec_page_base(phys_addr as int)),
+    |             ^^^^^ failed this postcondition
+...
+641 |         return Ok(());
+    |         ------------- at this exit
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:633:40
+    |
+633 |     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
+    |                                        ^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/arch/src/x86/mem/paging/table.rs:205:13
+    |
+205 |             index@ < crate::mem::PAGE_TABLE_LENGTH,
+    |             -------------------------------------- failed precondition
+
+verification results:: 75 verified, 1 errors
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
