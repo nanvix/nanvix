@@ -380,3 +380,66 @@ All 4 cfg-gates are non-semantic (the standard `include!` spec/proof pattern and
 [THINKING] Looking at the cfg-gates in pte.rs, all four are non-semantic: the first two use the standard include pattern with `#[cfg(verus_keep_ghost)]`, while the other two are just allow attributes that don't affect semantics. These are exactly the kinds of non-semantic items the cheating detector is designed to count.
 
 All four in-scope functions verify with their full contracts, with zero admits and zero assumes. The three pre-existing external_body declarations are TCB-allowed in unlisted functions, and the full arch crate verifies cleanly. Since no bugs were found, there's nothing to record in bugs.md. Now I should run the full `make verify` command to confirm there are no regressions in other modules.
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+verification results:: 76 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.87s
+
+=== Results ===
+  76 verified
+  0 errors
+  Exit code : 0
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Full verification: **76 verified, 0 errors** (exit 0). The `admit=36` are pre-existing in not-yet-proven kernel modules, outside this task's scope (arch pte). Let me confirm I made no content changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status --short; echo "=== diff stat ==="; git diff --stat
+
+[THINKING] The `make verify` results show that the kernel modules have 36 admits which are outside my scope—those are pre-existing issues in other parts of the codebase. My actual responsibility is just the arch x86 pte module, which is completely clean with zero admits, zero assumes, and zero errors, with contracts properly defined across all four functions in scope.
+
+Now I'm checking git to confirm I haven't accidentally modified any spec or proof files—I only touched the file to invalidate the cache without changing any content.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-arch-x86-pte/proving/prover-claude-20260615-011110.jsonl
+ M verus-ai-logs/nanvix-phys-arch-x86-pte/proving/prover-claude-20260615-011110.txt
+=== diff stat ===
+ .../proving/prover-claude-20260615-011110.jsonl    | 26 ++++++++++++++++++++++
+ .../proving/prover-claude-202606...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+No source, spec, or proof files were modified (only auto-generated logs). The task is complete.
+
+## Summary
+
+The 4 in-scope functions in `pte.rs` all verify cleanly against their full contracts — no proof work was needed because they are trivial structural proofs that Verus discharges automatically:
+
+| Function | Contract | Status |
+|---|---|---|
+| `PageTableEntryFlags::new` | `result@ == spec_pte_flags_new(...)` | ✅ verified |
+| `PageTableEntryFlags::is_present` | `result == self@.present` | ✅ verified |
+| `PageTableEntry::new` | `result@ == spec_pte_new(flags@, frame@)` + `result.inv()` | ✅ verified |
+| `PageTableEntry::is_present` | `result == self@.flags.present` | ✅ verified |
+
+**Verification results:**
+- Module `x86::mem::paging::pte`: **6 verified, 0 errors** (fresh, non-cached run)
+- Full `make verify-arch`: **exit 0**
+- Full `make verify`: **76 verified, 0 errors** (exit 0)
+- In scope: `admit=0`, `assume=0`, no `external_body` added
+
+**Notes:**
+- The `external_body=3` (invlpg, table read/write) are pre-existing and listed in `tcb-allowed.md`; the `cfg_gate` count is from non-semantic `include!`/`allow` markers — none gate exec logic.
+- The `admit=36` in the full `make verify` are in not-yet-proven kernel modules outside this task's scope.
+- No specs were weakened (zero edits to `.rs`/`.spec.rs`/`.proof.rs`).
+- No bugs discovered, so `bugs.md` requires no entry.
+
+[THINKING] The verification runs only modified log files, leaving all source and specification files untouched. The pte module proofs were already complete and passing, so the task is done with no bugs to report.
+
+
+=== Session End ===
+Session: 4ea4b5c5-fd7c-4234-88ba-d5d44939a69b
+Duration: 206.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/prover-claude-20260615-011110.jsonl
