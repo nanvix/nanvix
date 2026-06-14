@@ -486,3 +486,20 @@ Turn 24
 ────────────────────────────────────────────────────────────
 Now run verify-arch to confirm 0 errors.
 [TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-arch 2>&1 | tail -30
+[RESULT ✓] bash: Timestamp : 2026-06-14_12-00-56
+
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+verification results:: 48 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.28...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+0 errors. The `external_body=3` and `admit=1` are all in `tcb-allowed.md` (spec-phase state). Now let me confirm no regressions across all modules and that the normal build still works.
+[TOOL] bash: cd /home/ruize/nanvix-phy; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify 2>&1 | tail -25
+
+[THINKING] Got 48 verified entries with no errors, and the CHEATING_DETECTED status is expected since it's tied to the pre-existing admit flag and external body entries that are all in the allowed list. Now I'm running the verification suite to check for regressions, then building for dual compilation.
