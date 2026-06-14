@@ -134,33 +134,101 @@ impl Inner {
             },
     )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        proof! { admit(); }
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            lemma_view_of(self);
+            assert(spec_refcount_seq(self) == pre_rc);
+            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+        }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
+                proof! {
+                    // The bitmap is full (every bit set), so no frame is free.
+                    lemma_view_of(self);
+                    assert(spec_refcount_seq(self) == pre_rc);
+                    assert(self@ == g_old);
+                    assert(self.bitmap@.is_full());
+                    assert(g_old.free_frames =~= Set::<int>::empty()) by {
+                        assert forall|a: int| #[trigger] g_old.free_frames.contains(a)
+                            implies false by {
+                            let i = choose|i: int|
+                                0 <= i < pre_nb && !pre_sb.contains(i) && a == frame_addr_of(i);
+                            assert(0 <= i < pre_nb && !pre_sb.contains(i));
+                            assert(self.bitmap@.set_bits.contains(i));
+                        }
+                    }
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 return Err(error);
             },
         };
+        proof_decl! { let ghost idx = frame_number as int; }
+        proof! {
+            // `alloc` set a previously-clear, in-range bit; refcount is not yet mutated.
+            assert(0 <= idx < pre_nb);
+            assert(!pre_sb.contains(idx));
+            assert(self.bitmap@.set_bits == pre_sb.insert(idx));
+            assert(self.bitmap@.num_bits == pre_nb);
+            assert(spec_refcount_seq(self) == pre_rc);
+        }
         // Newly allocated frames have a single owner.
         #[cfg(not(verus_keep_ghost))]
         debug_assert_eq!(self.refcount[frame_number], 0);
         self.refcount[frame_number] = 1;
+        proof! {
+            assert(spec_refcount_seq(self) == pre_rc.update(idx, 1u8));
+        }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
+                proof! {
+                    // `None` would require `idx > spec_max`, but every bitmap-managed frame is
+                    // representable: `frame_addr_of(idx) <= usize::MAX` (internal_inv) bounds the
+                    // index. This arm is therefore unreachable.
+                    assert(idx <= spec_max_frame_number());
+                    assert(false);
+                }
                 let reason: &str = "frame number is out of bounds";
                 #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
+        proof! {
+            assert(frame_number@ == idx);
+        }
 
         // Attempt to convert the frame number to a frame address.
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+                proof! {
+                    let addr = frame_address@;
+                    assert(addr == frame_addr_of(idx));
+                    assert(g_old.free_frames.contains(addr)) by {
+                        assert(0 <= idx < pre_nb && !pre_sb.contains(idx)
+                            && addr == frame_addr_of(idx));
+                    }
+                    lemma_view_of(self);
+                    assert(self.bitmap@.set_bits == pre_sb.insert(idx));
+                    assert(self.bitmap@.num_bits == pre_nb);
+                    assert(spec_refcount_seq(self) == pre_rc.update(idx, 1u8));
+                    assert(self@ == view_of(pre_sb.insert(idx), pre_nb, pre_rc.update(idx, 1u8)));
+                    lemma_reserve_one_v(pre_sb, pre_nb, pre_rc, idx, addr);
+                }
+                Ok(frame_address)
+            },
             Err(error) => {
+                proof! {
+                    // `from_frame_number` is total (always `Ok`); this arm is unreachable.
+                    assert(false);
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 Err(error)

@@ -348,3 +348,492 @@ Turn 28
 ────────────────────────────────────────────────────────────
 FIX A done — **54 verified, 0 errors**. The only remaining issue is the 3 admits (`admit=19` in the global cheating count includes other modules; the frame ones are alloc/alloc_contiguous/alloc_range). Let me commit this milestone, then tackle FIX B.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && git add -A && git commit -q -m "[verus-ai] phys-frame: FIX A - prove free/share + tra
+[RESULT ✓] bash: done
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Update todo status', 'query': "UPDATE todos SET status='done' W
+[RESULT ✓] sql: 4 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Now FIX B: the 3 admits. Let me start with `alloc` (reserve-one via `bitmap.alloc`, mirroring `book`). Let me view the current `alloc` body.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 136.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+137.         proof! { admit(); }
+138.         let frame_number: usize = match self.bitmap.alloc() {
+139.             Ok(index) => index,
+140.             Err(error) => {
+141.                 #[cfg(not(verus_keep_ghost))]
+142.             ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+FIX A complete and committed. Now FIX B (3 admits). Let me check arch constants needed for the `FrameNumber::from_raw_value` bound, then add a free-membership helper lemma.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "MAX_ADDRESS\|FRAME_SIZE\|PAGE_SIZE\|MEMORY_SIZE" src/libs/arch/src/x86/mem/c
+
+[THINKING] Looking at the allocation spec, I need to verify the invariants are maintained before and after the operation, handle the success case where a frame is allocated with its refcount initialized, and the error case when no free frames are available.
+
+The key insight is that the order of operations matters: bitmap.alloc() mutates the bitmap first, then refcount[index]=1 updates the refcount table. This mirrors the book's approach of setting the bitmap bit before updating the refcount. The reserve lemma captures this transition by taking snapshots at the start and tracking how the state evolves through each step—after bitmap.alloc(), the bitmap's set bits include the newly allocated index, but the refcount hasn't been updated yet; then the refcount assignment completes the transition to the final state.
+
+For the free_frames containment check, I need to verify that the old state satisfies free_frames.contains(addr) before any mutations occur. The lemma_free_contains helper establishes that an address is free if and only if its corresponding bit is unset in the bitmap. Since bitmap.alloc() guarantees the index is within bounds and the bit wasn't set before, the old state must have the address in free_frames. The trick is calling lemma_free_contains at the very start, before self is mutated, so that the snapshot of self@ matches g_old and the lemma can verify the precondition.
+
+The challenge is that I don't know the index until after bitmap.alloc() returns, so I can't compute addr at the start. Instead, I'll create a view_of-level lemma that directly reasons about the abstract state: given an unset bit at a valid index, the corresponding address is in the free set. This lemma takes the bitmap, refcount, and other state components as parameters and proves the membership without needing a mutable reference to Inner.
+
+Writing view_of lemma... Writing the alloc proof... I need to capture the usize index as a ghost variable before shadowing the frame_number with the FrameNumber type, so I can use it in the proof to establish that the frame address equals the expected value computed from that index. The key is ordering the steps correctly: allocate from bitmap, capture the ghost index, update the refcount with the usize, then shadow frame_number with the FrameNumber result, and finally call from_frame_number. In the proof, I'll verify that the resulting address matches frame_addr_of applied to the captured index, using the invariants from from_frame_number and the bounds on the index relative to spec_max.
+
+Now I'm checking whether the bitmap's num_bits (which is less than u32::MAX) is guaranteed to be within spec_max(), which depends on whether MAX_ADDRESS is large enough relative to FRAME_SIZE and u32::MAX.
+[RESULT ✓] bash: 39:/// Log2 PAGE_SIZE
+50:pub const PAGE_SIZE: usize = 4096;
+51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+58:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+82:pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+97:pub const MAX_ADDRESS: usize = usize::MAX;
+110:/// Alias for ...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm working through the math on frame addressing—MAX_ADDRESS equals usize::MAX, which gives us a spec_max_frame_number of around 2^52 on 64-bit systems, well beyond u32::MAX. But I need to verify whether the kernel is actually compiled for 32-bit or 64-bit, so I'm checking the spec file to understand the constraints.
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. use vstd::arithmetic::power2::pow2;
+3. 
+4. verus! {
+5. 
+6. // =================================================================================================
+7. // Abstract models of frame-number quantities, realized by the verified `arch` crate.
+8. //
+9....
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_max\|from_raw_value\|fn from_frame_number" src/libs/arch/src/ | grep -
+
+[THINKING] I need to look at the FrameNumber::spec_max() method and the from_raw_value spec in the arch crate to understand how they work.
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/eflags.rs:34:    pub fn from_raw_value(value: u32) -> Self {
+src/libs/arch/src/x86/cpu/eflags.rs:70:    pub fn from_raw_value(value: u32) -> Self {
+src/libs/arch/src/x86/cpu/eflags.rs:106:    pub fn from_raw_value(value: u32) -> Self {
+src/libs/arch/src/x86/cpu/eflags.rs:14...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "struct FrameNumber\|impl FrameNumber\|FrameNumber" src/libs/arch/src/ | gr
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/mod.rs
+src/libs/arch/src/x86/mem/paging/frame/number.rs
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+---
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // View
+5. //==================================================================================================
+6. 
+7. impl View for FrameNumber {
+8.     type V = int;
+9. 
+10.  ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Let me examine `Inner::inv`/`internal_inv` and the bitmap inv to find a `num_bits <= spec_max` bound (needed so `from_raw_value` can't return `None` after mutation).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,120p' src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I'm working through the bounds checking for the allocation index. The spec_max() function gives me the maximum valid index as usize::MAX/4096 - 1, so from_raw_value() needs to verify that the index is strictly less than usize::MAX/4096. In the alloc function, the index comes from bitmap.alloc() and must be less than num_bits, so I need to understand what constraints the bitmap's invariant places on num_bits to ensure this bound is satisfied.
+
+The critical issue is that if from_raw_value() returns None after we've already mutated the bitmap and refcount array, we'd violate the error postcondition since the allocator state would be partially modified. This could only happen if num_bits exceeds spec_max() + 1, so I need to trace through the Inner invariant and bitmap invariant to establish that num_bits is properly bounded.
+[RESULT ✓] bash: verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+// =================================================================================================
+// Dependency contracts for not-yet-verified modules.
+//
+// The fu...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "internal_inv\|num_bits\|spec_max\|refcount@.len" src/kernel/src/mm/phys/fram
+[RESULT ✓] bash: 24:                    &&& 0 <= i < self.bitmap@.num_bits
+44:    pub closed spec fn internal_inv(&self) -> bool
+49:        &&& self.refcount@.len() >= self.bitmap@.num_bits
+51:        &&& forall|i: int| 0 <= i < self.bitmap@.num_bits ==> (
+57:        &&& forall|i: int| 0 <= i < self.bitmap@.num_bits...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use vstd::map::*;
+6. 
+7. /// Helper: convert a bitmap index to a frame (physical) address.
+8. pub open spec fn frame_addr_of(i: int) -> int {
+9.     i * spec_page_size()
+10. }
+11. 
+12. impl View for Inner {
+13. ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+I need to verify the bound `index <= spec_max` is derivable. Let me check the bitmap `alloc` spec and `inv` for a `num_bits` bound.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find src/libs/bitmap -name "*.spec.rs" | xargs ls; echo ===; sed -n '1,200p' src/libs
+
+[THINKING] I'm working through the constraint that frame addresses must stay within bounds—since frame_addr_of(i) equals i times the page size (4096), I need i to not exceed usize::MAX divided by 4096, which means spec_max should be one less than that quotient to ensure all valid indices stay within the addressable range. So the real issue is that `from_raw_value` can legitimately return `None` when `index == 2^52-1` (which equals `spec_max+1`), but by that point we've already mutated the bitmap, leaving us unable to satisfy the `Err` postcondition. The problem is I can't strengthen `internal_inv` to enforce `index <= spec_max` directly since it's in the do-not-modify list, so I need to figure out how to prove the bound holds without changing the invariant itself. The real issue is that bitmap.alloc must mutate state to produce the index, so I can't check the bound before mutating. I could undo the bitmap bit if from_raw_value returns None, but that's more complex. Let me look back at the bitmap spec and the reviewer's guidance to see if there's actually a tighter bound on num_bits or if the admits are provable after all.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.spec.rs
+===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// Bitmap - Specifications
+//
+// This file contains specification functions, BitmapView, and View trait for Bitmap.
+
+verus! {
+
+//========================================================...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn alloc\b\|fn alloc(\|pub closed spec fn inv\|pub open spec fn inv\|number
+
+[THINKING] I need to examine the bitmap implementation more closely, particularly checking if there's an upper limit on the number of bits and reviewing the allocation specifications.
+[RESULT ✓] bash: 61:    number_of_bits: usize,
+83:    /// - `number_of_bits`: Length of the bitmap in bits.
+93:                &&& bitmap@.num_bits == number_of_bits as int
+96:            number_of_bits == 0 ==> result is Err,
+97:            number_of_bits >= u32::MAX ==> result is Err,
+98:            number_of_bits...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec fn inv\|spec fn internal_inv\|num_bits < \|num_bits <= \|< u32::MAX\|<
+
+[THINKING] I'm checking whether the bitmap's invariant already constrains `num_bits` to be less than `u32::MAX`, since the constructor enforces this requirement. Let me look at the invariant definition to confirm.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.spec.rs:374:    pub open spec fn inv(&self) -> bool {
+src/libs/bitmap/src/lib.spec.rs:380:    pub closed spec fn internal_inv(&self) -> bool {
+src/libs/bitmap/src/lib.spec.rs:384:        &&& self@.num_bits < u32::MAX as int
+src/libs/bitmap/src/lib.rs:157:            array@.le...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] view: 374.     pub open spec fn inv(&self) -> bool {
+375.         &&& self@.wf()
+376.         &&& self.internal_inv()
+377.     }
+378. 
+379.     /// Invariant: the bitmap's state is well-formed.
+380.     pub closed spec fn internal_inv(&self) -> bool {
+381.         &&& self.bits.inv()
+382.         &&& self...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "target\|x86_64\|i686\|i386" Makefile build/ 2>/dev/null | grep -i "target\|
+
+[THINKING] I'm tracing through the bitmap inversion logic to verify the bounds. Since `bitmap.inv()` calls `internal_inv()` which checks that `num_bits < u32::MAX`, and the index must be less than `num_bits`, I can confirm that `index < 2^32-1`, which is well within the spec maximum of `2^52-2`.
+
+But I'm realizing there's a subtlety with 32-bit targets. On a 32-bit kernel, `spec_max = (2^32-1)/4096 - 1 ≈ 2^20`, while `num_bits` can reach `2^32-1`. This means `index` could theoretically exceed `spec_max` on 32-bit systems. However, the `internal_inv()` constraint that `frame_addr_of(i) <= usize::MAX` (meaning `i*4096 <= usize::MAX`) gives us `index <= usize::MAX/4096`, which is exactly `spec_max + 1`. So there's a gap of one frame at the boundary—the top frame address is unreachable.
+
+The real question is whether this kernel is actually 32-bit or 64-bit. Let me check the build target to determine if `usize` is 32 or 64 bits.
+[RESULT ✓] bash: Makefile:100:export TARGETS_DIR   := $(BUILD_DIR)/targets
+Makefile:101:export OBJECTS_DIR   := $(ROOT_DIR)/target
+Makefile:112:# Disable sccache unconditionally for these targets to avoid intermittent
+Makefile:127:# Default target ('all') produces artifacts — enable sccache.
+Makefile:214:# Rust flag...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "pointer-width\|data-layout\|\"arch\"" build/targets/x86-kernel.json build/ta
+[RESULT ✓] bash: build/targets/x86-kernel.json:3:	"data-layout": "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128",
+build/targets/x86-kernel.json:6:	"target-pointer-width": 32,
+build/targets/x86-kernel.json:15:	"arch": "x86",
+build/targets/x86_64-kernel.json:3:	"data-layout": "...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+This is the critical top-of-space frame issue again. Let me read `alloc`'s full spec to see what the `None` (out-of-bounds after mutation) arm must satisfy.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the math for the default x86 target where usize::MAX equals 2^32-1, and calculating spec_max by dividing by 4096 and subtracting 1, which gives me 2^20-2 or 1048574.
+
+Now I'm realizing that bitmap.alloc() could return an index up to spec_max+1 (1048575), which is the very top frame at address 0xFFFFF000. When from_raw_value checks this against spec_max, it rejects it and returns None—but this happens *after* the bitmap and refcount have already been mutated, leaving the state corrupted. This is the same root cause as the original into_frame_number panic: the top-of-space frame that the architecture excludes via FrameNumber::MAX. The fix needs to add a pre-check before the mutation to prevent this ordering bug.
+[RESULT ✓] view: 100.     refcount: &'static mut [u8],
+101. }
+102. 
+103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. U...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+The top-of-space frame (index `spec_max+1`, addr `0xFFFFF000` on the 32-bit default target) is allowed by `internal_inv` (`i*4096 <= usize::MAX`) but rejected by `from_raw_value` (`index <= spec_max`). This is the same latent bug class. Let me check `FrameAddress`/`from_frame_number` and whether a total address-based constructor exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "type FrameAddress\|FrameAddress =\|fn from_frame_number\|struct FrameAddres
+
+[THINKING] I'm realizing the postcondition for Err requires the state to be unchanged and the free frames to be empty, but after bitmap.alloc succeeds and we mutate, both of these conditions fail. This means the None arm in from_raw_value and the Err arm in from_frame_number must be unreachable, or the code needs to undo the mutation. To prove None is unreachable, I'd need to establish that index <= spec_max, but on 32-bit systems the internal invariant only guarantees index <= spec_max+1, which means it's not provable for the top frame—this looks like an actual bug in the code. Let me reconsider whether frame_addr_of is computing something differently...
+
+Actually, looking at the math: frame_addr_of(i) = i * 4096, and the bound is frame_addr_of(i) <= 2^32-1, so the maximum valid i is 1048575, which equals spec_max+1. So the top frame (index 1048575) can indeed be rejected by from_raw_value. But here's the key insight: the bitmap's num_bits is determined at initialization based on the actual memory region, so if the region never includes frame 1048575, then the bitmap will never return it in the first place.
+
+However, the internal invariant only bounds frame_addr_of(i) <= usize::MAX, not the index itself. So theoretically the top frame could be present in the bitmap. If alloc encounters it, from_raw_value fails and returns None, but the code doesn't undo the allocation—it just returns Err, corrupting the state. The real fix is either to guarantee the invariant prevents index > spec_max, or to handle the failure by undoing the allocation. But undoing creates a problem: the postcondition requires free_frames to be empty on error, but if we undo, we'd have a free frame again, violating that contract. max. So the real issue is that all three allocation functions need to construct FrameAddresses from indices, but the invariant only guarantees index <= spec_max+1, leaving a one-off gap. The earlier panic fix used a total function to avoid the problem — maybe I can do the same here by constructing the FrameAddress directly from the raw address (index * FRAME_SIZE) rather than going through from_raw_value, if FrameAddress has such a constructor.
+[RESULT ✓] bash: src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:147:        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:188:        let paddr: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+src/ke...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 34. pub struct FrameAddress(PageAligned<PhysicalAddress>);
+35. 
+36. #[cfg(verus_keep_ghost)]
+37. verus! {
+38. 
+39. // The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
+40. // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAG...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Let me re-read the reviewer's exact FIX B expectation and check prior turn fixer notes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_003_driver.md
+
+[THINKING] I'm tracing through how `FrameAddress::from_raw_value` works—it constructs from a raw address and should succeed for page-aligned values that are representable, but the implementation chains calls to `PhysicalAddress::from_raw_value` followed by `PageAligned::from_address`, either of which could fail.
+
+The core problem is that `alloc`'s error spec requires `old.free_frames.is_empty()`, meaning any failure after a successful bitmap allocation violates the postcondition and leaves mutated state. To prove the error path unreachable, I'd need to show `index <= spec_max` from the invariant, but the invariant only guarantees `index <= spec_max+1`. I'm stuck between three impossible options: modifying the invariant (forbidden), relying on bitmap.alloc to return a smaller index (not guaranteed), or undoing the allocation (which breaks the error spec). Even on 32-bit targets where the math works out, I still get that `+1` gap.
+
+Looking more carefully at the invariant, I see it allows frames up to `spec_max+1` to exist in the bitmap, but `FrameNumber` itself can only represent up to `spec_max`. This means the top frame is deliberately excluded from the representable range—it's a boundary case the architecture intentionally doesn't support.
+
+The real issue is that `internal_inv` permits this frame while the rest of the system forbids it. This is a genuine inconsistency, but since I can't modify the invariant, I need to figure out whether this is a code bug in `alloc` or a spec issue. The core problem is that fixing the state corruption on error paths doesn't actually solve the deeper constraint violation—the top frame shouldn't be allocatable in the first place. Let me check the driver specification again to see what the exact requirements are.
+[RESULT ✓] bash: ## Turn 3: Verify fixer turn 2, re-walk checklist
+
+### Progress
+- FIXED (carried): Verus runs (parse OK).
+- FIXED this turn:
+  - **Inner::refcount** now verifies (the turn-2 precondition error at frame.rs:452 is gone; the
+    fixer added the unaligned-address rejection guard).
+  - **Inner::book** no...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The reviewer expects `lemma_reserve_one_v` to discharge these. But I've found a real concern: proving `index <= spec_max` (needed for `from_raw_value` to not hit its `None` arm after mutation). This depends on the `usize` width Verus assumes. Let me check the Verus arch-word-bits config.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "arch-word-bits\|word-bits\|VERUS_ARGS\|--arch\|verify.sh" Makefile scripts/
+
+[THINKING] The reviewer expects FIX B to leverage lemma_reserve_one_v for the free-to-allocated transition, though they haven't flagged the top-frame from_raw_value issue. They're confident the specs are dischargeable. I'm noticing a real constraint gap though: I need index <= spec_max, but internal_inv only guarantees index <= spec_max+1 on 32-bit systems. Let me reconsider whether I'm missing something—perhaps the combination of index < num_bits with num_bits < u32::MAX plus the 32-bit usize constraint actually closes this.
+
+Actually, working through the bounds more carefully: num_bits < 4294967295, and for each frame i < num_bits, we have i*4096 <= 4294967295. This means index <= 1048575, which is spec_max+1. So on 32-bit, alloc genuinely can allocate the top frame (index 1048575), and the from_raw_value None arm would corrupt state. This is a real code bug, not just a proof gap. The proper fix aligns with the task's guidance on missing bounds checks—the bug is that alloc allocates a frame that may be out of spec bounds.
+
+But fixing it is tricky: either the bitmap never contains unrepresentable frames (init's responsibility, but internal_inv allows it), or alloc undoes on failure (but then the Err spec fails because old.free_frames wouldn't be empty). So the spec seems unprovable on 32-bit unless there's an invariant I'm missing that prevents the top frame from being allocated.
+
+Actually, wait — maybe the key is what usize width Verus uses for verification. If Verus verifies with 64-bit usize by default, then spec_max becomes 2^52-2, which is way larger than u32::MAX, so the conversion always succeeds and the None arm is unreachable. Let me check what `--arch-word-bits` flag Verus uses — it might verify for both 32 and 64 bits, or default to 64.
+[RESULT ✓] bash: Makefile:325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+scripts/verify.sh:6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+scripts/verify.sh:7:#   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+scripts/verify.sh:287:# when verify.sh is copied into another project...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "arch-word\|word-bits\|RUSTFLAGS\|KERNEL_RUST_FLAGS\|cfg.*32\|cfg.*64\|target
+[RESULT ✓] bash: 50:  VERUS_EXTRA_CARGO_ARGS Extra cargo arguments (e.g., "-Z build-std=core,alloc --target ...").
+118:        # Find lib or first target src_path as root file.
+119:        for t in pkg.get('targets', []):
+124:            if pkg.get('targets'):
+125:                print(pkg['targets'][0]['src_path'])...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/Makefile
+[RESULT ✓] view: 624. verify-kernel: ensure-verus
+625. 	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+626. 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+627. 	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+628. 	VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)" \
+629. 	$(VERUS_AI_VERIFY_SCRIPT) --...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+I need to check whether `FrameAddress::from_raw_value(index*FRAME_SIZE)` is provably `Ok` — a total construction that sidesteps the `FrameNumber::spec_max` gap. Let me check `PhysicalAddress::from_raw_value` and `PageAligned::from_address` specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn from_raw_value\|fn from_address\|fn from_number" src/kernel/src/hal/mem/
+
+[THINKING] The verification process uses the x86 target configuration, which means usize is 32-bit during verification, making usize::MAX equal to 2^32-1, so the top-frame gap is actually present on the verification target. But I'm questioning whether Verus actually reads the pointer width from the target JSON file or uses a different mechanism to determine architecture word size.
+
+Looking more carefully at the allocation methods, the book/refcount/free/share operations all verify successfully because they take an address, compute the frame by dividing by 4096, and then guard against bounds without ever calling from_raw_value, so they avoid hitting the spec_max constraint. However, alloc/alloc_contiguous/alloc_range must construct FrameAddresses through from_raw_value or from_frame_number, both of which enforce the spec_max bound, so those are where the issue might surface. I should probably just attempt the proof and see if Verus actually flags the None case, since there might be something about how the bounds work out that I'm missing—perhaps PhysicalAddress construction succeeds for all valid indices, or Verus's division reasoning derives a tighter bound from the num_bits constraint than I'm accounting for.
+
+Let me trace through the exact numbers for 32-bit one more time: usize::MAX is 4294967295, FRAME_SIZE is 4096, so spec_max works out to 1048574, but the internal invariant allows indices up to 1048575 since 1048575 × 4096 is still within the max value. That's a real gap—index 1048575 satisfies the invariant but gets rejected by from_raw_value. This looks like a genuine off-by-one bug that I should fix, but the challenge is that any fix to alloc would violate the error spec unless I add a bounds check before committing the allocation.
+
+Since init is outside the proof scope and constructs the bitmap, the real constraint should be that the bitmap only manages representable frames, but the current invariant is slightly too permissive. Given that I can't modify the invariant itself, I'm thinking the cleanest path forward is to explore whether constructing the FrameAddress directly from the raw physical address—index times FRAME_SIZE—might bypass the from_raw_value bottleneck entirely, assuming the underlying PhysicalAddress and PageAligned constructors are total for aligned addresses. So the key question is whether constructing the FrameAddress directly from index*FRAME_SIZE satisfies alloc's spec—it does, since the reserve transition uses that exact address. The top frame (index=1048575) would get a valid FrameAddress at 0xFFFFF000, avoiding any Err case. There's a subtle issue that this address has a frame_number beyond FrameNumber::MAX, which could cause problems downstream if into_frame_number is called on it, but that's already a known bug covered separately and the earlier fixes using /FRAME_SIZE should handle it. The real question is whether rewriting alloc's tail to use this total construction requires additional proof obligations.
+
+Now I need to verify that multiplying index*FRAME_SIZE doesn't overflow usize (which the internal invariant guarantees) and that FrameAddress::from_raw_value actually succeeds for aligned inputs—those two conditions determine whether this approach is feasible.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs:142:    pub fn from_number(frame: FrameNumber) -> Self {
+src/kernel/src/hal/mem/types/address/phys.rs:185:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+src/kernel/src/hal/mem/types/address/aligned/page.rs:49:    pub fn from_address(addr: T)...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 120.     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+121.         Ok(Self(addr))
+122.     }
+123. 
+124.     ///
+125.     /// # Description
+126.     ///
+127.     /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
+128.     ///
+129.     /// # Parameters
+130. ...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Let me look at the transition lemma signatures and `view_of`/`lemma_view_of` to write the alloc proof, then iterate empirically on whether the `from_raw_value` bound is actually flagged.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] Looking at the `PhysicalAddress` methods, `from_number` takes a FrameNumber and returns a physical address directly without a Result wrapper, with the spec being `frame * 4096`. The FrameNumber still carries the spec_max bound through `from_raw_value`, so that doesn't resolve the issue. Then there's `from_raw_value` which does return a Result and calls `from_virtual_address`, but checking its specification at line 185, it's missing the `#[verus_spec]` annotation, so it doesn't have a spec defined.
+
+This is getting complicated, and the reviewer clearly expects this to be provable with `lemma_reserve_one_v`. Let me reconsider whether the top-frame gap is actually a problem for verification. The key question is whether Verus, when verifying with the 32-bit target, models `usize::MAX` as a fixed 2^32-1, or if it defaults to verifying generically for both 32 and 64-bit architectures. Verus typically verifies generically unless explicitly constrained, meaning `usize::MAX` isn't a fixed constant—proofs must hold for both widths. With `spec_max = usize::MAX/4096 - 1` referencing `usize::MAX` symbolically, the proof that `index <= spec_max` given `index < u32::MAX` and `index*4096 <= usize::MAX` would pass on 64-bit (where `index < 2^32-1 ≤ spec_max = 2^52-2`) but fail on 32-bit (where `index` could exceed `spec_max`). So for the generic model supporting both architectures, it breaks on 32-bit, but for a fixed 64-bit model it works. The reviewer ran `make verify-k`...
+
+The best approach is to just try the straightforward proof using the reviewer's suggested method with `lemma_reserve_one_v` and see what Verus actually complains about. If the `from_raw_value` None arm gets flagged, I'll handle it then—either it's provable because Verus's modeling makes the bitmap bound sufficient, or I'll need to pursue the bug-fix path. Let me examine the existing `alloc_range` admit and its loop structure, check the specs for `alloc_contiguous` and `alloc_range`, then write out the alloc proof and iterate empirically based on what Verus reports.
+[RESULT ✓] view: 200. {
+201.     assert(inner@.refcounts.dom() =~= inner@.allocated_frames);
+202. }
+203. 
+204. /// The integer value of the refcount slot for index `i`. A spec-fn wrapper so the value can be
+205. /// named in `proof fn` postconditions without dereferencing the `&'static mut [u8]` field directly
+206. ...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Let me view `book`'s proof body (the canonical template) and the helper lemmas I'll reuse.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I've got the structure for the alloc proof now. I'll create a helper lemma to establish the free-membership and bound properties, then use the book proof as a reference for the overall pattern.
+[RESULT ✓] view: 470.         let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+471.         proof_decl! {
+472.             let ghost g_old = self@;
+473.             let ghost pre_sb = self.bitmap@.set_bits;
+474.             let ghost pre_nb = self.bitmap@.num_bits;
+475.             let ghost pre_r...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the book's body content starting around line 605 to understand the canonical reserve template structure.
+[RESULT ✓] view: 560.             lemma_view_of(self);
+561.             assert(self.bitmap@.set_bits == pre_sb);
+562.             assert(self.bitmap@.num_bits == pre_nb);
+563.             assert(spec_refcount_seq(self) == pre_rc.update(fnx, nv));
+564.             assert(self@ == view_of(pre_sb, pre_nb, pre_rc.update...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 680.     ///
+681.     #[verus_spec(result =>
+682.         requires
+683.             old(self).inv(),
+684.             phys_addr.inv(),
+685.         ensures
+686.             final(self).inv(),
+687.             match result {
+688.                 Ok(()) => {
+689.                     &&& old(self)@.fre...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bitmap/src/lib.rs
+
+[THINKING] I'm going to write out the alloc proof and test it to see which arms get flagged as unreachable. For that, I need to pull the bitmap.alloc postcondition from the spec to understand what it guarantees.
+[RESULT ✓] view: 238.     ///
+239.     /// Allocates a bit in the bitmap.
+240.     ///
+241.     /// # Returns
+242.     ///
+243.     /// Upon success, the index of the allocated bit is returned. Upon failure, an error is returned
+244.     /// instead.
+245.     ///
+246.     #[verus_spec(result =>
+247.         requires...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Now I'll write the `alloc` proof and test empirically whether the `from_raw_value` `None`-arm bound (`idx <= spec_max`) is provable on this target.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the proof for the bitmap allocation error case: when `is_full()` is true, all bits are set, which means there are no free frames available. Since `free_frames` is defined as the set of addresses where at least one bit isn't set, an empty set of free frames follows directly. Now I need to handle the success case where allocation returns an index. I'm realizing the key gap: I need to prove that `index <= spec_max` to construct the `FrameNumber` successfully. Rather than getting stuck on that, let me just write out the proof assuming it's provable and run Verus to see what the actual error is—if the `None` case becomes an issue, I'll know it's a real constraint and can handle it as a code fix. For now, I'll set up the alloc proof with ghost captures of the bitmap state and refcount before they get mutated, then invoke the lemmas to establish the reserve transition.
+
+Writing the alloc proof... Continuing with the proof that the refcount was updated correctly, then converting the frame number to a FrameNumber type and deriving its address, verifying that the allocated frame was indeed free and updating the view accordingly. The None arm's assertion requires proving `idx <= spec_max`, which depends on the system's word size — it holds on 64-bit but fails on 32-bit due to the gap between `u32::MAX` and `usize::MAX/4096`. I should just run the proof and see what Verus reports when it hits that assertion.
+
+Actually, there's a deeper issue: the invariant allows a frame at `spec_max+1` that the allocator can't represent, so when allocation reaches that frame, it corrupts state. The only real fix would be to ensure that top frame is never allocatable, but I can't modify the invariant. This seems genuinely unprovable on 32-bit unless Verus somehow verifies across both word sizes simultaneously.
+
+Let me just run the proof empirically to see what happens. I'll write out the full allocation proof and test it, starting with a minimal assertion to check if `idx <= spec_max_frame_number()` is even provable from the available facts. For the error case where the bitmap is full, I need to show `free_frames` is empty by contradiction: if any frame were free, it would exist in the bitmap's unset bits, but `is_full` means all bits are set.
+
+Writing the proof... So the bitmap's alloc postcondition guarantees that in the Err arm, the old bitmap state was full and the final state equals the old state. That means self.bitmap@.is_full() definitely holds since the final bitmap equals the old full bitmap. Let me start writing out the alloc proof to work through this.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
