@@ -324,3 +324,8 @@ forbidden spec-weakening.
 [2026-06-15 03:06:17] [CHEATING] ❌ Hard cheating detected (attempt 3), report: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/cheating_report_3.md
 [2026-06-15 03:06:17] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 03:10:23]   ↳ cheating-fix done in 4m05s (exit=0)
+[2026-06-15 03:10:23] [CHEATING] external_body: 17 (16 on user fns), admit: 12
+[2026-06-15 03:10:23] ⚠️ [CHEATING] Still has hard cheating after 3 retries — continuing with warning.
+[2026-06-15 03:10:23] ❌ cheating-elimination: FAIL-cheating (0/0)
+[2026-06-15 03:10:23] [GATE] Running build: make build
+[2026-06-15 03:10:23] [GATE] Running verify: make verify

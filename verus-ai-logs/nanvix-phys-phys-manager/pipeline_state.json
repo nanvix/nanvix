@@ -25,10 +25,9 @@
       "scores": {},
       "total_score": 0,
       "max_score": 0,
-      "verdict": "dialogue-BLOCKED",
+      "verdict": "FAIL-cheating",
       "review_file": null,
-      "duration_s": 1521.7,
-      "review_rounds": 2
+      "duration_s": 1521.7
     }
   },
   "prover_session_id": "511fc3c9-9d9e-499f-9aaa-b8520b146def",
