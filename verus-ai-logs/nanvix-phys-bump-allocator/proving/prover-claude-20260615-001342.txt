@@ -231,3 +231,49 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Now let me run the baseline verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-bump-allocator 2>&1 | tail -40
+[RESULT ✓] bash: Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator)
+error: The verifier does not yet support the following Rust feature: complex break expressions
+   --> src/libs/bump_allocator/src/lib.rs:298:17
+    |
+298 |                 break current;
+    |          ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat src/libs/raw-array/src/lib.rs 2>/dev/null | grep -n "external_body\|ver
+
+[THINKING] I'm identifying two key issues: `alloc` uses a complex break expression that Verus doesn't support, and `alloc_as` dereferences a raw pointer which is also unsupported. Both functions are listed as allowed `external_body` in tcb-allowed.md, so the solution is to mark them with that annotation, which aligns with the safety specifications already documented in the source.
+[RESULT ✓] bash: 84:    fn new_managed(len: usize) -> Result<RawArrayStorage<T>, Error> {
+135:    unsafe fn new_unmanaged(ptr: *mut T, len: usize) -> Result<RawArrayStorage<T>, Error> {
+167:    fn get_mut(&mut self) -> &mut [T] {
+187:    fn get(&self) -> &[T] {
+200:#[verus_verify]
+202:#[verus_verify(reject_recursive...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The two exec functions `alloc`/`alloc_as` use Verus-unsupported features (complex break, raw pointer deref) and are explicitly listed as allowed `external_body` in `tcb-allowed.md`. The source comments already say "SAFETY-SPEC: external_body" but the attribute is missing. Let me add it and prove the lemmas + `align_up`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I need to add the `#[verus_verify(external_body)]` attribute to `alloc` and `alloc_as` functions since they're in the TCB, while `align_up` requires actual verification since it's a const function with a real implementation.
+
+For `as_mut_ptr`, it's a trait method with an ensures clause but no body to verify—the implementations are only in test code, so the trait declaration itself is fine as-is.
+
+Now I'll focus on adding the external_body attributes and then work on proving the three lemmas in lib.proof.rs.
+
+For `align_up`, I need to verify that the implementation matches the spec. The function uses `div_ceil` to compute the quotient, then `checked_mul` to multiply by alignment and check for overflow. The spec defines the expected result as `((value + alignment - 1) / alignment) * alignment`, capped at `usize::MAX`. I need to show that when alignment is nonzero, the div_ceil result times alignment equals the spec's formula, and that checked_mul correctly handles the overflow case.
+
+Since `align_up` is a `const fn`, Verus should be able to verify it directly with its body. The key dependencies—`div_ceil`'s postcondition and `checked_mul`'s spec from vstd—are already available, so the proof should go through mostly automatically.
+
+For the actual changes, I should add `external_body` to `alloc` and `alloc_as` since they're listed in the tcb-allowed list and the source comments indicate this is the intended design.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now let me work on the proof lemmas. Let me start by proving the simpler ones and `align_up`. First, run verify to see if `align_up` verifies and which lemmas fail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-bump-allocator 2>&1 | tail -30

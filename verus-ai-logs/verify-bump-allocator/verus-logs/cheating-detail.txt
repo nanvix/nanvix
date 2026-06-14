@@ -1,3 +1,5 @@
     - lib.proof.rs:22 lemma_geometry: admit
     - lib.proof.rs:39 lemma_exhausted_boundary: admit
     - lib.proof.rs:54 lemma_alloc_transition: admit
+    - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: external_body
