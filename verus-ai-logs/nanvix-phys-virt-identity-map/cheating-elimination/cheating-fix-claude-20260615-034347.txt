@@ -315,3 +315,49 @@ Turn 20
 ────────────────────────────────────────────────────────────
 Now the final verification and the turn response.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE "verification results::|ver
+[RESULT ✓] bash: 16:verification results:: 76 verified, 0 errors
+25:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+33:  verification: 76 verified, 0 errors (exit 0)
+34:  cheating: assume=0 external_body=11 admit=31 trusted=0 no_decreases=0 cfg_gate=15
+36:  status: CHEATING_DETECT...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_004_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_004_fixer.md with 4888 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/ && echo "--- HEAD source: admits=$(git show HEAD:sr
+[RESULT ✓] bash: --- HEAD source: admits=3 ; working: admits=3
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Source tree is clean (no uncommitted source changes), 3 admits intact and byte-identical to base, `make verify-kernel` passes (76 verified, 0 errors, exit 0).
+
+## Summary
+
+The gate re-flags the same 3 admits (`identity_map.rs:534/632/719`). This turn I did **fresh** investigation rather than repeating prior conclusions:
+
+1. **Sibling check** — `mm::phys` has the same deferral with admits still present (14+8+2), confirming the cross-module ghost-token proving phase is project-wide deferred, not a local gap.
+2. **Fresh reproduction** — removing all 3 admits → `6 verified, 3 errors` against current arch specs.
+3. **Type-invariant attempt** — `use_type_invariant(pde_idx)` → `Verus Internal Error: missing type invariant function` (cross-crate verifier limitation, captured exactly).
+4. **Err-path reachability** — `Table::read` returns an opaque `Option` and `FrameNumber::from_raw_value` can be `None`, so the Err branches are reachable (postconditions not vacuous).
+5. **Exhaustive concrete-view proof** — every constant `V` leaves exactly one branch per function `⇒ false`; only a state-dependent (ghost-token) view resolves it.
+
+Sound elimination requires replacing the atomic statics with `vstd` ghost atomics and threading a `Tracked` token through out-of-scope callers (`init`, `KernelFrame::new`) and/or `table.rs` — all forbidden by the task hard rules. This matches the reviewer's own independently-reproduced `STOP`/`BLOCKED` adjudication.
+
+**State:** `make verify-kernel` → 76 verified, **0 errors**, exit 0. AST consistent. Reports updated (`turn_004_fixer.md`, `verification_todo.md`).
+
+**Result:** 3 admits are an exhaustively-evidenced impossibility within scope — escalated to the proving-phase owner. I will not inject unsound assumptions to force a green gate, as that would violate soundness and the verus-constraints skill.
+
+
+=== Session End ===
+Session: 8479c69d-e2de-4c1e-abc2-5ca2060868ef
+Duration: 410.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/cheating-fix-claude-20260615-034347.jsonl
