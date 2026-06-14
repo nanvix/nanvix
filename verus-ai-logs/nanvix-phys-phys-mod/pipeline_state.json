@@ -2,11 +2,12 @@
   "module_name": "phys-mod",
   "log_name": "nanvix-phys-phys-mod",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "636555a72931d7cc40ea094ecb7f9221bfefd3ef",
     "view-design": "9bf3b2faa6cece8784fcd9d8e535efef73e656c3",
-    "specification": "8e88a8ab919c24860e7c3e3843f1282f8d6e56a3"
+    "specification": "8e88a8ab919c24860e7c3e3843f1282f8d6e56a3",
+    "proving": "e7e6bbac7eb73a37f9f655046858437a8c6147de"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "91ff6577e3fe54350fde6ebdc548fed11572e639",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "e7e6bbac7eb73a37f9f655046858437a8c6147de",
       "rollback_iter": 0
     }
   ],
