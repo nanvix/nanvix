@@ -370,3 +370,257 @@ Verus verified counterpart.
 
 positional arguments:
   source_file           Origi...
+[RESULT ✓] bash: === Function Coverage ===
+  15/44 exec functions have contracts.
+  Unverified functions:
+    - instance
+    - alloc
+    - alloc_contiguous
+    - free_count
+    - free
+    - share
+    - refcount
+    - new
+    - base
+    - clear
+    - deref
+    - deref_mut
+    - drop
+    - init
+    - get_mut
+    - all...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage mod.rs ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_c
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.p
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cfg in phys ===" && grep -rn "cfg(" src/kernel/src/mm/phys/mod.rs src/kernel/src/
+
+[THINKING] The verify-kernel test passed with cheating detected across the whole kernel, showing 17 external_body violations and 5 cfg_gate violations. For the mm::phys module specifically, I'm looking at the external_body count in mod.rs, which accounts for 2 of those violations from the book functions in the TCB, while the frame.rs ones are pre-existing and marked as allowed.
+
+I need to check whether any of those 5 cfg_gate violations actually occur in the phys module scope—the test() function has a feature gate but that's out of scope. Let me run the module-specific verification and fn_coverage on just mod.rs to get accurate metrics, along with ast_consistency and spec_drift checks.
+[RESULT ✓] bash: === cfg in phys ===
+src/kernel/src/mm/phys/mod.rs:15:#[cfg(feature = "test")]
+src/kernel/src/mm/phys/mod.rs:36:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:40:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:42:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs:210:#[cfg(feature ...
+[RESULT ✓] bash: === fn_coverage mod.rs ===
+# Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/mod.rs`
+- **Verus file:** `src/kernel/src/mm/phys/mod.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source e...
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 12 comple...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== ast_consistency report ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] Looking at the coverage metrics, the spec_drift is clean and all four functions are accounted for. The cfg lines I'm seeing—line 15 for the test feature, lines 36/40/42 with verus_keep_ghost, and line 210 on the test function—are configuration markers for spec and proof includes rather than conditional branches in the actual verified code.
+
+Let me check the ast_consistency on mod.rs and examine the first 50 lines to confirm these aren't problematic cfg-gated branches within the executable functions.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] bash: === ast_consistency report ===
+usage: ast_consistency.py [source] verus report [-h] -o OUTPUT [--json]
+ast_consistency.py [source] verus report: error: the following arguments are required: -o/--output
+EXIT=0
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== count ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.p
+
+[THINKING] The configuration lines look standard—test module gating and the expected verus_keep_ghost directives for specs and vstd imports, with no cfg-gated execution branches in verified functions. Now I'm running the ast_consistency check to get a count and summary.
+[RESULT ✓] bash: === count ===
+✅ Consistent: 4 functions, 0 structs match.
+EXIT=0
+=== summary ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+book_mmio_regions                        MATCH ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== ast vs base branch ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_
+
+[THINKING] The AST consistency check is passing, but I'm realizing the comparison needs to account for the actual branch setup—the verified code matches HEAD, so I need to compare against the base branch instead to see what's actually changed between the two branches.
+[RESULT ✓] bash: === ast vs base branch ===
+✅ Consistent: 4 functions, 0 structs match.
+EXIT=0
+=== git diff exec (mod.rs) vs base, stat ===
+diff --git a/src/kernel/src/mm/phys/mod.rs b/src/kernel/src/mm/phys/mod.rs
+index 064408c36..c72feeead 100644
+--- a/src/kernel/src/mm/phys/mod.rs
++++ b/src/kernel/src/mm/phys/mod...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Baseline gathered. Now launching the two independent review sub-agents (one per allowed model).
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-gpt53codex', 'agent_type': 'general-purpose', 'mode': 'backgrou
+
+[THINKING] The execution bodies remain consistent with the base implementation, and the AST checks out cleanly with no spec drift issues. I've got a solid understanding of the codebase now, but there's something I should flag: the `book_*` functions and `init` use `Err(_) => true`, which the checklist marks as a tautological ensures anti-pattern. These are intentional design decisions since failures during boot are meant to be terminal, so the reviewers will need to evaluate whether this warrants an exception.
+
+There's also a meaningful gap I'm noticing: the `book_*` ensures only guarantee `phys_view().inv()` and `initialized`, but they don't actually capture the booking effect itself—the frames being reserved—at the execution boundary. The proof lemmas exist but aren't wired into the exec contract because LinkedList can't be enumerated. That's documented as a TCB limitation. Looking closer at `init`'s postcondition, the `disjoint` clause between allocated and free frames is actually subsumed by `inv()` since the well-formedness check includes disjoint as a property. This means `disjoint` is redundant in the ensures clause—another anti-pattern the checklist flags. The reviewers need to assess whether these trade-offs are acceptable given the architectural constraints.
+
+I'm ready to spin up two independent review agents with the full context, skill paths, and baseline findings so they can each verify the results and write their assessments.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-gpt53codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review sub-agents are running independently (claude-opus-4.8 and gpt-5.3-codex). I'll wait for them to complete before consolidating.
+I'll start by setting up my review workspace and reading the required skills and key files in parallel.
+[TOOL] report_intent: Reading skills and key files
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/final-review && echo "dir ready" && ls /home/ruize/na
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/review-methodology/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: dir ready
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verus-unsupported.md
+view-design
+view_design.md
+<shellId: 17 completed with exit code 0>
+[RESULT ✓] view: 1. ---
+2. name: review-methodology
+3. description: "Reviewer mental model: independent, skeptical, hands-on, strict. Applies to all pipeline phases."
+4. ---
+5. 
+6. # Verus Verification Review Methodology
+7. 
+8. ## Reviewer Mental Model
+9. 
+10. - **Independent.** Form your own judgment. Do not trust ...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me read the remaining skills and key files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me read the spec-design skill and the remaining skills.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me start the slow verification/build commands in the background while I continue reading.
+[TOOL] report_intent: Running verification and build
+[TOOL] bash: cd /home/ruize/nanvix-phy && git branch --show-current && git log --oneline -5 && echo "=== status ===" && git status --
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: verify>
+[RESULT ✓] bash: verus-ai/phys-mod
+e02cda634 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, external_body=17 cfg_gate=5)
+886980ca8 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=17 cfg_gate=5)
+1d6493d3e [verus] verify PASS (...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
