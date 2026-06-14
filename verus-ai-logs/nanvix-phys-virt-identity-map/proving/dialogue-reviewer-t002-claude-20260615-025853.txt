@@ -247,3 +247,15 @@ Turn 7
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'EOF'
 f="src/kernel/src/mm/virt/identity_map.rs"
 s=open(f).read
+[RESULT ✓] bash: ensure_pte admit removed
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+631 | | ) -> Result<(), Error> {
+error: postcondition not satisfied
+    |             ^^^^^ failed this postcondi...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | grep -A6 -iE "postcondition not satisfied|precond
+
+[THINKING] I need to examine the specific error details to identify which precondition and postcondition are failing.
