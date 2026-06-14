@@ -36,3 +36,38 @@ Any `external_body` outside this list must be removed.
 
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::get_mut`
 - `src/kernel/src/mm/phys/frame.rs::init`
+
+## Allowed `external_body` — `PhysMemoryManager` (`manager.rs`)
+
+`PhysMemoryManager` is a **stateless facade** over the global frame allocator
+(`Upool` has no fields; kernel frames are drawn from the global `frame::*`
+statics through `static mut PHYS_MEMORY_MANAGER`). Its target methods therefore
+have no verifiable body: they mutate global `static mut` state, call un-specced
+upstream allocator primitives, and use side-effecting combinators
+(`inspect_err`/`and_then`/`ok_or_else`) and `error!`/`warn!` macros that are not
+ghost-gated and have no `vstd` specs. They form a trust boundary identical in
+character to the `frame.rs` shims: each is `external_body` with a `#[verus_spec]`
+contract stated over the do-not-modify `phys_view()` / `FrameAllocView` and the
+returned frame values (monotone post-state facts, as there is no
+`old(phys_view())`). Abstract laws are carried by `manager.proof.rs` lemmas.
+
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — writes the
+  global `static mut PHYS_MEMORY_MANAGER` (`MaybeUninit::write`) and flips an
+  `AtomicBool`. `ensures` keeps the allocator initialized and well-formed.
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_user_frame` —
+  draws a frame from the global allocator and wraps it as a `UserFrame`.
+  `ensures` (on success) places the returned frame's address in
+  `allocated_frames` and states page alignment.
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::check_user_watermark` —
+  reads the build-time `config::kernel::KERNEL_WATERMARK` and the global free
+  count. `ensures` (on success) gives `spec_watermark_ok` and keeps
+  `free_frames` finite.
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_user_frames`
+  — loop-allocates `count` user frames into a caller `&mut Vec`, with all-or-
+  nothing cleanup. `ensures` gives `len == count` and each frame allocated on
+  success, empty vector on error.
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_kernel_frame` —
+  like `alloc_user_frame` but yields a `KernelFrame`.
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_kernel_frames`
+  — like `alloc_many_user_frames` plus the contiguity guarantee
+  (`kernel_frames_contiguous`) required for kernel stacks.

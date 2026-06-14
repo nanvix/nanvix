@@ -1,5 +1,24 @@
 # View Design: `mm::phys::manager` (`PhysMemoryManager`)
 
+> **Implementation note (spec phase outcome).** A bespoke `self@` View on
+> `PhysMemoryManager` was found to be *unrealizable* and is **not** used by the
+> implemented specs. `PhysMemoryManager { upool: Upool }` and `Upool` carry no
+> fields — the manager is a **stateless facade** whose entire observable state is
+> the *global* frame-reservation state behind `static mut PHYS_MEMORY_MANAGER` and
+> the `frame::*` statics. A `view(&self)` over a field-less value is a constant, so
+> it cannot witness global mutation (`old(self)@ == self@` always), and there is no
+> `old(phys_view())` handle either. The implemented contracts therefore follow the
+> established `frame.rs` free-function-shim pattern: every target method is
+> `#[verus_verify(external_body)]` with a `#[verus_spec]` stated over the
+> do-not-modify `phys_view()` / `FrameAllocView` plus the returned frame values —
+> **monotone post-state facts** (e.g. "the returned frame's address is now in
+> `allocated_frames`", `spec_watermark_ok`, `kernel_frames_contiguous`). The
+> `FrameAllocView`-based vocabulary below is retained because the *contract content*
+> (allocated/free sets, watermark, contiguity) is exactly what those `phys_view()`
+> facts assert; only the *carrier* changed from `self@` to the global `phys_view()`.
+> See `manager.spec.rs` for the realized helpers and `tcb-allowed.md` for the shim
+> rationale.
+
 ## Abstract Resource
 
 `PhysMemoryManager` is the kernel's **single global owner of physical RAM

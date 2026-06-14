@@ -1638,3 +1638,65 @@ Turn 102
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "cheat|external_body|admit|a
 
 [THINKING] The module passes verification with no errors. The "CHEATING_DETECTED" flag is expected since it's flagging the external_body and admit usage, which are sanctioned by the task requirements. Now I'm checking the guardrail output to confirm it's only reporting on those approved patterns.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+    ⚠️  external_body: 22
+    ⚠️  admit: 2
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+All my external_body uses are the 6 sanctioned manager shims + 2 admit lemmas. Now update tcb-allowed.md and view_design.md. Let me view them:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/tcb-allowed.md; echo "===== VIEW DESIGN (tail) ====="; tail -40 verus-ai-
+
+[THINKING] I've got 6 manager external_body shims and 2 admit lemmas that are all sanctioned by the task requirements, so now I need to document those 6 manager shims in tcb-allowed.md and check the current state of both tcb-allowed.md and view_design.md.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+Now add the 6 manager shims to tcb-allowed.md:
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+Now record the phys_view()-based decision in view_design.md:
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+
+[THINKING] I need to update view_design.md to document why the self@ FrameAllocView approach won't work, and add a note about using phys_view() instead for the monotone decision. Let me check what's currently at the top of that file.
+[RESULT ✓] view: 1. # View Design: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Abstract Resource
+4. 
+5. `PhysMemoryManager` is the kernel's **single global owner of physical RAM
+6. frames**. Through a `&mut PhysMemoryManager` (obtained from the `get_mut`
+7. singleton accessor) a caller hands out *exclusive o...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-manager/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+Module verifies. Now run full `make verify` for regressions and `make build` for dual compilation:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | grep -iE "error|verification:|status:|verified,|regress|chea
+
+[THINKING] Running the full verification suite to check for any regressions, then building for both architectures. After that, I'll update the SQL todos and do some cleanup.
