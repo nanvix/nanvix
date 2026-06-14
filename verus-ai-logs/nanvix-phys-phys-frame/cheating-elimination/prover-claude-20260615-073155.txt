@@ -521,3 +521,39 @@ Exit 0 = genuine pass. Let me force a fresh (non-cached) verification to be full
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; touch src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.proof.rs src/kernel/
 
 [THINKING] I see that the caching works correctly—exit code 0 means the verification passed. To ensure there are no gaps in the frame module's proofs, I'll touch the frame.rs files to force a fresh verification run.
+[RESULT ✓] bash: - manager.rs:529 kernel_watermark: external_body
+    - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mmio_regions: external_body
+    - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:251 new: external_body
+    - upool.rs:289 alloc: external_body
+...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Fresh run: **58 verified, 0 errors**. No proof gaps. The global CHEATING_DETECTED is from other modules. Let me confirm all 8 Inner exec deviations vs upstream are the documented panic-bug-fixes (pre-existing, not mine).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; SRC=/mnt/shared/verus-ai-improve5-argus-exp2; for fn in Inner::alloc Inner::alloc_conti
+
+[THINKING] All the proofs are passing with no gaps, and the CHEATING_DETECTED flag is coming from the global counter across the entire kernel rather than any actual proof issues. Looking at the frame module specifically, all ten external body functions are properly accounted for in the trusted code base.
+
+The frame module has zero eliminable cheating violations, so this phase passes. Now I'm checking the AST consistency story — the mismatches against the upstream dev branch are pre-existing documented bug-fix deviations that were committed before my task started, not introduced by my changes. Since I made no modifications to the code, there are zero new mismatches relative to my baseline. I should note these pre-existing deviations in the report for completeness, but they're all tied to the documented panic-on-valid-input auto-fix and internal specification changes that aren't part of the executable code. I'll go through each of the 8 Inner mismatches to confirm they're all the documented panic-bug-fix deviations.
+[RESULT ✓] bash: ##### Inner::alloc #####
++        proof_decl! {
++        proof! {
++            lemma_view_of(self);
++            assert(spec_refcount_seq(self) == pre_rc);
++            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
++                proof! {
++                    lemma_view_of(self);
++            ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+All 8 deviations are the documented `// VERUS BUG FIX:` panic auto-fixes from prior phases (logged in `bugs.md`), already in my baseline. The rest is additive ghost code. I introduced zero changes. Let me confirm frame.rs is byte-identical to HEAD and run full-crate verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== frame files vs HEAD ==="; git diff --stat HEAD -- src/kernel/src/mm/phys/fram
+
+[THINKING] The exec deviations all stem from documented bug fixes in the codebase where frame number conversions are being corrected, and the remaining mismatches are from proof-related code that the exec-only filter isn't cleanly removing—these are all pre-existing issues from earlier phases already committed upstream.
+
+Since I made no changes to the source, there are zero AST mismatches I introduced relative to the baseline, which confirms the consistency requirement. I should verify this by comparing the current frame.rs against the baseline to ensure they're identical, then run the full verification suite to check for any regressions before finalizing the report.
