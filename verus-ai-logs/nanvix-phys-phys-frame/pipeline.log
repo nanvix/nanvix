@@ -1,0 +1,16 @@
+[2026-06-15 06:51:02] [BRANCH] Base: verus-ai/phys-kframe → Verus: verus-ai/phys-frame
+[2026-06-15 06:51:02] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/body_removed_source.rs (32776 -> 22829 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: phys-frame
+Source: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+Crate:  kernel
+Branch: verus-ai/phys-frame (base: verus-ai/phys-kframe)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: phys-frame
+============================================================
