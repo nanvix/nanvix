@@ -389,3 +389,19 @@ Turn 14
 Turn 15
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | tail -30
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All 6 verified, 0 errors, 0 admit, 0 assume. The 2 `external_body` are exactly the TCB-allowed `alloc`/`alloc_as` (the guardrail flags any `external_body`, but these are explicitly registered in `tcb-allowed.md`). Let me confirm the detail and run full `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt 2>/dev/null | 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -35
+
+[THINKING] I'm seeing that all 6 checks passed with no errors, and the two external_body functions flagged are actually the TCB-allowed allocation functions that are explicitly permitted in the rules. The guardrail is correctly identifying them as external calls, but they're authorized, so this isn't a violation. Let me confirm these match the documented allowed functions.
+[RESULT ✓] bash: - lib.rs:286 alloc: external_body
+    - lib.rs:367 alloc_as: external_body
+<shellId: 12 completed with exit code 0>
