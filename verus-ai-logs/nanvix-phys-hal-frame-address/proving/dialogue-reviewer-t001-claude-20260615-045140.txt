@@ -253,3 +253,116 @@ Turn 6
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -40
 
 [THINKING] I'll start with the module-scoped verification to check the cheating counts and results quickly, then run the full kernel verification to ensure there are no cross-module regressions.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module hal::mem::types::address::frame --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : hal::mem::types::address::frame
+  Source dir : /home/ruize/nanvix-phy-spec...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] Looking at the module-scoped check results, the frame module has one instance of cfg-gated executable code, while the global counts show a mix of assume, external_body, admit, and cfg_gate violations across the entire kernel crate. I need to check the detailed report to map which violations belong to which files and understand what the assume=0 count means for this specific module.
+[RESULT ✓] bash: - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+    - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+    - mm/phys/frame.rs:136 alloc: admit
+    - mm/phys/frame.rs:213 alloc_contiguous: admit
+    - mm/phys/frame.rs:298 free: admit
+    - mm/phys/frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "cfg" src/kernel/src/hal/mem/types/address/frame.rs src/kernel/src/
+
+[THINKING] I'm realizing the global cheating list doesn't include anything from our target file `frame.rs` and its proof/spec counterparts. The admits in the sibling `phys` module are separate from what we need to check. Let me verify the actual scope—we're focusing specifically on the `frame` module files.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/frame.rs:11:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/frame.rs:36:#[cfg(verus_keep_ghost)]
+=== cfg detail logs ===
+cheating-detail.txt
+coverage-unverified.txt
+verus_2026-...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "VERUS_AI_DIR\|VERUS_AI_VERIFY_SCRIPT\|VERUS_MODULE_ARG" Makefile |
+
+[THINKING] I'm looking at how the cfg-gate detection script counts occurrences in the frame.rs module. There are three `#[cfg(verus_keep_ghost)]` annotations present, but the module-level check is reporting only one cfg-gated execution code instance, so I need to understand the discrepancy in how the script tallies these per module.
+
+The key insight is that these cfg attributes are gating ghost and spec code — the `include!` directives for spec/proof files and the `verus!` block containing spec functions and proof definitions — not actual execution branches or expressions. The checklist requirement is specifically about cfg-gated exec code like branches and match arms, so these ghost-only gates shouldn't count as violations. This might be a false positive from the detection script, or it's flagging something else I need to investigate by looking at the actual cheating detection logic.
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+326:export VERUS_AI_DIR ?= /home/ruize/verus-ai-exp/verus-ai
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+619:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --l...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/kernel/src/hal/mem/types/address/; echo "=== grep from_raw_value in 
+
+[THINKING] I'm tracking which of the three `#[cfg(verus_keep_ghost)]` attributes in frame.rs gets counted toward the cfg-gate total of 1. The first two instances are followed by `include!` macros, so they're being skipped, and I need to identify which one actually counts. for external crates (std/external), not intra-crate kernel types. So `PhysicalAddress` getting an assume_specification violates the rule — it's the kernel's own type, not an external boundary. This is a FAIL on the checklist.
+
+But then I check tcb-allowed.md, which explicitly permits intra-crate assume_specifications as temporary placeholders for unverified HAL layers, recorded for review. The problem is this particular assume_specification in `hal/mem/types/address/frame.spec.rs` isn't listed in tcb-allowed.md, so it's undocumented and unaccounted for.
+
+This is a checklist failure on two counts: the assume_specification violates the "zero assume_specification except external boundaries" rule, and it's not recorded in the allowed list. I need to check whether the underlying `PhysicalAddress::Address::from_raw_value` implementation in the phys module now has its own spec, which would make this assume_specification obsolete and a genuine drift issue to fix.
+[RESULT ✓] bash: aligned
+frame.proof.rs
+frame.rs
+frame.spec.rs
+mod.rs
+page.rs
+pd.rs
+phys.proof.rs
+phys.rs
+phys.spec.rs
+test.rs
+=== grep from_raw_value in phys ===
+112:    #[verus_spec(result =>
+138:    #[verus_spec(result =>
+150:    #[verus_spec(result =>
+166:        FrameNumber::from_raw_value(frame_number).unwrap(...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 160.         let frame_number: usize = raw_addr >> shift;
+161.         proof! {
+162.             vstd::arithmetic::power2::lemma2_to64();
+163.             lemma_frame_index(self, raw_addr, shift, frame_number);
+164.         }
+165.         // Safety: the following unwrap is safe because a physical ad...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit/external_body/assume/REWRITE in frame files ==="; grep -nE 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | tail -45
+
+[THINKING] The `from_raw_value` method on `PhysicalAddress` doesn't have verification yet, so the `assume_specification` placeholder in frame.spec.rs is a legitimate dependency that needs to be documented in tcb-allowed.md as an intra-crate assumption.
+
+Looking at the checklist strictly though—it says "only external-bottom trust boundaries for std/external crates allowed," and since `PhysicalAddress` is an intra-crate kernel type, this `assume_specification` technically violates that rule. The proper fix would be to add a real `#[verus_spec]` to `PhysicalAddress::from_raw_value`, but that's outside the scope of what I can modify. The in-scope solution is to record this assumption in tcb-allowed.md like the other intra-crate placeholders, or find a way to replace it with verified code. So the fix is to record this assume_specification in tcb-allowed.md. Now I need to verify the other checklist items: checking for admit(), external_body, and any assume() calls in the frame files, looking for VERUS REWRITE comments, running the full verification to confirm zero errors and warnings, and examining spec drift by comparing current contracts against the baseline to detect any weakening.
+[RESULT ✓] bash: === admit/external_body/assume/REWRITE in frame files ===
+src/kernel/src/hal/mem/types/address/frame.rs:40:// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+src/kernel/src/hal/mem/types/address/frame.spec.rs:20:pub assume_specification[ <PhysicalAddre...
