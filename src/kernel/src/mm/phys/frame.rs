@@ -749,12 +749,6 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
-    // The post-state membership fact is over the fixed uninterpreted
-    // `phys_view()`; tying it to the mutation of `instance()` is a proving-phase
-    // obligation deferred here.
-    proof! {
-        admit();
-    }
     instance().alloc()
 }
 
