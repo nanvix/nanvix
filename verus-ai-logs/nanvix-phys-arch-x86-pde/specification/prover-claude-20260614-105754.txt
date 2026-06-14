@@ -1208,3 +1208,54 @@ Writing arch FRAME_SHIFT spec... I'm reconsidering the structure here. Rather th
 Turn 82
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|FRAME_SHIFT|verified|Exit code" | head -20
+[RESULT ✓] bash: error: cannot use function `arch::x86::mem::constants::FRAME_SHIFT` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+416 |         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+error: could not compile `arch` (lib) due to 1 previous erro...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Confirmed FRAME_SHIFT must be modeled. Let me restore it with the spec the kernel needs and test whether the const ensures prove in arch alone.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I need to add the `#[verus_verify]` annotation to FRAME_SHIFT and handle the kernel duplicate by giving the architecture's version the spec the kernel needs, then removing the kernel placeholder. If the const doesn't prove directly, I'll fall back to using a proof lemma and updating the kernel call site.
+
+Now I'm working through the spec details: the kernel's ensures clause compares `spec_page_size()` (which returns int) with `pow2(result as nat)` (which returns nat), and Verus handles the int == nat coercion. For the arch constant, I'll write the ensures as `FRAME_SHIFT < 32` and `PAGE_SIZE as int == pow2(FRAME_SHIFT as nat)`, importing `pow2` from vstd's power2 module into constants.rs.
+
+The first part should auto-prove since FRAME_SHIFT is 12, but the pow2 equality likely won't reduce automatically without a custom proof. Since const items in Verus don't support custom proof blocks, I'm reconsidering whether this approach will work — the const's ensures might fail to verify without the SMT being able to evaluate `pow2(12)` to 4096. I'm thinking through whether I need to weaken the kernel's lemma requirements instead, though that would compromise the proof's guarantees.
+
+Actually, the real issue is that the kernel's `lemma_frame_index` requires the pow2 fact, and the caller must supply it. If arch only provides `FRAME_SHIFT < 32` without the pow2 equality, the kernel would need to re-derive it locally — which means adding a proof assertion in the kernel code itself. But the intended design is for arch to provide this fact upfront. I'm exploring whether I can use a broadcast proof lemma in arch's proof module that automatically triggers the pow2 relationship, rather than attaching it directly to the const.
+
+The deeper problem is that once arch models FRAME_SHIFT with `#[verus_verify]`, the kernel's `assume_specification` on the same constant creates a conflict — Verus sees it as a duplicate specification. So the kernel's assume_specification has to be removed entirely, which means losing both the `result < 32` bound and the pow2 fact unless arch or the kernel re-establishes them elsewhere. This is a fundamental cross-cutting concern that requires careful coordination between the two modules. Let me try adding the full ensures clause to the FRAME_SHIFT const with pow2 imported, then run verify-arch in isolation to see if it proves by computation or if I need a separate lemma to back it up.
+[RESULT ✓] view: 99. ///
+100. /// # Description
+101. ///
+102. /// Alias for `PAGE_SHIT`.
+103. ///
+104. pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+105. 
+106. ///
+107. /// # Description
+108. ///
+109. /// Alias for `PAGE_SIZE`.
+110. ///
+111. #[verus_verify]
+112. pub const FRAME_SIZE: usize = PAGE_SIZE;
+113. 
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | grep -E "error|FRAME_SHIFT|pow2|verified|Exit code" | head -20
