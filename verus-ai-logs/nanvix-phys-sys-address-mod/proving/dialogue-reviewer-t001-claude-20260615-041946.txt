@@ -118,3 +118,199 @@ I'll start by gathering evidence: running the verification and reading the sourc
 4. // address is an exact multiple of the alignment's byte value. This is the
 5. // declarative meaning callers attach to `is_aligned` — independent of how the
 6. // alignment check is computed. `spec...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verification passed (exit 0) but a `cfg_gate=1` was detected. Let me investigate the detail and the virt submodule.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/libs/sys/src/sys/mm/address/ && echo "---virt---" && ls src/libs/sys
+
+[THINKING] The verification passed but there's a cfg_gate flag showing up, which violates the checklist requirement about not having cfg-gated exec code. I need to check the cheating-detail file to understand where this cfg_gate is coming from and whether it's actually in this module's files or elsewhere in the sys crate.
+[RESULT ✓] bash: mod.proof.rs
+mod.rs
+mod.spec.rs
+virt.proof.rs
+virt.rs
+virt.spec.rs
+---virt---
+<shellId: 1 completed with exit code 2>
+[RESULT ✓] view: 
+diff --git a/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt b/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+index 0000000..0000000 100644
+--- a/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-s...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-sys/verus-lo
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm checking if the cheating-detail.txt file is actually empty, and then looking into the cfg_gate details and searching through the address module files for any cfg references.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] bash: === cheating-detail.txt ===
+=== grep cfg in address module ===
+src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt....
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Verification passes but `cfg_gate=1`. There are two `#[cfg(target_pointer_width = "32")]` in `virt.rs`. Let me find exactly what the cheating checker flags.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rln "cfg_gate" scripts/ 2>/dev/null; echo "---"; grep -rn "cfg_gate\|
+
+[THINKING] I've found the key evidence: the `cfg_gate=1` detection. There are two instances of `#[cfg(target_pointer_width = "32")]` — one wrapping a static assertion that validates size equality, and another gating an implementation block that converts virtual addresses to 32-bit unsigned integers.
+
+The checklist explicitly forbids cfg-gated executable code like branches, expressions, and match arms, and the cheating detection is flagging this violation. I need to locate the actual verification script to see exactly which line is triggering the cfg_gate counter.
+[RESULT ✓] bash: scripts/verify.sh
+---
+scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The cfg_gate counter only matches `verus_keep_ghost` cfgs (not `target_pointer_width`), and excludes `include!`. So the global `cfg_gate=1` is elsewhere in the sys crate, not in the address module. Let me find it and confirm the address module itself is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/sy
+
+[THINKING] The `cfg_gate` counter specifically tracks `#[cfg(verus_keep_ghost)]`, `#[cfg(not(verus_keep_ghost))]`, and `#[cfg_attr(verus_keep_ghost...)]` attributes, not generic cfg attributes like `target_pointer_width`. This count appears in a global scan across the entire sys crate rather than isolated to the address module, and I'm seeing two instances of `#[cfg(verus_keep_ghost)]` so far.
+
+Wait, I need to reconsider — those instances in mod.rs and virt.rs are inside `include!(...)` macros, which are excluded from the pattern matching. So the `cfg_gate=1` must be coming from elsewhere in the crate. Let me search more broadly across the sys crate to find where this attribute actually appears outside of include directives.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs:151: #[cfg(verus_keep_ghost)]  -> target: verus! {
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The only `verus_keep_ghost` cfg_gate is in `alignment.rs` — a **different** module, not `sys-address-mod`. The address module's `target_pointer_width` gates are item-level platform conditionals, not exec branches. Let me read the remaining module files and audit for all cheating patterns.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/address/virt.proof.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== audit address module for cheating patterns ===" && grep -rnE "adm
+
+[THINKING] The `cfg_gate=1` flag I found is actually in the alignment module, not in the address module itself, so the address module files have no cfg-gated exec code in that sense. Though the checklist criterion is broader than just the `verus_keep_ghost` definition—it covers any cfg-gated branches, expressions, or match arms.
+
+Looking at virt.rs, there are `#[cfg(target_pointer_width = "32")]` gates on a static assertion and an impl block for converting VirtualAddress to u32, but these are item-level conditional compilation, not branches or expressions within exec code. The real concern about cfg-gated exec code is hiding verification from Verus, which the `target_pointer_width` gates don't do—they're legitimate platform conditionals present in both verus and non-verus builds, so they're not cheating.
+
+Since the kernel target is 32-bit, both gates are included in the verified build anyway. The cfg_gate cheating count for the address module is actually 0, with the global count of 1 belonging to a different module (alignment.rs). Now I need to walk through the full checklist against the address module files, checking for admit, external_body, assume, and reviewing the remaining files I haven't seen yet.
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] bash: === audit address module for cheating patterns ===
+NONE FOUND
+=== target arch ===
+target-pointer-width: 32
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Target is 32-bit, so the `target_pointer_width="32"` gated items ARE part of the verified build — nothing is hidden from Verus. The only `verus_keep_ghost` cfg_gate (the cheating kind) is in `alignment.rs`, a different module. Now let me check spec drift via git and look for VERUS REWRITE comments, plus run the build for warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git status address module ===" && git status --short src/libs/sys
+
+[THINKING] The target pointer width is 32 bits, so the cfg-gated code for that architecture is actually part of the verified build—both the static assertion and the `From<VirtualAddress> for u32` implementation are included. This means there's no executable code being hidden from Verus verification. I need to reconsider the cfg-gated code restriction more carefully, since these are item-level gates rather than branches or expressions within code.
+
+Now I'm walking through the full verification checklist. The static assertion and u32 conversion are platform-specific item-level gates that are standard practice and verified at 32-bit, so that passes. For the other checks: no `admit()` calls found, no `external_body` in the address module (the `external_derive` in virt.rs is for derive macros, which is accepted), no `assume()` or `assume_specification()` calls, and the cfg-gated code is only the target pointer width gates which are verified. Moving through the remaining items on the checklist.
+[RESULT ✓] bash: === git status address module ===
+=== git diff stat vs HEAD ===
+=== VERUS REWRITE comments ===
+no rewrite comments
+=== external_derive note ===
+src/libs/sys/src/sys/mm/address/virt.rs:35:#[verus_verify(external_derive)]
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Working tree is clean (committed). Let me check git history to establish the spec baseline and confirm no specs were weakened during proving.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== log for address module ===" && git --no-pager log --oneline -10 -
+
+[THINKING] The address module is already committed with no uncommitted changes, so the current state matches what's in HEAD. To check for spec drift, I need to compare the current specs against the original baseline, which means looking at the git history to find what the specs were before any proving work began.
+
+Looking at the trait specs, I see that `from_raw_value`, `into_raw_value`, `clone_address`, and `is_aligned` all have strong ensures clauses, but `align_up`, `align_down`, `max_addr`, `as_ptr`, and `as_mut_ptr` have no postconditions at all. The question is whether this represents actual spec weakening or just incomplete coverage — if these functions never had specs in the original baseline, then it's not weakening, just gaps in the current specification. I need to check the git history to see what the original specs were.
+[RESULT ✓] bash: === log for address module ===
+8f9b8dd4b [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+a85df8c38 [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+192f966ee [verus-ai] caller-analysis START: sys-address-mod
+40a4c4b60 [verus] verify PASS (cheating detected): kernel...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+History shows specs were only **added/strengthened** during proving (from_raw_value, into_raw_value, clone_address, is_aligned ensures), never weakened. Let me check the verus log for any warnings and confirm the build is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== warnings/errors in latest verus log ===" && grep -iE "warning|err
+
+[THINKING] Looking at the git history, the specs were actually strengthened during the proving phase—functions like `from_raw_value`, `is_aligned`, `clone_address`, and `into_raw_value` all gained ensures clauses. The spec-drift-check is comparing against the original baseline from before proving, and while trait functions like `align_up` and `align_down` don't have ensures clauses, they never did, so this isn't a regression.
+
+Now I need to verify the build passes without warnings. The verus run already completed with a successful cargo build and exit code 0, so I should check the verus log to confirm there are no warnings reported.
+[RESULT ✓] bash: === warnings/errors in latest verus log ===
+  admit=0
+=== exit/verification summary lines ===
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== tail of verus log ===" && tail -25 verus-ai-logs/verify-sys/verus
+
+[THINKING] The verification was cached without recompilation, so I need to force a fresh run to see the actual results. Looking at the full log, the verification passed with zero cheating indicators across the entire crate—no admits, external bodies, or assumes.
+[RESULT ✓] bash: === tail of verus log ===
+Timestamp: 2026-06-15_04-19-56
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Finished `dev` profile [...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Result was cached. Let me force a fresh verification to capture actual verified counts and confirm zero warnings as a strict check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/mod.rs && make verify-sys 2>&1 | grep
+
+[THINKING] The cached verification result shows a clean exit, so the code is valid, but I want to do a fresh run to be thorough and confirm the verified counts and ensure there are no warnings.
