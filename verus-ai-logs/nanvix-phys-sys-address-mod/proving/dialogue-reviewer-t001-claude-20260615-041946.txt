@@ -314,3 +314,75 @@ Result was cached. Let me force a fresh verification to capture actual verified 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/sys/src/sys/mm/address/mod.rs && make verify-sys 2>&1 | grep
 
 [THINKING] The cached verification result shows a clean exit, so the code is valid, but I want to do a fresh run to be thorough and confirm the verified counts and ensure there are no warnings.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  6 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  verification: 6 verified, 0 errors...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Fresh run: **6 verified, 0 errors, exit 0, zero warnings**. The `cfg_gate=1` is the global crate count. Let me confirm exactly what it is in `alignment.rs` and that it's outside the address module scope.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] The test run passed cleanly with no errors, and the cfg_gate flag is set to 1, but it's coming from alignment.rs in a different module rather than the sys-address-mod I'm reviewing. I need to determine whether this cfg_gate in alignment.rs should affect my assessment of the address module.
+[RESULT ✓] view: 145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //==================================================================================================
+150. 
+151. #[cfg(verus_keep_ghost)]
+152. ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+All evidence gathered. The `cfg_gate=1` is in `alignment.rs` (different module, and it gates only spec functions — ghost code, not exec). For **sys-address-mod**, every checklist item passes. Let me write the full review and the STOP file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue && echo
+
+[THINKING] The `cfg_gate=1` in alignment.rs is wrapping a `verus!` block that contains only spec functions, which triggers a false positive in the cheating checker since it looks for use/include/mod statements after the `#[cfg(verus_keep_ghost)]` attribute but finds the `verus!` macro instead.
+
+For the sys-address-mod review specifically, all checklist items pass: there are zero instances of `admit`, `external_body`, `assume`, or cfg-gated exec code in the address module itself. The two `#[cfg(target_pointer_width="32")]` gates in virt.rs are item-level gates on verified code, not exec branches or expressions, so they don't constitute cheating. The global `cfg_gate=1` flag is a false positive from alignment.rs, which is outside the scope of this review.
+
+Now I'm writing up the full review document walking through each checklist item with evidence, then creating the STOP file to mark this as RESOLVED.
+[RESULT ✓] bash: ok
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/turn_001_driver.md with 4859 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Review complete. All 10 checklist items **PASS** for `sys-address-mod`.
+
+**Evidence:**
+- `make verify-sys` (fresh): **6 verified, 0 errors, exit 0, 0 warnings**
+- Module cheating audit: `admit=0, external_body=0, assume=0, assume_specification=0`
+- Specs only **strengthened** during proving (git history) — none weakened
+- No `admit`, `external_body`, `assume`, or `VERUS REWRITE` in the module; proof stubs empty
+- The two `#[cfg(target_pointer_width="32")]` gates are item-level platform conditionals, **verified at 32-bit** (target is 32-bit) — no exec code hidden
+
+The crate-wide `cfg_gate=1`/`CHEATING_DETECTED` traces to `alignment.rs:151` — a `verus_keep_ghost`-gated `verus!` block containing only **spec functions** (ghost code) in a **different module**, out of scope here.
+
+Wrote `turn_001_driver.md` and `STOP` = **RESOLVED**.
+
+
+=== Session End ===
+Session: 1e7ecdfe-ad11-4e6f-84a8-079c4e99b4fb
+Duration: 236.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue-reviewer-t001-claude-20260615-041946.jsonl
