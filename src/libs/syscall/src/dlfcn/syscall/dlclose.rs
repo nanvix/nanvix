@@ -168,9 +168,16 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
         let mut registry: MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>> =
             DYNAMIC_LIBRARY_REGISTRY.lock();
         for dlfile in fini_order.iter() {
-            let (dlhandle, _dependencies) = {
+            let dlhandle: DlHandle = {
                 let mut lib: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-                (lib.handle(), lib.take_dependencies())
+                let dlhandle: DlHandle = lib.handle();
+                // Detach this library's dependency edges so it releases its
+                // hold on its dependencies. The returned `Arc`s are dropped
+                // here; combined with removing this library from the registry
+                // and dropping `fini_order` below, this lets the dependencies
+                // be reclaimed.
+                drop(lib.take_dependencies());
+                dlhandle
             };
             registry.remove(&dlhandle);
         }
