@@ -1,0 +1,67 @@
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module hal::platform::microvm --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : hal::platform::microvm
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_06-20-56
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::platform::microvm.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_complete
+    - get_kstack_top
+    - get_kstack_guard_base
+    - virt_to_phys
+    - is_valid_physical_address
+    - is_valid_physical_region
+    - max_physical_address
+    - parse_bootinfo
+    - log_control_registers
+    - register_ramfs_mmio_region
+    - read_ramfs_registers
+    - read_control_register
+    - tsc_base_frequency_mhz
+    - register_pic_ioports
+    - register_pit
+    - register_pit_ports
+    - init
+    - mul_u64_u32_shr32
+    - monotonic_time_ns
+    - boot_time_ns
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=11 admit=27 trusted=0 no_decreases=0 cfg_gate=14
+  coverage: 1/31 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_06-20-56.log

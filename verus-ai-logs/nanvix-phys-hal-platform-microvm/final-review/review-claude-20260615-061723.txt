@@ -1095,3 +1095,170 @@ Turn 10
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/platform/microvm/mod.rs && make verify-kernel MODU
+[RESULT ✓] bash: verification results:: 1 verified, 0 errors (partial verification with `--verify-*`)
+  1 verified
+  0 errors
+  Unverified functions:
+=== Summary ===
+  verification: 1 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=11 admit=27 trusted=0 no_decreases=0 cfg_gate=14
+  coverage: 1/31 exec...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Done. I completed an independent, tool-based review and wrote it to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.codex.md`
+
+Verdict: **PASS**.
+
+Key counts (module-scoped `src/kernel/src/hal/platform/microvm/**/*.rs`):
+- Caller coverage: **4/4**, missing **none**
+- `admit`: **0**
+- `assume`: **0**
+- `external_body`: **0**
+- `assume_specification`: **0**
+- cfg-gated exec divergence: **0** (only excluded ghost includes at `mod.rs:9,11`)
+- AST consistency: **PASS** (`matched=28 mismatched=0`)
+- Spec drift: **no contract drift**
+- Verification: **PASS** (`make verify-kernel MODULE=hal::platform::microvm`, exit 0, status CLEAN)
+
+Crate-wide cheating totals (out-of-scope): assume=0, external_body=11, admit=27, cfg_gate=14.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': True, 'timeout': 30}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 145s, total_turns: 0, model: gpt-5.3-codex, duration: 142s
+
+Done. I completed an independent, tool-based review and wrote it to:
+
+`/home/ruize/nanvix-phy-s...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Codex review complete (PASS). Waiting on the claude review.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+Exact line: **"1 verified, 0 errors"**, status CLEAN. Let me confirm the crate-wide cheating counts originate entirely outside microvm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== crate-wide admit count ==="; grep -rn "admit()" src/kernel/src --
+[RESULT ✓] bash: === crate-wide admit count ===
+29
+=== crate-wide external_body ===
+9
+=== any of these inside microvm dir? ===
+0
+(0 expected)
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Confirmed: zero cheating inside microvm. Let me verify git status is clean (I only `touch`ed the file).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --short src/kernel/src/hal/platform/microvm/ && echo "(empty = c
+[RESULT ✓] bash: (empty = clean)
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+All checks complete. Let me write the final review.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md with 9351 characters
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Review written. Final verdict:
+
+## Result: **PASS** — `hal::platform::microvm` / `gva_to_gpa`
+
+All checks performed independently with tools (not from your summary):
+
+| Check | Result |
+|---|---|
+| **Verification** | `1 verified, 0 errors` — status CLEAN (forced fresh run) |
+| **Spec quality** | Correct, complete, minimal: `result as int == spec_gva_to_gpa(gva)`; `open` spec fn (identity); no `requires` (totality); no tautological/subsumed clauses |
+| **Caller coverage** | All caller expectations covered (totality/infallibility, determinism, frame correspondence, identity) — Missing: none |
+| **Proof completeness** | admit = 0, external_body = 0 in module |
+| **TCB compliance** | microvm not in TCB list; 0 external_body → compliant |
+| **Guardrails (module-scoped)** | admit 0, assume 0, external_body 0, assume_specification 0, cfg-gated exec 0 |
+| **AST consistency** | PASS — 28 functions + 3 structs MATCH vs pre-verus base |
+| **Spec drift** | PASS — no contract drift (both vs HEAD and vs base) |
+| **Bugs** | None (bugs.md absent; identity code is correct) |
+
+**Key distinction confirmed:** the `make` summary's crate-wide counts (`external_body=11, admit=27, cfg_gate=14`) come entirely from out-of-scope modules — directory-scoped grep proves microvm contributes **0** to every cheating dimension. The only `verus_keep_ghost` gates in-module are the two standard spec/proof `include!` lines.
+
+One minor non-blocking note: the spec uses `int` rather than `usize` for addresses (soft preference only; harmless here).
+
+Report written to `verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md`. Working tree left clean.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 238s, total_turns: 0, model: claude-opus-4.8, duration: 238s
+
+Review written. Final verdict:
+
+## Result: **PASS** — `hal::platform::microvm` / `gva_to_gp...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Both reviews complete and both PASS. Let me read the raw files and consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review && echo "#########
+
+[THINKING] Both reviews passed, so I'm consolidating the raw files and double-checking the int-versus-usize question. The spec design skill notes that addresses should stay as usize with an exception, but spec_gva_to_gpa uses int, and the view design explicitly justified this choice for the identity map. The checklist flags this as a soft note, and the agent marked it as minor and non-blocking, so I'm evaluating whether it's actually a problem.
+
+The function returns usize while the ensures clause casts the result to int to match the spec function's output—using int for arithmetic is standard and fine. The "addresses keep usize" guideline is a preference rather than a hard requirement, and view_design.md already addressed this decision. I'll mark it as advisory and non-blocking, which aligns with both agents giving PASS. Now I'm consolidating both raw files into the final review.
+[RESULT ✓] bash: ########## CODEX ##########
+# Final Comprehensive Review: hal-platform-microvm (gpt-5.3-codex)
+
+## Checklist
+### Caller Analysis
+- [x] All pub functions have callers searched (tool-verified, not manual claim).
+- [x] Caller expectations (success + failure) documented for each in-scope pub function.
+-...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Both independent reviews agree: **PASS**, with all module-scoped cheating counts at zero. Writing the consolidated review.
+[TOOL] report_intent: Consolidating final review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md
+
+[THINKING] Both reviews align on all the key points—module counts verified at zero, AST consistency confirmed, verification passed, caller coverage complete, and no bugs found. There's just one minor note about int versus usize that doesn't block anything. Now I'm writing up the consolidated final review, checking off all the boxes in the standard template and pulling together the findings from both agents.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md with 8194 characters
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Done. Final comprehensive review complete.
+
+**Process:** Ran baseline verification myself, then launched 2 independent sub-agents (claude-opus-4.8 + gpt-5.3-codex), each doing a full tool-based review and writing raw output. Consolidated into `final_review.md`.
+
+**Result: PASS** — both reviewers concur on the in-scope target `gva_to_gpa`.
+
+| Dimension | Result |
+|---|---|
+| Verification | `1 verified, 0 errors`, status CLEAN |
+| Spec quality | Correct/complete/minimal identity contract; `open`, no `requires` |
+| Caller coverage | 4/4, missing none |
+| admit / assume (in-scope) | 0 / 0 |
+| external_body (in-scope) | 0 (TCB-compliant) |
+| assume_specification / cfg-gated exec | 0 / 0 |
+| AST consistency | PASS (28 fns, 3 structs match; 0 rewrites) |
+| Spec drift | no weakening |
+| Bugs | none |
+
+Key clarification both agents confirmed: the `make` summary's crate-wide `external_body=11 admit=27 cfg_gate=14` come **entirely from out-of-scope modules**; the microvm directory contributes **0** to every cheating dimension. One non-blocking note: spec uses `int` vs `usize` for addresses (harmless soft preference).
+
+Files written:
+- `final-review/final_review.claude.md`
+- `final-review/final_review.codex.md`
+- `final-review/final_review.md` (consolidated)
+
+
+=== Session End ===
+Session: 0032e616-b62d-4f6a-97b9-add0dfd96c12
+Duration: 430.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/review-claude-20260615-061723.jsonl
