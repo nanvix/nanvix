@@ -253,3 +253,65 @@ Turn 14
 Turn 15
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -n
+[RESULT ✓] bash: 16:error: Verus Internal Error: missing type invariant function
+17:   --> src/kernel/src/mm/virt/identity_map.rs:534:33
+19:534 |     proof! { use_type_invariant(pde_idx); }
+22:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+26:  compilation/setup error (verus did not run)
+30...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Confirmed: `use_type_invariant` cross-crate yields `Verus Internal Error: missing type invariant function` — a genuine verifier limitation. Even if discharged, the `bump_view().inv()` and view-contradiction obligations remain irreducible. Let me restore the verifying baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/idmap_pristine.rs src/kernel/src/mm/virt/identity_map.rs && grep -c
+
+[THINKING] I've confirmed that `use_type_invariant` doesn't work across crates—it's a genuine Verus limitation where type invariants defined in one crate can't be invoked in another. Since `TableIndex::inv()` is a public open spec function, I'm exploring whether I can directly access the invariant that way instead.
+
+I'm considering whether calling `into_raw()` could establish the bound I need—it returns a usize with the guarantee that `result < PAGE_TABLE_LENGTH` and `result as nat == self@`. But calling it would be an exec operation that changes the code, which violates AST consistency unless it's semantics-preserving. I'm weighing whether a dead-code call to `into_raw()` counts as an acceptable change or if I need to find a purely proof-based approach to recover the bound.
+
+Actually, I'm realizing this whole line of investigation is a distraction. Even if I solve the read precondition issue, the fundamental problems with `bump_view.inv()` and the view contradictions remain unsolvable. I should step back and accept that `use_type_invariant` hitting a Verus Internal Error is a real verifier limitation I can't work around. Let me revert to the clean state with admits and document this blocker.
+[RESULT ✓] bash: 3
+✅ Consistent: 14 functions, 1 structs match.
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Let me check one more genuine avenue: whether the `Err` paths could be proven unreachable (making those postconditions vacuous). Examining `Table::read`'s spec and `FrameNumber::from_raw_value`.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] Now I'm reconsidering whether there's a legitimate approach I've been overlooking—specifically, whether the project actually expects me to implement the parameterless uninterp view properly within the spec file itself, rather than working around it. The cleanest solution that stays within scope would only modify the identity_map files and handle the ghost-token soundly.
+
+If I make `identity_map_view()` return a concrete fixed value like an empty, uninitialized state, I can trace through what happens: the invariant holds vacuously, but when I check the contract requirements, `accessible(p)` becomes always true, which means the `identity_map_page` function's Ok-branch becomes provable while its Err-branch fails—and simultaneously, `ensure_pte` needs the opposite polarity, making its Ok-branch unprovable while the Err-branch works. This confirms what I found before: no single concrete value can satisfy both functions' requirements since they need opposite polarities from the same view. I'm now exploring whether a fully initialized state with all addresses mapped would work differently, but I suspect I'll hit the same fundamental constraint. Now I need to check whether Table::read's spec guarantees it always returns Some when the index is in bounds — if so, the Err path from the read operation would be unreachable, and similarly if the frame is always in range, both Err branches collapse into vacuous postconditions that Verus could discharge automatically.
+[RESULT ✓] view: 195.     // Trust boundary (see `verus-ai-logs/.../tcb-allowed.md` and `verus-unsupported.md`):
+196.     // materializes a raw `*const PteWord` from the integer base address (`usize as *const`) and
+197.     // performs a volatile load — the hardware page-table access. Verus does not support the
+198....
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Definitive: `read` returns an opaque `Option` (Err reachable), `FrameNumber::from_raw_value` can be None — so the Err paths are genuinely reachable and the opposite-polarity postconditions over a single fixed view are unsatisfiable. Let me append fresh evidence to the TODO and write the turn response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -25 verus-ai-logs/nanvix-phys-virt-identity-map/verification_todo.md
+
+[THINKING] The `read` function returns an `Option` wrapping an opaque spec function result, so it can legitimately return `None` — the error path isn't dead code. Similarly, `FrameNumber::from_raw_value` can return `None` when the value is out of range. Both error paths are genuinely reachable from Verus's perspective, so I can't prove them unreachable.
+
+I've now confirmed this exhaustively: removing admits produces 6 verified functions but 3 errors with 7 unmet obligations; the `use_type_invariant` cross-crate approach triggers a Verus internal error (a verifier limitation); no concrete view value satisfies the invariant mathematically; and `bump_view(self).inv()` can't be established without a lemma that produces it. This is a definitive blocker, so the right move is to keep the current verifying baseline, document the findings in the verification todo file, and escalate via bug report noting the verifier limitation.
+[RESULT ✓] bash: symmetric `Err` clause). Opaque, result-dependent global-view fact. **BLOCKER.**
+
+### `identity_map_page` (src/kernel/src/mm/virt/identity_map.rs:718) — UNPROVEN
+- `error: postcondition not satisfied` at `:706` (multiple instances) —
+  `Ok => identity_map_view().accessible(phys_addr@)` (and symmetri...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification_todo.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/verification_todo.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now the final verification and the turn response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify-kernel 2>&1 | grep -nE "verification results::|ver

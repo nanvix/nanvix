@@ -96,3 +96,30 @@ view + the deferred ghost-token realization), so nothing was recorded in `bugs.m
    (`initialized:false, mapped:empty`) satisfies the `Ok` clause of one branch but
    makes the opposite `Err` clause `false` — proving the impossibility is intrinsic,
    not a proof-engineering gap. Reverted (would also gut the spec dishonestly).
+
+## Re-confirmation (cheating_report_3 pass, 2026-06-15)
+
+Reproduced fresh this pass against the current arch specs:
+
+- Deleting all 3 `admit()`s → `make verify-kernel MODULE=mm::virt::identity_map` →
+  `6 verified, 3 errors` (7 underlying obligations): preconditions at `:534`/`:631`
+  (`pd.read`/`pt.read` index bound), `:549` (`alloc_as` `bump_view(self).inv()`),
+  postconditions at `:618` (`ensure_pte` `Ok`) and `:706` ×3 (`identity_map_page`
+  `Ok`/`Err`, all exits). Identical to prior passes.
+- **Verifier limitation reproduced:** adding `proof! { use_type_invariant(pde_idx); }`
+  to recover the `:534` read bound from `TableIndex`'s `#[verifier::type_invariant]`
+  (`arch/.../table.spec.rs:24`) fails with `Verus Internal Error: missing type
+  invariant function` (`identity_map.rs:534:33`). The type invariant is defined in the
+  `arch` crate and is not invocable from the `kernel` crate — a cross-crate
+  `use_type_invariant` gap. (Even if discharged, `:549` and the postconditions remain.)
+- **Err paths are genuinely reachable** (so the `Err`-branch postconditions are *not*
+  vacuous): `Table::read` returns `Option<E>` pinned to the opaque
+  `spec_table_read(self@.addr, index@)` (`table.rs:207`) — it may be `None`; and
+  `FrameNumber::from_raw_value` returns `None` out of range. So neither failure exit
+  can be proven dead, confirming the opposite-polarity postconditions over one fixed
+  view value are unsatisfiable.
+- **No concrete view value works** (exhaustive over polarity): `mapped=∅` makes
+  `ensure_pte` `Err` and `identity_map_page` `Ok` provable but their opposite branches
+  `false`; `mapped=`all-aligned (with `initialized=true`) flips it — every constant
+  leaves exactly one branch per function `⇒ false`. The only fix is a state-dependent
+  (ghost-token) view, which is out of scope.
