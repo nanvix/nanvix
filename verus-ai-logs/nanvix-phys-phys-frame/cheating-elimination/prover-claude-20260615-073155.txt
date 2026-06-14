@@ -338,3 +338,186 @@ Turn 14
 ────────────────────────────────────────────────────────────
 VERUS_EXECUTABLE_DIR defaults correctly. Let me run module verification for the baseline.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:1446 init: external_body
+    - frame.rs:1502 alloc: external_body
+    - frame.rs:1532 alloc_contiguous: external_body
+    - frame.rs:1553 free_count: external_body
+    - frame.rs:1571 free: external_body
+    - frame.rs:1613 book: external_body
+    - frame.rs:1634 alloc_range: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== full cheating-detail for frame.rs ==="; grep -E 'frame\.(rs|spec\.rs|proof\.r
+
+[THINKING] The verification is reporting cheating across the entire kernel, but I need to narrow my focus to just the `frame.rs` module. Looking at the frame.rs-specific results, I see a few items flagged—some marked as allowed to skip, others that need attention—though the list appears to cut off mid-entry.
+
+Let me verify the complete list of cheating items in frame.rs by checking the full detail file, since I want to confirm whether instance is included and whether there's actually any cheating that needs eliminating within my scope.
+[RESULT ✓] bash: === full cheating-detail for frame.rs ===
+    - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    -...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All 10 `external_body` in frame map to tcb-allowed entries; no admit/assume in frame files. Verus exited 0 (proofs pass). Let me verify the cfg-gates in frame.rs are legitimate (not gate-and-duplicate) since the gate counts them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; for ln in 167 186 203 236 303 358 408 491 580 646 749 796 862 974 1179 1219 1290; do ec
+
+[THINKING] Looking at the external_body items in the `mm/phys/frame.rs` module, I'm checking which ones are allowed—instance, init, alloc, alloc_contiguous, free_count, free, and book are all marked as allowed, though the list appears to cut off mid-item.
+
+Continuing through the rest, loc_range, share, and refcount are also allowed. All ten external_body functions are listed in tcb-allowed.md, and there are no admit or assume statements in frame.rs, proof.rs, or spec.rs. The task description mentions that singleton wrappers like share, refcount, free_count, free, book, alloc_range, alloc_contiguous, and alloc should be handled, but since they're all in the tcb-allowed.md exception list, they're permitted to keep their external_body declarations. I notice is_covered is a singleton wrapper that doesn't have external_body—it's verified in-body instead. So there's actually no cheating in the frame module that needs fixing; all external_body declarations are properly allowlisted, and the verification passed with exit code 0, though the CHEATING_DETECTED status appears to be coming from other modules. The wrappers in tcb-allowed are permitted to keep their external_body, so those don't need fixing. But I need to check the cfg-gated exec code scattered throughout frame.rs — the cheating counter flagged 19 instances globally. If these are gating unsupported expressions like debug_assert, that's allowed, but if they're gating actual exec definitions, that violates the constraints and needs to be eliminated.
+[RESULT ✓] bash: --- 167 ---
+                #[cfg(not(verus_keep_ghost))]
+                error!("{error:?}");
+                return Err(error);
+--- 186 ---
+        #[cfg(not(verus_keep_ghost))]
+        debug_assert_eq!(self.refcount[frame_number], 0);
+        self.refcount[frame_number] = 1;
+--- 203 ---
+         ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+All cfg-gates are legitimate (gating `error!` logging, `debug_assert_eq!`, and logging-only `let` bindings — unsupported expressions, not gate-and-duplicate). Now let me run the AST consistency check on frame.rs and confirm a clean verus run.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; ls scripts/ast_consistency.py 2>/dev/null && python3 scripts/ast_consistency.py --base-
+
+[THINKING] These cfg-gates are all legitimate—they're wrapping unsupported logging macros, debug assertions, and variables that only exist for logging purposes, which Verus doesn't support anyway. This is the approved pattern for gating unsupported sub-expressions, not duplicating execution definitions, so there's no rule violation here.
+
+The frame module appears to be in good shape: all external_body uses are either allowlisted in tcb-allowed.md (the wrapper functions like alloc and share with their cross-module token deferral justifications) or legitimate cfg-gating of logging code. There are no admit/assume statements and Verus exits cleanly, meaning all in-body proofs pass. The Inner versions are properly specified and verified in-body as required. Let me double-check that there are no actual proof gaps remaining.
+[RESULT ✓] bash: 
+<shellId: 15 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; ls scripts/ | grep -i ast; echo "---try---"; python3 scripts/ast_consistency.py src/ker
+[RESULT ✓] bash: ---try---
+python3: can't open file '/home/ruize/nanvix-phy-specs/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/nanvix-phy-specs -name "ast_consistency.py" 2>/dev/null; find /mnt/shared -name "ast_consistency.py" 2>
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/ast_consistency.py
+/mnt/shared/kheap-mas-exp/script...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; git log --oneline -5; echo "=== branches ==="; git branch -a | head -20; echo "=== is f
+
+[THINKING] The ast_consistency.py script is available in /mnt/shared, and I can use it to compare the current branch against the base branch verus-ai-prove with the `--base-ref` flag. Since frame.rs isn't showing as modified in git status, the verification work has already been committed to this branch.
+
+Actually, I need to reconsider what the original unverified source is—the base branch verus-ai-prove already contains the verified frame.rs with specs, so the true original exec-only code would be from before the verification annotations were added. Let me check what other branches exist to find where the original unmodified source is located.
+[RESULT ✓] bash: 16eaf125d [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=16 external_body=19 cfg_gate=19)
+50e4de7c8 [verus-ai] cheating-elimination START: phys-frame
+7ab50459f [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=16...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; SRC=/mnt/shared/verus-ai-improve5-argus-exp2; python3 $SRC/scripts/ast_consistency.py -
+
+[THINKING] I need to track down where frame.rs actually differs from the original source to understand the true execution code. The ast-consistency auto-detection should help me identify the right branch—likely one of the verus-ai/* branches rather than the current HEAD. Let me grab the script and its dependencies from the shared copy to run the auto-detection.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_contiguous                  MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; SRC=/mnt/shared/verus-ai-improve5-argus-exp2; python3 $SRC/scripts/ast_consistency.py -
+
+[THINKING] The `dev` branch isn't the right baseline since it shows mismatches across all Inner methods — either it's an older version or these are real execution changes I need to investigate. Frame.rs hasn't changed relative to HEAD, so the verification work from previous agents is already in place, but I need to verify those changes actually preserved the execution semantics. My focus is on cheating elimination, and since I haven't modified anything, I should be checking AST consistency against the true original state before any changes.
+
+Let me figure out what the correct base reference actually is — the verus-ai/phys-frame branch is likely where this verification work happened. I need to find the merge-base or trace back to the original source. Actually, I should step back and determine whether these Inner method mismatches between `dev` and current are genuine execution logic changes introduced during verification (which would be a problem), or if `dev` is just an unrelated older version. Let me examine the actual diff for one of the Inner methods like `Inner::book` between `dev` and current, focusing only on the execution logic.
+[RESULT ✓] bash: ## Inner::is_covered (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,4 +1,16 @@
+     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+-        frame_number < self.bitmap.number_of_bits()
++    ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+There's a pre-existing exec deviation in `Inner::is_covered` (a "VERUS BUG FIX" from a prior phase). Let me check how AST consistency should be baselined and whether deviations are documented.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== logs dir ==="; ls verus-ai-logs/nanvix-phys-phys-frame/ 2>/dev/null; echo "==
+
+[THINKING] I'm noticing a discrepancy in the `Inner::is_covered` function between the dev version and the verified version. The frame number calculation was changed from using a conversion method to a manual division by frame size, which the code attributes to fixing a panicking unwrap. However, this represents an actual change to the execution logic that needs careful consideration.
+
+The key question is what baseline I should use for AST consistency checking. The task specifies that `verus-ai-prove` is the base branch and contains the original exec code, so any changes I make should be validated against that. Since I haven't modified `frame.rs` myself, there's nothing to restore or check. The existing exec changes between dev and the current verified version were already committed as part of prior verification work, which falls outside my current scope. The task explicitly told me not to fix pre-existing issues unrelated to my work, so these earlier changes have already been reviewed and accepted.
+
+Let me refocus on the actual deliverable: I need to confirm there's no eliminable cheating in the frame module. All external_body calls are allowlisted, there are no admit or assume statements, and Verus exits cleanly. The `is_covered` exec deviation has a "VERUS BUG FIX" comment indicating it was justified in a prior phase. Since I haven't introduced any changes myself, the AST consistency check is satisfied relative to my baseline, and the frame module is effectively already complete. I should check the deviation documentation in the logs to confirm whether these mismatches are pre-existing from the prior phase or something I need to address.
+[RESULT ✓] bash: === logs dir ===
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+=== grep deviation docs ===
+verus-ai-logs/nanvix-phys-ph...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== bugs.md is_covered ==="; grep -n -i "is_covered\|into_frame_number\|top-of-sp
+
+[THINKING] The `dev` branch represents the original Nanvix upstream source, and the merge-base is at 7e180a4a. The `is_covered` exec change is a deviation that was introduced during verification, not something I'm adding now. This is a pre-existing concern for AST consistency that was already committed in verus-ai-prove. I should check the `body_removed_source.rs` file, which likely contains the original source with bodies stripped out for use as the AST baseline, and see what the verification-plan.json says about this deviation.
+
+Now I need to search through the proving logs and bugs.md to find any documentation or justification for the `is_covered` deviation.
+[RESULT ✓] bash: === bugs.md is_covered ===
+6:  - `start_frame_number = region.start().into_frame_number().into_raw_value()`
+28:## [auto-fixed] panic-on-valid-input: `into_frame_number().unwrap()` on top-of-space aligned address
+31:`Inner::book` (:499), `Inner::is_covered` (:536), `Inner::alloc_range` (:587).
+34:`X....
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The deviations are pre-existing, documented in `bugs.md` as auto-fixed panic bugs. They're outside my cheating-elimination scope. Let me confirm verus reports 0 verification errors (not just cached) with a fresh run.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -rn "verification results\|verified," verus-ai-logs/verify-kernel/verus-logs/verus
+
+[THINKING] The `is_covered` deviation and similar issues are documented in `bugs.md` as pre-existing VERUS bugs that were already fixed in an earlier phase—specifically, `into_frame_number()` panicking on top-of-space aligned addresses. Since this is documented and committed work outside my current scope, it's not something I need to address for cheating elimination.
+
+Looking at the actual scope: `frame.rs` has 10 external_body declarations that are all allowlisted in `tcb-allowed.md`, zero admits, zero assumes, and the cfg-gated exec code is legitimate (just logging and debug assertions). So there's genuinely no eliminable cheating within the frame module itself. The global CHEATING_DETECTED flag from `make verify-kernel` is coming from other modules like manager, kframe, and upool that aren't in my target scope.
+
+The singleton wrapper functions are explicitly allowlisted with documented rationales about cross-module deferrals and waiting for the free-function layer verification, which are human-approved exceptions. So they legitimately stay as external_body. I'm confident the phys-frame cheating-elimination phase is already in a PASS state — I just need to confirm with a clean verification run to be absolutely certain.
+[RESULT ✓] bash: === check verify.sh caching / force ===
+233:#   1. VERUS_EXIT == 0: genuine cache hit — Verus skipped re-verification.
+235:# Only case 1 is a true cache hit; case 2 is a failure.
+239:        VERIFIED="cached (no recompilation)"
+252:# When verification fails, touch source files so the next run won't ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Exit 0 = genuine pass. Let me force a fresh (non-cached) verification to be fully certain there are no proof gaps.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; touch src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.proof.rs src/kernel/
+
+[THINKING] I see that the caching works correctly—exit code 0 means the verification passed. To ensure there are no gaps in the frame module's proofs, I'll touch the frame.rs files to force a fresh verification run.
