@@ -338,3 +338,45 @@ The issue is that `frames.clear()` only empties the Vec parameter, not self.upoo
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: |assertion|mana
+[RESULT ✓] bash: error: assertion failed
+   --> src/kernel/src/mm/phys/manager.rs:259:32
+    |                                ^^^^^^^^^^^^^^ assertion failed
+verification results:: 41 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Confirmed: assertion fails — the loop mutated `self.upool@` via `alloc_one`, and `clear()` doesn't restore it. Now the contiguous case (same family). Let me restore and capture it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.rs.bak src/kernel/src/mm/phys/manager.rs && echo restored
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The assertion fails because the loop's allocation calls mutate the pool state, and clearing the frames doesn't restore it since the Drop side-effects aren't being tracked in the model. So the lemma is asserting something false, and I need to use admit. I'm now working through reproducers for three of the four cases.
+
+For the contiguous allocator, it's the same pattern as the kernel case—a free function that doesn't involve self transitions. Let me verify that one too by stripping out its lemma and checking if self stays unchanged, then I'll restore manager.rs and look at where that function gets called.
+[RESULT ✓] view: 460.             error!("{reason}");
+461.             return Err(Error::new(ErrorCode::InvalidArgument, reason));
+462.         }
+463. 
+464.         let base_addr: FrameAddress = frame::alloc_contiguous(count)?;
+465.         let base_raw: usize = base_addr.into_raw_value();
+466.         #[cfg_attr(ve...
+[RESULT ✓] bash: restored
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Line 470 invariant `self@ == g_old` already proves self is unmodified. Let me confirm the contiguous postcondition fails without the crutch lemma.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The loop invariant at line 470 shows that `self` remains unchanged throughout the contiguous path, which means when the lemma is invoked at lines 510-511 with `g_old` as the precondition and `self@` as the postcondition, they're actually equal. This forces the lemma's postcondition—which states the state equals the precondition with all kernel frames booked—to create a contradiction where `g_old` would have to equal itself after booking those frames.
+
+Since the invariant already establishes `self@ == g_old` at lines 470 and 489, I can simply remove the lemma call and let the postcondition fail directly, which gives me another concrete reproducer for the issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: |assertion|post

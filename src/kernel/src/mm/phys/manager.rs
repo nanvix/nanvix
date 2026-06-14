@@ -255,8 +255,7 @@ impl PhysMemoryManager {
                 Err(error) => {
                     frames.clear();
                     proof! {
-                        // REPRODUCER: lemma call removed to expose the underlying obligation.
-                        assert(self@ == g_old);
+                        lemma_user_bulk_err_restored(self, g_old);
                     }
                     return Err(error);
                 },
@@ -508,7 +507,8 @@ impl PhysMemoryManager {
             }
         }
         proof! {
-            lemma_kernel_alloc_contiguous(g_old, self@, frames@, count as nat);
+            // REPRODUCER: lemma call removed to expose the underlying obligation.
+            assert(self@ == g_old);
         }
         Ok(())
     }
