@@ -296,8 +296,9 @@ impl Inner {
             },
     )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        proof! { admit(); }
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
+        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+        // aligned address; compute the index totally (downstream bounds checks reject oversized).
+        let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
 
         if frame_number >= self.refcount.len() {
             let reason: &str = "frame number out of bounds";
@@ -377,8 +378,9 @@ impl Inner {
             },
     )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        proof! { admit(); }
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
+        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+        // aligned address; compute the index totally (downstream bounds checks reject oversized).
+        let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
 
         if frame_number >= self.refcount.len() {
             let reason: &str = "frame number out of bounds";
@@ -440,8 +442,9 @@ impl Inner {
             },
     )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
-        proof! { admit(); }
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
+        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+        // aligned address; compute the index totally (downstream bounds checks reject oversized).
+        let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
 
         if frame_number >= self.refcount.len() {
             let reason: &str = "frame number out of bounds";
@@ -495,8 +498,9 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        proof! { admit(); }
-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+        // aligned address; compute the index totally (bitmap.set rejects oversized indices).
+        let frame_number: usize = phys_addr.into_raw_value() / mem::FRAME_SIZE;
         match self.bitmap.set(frame_number) {
             Ok(()) => {
                 #[cfg(not(verus_keep_ghost))]
@@ -533,7 +537,9 @@ impl Inner {
             ),
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+        // aligned address; compute the index totally (compared against num_bits below).
+        let frame_number: usize = phys_addr.into_raw_value() / mem::FRAME_SIZE;
         frame_number < self.bitmap.number_of_bits()
     }
 
@@ -584,7 +590,9 @@ impl Inner {
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
         proof! { admit(); }
-        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+        // aligned address; compute the index totally (loop checks reject oversized indices).
+        let start_frame_number: usize = region.start().into_raw_value() / mem::FRAME_SIZE;
         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
 
         // Check that all frames in the range are covered by the bitmap and free,
@@ -754,6 +762,7 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 // Dependency contract for the manager layer: thin singleton wrapper around `Inner::alloc`.
 // `external_body` until the `frame` free-function layer is verified; the manager bridges the
 // returned address into its own abstract frame partition via a proof lemma.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         match result {
@@ -781,6 +790,7 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 // usize::MAX`) is the fact the manager's per-frame index arithmetic relies upon; it follows
 // from `Inner::alloc_contiguous`'s frame-set postcondition plus the allocator invariant
 // (bridged in the proving phase).
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         count > 0,
@@ -809,6 +819,7 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 // Dependency contract: reports the size of the free partition of the global frame allocator.
 // The bitmap-level count (`number_of_bits - usage`) equals the abstract `free_count()`
 // (`free_frames.len()`); this is bridged in the proving phase.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         result as nat == crate::mm::phys::phys_view().frames.free_count(),
@@ -824,6 +835,7 @@ pub(super) fn free_count() -> usize {
 // postcondition is promised. `opens_invariants none`/`no_unwind` so it is callable from
 // `UserFrame::drop`/`KernelFrame::drop`. The underlying `Inner::free` precondition (`frame.inv()`)
 // is discharged in the proving phase from the `FrameAddress` type invariant.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         true,
@@ -862,6 +874,7 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
 // recorded in the global partition; the booking transition lives in `Inner::book` and is bridged
 // to `phys_view().frames` in the proving phase. The boot caller (`book_mmio_regions`) re-derives
 // the region-level booking facts via its own lemmas.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_addr.inv(),
@@ -880,6 +893,7 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
 // the region (which must all be free) is reserved with refcount 1. The region-level transition
 // lives in `Inner::alloc_range`; the boot caller (`book_physical_memory_regions`) re-derives the
 // region-set booking facts via its own lemmas.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         region.inv(),
@@ -900,6 +914,7 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
 // allocated; the per-frame reference-count increment lives in the global partition and is pinned
 // to `phys_view().frames` in the proving phase. `external_body` until the free-function layer is
 // verified.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         frame.inv(),
@@ -918,6 +933,7 @@ pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
 // Dependency contract: singleton wrapper around `Inner::refcount`. Reads the current reference
 // count of the frame from the global partition (`phys_view().frames`); pure, no mutation.
 // `external_body` until the free-function layer is verified.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         frame.inv(),

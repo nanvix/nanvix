@@ -1,0 +1,91 @@
+Timestamp: 2026-06-15_05-21-55
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+35 verified
+5 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=19
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:270:17
+    |
+270 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+321 | /         if self.refcount[frame_number] == 0 {
+322 | |             match self.bitmap.clear(frame_number) {
+323 | |                 Ok(()) => Ok(()),
+324 | |                 Err(error) => {
+...   |
+331 | |             Ok(())
+332 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:359:17
+    |
+359 |                 Ok(()) => {
+    |                 ^^^^^^ failed this postcondition
+...
+411 |         Ok(())
+    |         ------ at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:434:17
+    |
+434 |                 Ok(count) => {
+    |                 ^^^^^^^^^ failed this postcondition
+...
+463 |         Ok(self.refcount[frame_number])
+    |         ------------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:486:17
+    |
+486 |                   Ok(()) => {
+    |                   ^^^^^^ failed this postcondition
+...
+504 | /         match self.bitmap.set(frame_number) {
+505 | |             Ok(()) => {
+506 | |                 #[cfg(not(verus_keep_ghost))]
+507 | |                 debug_assert_eq!(self.refcount[frame_number], 0);
+...   |
+515 | |             },
+516 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:534:13
+    |
+534 | /             ret <==> (
+535 | |                 self@.allocated_frames.contains(phys_addr@)
+536 | |                 || self@.free_frames.contains(phys_addr@)
+537 | |             ),
+    | |_____________^ failed this postcondition
+...
+543 |           frame_number < self.bitmap.number_of_bits()
+    |           ------------------------------------------- at the end of the function body
+
+verification results:: 35 verified, 5 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors

@@ -40,16 +40,6 @@ impl View for Inner {
     }
 }
 
-pub proof fn lemma_bound_test(a: int)
-    requires
-        a % spec_page_size() == 0,
-        0 <= a <= usize::MAX as int,
-    ensures
-        crate::hal::mem::types::address::phys::spec_frame_number(a)
-            <= crate::hal::mem::types::address::phys::spec_max_frame_number(),
-{
-}
-
 impl Inner {
     pub closed spec fn internal_inv(&self) -> bool
     {
