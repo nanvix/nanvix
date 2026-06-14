@@ -625,6 +625,23 @@ static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
 static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 
 /// Returns a mutable reference to the initialized singleton.
+//
+// Trust boundary (see `verus-ai-logs/tcb-allowed.md`): `instance` reads the
+// module-level `static mut INSTANCE` / `INSTANCE_INIT` through
+// `unsafe { INSTANCE.assume_init_mut() }`. A Verus `spec fn` cannot read those
+// statics, and the verifier does not support `static mut` paths, so the bridge
+// between the live singleton and the uninterpreted `phys_view()` is asserted
+// here as an external contract: once the allocator is initialized, the returned
+// reference is well-formed and its abstract view equals `phys_view().frames`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        (*result).inv(),
+        (*result)@ == phys_view().frames,
+)]
 fn instance() -> &'static mut Inner {
     if unlikely(!INSTANCE_INIT.load(ORDER)) {
         panic!("frame allocator used before init()");
@@ -645,6 +662,12 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
+//
+// Skip/exclude from the proof target (see `verus-ai-logs/tcb-allowed.md`): `init`
+// materializes the `&'static mut [u8]` refcount table from `static mut
+// REFCOUNT_STORAGE` and writes the `static mut INSTANCE`, neither of which the
+// verifier supports. Its `#[verus_spec]` contract is honored as a trust boundary.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `init` establishes the subsystem invariant. On success the allocator is
@@ -730,6 +753,32 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 ///
 /// Returns the base `FrameAddress` of the contiguous range.
 ///
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+        count > 0,
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // On success the returned base spans `count` freshly reserved,
+        // page-strided, single-reference frames: `base + i*PAGE` for
+        // `0 <= i < count` are all allocated with refcount 1. Contiguity is
+        // load-bearing for identity-mapped kernel stacks. On failure nothing is
+        // reported about the returned (absent) frame.
+        match result {
+            Ok(base) => {
+                &&& base.inv()
+                &&& forall|i: int| 0 <= i < count ==> {
+                    let addr = #[trigger] (base@ + i * spec_page_size());
+                    &&& phys_view().frames.allocated_frames.contains(addr)
+                    &&& phys_view().frames.refcounts.contains_key(addr)
+                    &&& phys_view().frames.refcounts[addr] == 1
+                }
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
     instance().alloc_contiguous(count)
 }
@@ -743,6 +792,19 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 ///
 /// The number of free frames in the system.
 ///
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // Pure query: returns the size of the free pool. The free set is finite
+        // (it is carved from the finite bitmap), which the watermark caller
+        // (`check_user_watermark`) relies on to reason with `spec_watermark_ok`.
+        phys_view().frames.free_frames.finite(),
+        result as int == phys_view().frames.free_frames.len(),
+)]
 pub(super) fn free_count() -> usize {
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()

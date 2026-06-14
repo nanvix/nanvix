@@ -1,4 +1,6 @@
     - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:645 instance: external_body
+    - mm/phys/frame.rs:682 init: external_body
     - mm/phys/kframe.rs:141 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body
