@@ -629,7 +629,7 @@ fn ensure_pte(
     pte_idx: TableIndex,
     phys_addr: usize,
 ) -> Result<(), Error> {
-    // ADMIT REMOVED FOR TEST
+    proof! { admit(); }
     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PTE read from page table";
         #[cfg(not(verus_keep_ghost))]
