@@ -145,3 +145,21 @@ Module: phys-mod
 [2026-06-15 02:43:41] [DIALOGUE] Reviewer turn 1 (remaining: 7200s)...
 [2026-06-15 02:43:41] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 02:50:03]   ↳ dialogue-reviewer-t1 done in 6m21s (exit=0)
+[2026-06-15 02:50:03] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 02:50:03] [DIALOGUE] STOP detail:
+RESOLVED
+
+All proving-phase checklist items for phys-mod (src/kernel/src/mm/phys/mod.rs)
+are PASS with concrete evidence:
+
+1. No specs weakened       — PASS (spec/proof diff purely additive; FrameAllocView::wf byte-unchanged; init ensures matches caller_analysis).
+2. Zero admit()            — PASS (admit=0; none in the 3 files).
+3. Zero external_body OOL  — PASS (in-scope: book_physical_memory_regions, book_mmio_regions — both in tcb-allowed.md).
+4. Zero assume/assume_spec — PASS (none; only ExLinkedList external-type spec for foreign std LinkedList).
+5. No cfg-gated exec code  — PASS (0 in mm::phys; the 5 global gates are out-of-scope spec-block markers).
+6. Cheating audit          — admit=0, assume=0, in-scope external_body=2 (both allowed), in-scope cfg_gate=0.
+7. Limitation reproducer   — PASS (E0117 reproduced for foreign-trait-on-foreign-Iter).
+8. Exec rewrites minimal   — PASS (no VERUS REWRITE; exec bodies byte-unchanged vs proving-start).
+9. Cross-module regression — PASS (make verify-kernel exit 0, all modules).
+10. Verification + build    — PASS (mm::phys: 9 verified, 0 errors; all-kernel build: 0 errors, 0 warnings).
+[2026-06-15 02:50:03] [DIALOGUE] proving ended after 1 turns: RESOLVED (382s)
