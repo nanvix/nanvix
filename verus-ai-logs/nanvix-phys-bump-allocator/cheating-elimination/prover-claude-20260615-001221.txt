@@ -497,3 +497,47 @@ Final confirmation run of the crate verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 300 make verify-bump-allocator 2>&1 | grep -E "Exit code|cheating:|status:|ve
 
 [THINKING] I'm deciding whether to run the full verification suite given that I haven't modified any source, spec, or proof files, so there's no real risk of regression. Since the task asks for it though, I should at least re-run the bump allocator verification to confirm it still passes with zero errors.
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 3/6 exec functions have contracts
+  status: CHEATING_DETEC...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Verification confirmed clean. The audit is complete.
+
+## Summary — Result: **PASS**
+
+The bump-allocator module was already in a cheating-free state given `tcb-allowed.md`. I audited all three files (`lib.rs`, `lib.spec.rs`, `lib.proof.rs`) and verified:
+
+| Item | Count | Status |
+|------|-------|--------|
+| admit() | 0 | ✅ none |
+| assume() | 0 | ✅ none |
+| external_body | 2 | ✅ both (`alloc`, `alloc_as`) in `tcb-allowed.md` |
+| assume_specification | 1 | ✅ `div_ceil` faithful std-lib spec (vstd has none) |
+| cfg-gated exec | 0 | ✅ none |
+
+**Key findings:**
+- `make verify-bump-allocator` → Verus **exit 0**. The script's `CHEATING_DETECTED` label only reflects that it counts `external_body` without consulting `tcb-allowed.md`; both flagged functions are TCB-registered (int-to-ptr materialization over `static mut`/`BssStorage` — a True Limitation).
+- The `div_ceil` `assume_specification` is required and sound — escalation ladder confirmed vstd ships no `div_ceil` spec, and the exec body can't change (source integrity).
+- **AST consistency: zero mismatches** — `12 functions, 7 structs match`; `lib.rs` is byte-identical to base `verus-ai-prove`.
+- All proof lemmas fully discharged; **no proof gaps**.
+
+I made no source changes (none needed), so no regressions are possible.
+
+**Outputs written:**
+- `verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/fix_report.md`
+- `verus-ai-logs/nanvix-phys-bump-allocator/verification_todo.md` (zero remaining gaps)
+
+[THINKING] The verification confirms no issues—the two flagged external_body functions are both listed in tcb-allowed.md, which the task permits, and there are no admits, assumes, or cfg-gated code. Since I made no source changes, there's no risk of regressions.
+
+
+=== Session End ===
+Session: c5951a57-1171-4779-81f7-3db69f048f43
+Duration: 322.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/cheating-elimination/prover-claude-20260615-001221.jsonl
