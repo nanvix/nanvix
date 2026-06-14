@@ -221,3 +221,35 @@ invlpg now carries the approved empty-contract `external_body` (entry #3). The r
 [THINKING] I see that `invlpg` is now the third external body, and the `admit=1` flag in table.proof.rs is outside my verification scope since the table module is a separate target. The external body for `invlpg` has moved to tcb-allowed.md, so it's permitted. The "CHEATING_DETECTED" status comes from those out-of-scope elements, but my `invlpg` target itself now has the faithful implementation.
 
 Verification shows 48 verified with 0 errors, and `invlpg` is correctly handled. Since there's no actual code bug here—just a trust boundary around inline assembly—bugs.md stays empty as expected. Now I should run `make verify` to check for any regressions, especially since `invlpg` was previously unannotated and now has an external body with an empty contract. Callers using `assume_specification` should still work fine.
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_00-43-07
+
+    Checkin...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Done. Both crates verify cleanly: **arch 48 verified / 0 errors**, **kernel 76 verified / 0 errors**.
+
+## Summary
+
+The only in-scope function, `invlpg`, is a single `core::arch::asm!` block issuing the `invlpg` TLB-flush instruction. Verus cannot translate inline assembly, and its effect (CPU TLB microarchitectural state) lives entirely outside Verus' memory model — an external-bottom hardware trust boundary already documented in `verus-unsupported.md` and approved in `tcb-allowed.md`.
+
+**Change made** (matching the recorded design in `body_removed_source.rs`):
+- Added `#[verus_verify(external_body)]` to `invlpg` with the **faithful empty contract** (no `requires`, trivial `ensures`) — the same pattern as `table::read`/`write`. No spec weakening; no exec signature change. `mod.spec.rs`/`mod.proof.rs` remain empty (no proof obligations to discharge).
+
+**No `admit()`/`assume()` added.** The residual `admit`/`external_body` reported by the cheating check are all in the out-of-scope `table` module and elsewhere in the kernel.
+
+**No bugs** — this is a hardware trust boundary, not a code defect, so `bugs.md` correctly stays empty.
+
+[THINKING] Both the arch and kernel modules pass verification with zero errors, and the unverified items are all out of scope from other modules, so there's no regression from my changes. Now I need to check if any upstream callers depend on the invlpg specification that might conflict with my modifications.
+
+Since verification passed cleanly with no conflicts, the assume_specification in identity_map.spec.rs works fine alongside invlpg's new external_body contract—the kernel's assume_specification provides the spec on the kernel side since it can't see the arch crate's verus annotations across the crate boundary. The task is complete: invlpg is marked external_body with an empty faithful contract, no admits or assumes were added by me, both crates verify with zero errors, and bugs.md correctly remains empty since this is a trust boundary issue rather than a code bug. I've confirmed there are no leftover admits or assumes in my scope—the spec and proof files are empty, and mod.rs only has the external_body declaration.
+
+
+=== Session End ===
+Session: 0baff7d2-43df-428c-9e6c-7b38061d5942
+Duration: 105.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/proving/prover-claude-20260615-004142.jsonl
