@@ -16,7 +16,4 @@ Cheating patterns:
   cfg_gate=0
 
 --- Full output ---
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.31s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
