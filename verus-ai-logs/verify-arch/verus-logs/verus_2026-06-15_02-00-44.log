@@ -1,0 +1,45 @@
+Timestamp: 2026-06-15_02-00-44
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+46 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:420:5
+    |
+420 |     pub fn frame_address(&self) -> usize {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:417:13
+    |
+417 |             result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+421 |         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+    |         ------------------------------------------------------ at the end of the function body
+
+error: postcondition not satisfied
+   --> src/libs/arch/src/x86/mem/paging/pde.rs:418:13
+    |
+418 |             result as int % (crate::mem::FRAME_SIZE as int) == 0,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+421 |         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+    |         ------------------------------------------------------ at the end of the function body
+
+verification results:: 46 verified, 1 errors
+error: could not compile `arch` (lib) due to 2 previous errors
