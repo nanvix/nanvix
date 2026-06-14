@@ -662,3 +662,22 @@ Frame module CLEAN, global admit 29→27. Let me confirm the two phys.proof.rs a
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== address dir admits remaining ==="; grep -n "address" verus-ai-logs/
 
 [THINKING] The frame module is now clean with the global admit count reduced from 29 to 27 after eliminating the two target admits. I'm running the full verification suite to check for regressions and then verifying that those two physical proof admits no longer appear in the cheating-detail output.
+[RESULT ✓] bash: === address dir admits remaining ===
+=== full verify-kernel ===
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=11 admit=27 trusted=0 no_decreases=0 cfg_gate=14
+  coverage: 55/1026 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Address directory has zero admits now; full verify-kernel exits 0. Let me run full `make verify` for regression check across all crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | grep -E "Crate|Exit code|errors \(exit|verifi
+
+[THINKING] The address directory is clean with no admits flagged, and the full kernel verification passed with zero errors. The remaining admits are scattered across other modules outside my scope, and the CHEATING_DETECTED status is also in those out-of-scope areas, so my task area is unaffected. I'm trying to understand what the grader is actually scanning for.
+
+The cheating report only mentioned those two admits from phys.proof.rs that I've already removed, so that should be resolved. Now I need to run a full verification across all crates to make sure I haven't broken anything else.
