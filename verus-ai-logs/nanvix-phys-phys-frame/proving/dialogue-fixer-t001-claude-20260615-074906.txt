@@ -367,3 +367,188 @@ The evidence I've already gathered through the reproduction cases shows that att
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified, |error|admit:|statu
+[RESULT ✓] bash: verification results:: 32 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 6
+  verification: 32 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=22 admit=6 trusted=0 no_decreases=0 cfg_gate=9
+  status: CHEATING_DETECTED
+=== build ===
+make: Nothing t...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+`make build` shows "Nothing to be done" — let me find the correct build target.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -E "^[a-z-]+:" Makefile | head -30
+
+[THINKING] I've restored the build to 32 verified with no errors and an admit count of 6. The "Nothing to be done for 'build'" message suggests the build target is either missing or already up to date, so I need to investigate what build targets are actually available.
+[RESULT ✓] bash: update-sysroot-link:
+dump-sccache-stats:
+all: all-nanvix
+all-nanvix: \
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+all-nanvix: all-nanvix-shim
+all-nanvix: standalone-images
+all-nanvix: all-nanvix-bench
+init: init-repo
+init-repo:
+clean: \
+clean: clean-ho...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls z* 2>/dev/null; echo "==="; grep -rn "make build\|z build\|build:" .github/skills/build/SK
+
+[THINKING] I'm checking whether there's a plain `make build` target or if the build process uses `./z build` instead. The `verify-kernel` task already handles kernel compilation through cargo-verus, so I need to clarify what the separate `make build` step actually requires.
+[RESULT ✓] bash: z
+z.bat
+z.ps1
+z.py
+===
+35:./z build -- all
+42:./z build -- kernel
+44:./z build -- all-nanvixd
+46:./z build -- all-uservm
+69:./z build -- all RELEASE=yes LOG_LEVEL=error
+76:./z build -- all
+78:./z build -- all RELEASE=yes LOG_LEVEL=panic
+80:./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=y...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+The build command is `./z build -- kernel`. Let me verify the kernel builds.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 ./z build -- kernel 2>&1 | tail -15
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -E "kernel" .github/skills/build/SKILL.md | head; echo "=== try test-kernel ==="; grep -
+[RESULT ✓] bash: ./z build -- kernel
+# Build only guest components (kernel + hello-rust-nostd).
+.\z.ps1 build -- kernel
+Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is pinned in `build/verus-version`. Verification requires `VERUS_EXECUTABLE_DIR` to be set; when unse...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "kernel\|check-kernel\|standalone\|def build\|make" z.py | head -20
+
+[THINKING] Looking at the `./z build -- kernel` command, I need to trace how z.py forwards these arguments and understand why `kernel` isn't being recognized as a make target. Let me examine how the build skill maps the arguments being passed through.
+[RESULT ✓] bash: 33:    "standalone",
+44:DEFAULT_DEPLOYMENT_MODE_LINUX = "standalone"
+45:DEFAULT_DEPLOYMENT_MODE_WINDOWS = "standalone"
+270:    make_args: list[str] = field(default_factory=list)
+297:def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
+365:    --toolchain-dir) or make arguments (targ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "check-kernel|check-guest" Makefile | head; echo "=== try check-kernel ==="; timeout
+
+[THINKING] The `./z build -- kernel` command passes `kernel` as a make target, but that target doesn't exist—the skill examples might be outdated or use a different name. I should try `check-kernel` instead, which performs a cross-target compilation check of the kernel.
+[RESULT ✓] bash: 652:	rust-lint-check-kernel \
+653:	rust-lint-check-guest-binaries \
+654:	rust-lint-check-guest-rlibs \
+655:	rust-lint-check-guest-staticlibs
+750:	format-check-guest-binaries \
+751:	format-check-guest-rlibs \
+752:	format-check-guest-staticlibs \
+753:	format-check-kernel
+821:	check-kernel \
+822:	check...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Kernel builds cleanly (`[OK] Build complete.`). I have complete evidence. Let me clean up temp files and write the comprehensive fixer report.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== git status ==="; git --no-pager status --short src/kernel/src/mm/phys/frame.rs; ech
+
+[THINKING] The kernel build completes successfully with no compilation errors. Now I'm putting together the comprehensive fixer report, which indicates NEEDS_GUIDANCE with strong evidence supporting a ROLLBACK to the spec phase—the frozen shim assertions are logically inconsistent with the constant phys_view(), removing the admit statement produces an exact postcondition error, and there's an isolation issue that needs resolution.
+
+I have three reproducers that demonstrate the failure: the first reproduces the same error, the second proves the goal's negation from the strongest sound instance() bridge, and the third shows that any strengthening of instance() that reflects the post-state derives false. The fix requires a spec-phase change like introducing a state-indexed view or using old(phys_view())/token in mod.spec.rs, which is outside the scope of what can be modified here.
+
+Let me clean up the temporary files and write the fixer report, embedding the reproducers directly since they're currently in /tmp.
+
+Writing the fixer report...
+[RESULT ✓] bash: === git status ===
+=== confirm reproducers still present ===
+-rw-rw-r-- 1 ruize ruize 2766 Jun 15 07:52 /tmp/repro_phys.rs
+-rw-rw-r-- 1 ruize ruize 2096 Jun 15 07:53 /tmp/repro_phys2.rs
+-rw-rw-r-- 1 ruize ruize 2603 Jun 15 07:54 /tmp/repro_phys3.rs
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+`frame.rs` is back to the committed admit=6 state (no diff). Let me persist the reproducers into the logs dir and write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy; mkdir -p verus-ai-logs/nanvix-phys-phys-frame/reproducers; cp /tmp/repro_phys.rs verus-ai-log
+[RESULT ✓] bash: saved
+01_shim_fails.rs
+02_goal_is_false.rs
+03_strengthening_derives_false.rs
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; for f in verus-ai-logs/nanvix-phys-phys-frame/reproducers/*.rs; do echo "=== $f ==="; /home/r
+[RESULT ✓] bash: === verus-ai-logs/nanvix-phys-phys-frame/reproducers/01_shim_fails.rs ===
+verification results:: 0 verified, 1 errors
+error: aborting due to 1 previous error
+
+=== verus-ai-logs/nanvix-phys-phys-frame/reproducers/02_goal_is_false.rs ===
+verification results:: 1 verified, 0 errors
+=== verus-ai-logs/na...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Now let me write the comprehensive fixer report.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_fixer.md with 7691 characters
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Let me clean up temp files and do a final state confirmation.
+[TOOL] bash: cd /home/ruize/nanvix-phy; rm -f /tmp/repro_phys.rs /tmp/repro_phys2.rs /tmp/repro_phys3.rs /tmp/frame_backup.rs; echo "
+
+[THINKING] I'm cleaning up the temporary files since the reproducers are already saved in the logs, then doing a final check that frame.rs is correct and the report is complete.
+[RESULT ✓] bash: === final git status (phys dir) ===
+ M verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-fixer-t001-claude-20260615-074906.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-fixer-t001-claude-20260615-074906.txt
+?? verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_fixer....
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Done. `frame.rs` is unchanged from the committed PASS state; only evidence artifacts were added.
+
+## Summary
+
+The reviewer asked me to **discharge all 6 mutating-shim `admit()`s** in `frame.rs` (steps 1–4 of the Fix Request). I genuinely attempted each step with real verifier runs rather than prose:
+
+**What I tried (with exact output):**
+1. **Removed the `alloc` admit** → `error: postcondition not satisfied` at frame.rs:742 (the `Ok(frame)` branch), `31 verified, 1 errors`.
+2. **Strengthened `instance()` (the one modifiable boundary)** — proved in an isolated reproducer that under the *strongest sound* single-state bridge, the shim goal's **negation** is provable (`view_fn().frames.allocated_frames.contains(frame)` is false given `frame ∈ free_frames` + `wf` disjointness). So no sound proof exists.
+3. **Post-state-reflecting strengthening** (the only thing that could help) → proved it derives `false` from two evaluations of the constant view. Unsound.
+4. The fix is **not even expressible** inside `frame.rs`/`frame.proof.rs` without editing the do-not-modify `mod.spec.rs`.
+
+**Result: NEEDS_GUIDANCE / ROLLBACK** — exactly the condition item 4 defines as eligible for rollback to the spec phase. Root cause: `phys_view()` is an argument-free **constant** that can't express a pre/post mutation.
+
+**Evidence persisted** in `verus-ai-logs/nanvix-phys-phys-frame/reproducers/` (3 isolated `verus!` snippets, all verifying as claimed). Module restored to `32 verified, 0 errors, admit=6`; `./z build -- check-kernel` is clean. No spec weakened, no `external_body`/`assume` added.
+
+
+=== Session End ===
+Session: c9a1e874-9244-4880-a423-e0d0fbd0c7d5
+Duration: 467.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-fixer-t001-claude-20260615-074906.jsonl
