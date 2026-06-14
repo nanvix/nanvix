@@ -250,3 +250,114 @@ All 5 lemmas proven; the 3 exec admits restored. Let me run the final `make veri
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus make verify-kernel MODULE=mm
 
 [THINKING] The proof module is clean with all lemmas verified and no admits in the actual code—just in the exec functions where they're expected. I need to run the final verification to confirm everything still compiles correctly and check that `make build` works as required, then document the cross-crate type-invariant limitation I've already identified.
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 3
+    - identity_map.rs:533 ensure_pt: admit
+    - identity_map.rs:627 ensure_pte: admit
+    - identity_map.rs:718 identity_map_page: admit
+  v...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make build 2>&1 | tail -25; echo "EXIT:${PIPESTATUS[0]}"
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+EXIT:0
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "^build\|^build:\|\.PHONY.*build\|^all:" Makefile | head; echo "=== d
+[RESULT ✓] bash: 411:all: all-nanvix
+=== default build target ===
+411:all: all-nanvix
+485:install: all-nanvix
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "all-nanvix\b" Makefile | head -3; sed -n '411,430p' Makefile
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+all: all-nanvix
+	@$(MAKE_QUIET) update-sysroot-link
+	@$(MAKE_QUIET) dump-sccache-stats
+
+# Builds all Nanvix components.
+all-nanvix: \
+	init \
+	all-guest-staticlibs \
+	...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`make build` is a no-op target (returns 0). Let me run the real kernel build to confirm exec code compiles normally:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make all-kernel 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"
+
+[THINKING] The `make build` target doesn't actually do anything—it's a no-op. The real build target is `make all` or `make all-nanvix`, but running a full build might be heavy. Let me just do a cargo build of the kernel crate to verify the exec code compiles correctly with Verus erasure working as expected.
+[RESULT ✓] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/bin
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/lib
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Kernel builds clean. Let me clean up temp files and write the fixer report:
+[TOOL] bash: rm -f /tmp/idm.rs.bak /tmp/idm.proof.rs.bak 2>/dev/null; echo cleaned
+
+[THINKING] The kernel compiled successfully, so now I'm writing up the fixer report with the honest assessment: the three admits need guidance, and I'm documenting the exact errors from each approach. The lemmas check out and the module verification passes. I should clean up the temporary files and finalize the report, then reconsider whether there's a legitimate path through the reviewer's suggestion about threading the page-table permissions that I might have overlooked.
+
+Looking at what the reviewer proposed—threading a ghost token so the page-table write reflects as `spec_install_page` on `identity_map_view()`—I can see the fundamental blocker: there's no parameter slot to carry such a token through `ensure_pte`, the signatures are locked in place, and `identity_map_view()` takes no arguments so it can't read a local tracked token. The only workaround would be a global invariant tied to the atomics themselves, but those are plain core atomics with no ghost state, and setting up verified-atomic infrastructure would require touching initialization and kernel code that's out of scope. I'm confident in this analysis, so let me finalize the report and clean up.
+[RESULT ✓] bash: cleaned
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_fixer.md with 9243 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me do a final confirmation the working tree is in the clean verifying state:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== exec admits (expect 3, in ensure_pt/ensure_pte/identity_map_page) =
+
+[THINKING] Let me verify the working tree is clean and nothing's left in a broken state.
+[RESULT ✓] bash: === exec admits (expect 3, in ensure_pt/ensure_pte/identity_map_page) ===
+534:    proof! { admit(); }
+632:    proof! { admit(); }
+719:    proof! { admit(); }
+=== proof.rs admit() in code (expect 0; comment-only) ===
+6:// Fully proven from the `IdentityMapView` spec definitions (no `admit()`). They e...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The working tree is clean (only the `verus-ai-logs/` dialogue + todo files differ; no stray exec changes). Final state:
+
+- **Module verifies**: 9 verified, 0 errors, 0 warnings. **Kernel builds**: exit 0.
+- **5 transition lemmas**: fully proven, 0 `admit()` (the only `admit()` text in proof.rs is in a comment).
+- **3 exec `admit()`s**: retained in `ensure_pt`/`ensure_pte`/`identity_map_page`.
+
+**Result: NEEDS_GUIDANCE** — I attempted every approach and recorded exact errors in `turn_001_fixer.md`:
+
+- **Removing the admits** fails on the opaque parameter-free `identity_map_view()` (`mapped.contains`/`accessible` over a fixed unknown set — Attempts A/D, error: postcondition not satisfied at L618/L706), the `Table::read` precondition (Attempt B/C — cross-crate `use_type_invariant` *Verus Internal Error: missing type invariant function*), and the static allocator's `bump_view(self).inv()` precondition (Attempt C).
+- **Item 5 (ungate `error!`)** breaks Verus compilation (Attempt E — `error: Unsupported constant type` in the `write`/`error` macro); cfg-gating is mandatory and skill-sanctioned, so it's kept.
+- **Items 3/4** are already justified (no verified `bump_allocator::new`; opaque-type registration) — no code change warranted.
+
+The root cause is a cross-module decision: `identity_map_view()` must become concrete over spec-readable atomic/page-table state, which requires verified-atomic + `Table::write` transition infrastructure spanning **out-of-scope** functions (`init`, `sync_kernel_pdes`) and signature changes the rules forbid. No spec was weakened and no `assume`/`external_body`/admit-disguise was introduced.
+
+
+=== Session End ===
+Session: 2d5e9c38-3e71-448a-8c34-dc26b7346874
+Duration: 370.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue-fixer-t001-claude-20260615-025243.jsonl
