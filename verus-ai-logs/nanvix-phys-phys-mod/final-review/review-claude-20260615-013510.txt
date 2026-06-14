@@ -901,3 +901,383 @@ book_physical_memory_regions             MATCH   ...
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "byte_at_address\b" src/kernel/src/mm/phys
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.spec.rs:13:pub uninterp spec fn byte_at_address(ptr: int) -> u8;
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo 'admit='$(rg -n "\badmit\s*!?\s*\(" src/kernel/src/mm/phys/mod.rs src/kernel/src
+[RESULT ✓] bash: admit=0
+assume=0
+assume_specification=0
+external_body_attrs=3
+uninterp=4
+cfg_not_verus_keep_ghost=0
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo 'external_body attrs:' && rg -n "^\s*#\[.*external_body.*\]" src/kernel/src/mm/p
+[RESULT ✓] bash: external_body attrs:
+src/kernel/src/mm/phys/mod.spec.rs:66:#[verifier::external_body]
+src/kernel/src/mm/phys/mod.rs:59:#[verus_verify(external_body)]
+src/kernel/src/mm/phys/mod.rs:87:#[verus_verify(external_body)]
+
+cfg attrs:
+src/kernel/src/mm/phys/mod.rs:15:#[cfg(feature = "test")]
+src/kernel/src/m...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me verify the ExLinkedList mention in tcb-allowed and double-check no admit/assume anywhere in phys-mod, plus the byte_at_address protected status.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== ExLinkedList/LinkedList in tcb-allowed ==="; grep -niE 'linkedlist|external
+[RESULT ✓] bash: === ExLinkedList/LinkedList in tcb-allowed ===
+75:  `alloc::collections::LinkedList` in a `for` loop. Verus has no `LinkedList` model and the
+79:- `src/kernel/src/mm/phys/mod.rs::book_mmio_regions` — same `LinkedList` limitation.
+144:These `assume_specification` (and one `external_type_specification...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo 'Current contracts:' && rg -n "requires|ensures|Err\(_\) => true|live\(|all_rese
+[RESULT ✓] bash: Current contracts:
+61:    requires
+64:    ensures
+68:            Ok(_) => phys_view().frames.all_reserved(
+70:            Err(_) => true,
+89:    requires
+92:    ensures
+98:                    && phys_view().frames.covers(a)
+99:                    ==> phys_view().frames.reserved(a),
+100:            E...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "One-shot init|Booked ⇒ never allocated|Coverage-gated MMIO booking|wf|Fail-fas
+[RESULT ✓] bash: 16:| Private | 2 (`book_physical_memory_regions`, `book_mmio_regions`) |
+24:- `book_physical_memory_regions` [private] — called by `init` (L128).
+25:- `book_mmio_regions` [private] — called by `init` (L130).
+29:- The two in-scope helpers `book_physical_memory_regions` and `book_mmio_regions`
+35:  `b...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 640. 
+641. //==================================================================================================
+642. // Constants
+643. //==================================================================================================
+644. 
+645. // Use relaxed ordering for all atomic operations to ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All checks are done. Let me verify the output directory exists, then write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-phys-mod/final-review && ls -la verus-ai-logs/nanv
+[RESULT ✓] bash: total 1560
+drwxrwxr-x 1 ruize ruize     136 Jun 15 01:35 .
+drwxrwxr-x 1 ruize ruize     446 Jun 15 01:35 ..
+-rw-rw-r-- 1 ruize ruize 1527106 Jun 15 01:41 review-claude-20260615-013510.jsonl
+-rw-rw-r-- 1 ruize ruize   66309 Jun 15 01:41 review-claude-20260615-013510.txt
+--- confirm init not external_...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -ld verus-ai-logs/nanvix-phys-phys-mod/final-review
+[RESULT ✓] bash: drwxrwxr-x 1 ruize ruize 136 Jun 15 01:35 verus-ai-logs/nanvix-phys-phys-mod/final-review
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat > verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.gpt-5.3-codex.md <
+[RESULT ✓] bash: 
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys` phys-mod (`init`, `book_mmio_regions`, `book_physical_memory_regions`)
+2. 
+3. ## Spec Quality
+4. 
+5. ### 1) API-level quality (strict)
+6. - `init` is externally observed; helpers are private.
+7. - Contracts are declarative in style, but **underspecified on...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Completed. I wrote the full review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.gpt-5.3-codex.md`
+
+Verdict: **FAIL**.
+
+Key findings:
+- `make verify-kernel MODULE=mm::phys`: exit **0**, 0 verification errors.
+- AST consistency: **MATCH** (4/4 funcs), no `VERUS REWRITE`.
+- Phys-mod-only guardrail counts: `admit=0`, `assume=0`, `assume_specification=0`, `external_body attrs=3` (2 helper fns + ExLinkedList), cfg-gated cheating pattern (`cfg(not(verus_keep_ghost))`) `=0`.
+- Kernel-wide totals from verify output: `assume=0 external_body=18 admit=27 cfg_gate=15`.
+- Blockers: one-sided `Err(_) => true` specs, missing one-shot/seeding guarantees in `init`, and unqualified `uninterp` `byte_at_address`.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': True, 'timeout': 30}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent phys-mod final review, elapsed: 225s, total_turns: 0, model: gpt-5.3-codex, duration: 221s
+
+Completed. I wrote the full review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phy...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Codex agent done (FAIL). Let me read its full review while waiting for the claude agent.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.gpt-5.3-codex.md
+
+[THINKING] The codex agent came back with failures on three fronts: one-sided error specs, missing initialization guarantees, and an unqualified interpretation of `byte_at_address`. But wait—that last one shouldn't be a blocker since `byte_at_address` is already in the protected list and wasn't introduced by the physical modification version.
+
+Let me pull the full codex review file and see what the claude agent found.
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys` phys-mod (`init`, `book_mmio_regions`, `book_physical_memory_regions`)
+2. 
+3. ## Spec Quality
+4. 
+5. ### 1) API-level quality (strict)
+6. - `init` is externally observed; helpers are private.
+7. - Contracts are declarative in style, but **underspecified on...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me wait for the claude agent to finish.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+
+[THINKING] The codex agent came back with a FAIL verdict citing three blockers: a one-sided error spec, missing initialization guarantees, and an uninterpreted `byte_at_address` function. I'm questioning whether flagging `byte_at_address` is fair since it's a pre-existing definition in the do-not-modify list rather than something introduced by the phys-mod verification, though the constraints do say not to touch those existing specs.
+
+The one-shot init and seeding concerns are more substantive — the view design proposed them but the final spec dropped them entirely. The caller analysis indicates the caller expects `init` to reject a second invocation, but the final spec actually made it more permissive by removing the `!initialized` precondition. That's a genuine weakening relative to what the caller relies on, even if it's technically more general. I should note these nuances when consolidating the feedback.
+init is body-verified. Now writing the comprehensive review.
+[TOOL] report_intent: Writing final review markdown
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md with 20308 characters
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Review written. Summary of my independent verdict:
+
+## Verdict: **PASS** — no genuine blockers
+
+### Key counts (phys-mod ONLY)
+- `admit=0`, `assume=0` ✅
+- `external_body=2` (`book_physical_memory_regions` mod.rs:73, `book_mmio_regions` mod.rs:103) — **both pre-listed in tcb-allowed.md** ✅
+- `external_type_specification=1` (`ExLinkedList`) — counted separately, skill-sanctioned ✅
+- `uninterp=4`, `assume_specification=0`, cfg-gated exec=0, VERUS REWRITE=0
+- `init` is **body-verified** (not external_body)
+
+### Kernel-wide (context only, out of scope): admit=27, external_body=18, cfg_gate=15 — these span sibling modules, NOT phys-mod.
+
+### Firm verdicts on the contestable points
+- **`uninterp` (4):** all qualify as mechanical consequences of external boundaries — `byte_at_address` (protected raw-memory), `phys_view()` (singleton-global ghost View accessor backed by the TCB `frame::instance`), and `phys_regions_frame_set`/`mmio_regions_frame_set` (direct consequence of the un-modelable foreign `LinkedList`). **Not a verification escape.**
+- **`Err(_) => true`:** paired with an *unconditional* `inv()` ensures (plus `initialized` for the helpers ⟹ `wf` preserved). This is a meaningful, caller-justified error path — **NOT** a one-sided/tautological violation.
+
+### Other results
+- **Caller coverage 10/10** — no missing caller guarantee. Dropped view_design properties (static `!initialized` one-shot, composed `seed().book_all().book_covered()` transition, `!all_free(R)` conflict predicate) are deliberate, caller-justified reductions; none weakens a consumed guarantee.
+- **AST consistency:** 4/4 MATCH, 0 mismatch; no contract drift.
+- **Verification:** `make verify-kernel MODULE=mm::phys` exit **0**, zero errors.
+- **bugs.md:** single LinkedList-limitation entry reconciles; no bug masked by external_body; no unrecorded failure.
+
+6 advisory nits documented (spec-richness/doc-tidiness), zero blockers. Full report saved to `verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md`.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent phys-mod final review, elapsed: 287s, total_turns: 0, model: claude-opus-4.8, duration: 287s
+
+Review written. Summary of my independent verdict:
+
+## Verdict: **PASS** — no genuine block...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me read the full claude review to incorporate both perspectives.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+
+[THINKING] I'm seeing a disagreement between two reviewers on whether certain issues are blockers or just advisory concerns. Let me examine the Claude review more carefully and work through each disputed point, starting with the error specification handling.
+
+For the `Err(_) => true` issue, Claude argues that while the spec literally has a tautological postcondition, the unconditional `inv()` ensures actually constrains the error paths meaningfully — the invariant preservation captures the well-formedness guarantee for the helpers. However, there's a genuine gap: the `!all_free(R)` conflict predicate that should document fail-fast causality isn't captured in the spec. So this is a real but subtle issue — the checklist explicitly flags tautological ensures as something to avoid, and these functions do have `Err(_) => true`, which technically violates that criterion even if the invariant provides some constraint.
+
+On the missing `!initialized` precondition and seeding relation, the situation is more about spec completeness than soundness. Dropping the precondition actually makes the function more general (weaker precondition), and the caller's one-shot guarantee comes from frame::init's internal rejection of double-init, not from the spec. Similarly, the seeding relation isn't something the caller actually relies on — the caller only cares about the booked-never-allocated invariant and subsystem liveness, both of which are covered. So these are deliberate reductions in spec richness, not gaps in what the caller needs.
+
+For `byte_at_address` being uninterpreted, the critical point is that it's explicitly listed in the do-not-modify section, which means it's protected raw-memory access that's intentionally left unqualified.  Since it's a pre-existing definition that can't be touched by this effort, it can't actually be a blocker — it's inherited and off-limits. Codex missed that constraint.
+
+So reassessing: BLOCKER 3 isn't valid because the definition is protected. BLOCKER 2 is really about spec completeness rather than a hard soundness issue — the caller's actual guarantees are met. BLOCKER 1 about the tautological error case is the most substantive concern, since the checklist explicitly calls out avoiding that pattern.
+
+Looking at this honestly: the code literally has `Err(_) => true` three times, even though it's paired with an unconditional invariant. The match arm itself is still tautological. The original design proposed stronger error conditions that got dropped, including a fail-fast predicate that callers rely on but isn't captured in the spec. Given the instruction to be strict and pass only if all checklist items are cleanly satisfied, there's a genuine defensible concern here.
+
+The counterpoint is that these are external functions whose bodies can't be verified anyway, so adding error-condition predicates would be assumed contracts. But stepping back: I have two independent reviews split on this, and I need to consolidate them into a final verdict while being strict about the checklist requirements.
+
+The objective guardrails all pass—no admits, no assumes, external bodies in TCB, AST consistent, verification succeeds, no spec drift. But the disputed items around error-path richness and the dropped one-shot/seeding guarantees are spec-completeness gaps, not soundness violations. The checklist explicitly forbids tautological ensures, and the literal pattern `Err(_) => true` appears three times here. Even with the unconditional invariant mitigating it, a strict reading can't cleanly check that box when a documented stronger alternative exists and was deliberately dropped, and the caller-relied fail-fast guarantee isn't captured in the spec.
+
+The honest verdict under strict interpretation is **FAIL** on spec-completeness grounds—specifically the error-path coverage and dropped guarantees—while acknowledging all hard guardrails are sound.
+
+But I need to reconsider whether `Err(_) => true` is actually problematic. The functions promise `inv()` on error, which guarantees well-formedness. The spec-design principles say error paths need equal rigor, but state preservation can't be promised here because the booking system is non-transactional and partial state on failure is unavoidable. What *can* be promised is well-formedness through the invariant, which *is* promised. The only unpromised parts are the failure-cause predicate and liveness guarantees.
+
+The original design in view_design §4.2 proposed including a conflict predicate for error cases, but it was dropped in the implementation. For an external_body function, adding assumed error-causality contracts feels risky and inconsistent with the caution around trusting external bodies. So there's a defensible reason to omit it.
+
+This genuinely cuts both ways, but given the strict instruction to pass only if all checklist items are satisfied, and the checklist explicitly calls out "No tautological ensures" with this exact pattern appearing three times, I'm going with the strict verdict. The caller analysis will be the deciding factor here. The task is explicit: I need to apply the strict checklist standard, and since the tautological ensures pattern is demonstrably present and unchecked, FAIL is the correct verdict regardless of how robust the hard guardrails are. Now I'm pulling together the full review to extract the key advisories and write up the consolidated final assessment.
+[RESULT ✓] view: File too large to read at once (20.1 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys` module (phys-mod)
+2. 
+3. **Reviewer:** Claude (independent, strict)
+4. **Date:** 2026-06-15
+5. **Branch:** verus-ai-prove
+6. **Scope (ONLY):** `init`, `book_physical_memory_regions`, `book_mmio_regions` in
+7. `src/kernel/src/mm/phys/mod.rs`.
+8. **Mode:** r...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+
+[THINKING] I see there's a disagreement between Claude's review and Codex's assessment—Claude treats the disputed items as advisory while Codex marks them as blockers, leading to different conclusions. I need to review the rest of Claude's checklist and advisory items to make a final determination.
+[RESULT ✓] view: 120. two `external_body` helpers, smuggle in an arbitrary axiom: `phys_regions_frame_set`
+121. / `mmio_regions_frame_set` are deterministic functions of their inputs, so the
+122. caller can chain `init`'s reserved-set facts about the *same* list.
+123. 
+124. ---
+125. 
+126. ## 2. Caller Coverage
+127. ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+
+[THINKING] Let me finish reading through the rest of the review and then combine both assessments into one consolidated version.
+[RESULT ✓] view: 280. 
+281. ## 7. Verification
+282. 
+283. ```
+284. $ make verify-kernel MODULE=mm::phys
+285. note: verifying module mm::phys
+286. note: verifying module mm::phys::frame / kframe / manager / upool
+287. Exit code : 0
+288. verification: cached (no recompilation), — (exit 0)
+289. ```
+290. 
+291. Exit **0*...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Both reviews are in and they diverge (codex: FAIL, claude: PASS). Let me run `make build` to complete the verification evidence, then adjudicate and consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make build 2>&1 | tail -20; echo "=== build exit ${PIPESTATUS[0]} ==="
+
+[THINKING] I've got two conflicting reviews to reconcile, so I need to work through each disputed point systematically and reach a final verdict. Starting with the first codex blocker about `byte_at_address`—both reviewers acknowledge it's in the protected list and shouldn't be modified, so the blocker claim appears to be based on a misunderstanding of what's actually changeable in the codebase.
+
+The real tension is around the one-sided error spec with `Err(_) => true`. The pattern appears three times, and while the helpers do carry unconditional `phys_view().inv()` ensures that preserve well-formedness on error, the substantive gap is that the specs don't capture the fail-fast conflict predicate or any liveness property—meaning a caller can't prove that if everything is free, initialization succeeds, or that a conflict is the actual cause of failure. But here's the constraint: these are external_body functions (LinkedList), so adding error-cause predicates or liveness assumptions would be imposing contracts on external code, which isn't within scope.
+
+This is a genuine completeness gap in the spec—fail-fast causality and liveness aren't captured—but it's not a soundness violation or cheating, and there's a defensible reason to avoid over-trusting external_body with assumed contracts. The literal anti-pattern does appear, so it technically fails the checklist item, but the reasoning is sound.
+
+For the second blocker, dropping `!initialized` is actually a weakening of the precondition, which makes it more permissive and therefore sound—it's not a weakening of any guarantee to the caller. And dropping the seeding relation is a completeness loss, not a coverage gap; the caller consumes `all_reserved` and `live()` instead, which is conservative and safe.
+
+So of the three blockers: the byte_at_address one is invalid since it's pre-existing and protected, the one-sided error spec is a genuine completeness gap but defensible given the external_body constraint, and the missing initialization checks are advisory rather than blocking.
+
+Now I'm working through the verdict against the strict checklist criteria. The literal `Err(_) => true` pattern appears three times, and while it's mitigated by unconditional invariants, the checklist explicitly calls out this anti-pattern. The error paths do carry meaningful invariants, but the match arm itself is tautological. More critically, the caller analysis identifies "fail-fast" as a Key Invariant—any booking conflict should surface as an error—but this isn't encoded anywhere in the spec, no error-cause predicate or liveness property captures it.
+
+The design actually had stronger error handling originally (`!all_free(R)`, explicit well-formedness), but those were dropped without recorded justification. Given the strict instruction that ALL checklist items must be checked to pass, and given that spec-completeness on error paths genuinely cannot be verified here, I'm leaning toward FAIL—while being clear that all the hard guardrails (cheating, TCB, AST, verification, spec-drift) pass cleanly. The gap is purely in spec richness on failure paths, not in soundness.
+
+But I should reconsider whether I'm being fairly calibrated. The error-path concern is defensible to drop—external_body shouldn't carry assumed error-causality. If I fail on that, am I penalizing a correct design decision? The reviewers split 1-1, and under a strict mandate with the literal anti-pattern present, I need to decide whether the checklist items that can't be verified should trigger a fail.
+
+I'm settling on FAIL, driven by spec-completeness gaps, with all hard guardrails passing. Now I'll write the consolidated final_review.md, filling the checklist honestly—checking the hard items that pass, leaving the genuinely-unchecked spec-completeness items unchecked, and marking the result as FAIL with precise, actionable gaps. The Ok-path specs are directly usable by callers, so I'll mark that checked, though error-path completeness remains a gap. The loops live in external functions that aren't verified, so no loop-invariant obligation applies. I've confirmed no cheating on the module's own functions—two external_body calls are TCB-listed. Specs haven't drifted, bugs.md is reconciled, and cross-module verification passed. I ran make verify-kernel and make verify successfully, but I need to run make build to fully satisfy the verification checklist.
+
+The hard items all pass: no admits, external_body in TCB, no assumes, no spec weakening, cross-module regression clear. The bug recording is sound too—bugs.md correctly labels the LinkedList entry as a verifier limitation rather than a code defect, not a spurious bug. The real failures come from the specification section: caller coverage gaps on fail-fast, the tautological Err arm, error-path meaningfulness, and spec completeness. Everything else checks out. Let me run make build now to complete the verification step.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+=== build exit 0 ===
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^build:|^\.PHONY.*build|^all:" Makefile | head; echo "---"; ls -d build 2>/
+
+[THINKING] The `make build` target appears to be a no-op because there's likely a `build/` directory conflicting with the target name. The real indicator of success here is whether the kernel verification passes with exit code 0, which is what actually matters for the review. Let me look at what the proper build command should be—the documentation mentions using `./z` directly.
+[RESULT ✓] bash: 411:all: all-nanvix
+---
+build
+(build/ dir exists -> 'build' target treated as up-to-date)
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+I have everything needed. Now writing the consolidated review with adjudication of the two reviewers' split verdict.
+[TOOL] report_intent: Consolidating final review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.md
+
+[THINKING] There's no explicit build target since the build directory already exists, making `make build` a no-op. The actual build happens through `make all` or `all-nanvix`, and the verification process already compiles the kernel under Verus. For this review, I'll treat `make verify-kernel` and `make verify` both exiting with 0 as the authoritative evidence of successful compilation and verification, noting that `make build` is essentially a no-op.
+
+Now I'm writing the consolidated final_review.md file, presenting both reviewers' perspectives and rendering any failures with precise, actionable issues while making it clear that all hard guardrails pass.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.md with 14618 characters
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review && ls -la *.md
+
+[THINKING] I'm verifying that all three files are in place and checking the final-review directory to make sure there are no leftover temporary files.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 20553 Jun 15 01:43 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  8234 Jun 15 01:42 final_review.gpt-5.3-codex.md
+-rw-rw-r-- 1 ruize ruize 14752 Jun 15 01:47 final_review.md
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Done. Two independent sub-agent reviews (claude-opus-4.8, gpt-5.3-codex) plus a consolidated `final_review.md` are written.
+
+## Result: **FAIL** (strict gate)
+
+**Hard guardrails — all PASS (both reviewers agree):**
+- phys-mod cheating: `admit=0, assume=0, external_body=2` (both pre-listed in `tcb-allowed.md`), `assume_specification=0`, cfg-gated exec `=0`, trusted `=0`
+- AST consistency: 4/4 functions MATCH, 0 mismatches, 0 `// VERUS REWRITE`
+- spec-drift: no contract drift; `make verify-kernel MODULE=mm::phys` and `make verify` both exit **0**
+- `uninterp` (4) all justified as mechanical consequences of external boundaries; `byte_at_address` is a protected do-not-modify accessor (codex's blocker on it rejected)
+- bugs.md: 1 entry, correctly labeled a verifier limitation (LinkedList/orphan-rule), 0 true code bugs, none masked
+
+**Why FAIL:** the two reviewers split only on **failure-path spec completeness**. All three functions use the literal `Err(_) => true` arm (the checklist's exact anti-pattern), and the caller-perspective **"Fail-fast" Key Invariant** from `caller_analysis.md` is not encoded in any spec (no conflict predicate, no liveness) — view_design §4 designed those arms and they were dropped. Under "PASS only if ALL checklist items are checked," those Specification boxes can't be checked.
+
+**To reach PASS:** strengthen the `Err` arms (e.g. helper `Err ⟹ !all_free(R) / wf` inside the match) or record an explicit justification for the deliberate reduction (e.g. "no assumed error-causality on `external_body`"). The module is otherwise sound and faithfully verified.
+
+
+=== Session End ===
+Session: ccad6dee-3a26-44f5-8cdd-03de49de9125
+Duration: 751.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/review-claude-20260615-013510.jsonl
