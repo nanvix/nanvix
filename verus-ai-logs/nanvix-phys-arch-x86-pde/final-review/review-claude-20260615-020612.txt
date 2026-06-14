@@ -1110,3 +1110,12 @@ Turn 16
 ────────────────────────────────────────────────────────────
 The verification was cached. For a strict independent check, let me force a fresh verification run.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/pde.rs src/libs/arch/src/x86/mem/pag
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy-specs-...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Fresh run confirms **47 verified, 0 errors**. Now let me run cross-module `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify 2>&1 | grep -iE "verification results|verified|errors|Exit code
