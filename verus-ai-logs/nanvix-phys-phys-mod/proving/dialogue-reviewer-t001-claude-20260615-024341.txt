@@ -420,3 +420,153 @@ Turn 11
 [TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "verified|errors|warning" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_
 
 [THINKING] I need to check the verus log to find the "verified, errors" line and examine the module section more carefully.
+[RESULT ✓] bash: === module section ===
+  Module mm::phys:
+    ⚠️  external_body: 17
+  Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_bo...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/nanvix-phys-phys-mod/specification/ 2>/dev/null; echo "===proving dir 
+
+[THINKING] I'm noticing the cheating scan is reporting external_body for the entire mm::phys module across all its files, and the module-scoped count shows 17, which matches the global count—suggesting the module scan directory copied everything from mm::phys. But the cfg_gate global count is only 5 with no module-level entries, which seems inconsistent.
+
+Looking at the scope more carefully: the proving phase targets specific functions in mod.rs (init, book_mmio_regions, book_physical_memory_regions), and tcb-allowed.md lists some frame and bump_allocator functions as allowed, while marking others like manager.rs init and frame.rs init as skip/exclude. However, the verify output is showing external_body for many frame.rs functions (alloc, free, share, refcount, book, is_covered, alloc_range) and manager.rs/upool.rs functions that aren't actually in the proving scope or the allowed list—so I need to figure out why these are being flagged when they shouldn't be part of the current proof target. So frame.rs is actually a separate module (mm::phys::frame) with its own verification target, not part of the phys-mod scope I'm reviewing. That means my strict checklist evaluation should focus only on the three functions in mod.rs, and I shouldn't be concerned about the external_body functions in frame.rs, manager.rs, or upool.rs since they're out of scope.
+
+Now I need to check the spec-drift requirement. The checklist references a spec-drift-check, and there's a body_removed_source.rs in the logs that might help me compare the current specifications against an original snapshot to ensure they haven't been weakened. Let me look at what's available in the specification phase outputs.
+[RESULT ✓] bash: total 3412
+drwxrwxr-x 1 ruize ruize     740 Jun 15 02:32 .
+drwxrwxr-x 1 ruize ruize     382 Jun 15 02:36 ..
+drwxrwxr-x 1 ruize ruize     114 Jun 15 02:36 dialogue
+-rw-rw-r-- 1 ruize ruize  725839 Jun 15 02:32 dialogue-fixer-t001-claude-20260615-021901.jsonl
+-rw-rw-r-- 1 ruize ruize   64605 Jun 15 02...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus_spec\|verus_verify\|fn init\|fn book\|ensures\|requires\|phys_view\|external
+
+[THINKING] I notice the spec-drift-check skill is missing from the repo, but I can use the `body_removed_source.rs` file as the original spec snapshot to compare against the current contracts and verify nothing's been weakened. Let me examine that file to see what the original init and book function contracts looked like.
+[RESULT ✓] bash: 59:fn book_physical_memory_regions(
+63:fn book_mmio_regions(
+82:pub fn init(
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/body_removed_source.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -20 -- src/kernel/src/mm/phys/mod.spec.rs src/kernel/src/mm/ph
+
+[THINKING] The original code had no Verus contracts at all, so the proving phase introduced new specifications rather than weakening existing ones. There's nothing to weaken from the original since the specs are entirely newly added—the concern is about spec drift going forward.
+
+The real spec-drift check compares the specifications at the start of proving versus the end to ensure the prover didn't weaken specs to make proofs easier. I need to look at the git history to find where the specification phase ended and compare the spec and proof files from that point to now.
+[RESULT ✓] bash: 3c3b2ce6b [verus] verify PASS (cheating detected): kernel::mm::phys (9 verified, 0 errors, external_body=17 cfg_gate=5)
+7a1be4161 [verus] verify PASS (cheating detected): kernel::mm::phys (9 verified, 0 errors, external_body=17 cfg_gate=5)
+a5b7ccb88 [verus-ai] proving strip-external-body: phys-mod (...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== does spec/proof exist at proving start (5f74ad00e)? ==="; git --no-pager show 5f7
+
+[THINKING] I need to identify where the specification phase ended by finding the commit where the proving phase began. The key is to check whether any `ensures` clauses on core functions or lemmas were weakened during the proving phase—that's the critical spec-drift check I'm looking for.
+[RESULT ✓] bash: === does spec/proof exist at proving start (5f74ad00e)? ===
+spec exists
+proof exists
+=== init contract at proving start ===
+59:fn book_physical_memory_regions(
+73:fn book_mmio_regions(
+119:pub fn init(
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== SPEC diff (proving-start -> worktree) ==="; git --no-pager diff 5f74ad00e -- src/
+
+[THINKING] I'm checking the git history to see what changed between the initial commit and the current state—specifically looking at whether the spec and proof files for the init and book functions have been weakened since they started without verus_spec contracts.
+[RESULT ✓] bash: === SPEC diff (proving-start -> worktree) ===
+diff --git a/src/kernel/src/mm/phys/mod.spec.rs b/src/kernel/src/mm/phys/mod.spec.rs
+index c9032200e..f96408220 100644
+--- a/src/kernel/src/mm/phys/mod.spec.rs
++++ b/src/kernel/src/mm/phys/mod.spec.rs
+@@ -49,3 +49,126 @@ impl FrameAllocView
+ 
+ } // end v...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== FrameAllocView::wf unchanged? (lines 1-48 of spec) ==="; git --no-pager diff 5f74
+
+[THINKING] I'm verifying that the spec changes are purely additive—the original FrameAllocView and its well-formedness predicate remain untouched through line 48, with all new content starting at line 49, so the pre-existing spec hasn't been modified.
+
+Now I need to examine the proof file and mod.rs diffs to validate that the init contract is genuinely strong and meaningful, not weakened or vacuous to make proofs trivially pass.
+[RESULT ✓] bash: === FrameAllocView::wf unchanged? (lines 1-48 of spec) ===
+[no '-' lines above = no deletions/weakening of existing spec]
+
+=== PROOF file diff summary ===
+ src/kernel/src/mm/phys/mod.proof.rs | 272 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 271 insertions(+), 1 deletion(-)
+-verus! { } // ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admit/assume/assume_specification in phys mod files ==="; grep -rnE "\badmit\s*\(
+
+[THINKING] The proof file only replaces an empty verus block with the actual proof content, so nothing was removed—just filled in. The spec file is purely additive with no deletions, and the existing FrameAllocView::wf specification remains completely unchanged, which means no specs were weakened.
+
+Now I'm checking that the lemmas aren't vacuous by verifying there are no `requires false` conditions, and confirming the admit and assume counts are both zero across the three physical module files.
+[RESULT ✓] bash: === admit/assume/assume_specification in phys mod files ===
+NONE FOUND
+
+=== external_body / external in the three files ===
+src/kernel/src/mm/phys/mod.rs:63:// The function is therefore `external_body`; its `#[verus_spec]` contract is honored by the
+src/kernel/src/mm/phys/mod.rs:70:#[verus_verify(ex...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== mod.rs exec-body diff (proving-start -> worktree), ignoring added attrs/comments 
+
+[THINKING] I'm checking the three target files for external_body usage: admit and assume have zero matches, while external_body shows two functions in mod.rs that are already documented in tcb-allowed.md, plus an external_body specification wrapper in mod.spec.rs for the ExLinkedList type.
+
+For the Verus limitation about the LinkedList iterator orphan-rule issue, the verus-unsupported.md documentation captures the specific E0117 error and the exact trait implementation that fails, which provides a sufficiently isolated reproducer of the root cause rather than just the full failing expression.
+
+Now I'm verifying that the exec rewrites are minimal and semantically equivalent — checking that the init and book_* function bodies match the originals without any VERUS REWRITE comments, and confirming the init exec body hasn't been altered.
+[RESULT ✓] bash: === mod.rs exec-body diff (proving-start -> worktree), ignoring added attrs/comments ===
++            Ok(()) => phys_view().initialized,
++        },
++            Ok(()) => phys_view().initialized,
++        },
++            Ok(()) => {
++            },
++        },
+<shellId: 22 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running cross-module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE "verified|errors|status|FAIL|PASS|verification:|cheating
+
+[THINKING] The exec bodies for init and book functions remain unchanged from the proving version—only contracts and comments were added, so there are no semantic changes. Now I need to run the full kernel verification across all modules to check for any regressions.
+[RESULT ✓] report_intent: Intent logged
