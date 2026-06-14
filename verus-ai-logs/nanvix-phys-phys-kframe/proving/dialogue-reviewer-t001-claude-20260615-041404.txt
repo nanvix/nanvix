@@ -232,3 +232,250 @@ Let me run the verification commands now.
 
 [THINKING] I'm going to run the kernel verification checks now, starting with the module-scoped version for the memory management module, then running the full verification suite.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ⚠️  admit: 12
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:298 free: admit
+    - frame.rs:379 share: admit
+    - frame.rs:442 refcount: admit
+    - frame.rs:497 book: admit
+    - frame.rs:535 is_covere...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== full verus_keep_ghost / cfg in kframe ===" && grep -n "cfg" src/kernel/src/
+
+[THINKING] Looking at the cheating audit results for the kframe module, there's only one instance flagged at kframe.rs:94 for `new: external_body`, and it's already on the TCB-allowed list, so that checks out.
+
+But I'm noticing there's cfg-gated exec code in kframe too — specifically at line 199 with `#[cfg(not(verus_keep_ghost))]` on an error macro in the drop implementation. I need to check the detail file to see if this cfg-gated code is properly accounted for.
+[RESULT ✓] bash: === full verus_keep_ghost / cfg in kframe ===
+15:#[cfg(verus_keep_ghost)]
+17:#[cfg(verus_keep_ghost)]
+45:#[cfg(verus_keep_ghost)]
+199:            #[cfg(not(verus_keep_ghost))]
+=== cheating detail kframe lines ===
+21:    - mm/phys/kframe.rs:94 new: external_body
+<shellId: 7 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,200p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | grep -n 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] I'm checking the cheating-detail.txt file to see if line 199 in the kframe section of the cfg-gated exec code is flagged.
+[RESULT ✓] bash: 
+<shellId: 8 completed with exit code 1>
+[RESULT ✓] bash: 21:    - mm/phys/kframe.rs:94 new: external_body
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] view: 1.     - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+2.     - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+3.     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+4.     - hal/mem/types/address/phys.proof.rs:16 lemma_fra...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/verify-kernel/verus-logs/ && echo "---" && grep -rn "cfg.gate\|cfg-g
+
+[THINKING] The detail file isn't breaking down the cfg-gated execution locations individually, even though the audit found 12 affected functions. I need to trace through the actual code to find where these gates are applied. Looking at kframe.rs around line 199, there's a conditional compilation directive that might be one of them.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-13_23-26-35.log
+verus_2026-06-13_23-35-50.log
+verus_2026-06-13_23-37-13.log
+verus_2026-06-13_23-59-01.log
+verus_2026-06-13_23-59-19.log
+verus_2026-06-13_23-59-26.log
+verus_2026-06-14_00-02-08.log
+verus_2026-06-14_00-02-22.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -path ./target -prune -o -iname "*.md" -print 2>/dev/null | xargs grep -ril "s
+
+[THINKING] I need to examine the verus-ai verify script to see how cfg_gate is being counted and where it appears, particularly focusing on line 199 in the kframe scope. I should also check the verus-constraints and spec-drift-check skills that are referenced but don't seem to be in the .github/skills list, so I'll need to search more broadly for those.
+[RESULT ✓] bash: 
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_drift_cmd\|verus_cmd\|build_cmd\|spec-drift\|verus-constraints" verus-
+[RESULT ✓] bash: === how cfg counted ===
+scripts/verify.sh
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg\|verus_keep_ghost\|cfg_gate" scripts/verify.sh | head -30
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+492:        if not cfg_pat.search(stripped):
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls scripts/ | grep -i "drift\|spec"; echo "---"; grep -rn "drift" scripts/*.sh script
+
+[THINKING] I'm realizing the cfg-gate counter at line 505 specifically excludes logging macros like `error!` and `info!`, so when kframe uses `#[cfg(not(verus_keep_ghost))]` to gate an `error!` macro at line 199, that doesn't count as cfg-gated executable code according to the counter's rules.
+
+The checklist item about "No cfg-gated exec code" is really targeting branches, expressions, and match arms that could affect verified semantics—not logging statements, which are a standard and accepted pattern for suppressing output under `verus_keep_ghost`. So kframe passes this check.
+
+Now I'm wondering about scope: should the checklist items like "Zero remaining admit()" apply only to the kframe module being proven, or to the entire kernel codebase? The audit shows the whole kernel has many admits and external_body calls, but many of those are in other modules like frame.rs, manager.rs, and identity_map.rs that aren't part of the kframe proving target.
+
+Looking at the kframe-specific verification targets—`KernelFrame::new`, `KernelFrame::drop`, and `KernelFrame::base`—the scope should be kframe itself. For kframe: there are zero admits in proof.rs (it's empty), spec.rs only has invariants, and kframe.rs has no admits. The `new` function at kframe.rs:94 is marked as external_body but it's listed in tcb-allowed.md, so that's acceptable. The functions like `deref`, `deref_mut`, and `clear` aren't actually marked external_body—they're just unverified functions lacking verus annotations entirely, which is a different category.
+
+For the checklist items within kframe scope: `new` is external_body (allowed), `drop` is verified in-body with proper specs and no admits, and `base` is verified in-body. The whole-kernel verification passed with exit 0, and for kframe specifically there's no cheating beyond the allowed external_body on `new`. The question is whether the global admit and external_body counts matter for this review, or if I should focus only on the three target functions in scope.
+[RESULT ✓] bash: ---
+Makefile:701:# entry in .codespellrc to avoid drift between the Makefile and config file.
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -10 -- src/kernel/src/mm/phys/kframe.rs; echo "=== git status ===";
+
+[THINKING] I'm looking at how the spec-drift check works—it compares the current specs against the frozen baseline from the specification phase to ensure the proving phase hasn't weakened any guarantees. Let me examine the body_removed_source.rs file and check if there's a baseline snapshot to compare against.
+[RESULT ✓] bash: f2d7c1194 [verus] verify PASS (cheating detected): kernel::mm::phys (42 verified, 0 errors, admit=24 external_body=17 cfg_gate=15)
+4f7f54a11 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+9671457d6 [verus-ai] proving strip-external-body: phys-kframe (...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/body_removed_source.rs
+
+[THINKING] I'm checking whether the proving phase introduced any spec drift by comparing the specification phase version against the current state. The key concern is whether any ensures or requires clauses were weakened when external_body functions were converted to verified-in-body. Let me examine the diff from the commit that initiated the proving phase to see what changed in the specifications.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame type.
+5. //!
+6. //! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+7. //! It provides `Deref`/`DerefMut` for direct kernel access (identity-mapped) a...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "VERUS REWRITE\|VERUS-REWRITE" src/kernel/src/mm/phys/kframe.rs; echo "exit=
+
+[THINKING] I'm checking that the frozen specification contracts in body_removed_source.rs match exactly with the current kframe.rs implementation—the new, base, and drop functions all have identical requires/ensures clauses, and the invariant spec remains unchanged, so there's no specification drift between phases.
+
+Now I'm verifying the proving phase actually proved base and drop with in-body verification rather than external_body, which the audit confirms is correct—only new is marked external_body and it's on the allowed list.
+
+Running through the checklist: no specs were weakened, kframe has zero admit calls, the one external_body annotation is properly listed in tcb-allowed, there are no assume statements, and I'm checking for any cfg-gated executable code.
+
+The cfg gate on the error log is a tool-excluded logging pattern, so that passes. The cheating audit shows exactly what I expect: one allowed external_body for new, zero admits, zero assumes. For the Verus limitation claim, kframe's trust boundary is justified by cross-module token deferral, not an actual Verus limitation. I need to verify there are no VERUS REWRITE comments in the drop and base bodies, and confirm the full kernel verification passed with all modules verified and zero errors.
+[RESULT ✓] bash: exit=1
+=== proving commit diff for kframe ===
+commit 9671457d6c4e3789cd0e988eafaf8afbd1a9b751
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 04:07:17 2026 +0800
+
+    [verus-ai] proving strip-external-body: phys-kframe (1)
+
+diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show 9671457d6 -- src/kernel/src/mm/phys/kframe.rs | sed -n '1,200p'
+
+[THINKING] I'm noticing that the "strip-external-body" commit removed the `#[verus_verify(external_body)]` attribute from the `new` function, forcing the prover to verify it inline. But the current code still has that attribute on line 81, which means a later commit must have re-added it. I need to trace through the commit history to understand this evolution and see how the latest passing verification state compares to what's there now.
+[RESULT ✓] bash: commit 9671457d6c4e3789cd0e988eafaf8afbd1a9b751
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 04:07:17 2026 +0800
+
+    [verus-ai] proving strip-external-body: phys-kframe (1)
+
+diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/phys/kframe.rs
+index ee551ead3..e530b98ee 1006...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== commits touching kframe.rs after strip ==="; git --no-pager log --oneline 9
+
+[THINKING] Looking at the commit history, the strip-external-body change only affected the `new` function by removing its external_body attribute, while `base` and `drop` already had their bodies present and verified in-body during the specification phase with verus_spec contracts.
+
+Now I'm checking what happened after that commit — it looks like `new` had its external_body re-added at some point, so I need to trace through the commits between the strip and the current state to see where that change came back in.
+[RESULT ✓] bash: === commits touching kframe.rs after strip ===
+f2d7c1194 [verus] verify PASS (cheating detected): kernel::mm::phys (42 verified, 0 errors, admit=24 external_body=17 cfg_gate=15)
+4f7f54a11 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+=== diff strip.....
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== warnings/errors in latest verus log ==="; grep -in "warning\|error" verus-a
+
+[THINKING] During the proving phase, I stripped the external_body from `new` to verify it in-body, but that failed because identity_map_page needs mm::virt's global token. So I re-added external_body, and now `new` is back to having it—which matches what's in tcb-allowed.md. The base and drop functions were already verified in-body and still pass. Essentially, kframe.rs is back where it started before the strip, with the diff just re-adding that external_body to restore the original state.
+
+Everything checks out as a pass: base and drop verify in-body and aren't flagged in the cheating list, while new's external_body is allowed. Now I need to verify the build meets the checklist requirements—specifically that verus_cmd and build_cmd both run with zero errors and zero warnings. Let me check the Makefile for the build target and review the latest verus log to confirm there are no warnings.
+[RESULT ✓] bash: === warnings/errors in latest verus log ===
+=== verification summary line ===
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -40 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_04-14-43.log
+[RESULT ✓] bash: Timestamp: 2026-06-15_04-14-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=24
+  trusted=0
+  no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+note: verifying module mm::phys
+
+note: verify...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Let me run full cross-module verification and check the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -25
+
+[THINKING] The cached verification run showed exit 0 with 42 verified and 0 errors according to the commit message, though the summary line wasn't printed in the cached output. I should run a fresh build to confirm there are no warnings.
