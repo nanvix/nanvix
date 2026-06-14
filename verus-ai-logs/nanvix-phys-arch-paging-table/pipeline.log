@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: arch-paging-table
 ============================================================
+[2026-06-14 09:50:11] [PROVER] Running caller-analysis...
+[2026-06-14 09:50:11] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-14 09:52:29]   ↳ prover done in 2m17s (exit=0)
