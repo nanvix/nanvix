@@ -1,0 +1,27 @@
+Timestamp: 2026-06-15_00-17-22
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+11 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator)
+error: assertion failed
+  --> src/libs/bump_allocator/src/lib.proof.rs:84:16
+   |
+84 |         assert(v.slot_addr(i) - v.slot_addr(j) == (i - j) * stride) by (nonlinear_arith);
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 11 verified, 1 errors
+error: could not compile `bump-allocator` (lib) due to 1 previous error

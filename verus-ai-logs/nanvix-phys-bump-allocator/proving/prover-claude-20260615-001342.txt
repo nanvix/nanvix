@@ -277,3 +277,103 @@ Turn 10
 ────────────────────────────────────────────────────────────
 Now let me work on the proof lemmas. Let me start by proving the simpler ones and `align_up`. First, run verify to see if `align_up` verifies and which lemmas fail.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-bump-allocator 2>&1 | tail -30
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+5 verified, 0 errors. `align_up` verifies automatically. Now I need to prove the 3 lemmas. Let me explore vstd arithmetic helpers.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "pub proof fn lemma_mod" arithmetic/div_mod.rs | head -50
+
+[THINKING] I've verified 5 lemmas with no errors so far, and `align_up` checked out automatically. Now I need to tackle the remaining 3 `admit()` calls in the lemmas. Starting with `lemma_geometry`, I need to prove that `v.geometry_ok()` holds given `v.inv()`. The `geometry_ok` predicate has three conditions to verify: slot addresses must be properly aligned, they must fall within the valid storage bounds, and there's a third condition that's cut off.
+
+Looking at the invariants I have available, I can work through each clause. For the alignment clause, since both `base` and `stride` are divisible by `unit_align`, their sum will be too—this requires nonlinear arithmetic reasoning. For the bounds clause, I can show that even at the maximum index, the slot address plus unit size stays within storage by using the capacity constraint. For the distinctness clause, I need to show that different indices produce different addresses, which follows from stride being positive.
+
+I'm thinking about how to structure this proof using Verus's arithmetic lemmas. The modular arithmetic parts are tricky since nonlinear arithmetic doesn't handle modulo well, so I'll need to use specific lemmas from `vstd::arithmetic::div_mod` that handle divisibility properties directly.
+[RESULT ✓] bash: 1212:pub proof fn lemma_mod_neg_neg(x: int, d: int)
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "pub proof fn lemma_" arithmetic/div_mod.rs | grep -i "mod\|mul" |
+[RESULT ✓] bash: 363:pub proof fn lemma_small_mod(x: nat, m: nat)
+1212:pub proof fn lemma_mod_neg_neg(x: int, d: int)
+1339:pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "pub proof fn lemma" arithmetic/div_mod.rs | sed 's/pub proof fn /
+[RESULT ✓] bash: 68:lemma_div_by_self(d: int)
+78:lemma_div_of0(d: int)
+90:lemma_div_basics(x: int)
+168:lemma_div_non_zero(x: int, d: int)
+286:lemma_basic_div_specific_divisor(d: int)
+363:lemma_small_mod(x: nat, m: nat)
+659:lemma_truncate_middle(x: int, b: int, c: int)
+1212:lemma_mod_neg_neg(x: int, d: int)
+1339:lemm...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "lemma_mod_multiples\|lemma_mod_adds\|lemma_add_mod\|lemma_mod_add
+
+[THINKING] I'm searching for the relevant group and broadcast lemmas to help with this proof.
+[RESULT ✓] bash: arithmetic/div_mod.rs:234:    ModINL::lemma_fundamental_div_mod(a + b, d);
+arithmetic/div_mod.rs:235:    ModINL::lemma_fundamental_div_mod(a, d);
+arithmetic/div_mod.rs:236:    ModINL::lemma_fundamental_div_mod(b, d);
+arithmetic/div_mod.rs:412:            ModINL::lemma_fundamental_div_mod(x, y);
+arit...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/div_mod.rs
+[RESULT ✓] view: 1066. pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+1067.     requires
+1068.         m > 0,
+1069.     ensures
+1070.         #[trigger] ((x * m) % m) == 0,
+1071. {
+1072.     lemma_mod_auto(m);
+1073.     broadcast use group_mul_properties_internal;
+1074. 
+1075.     let f = |u: int| ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/div_mod.rs
+
+[THINKING] I've got the lemmas in place, so now I'm working through the proofs. For the geometry lemma, I need to show that each slot address is properly aligned—that is, slot_addr(i) % unit_align == 0 for all valid indices. Since the base address is aligned and the stride is a multiple of the alignment unit, I'm working through the modular arithmetic to establish that any slot position maintains this alignment property. I need to handle the multiplication rearrangement using nonlinear arithmetic tactics, then work through the bounds checking for the slot addresses. For the second clause, I'm verifying that each slot stays within the storage bounds by showing that the maximum slot position plus unit size doesn't exceed the total storage. The key insight is that when stride is at most the storage divided by capacity, the slots fit perfectly. For the third clause, I'm proving that distinct indices map to distinct addresses by showing that if two slots had the same address, their strides would have to be equal, which contradicts stride being positive.
+
+Now I'm drafting a helper lemma to handle the modular arithmetic part separately, since nonlinear_arith can't directly reason about modulo operations. I'm defining a proof that shows any address computed as base plus a multiple of stride preserves the modular alignment property when both base and stride are divisible by the modulus.
+
+Writing helper lemma... Writing the proof assertions... Checking that `cap * stride` matches the invariant's `(v.capacity as int) * (v.stride as int)` — they're syntactically identical since cap and stride are defined as those casts. For the exhausted boundary lemma, the equivalence between `!has_capacity()` and `allocated == capacity` follows from the invariant's `allocated <= capacity` and the definition of `has_capacity`, so Z3 can verify it with an empty body. Now moving to the allocation transition lemma, which establishes that after allocation the view remains valid, increments the allocated count, and marks the newly allocated slot as consumed. Writing proof file...
+[RESULT ✓] view: 489. pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+490.     requires
+491.         d != 0,
+492.     ensures
+493.         x == #[trigger] (d * (x / d) + (x % d)),
+494. {
+495.     assert(x == d * (x / d) + (x % d)) by {
+496.         ModINL::lemma_fundamental_div_mod(x, d);
+497.     }...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Now let me write the proofs.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.proof.rs.new
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator/src/lib.proof.rs.new with 4808 characters
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mv src/libs/bump_allocator/src/lib.proof.rs.new src/libs/bump_allocator/src
