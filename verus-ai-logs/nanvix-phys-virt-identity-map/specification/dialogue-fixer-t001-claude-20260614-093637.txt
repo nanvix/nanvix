@@ -338,3 +338,55 @@ RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify 2>&1 | tee /tmp/mkverify2.log | grep -iE "could not compile|previous
+[RESULT ✓] bash: VERIFY_EXIT: 0
+=== per-crate Exit codes ===
+24:  Exit code : 0
+62:  Exit code : 0
+101:  Exit code : 0
+135:  Exit code : 0
+174:  Exit code : 0
+210:  Exit code : 0
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All 6 verification targets exit 0 — no regressions. Let me confirm the kernel crate's own result line.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '195,219p' /tmp/mkverify2.log; rm -f /tmp/mkverify2.log /tmp/mkverify.log 2>/dev/null
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+All green. Now writing the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue/turn_001_fixer.md with 4674 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Mark todo done', 'query': "UPDATE todos SET status='done' WHERE
+[RESULT ✓] sql: 1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Fixed. Replaced all three tautological `Err(_) => true` arms in `src/kernel/src/mm/virt/identity_map.rs` with sound, meaningful failure-state postconditions:
+
+- **`identity_map_page`** → `Err(_) => !identity_map_view().accessible(phys_addr@)` (sound: Err only post-init, page wasn't already mapped, install failed → not accessible). Exactly the caller's "frame not made accessible" guarantee.
+- **`ensure_pte`** → `Err(_) => !identity_map_view().mapped.contains(spec_page_base(phys_addr as int))` (sound: present PTE returns Ok, so Err ⇒ absent ⇒ not mapped).
+- **`ensure_pt`** → moved `inv()` into both arms; `Err(_) => identity_map_view().inv()` (failure never corrupts the map). It has no page argument and a fixed signature (caller `init` is out-of-scope), and the View models no PT structure, so invariant preservation is the strongest sound fact — not `true`.
+
+**Verification:** `make verify-kernel` → 9 verified, 0 errors (admit=3, the expected exec-body scaffold). No `Err(_) => true` remains. `spec_drift` → 0 drift (only strengthened). `make verify` → all 6 crates exit 0. `make all-kernel` → builds clean. Wrote the response to `turn_001_fixer.md` with result **FIXED**.
+
+
+=== Session End ===
+Session: 6c6af863-09de-46af-bd04-8709950c5d50
+Duration: 630.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/dialogue-fixer-t001-claude-20260614-093637.jsonl
