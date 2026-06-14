@@ -1,4 +1,4 @@
-# Unverified exec functions: 974/1026
+# Unverified exec functions: 971/1026
   do_debug
   debug
   do_evctrl
@@ -547,9 +547,6 @@
   with_kernel_address_space
   page_aligned_cover
   ensure_identity_mapped_range
-  ensure_pt
-  ensure_pte
-  identity_map_page
   new
   base
   frame_address
