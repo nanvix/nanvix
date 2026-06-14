@@ -77,3 +77,6 @@ Summary of evidence (turn 2, independently re-verified):
   invariants and the view-design Views (closed, encoding-independent).
 - `./z build` → exit 0, build complete.
 [2026-06-14 11:37:45] [DIALOGUE] specification ended after 2 turns: RESOLVED (615s)
+[2026-06-14 11:37:45] [PHASE] specification: dialogue-RESOLVED (39m51s)
+[2026-06-14 11:37:45] [SPEC DRIFT] (within specification) Comparing b04638ea → 354d18b6
+[2026-06-14 11:37:45] [SPEC DRIFT] (within specification) No changes detected
