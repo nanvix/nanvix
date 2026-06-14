@@ -38,6 +38,7 @@ pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
 ///
 /// Log2 PAGE_SIZE
 ///
+#[verus_verify]
 pub const PAGE_SHIFT: usize = 12;
 
 ///
@@ -61,6 +62,7 @@ pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
 ///
 /// Log2 [`PGTAB_SIZE`].
 ///
+#[verus_verify]
 pub const PGTAB_SHIFT: usize = 22;
 
 ///
@@ -68,6 +70,7 @@ pub const PGTAB_SHIFT: usize = 22;
 ///
 /// Number of bytes in a page table.
 ///
+#[verus_verify]
 pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
 
 ///
@@ -75,6 +78,7 @@ pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
 ///
 /// Number of entries in a page table.
 ///
+#[verus_verify]
 pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
 
 ///

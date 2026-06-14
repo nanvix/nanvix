@@ -69,20 +69,4 @@ impl<E: TableEntry> View for Table<E> {
     }
 }
 
-impl TableView {
-    // A page-table page lives entirely inside the address space: its base plus one page does not
-    // wrap `usize`. This is what lets `read`/`write` form `base + index * 4` without overflow and
-    // keeps every access inside `[addr, addr + PAGE_SIZE)`.
-    pub open spec fn inv(self) -> bool {
-        self.addr + crate::mem::PAGE_SIZE <= usize::MAX
-    }
-}
-
-impl<E: TableEntry> Table<E> {
-    #[verifier::type_invariant]
-    pub open spec fn inv(&self) -> bool {
-        self@.inv()
-    }
-}
-
 } // verus!

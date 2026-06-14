@@ -1,0 +1,61 @@
+Timestamp: 2026-06-14_10-17-43
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+16 verified
+6 errors
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address::virt
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: bitvector assertion not satisfied (with arch-size set to 32 bits)
+   --> src/libs/arch/src/x86/mem/paging/table.rs:103:14
+    |
+103 |     proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    |              ^^^^^^
+
+error: bitvector assertion not satisfied (with arch-size set to 64 bits)
+   --> src/libs/arch/src/x86/mem/paging/table.rs:103:14
+    |
+103 |     proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    |              ^^^^^^
+
+error: possible arithmetic underflow/overflow
+   --> src/libs/arch/src/x86/mem/paging/table.rs:102:61
+    |
+102 |     let index: usize = (vaddr >> crate::mem::PGTAB_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: bitvector assertion not satisfied (with arch-size set to 32 bits)
+   --> src/libs/arch/src/x86/mem/paging/table.rs:116:14
+    |
+116 |     proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    |              ^^^^^^
+
+error: bitvector assertion not satisfied (with arch-size set to 64 bits)
+   --> src/libs/arch/src/x86/mem/paging/table.rs:116:14
+    |
+116 |     proof! { assert(index < crate::mem::PAGE_TABLE_LENGTH) by (bit_vector); }
+    |              ^^^^^^
+
+error: possible arithmetic underflow/overflow
+   --> src/libs/arch/src/x86/mem/paging/table.rs:115:60
+    |
+115 |     let index: usize = (vaddr >> crate::mem::PAGE_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 16 verified, 6 errors
+error: could not compile `arch` (lib) due to 6 previous errors

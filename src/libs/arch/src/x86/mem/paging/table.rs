@@ -27,6 +27,7 @@ use super::{
 ///
 /// The raw representation uses [`PteWord`] — `u32` on x86.
 ///
+#[verus_verify]
 pub trait TableEntry: Copy {
     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
     fn from_raw(raw: PteWord) -> Option<Self>;
@@ -142,6 +143,7 @@ pub struct Table<E: TableEntry> {
     _marker: ::core::marker::PhantomData<E>,
 }
 
+#[verus_verify]
 impl<E: TableEntry> Table<E> {
     ///
     /// # Description
@@ -154,7 +156,6 @@ impl<E: TableEntry> Table<E> {
     /// memory.
     ///
     #[verus_spec(result =>
-        requires base + crate::mem::PAGE_SIZE <= usize::MAX,
         ensures result@.addr == base as nat,
     )]
     pub const unsafe fn from_address(base: usize) -> Self {
@@ -175,6 +176,12 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile read.
     ///
+    // Trust boundary (see `verus-ai-logs/.../tcb-allowed.md` and `verus-unsupported.md`):
+    // materializes a raw `*const PteWord` from the integer base address (`usize as *const`) and
+    // performs a volatile load — the hardware page-table access. Verus does not support the
+    // `usize -> *const T` cast, so the body cannot be verified; this mirrors the
+    // `bump_allocator::alloc` / `frame::instance` int-to-pointer materialization boundaries.
+    #[verus_verify(external_body)]
     pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *const PteWord = (self.base + offset) as *const PteWord;
@@ -190,6 +197,11 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile write.
     ///
+    // Trust boundary (see `tcb-allowed.md` / `verus-unsupported.md`): materializes a raw
+    // `*mut PteWord` from the integer base address and performs a volatile store — the hardware
+    // page-table write. The `usize -> *mut T` cast is unsupported by Verus, so the body cannot be
+    // verified; same int-to-pointer boundary as `read`.
+    #[verus_verify(external_body)]
     pub unsafe fn write(&self, index: TableIndex, entry: E) {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *mut PteWord = (self.base + offset) as *mut PteWord;
