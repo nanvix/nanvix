@@ -787,3 +787,37 @@ virt.rs is byte-identical to the pre-task base — those mismatches are a pre-ex
 Since virt.rs is identical to the base version, these aren't regressions I introduced. The base reference I used earlier (`verus-ai-prove-bottom-up`) now points to my post-edit commit, and virt.rs is still unchanged there too — the mismatch is just the tool's name-collision artifact comparing identical versions.
 
 Now I need to run the full workspace verification to check for any regressions across dependent crates. The change to alignment.rs could theoretically affect other crates like kernel that depend on sys. I'm also verifying that removing the cfg gate on the verus! block doesn't break normal (non-verus) builds — but since spec_align_value is only used in spec files under cfg(verus_keep_ghost), and the verus! macro strips it in normal builds anyway, there shouldn't be an issue. Let me run the full make verify.
+[RESULT ✓] bash: Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/t...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+All crates verify with **0 errors** — no regressions. `make verify-sys` is **CLEAN** (cfg_gate=0). The kernel-crate cheating shown by `make verify` is pre-existing and out of scope (those are other modules' items, e.g. tcb-allowed entries); my change only touched `sys/mm/alignment.rs` which the kernel doesn't compile. Let me write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -d verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/ 2>/de
+
+[THINKING] Running `make verify` across all the crates shows solid results—sys, bitmap, arch, nanvix-slab, and kernel all verified with zero errors, though the kernel crate does have some external dependencies and configuration gates that are technically out of scope for what I'm focusing on.
+
+My actual task is `make verify-sys`, which is clean with no cheating detected. The kernel's pre-existing cheating (those external_body items and other module work) is documented in tcb-allowed.md and unrelated to my alignment.rs changes in the sys crate. Since I only modified sys/mm/alignment.rs, the kernel verification counts remain independent and unchanged. Both success criteria are met: `make verify-sys` is clean, and there are no regressions across the full verification suite.
+
+Now I'm writing the fix report, documenting that the single cfg_gate=1 cheating item was eliminated by removing the redundant `#[cfg(verus_keep_ghost)]` annotation on the spec-only block in alignment.rs.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/
+verus-ai-logs/nanvix-phys-sys-address-mod/
+--- check existing todo ---
+no todo file
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md with 4330 characters
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Let me do a final confirmation run of `make verify-sys`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 300 make verify-sys 2>&1 | grep -E "verified|errors|cheating|status
+
+[THINKING] Running a final verification to confirm the report is clean and there are no remaining issues to address.
