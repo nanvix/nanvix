@@ -278,3 +278,62 @@ Let me capture the full error detail blocks for the report.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | sed -n 
 
 [THINKING] I need to pull the complete error messages with their surrounding context to get the full picture of what's failing.
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+    |
+534 |     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+    |                                            ^^^^^^^^^^^^^^^^
+    |
+   ::: src/libs/arch/src/x86/mem/paging/table.rs:20...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+I now have decisive exact errors. Let me do one more genuine attempt — try adding the read-precondition `requires` to discharge the index preconditions — to show even that leaves the postconditions unprovable. Let me check whether that's even viable given `init` is an out-of-scope caller.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "ensure_pt(\|ensure_pte(" src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I see the exact errors now. Adding preconditions to `ensure_pt` and `ensure_pte` would weaken the contract by introducing new assumptions, which goes against the requirement that contracts stay as strong as they are.
+
+The real blockers are the postconditions — the membership and accessibility guarantees over `identity_map_view()` that need to hold for both success and failure cases. Let me try redefining `identity_map_view()` as a concrete open spec function to see if that makes the membership provable, even though I suspect it won't help with the fundamental issue that the same constant can't simultaneously satisfy contradictory postconditions.
+
+Actually, I realize I'm going in circles. The core problem is that I can't change the table's postconditions, can't add axioms to make the uninterpreted view's invariant provable, and can't modify the caller signatures. Even if I could prove one branch by deriving a contradiction from the preconditions, the error path would still require `!accessible` to hold, which becomes impossible if I force `initialized` to be false — that would make the success branch trivial but break the failure case entirely.
+
+I think I have enough concrete evidence of the impossibility. Let me restore the admits to get back to a passing state and write up the NEEDS_GUIDANCE response with the exact errors.
+[RESULT ✓] bash: 134:        ensure_pt(pd, pde_idx)?;
+533:fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+537:        error!("ensure_pt(): {reason}");
+553:                error!("ensure_pt(): page table allocation failed: {}", e);
+565:            error!("ensure_pt(): {reaso...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Let me do a final demonstrative attempt: try making `identity_map_view()` interpretable (concrete) to show the contracts become unprovable without weakening. First restore the admits backup, then edit only the spec.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/im_admit.bak src/kernel/src/mm/virt/identity_map.rs && cp src/kerne
+
+[THINKING] I see that `ensure_pt` gets called from two places—line 134 in the initialization code and line 730 in `identity_map_page`—but adding a requires clause would violate the contract constraints the reviewer already rejected, and it wouldn't fix the postcondition issues anyway. So I'm going to take a different approach: redefine `identity_map_view()` with a concrete implementation to demonstrate that the postcondition pair is actually contradictory, then show the resulting error.
+[RESULT ✓] bash: 3
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I'm going to test the concrete-view approach by making the identity_map_view interpretable and removing the admits to see where the postconditions actually fail.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'EOF'
+import re
+p='src/kernel/src/mm/virt/identity_map.rs'
+s=op
+[RESULT ✓] bash: admits now: 0
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | sed -n 

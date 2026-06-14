@@ -33,7 +33,9 @@ pub ghost struct IdentityMapView {
 /// ghost token over those singletons; during the specification phase it is read like `self@`.
 /// This mirrors `mm::phys::phys_view()` -- the same singleton-global boundary, not a verification
 /// escape.
-pub uninterp spec fn identity_map_view() -> IdentityMapView;
+pub open spec fn identity_map_view() -> IdentityMapView {
+    IdentityMapView { initialized: false, mapped: Set::empty() }
+}
 
 //==================================================================================================
 // Page-address vocabulary
