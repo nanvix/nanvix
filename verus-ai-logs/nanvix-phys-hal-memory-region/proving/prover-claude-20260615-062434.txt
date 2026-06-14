@@ -235,3 +235,40 @@ Turn 8
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/hal/mem/types/region.rs src/kernel/src/hal/mem/types/r
 
 [THINKING] The cached result is stale—it's showing "verifying module hal::platform::microvm" but didn't actually recompile. I need to force a clean verification to see the real output. The global admit=27 is concerning, so I should check if the region module functions actually require proofs or if they're passing trivially. The cheating check reported no issues in hal::mem::types::region, but I'll touch the region.rs file and re-run to make sure I'm getting accurate results.
+[RESULT ✓] bash: === Results ===
+  5 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=14
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Co...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE "region" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.tx
+
+[THINKING] All five target functions are verified with no errors, and the global counts for admit and external_body are coming from other modules, not the region module itself. Let me check the cheating details to make sure none of those admits are actually in the region files.
+[RESULT ✓] bash: - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+exit=0
+---admit in region files---
+<shellId: 8 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The 4 target functions already verify (5 verified, 0 errors) with no proof body needed — the closed-spec `view` unfolds within the module and the `clone_address`/delegate contracts suffice. No `admit()`/`assume()` exist in this module. The global admit/external_body counts are pre-existing in other modules (mm/phys), confirmed out of scope by the cheating check ("No cheating detected in module hal::mem::types::region").
+
+Let me confirm no regressions across verified modules.
+[TOOL] report_intent: Running full verification for regressions
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify 2>&1 | tail -50
+
+[THINKING] The region module's verification is already complete — the target functions are verified through the closed-spec view that unfolds within the module, and the dependency contracts like clone_address are sufficient to establish correctness. The admits and external references are in other modules outside this scope, so there's nothing left to do here.
+
+I should run the full `make verify` to confirm no regressions in the other verified modules, though the pre-existing admits in mm/phys and elsewhere are expected and out of scope for this task.
+[RESULT ✓] report_intent: Intent logged
