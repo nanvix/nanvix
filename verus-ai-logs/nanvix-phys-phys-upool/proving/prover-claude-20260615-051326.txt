@@ -313,3 +313,163 @@ FrameAddress::inv matches UserFrame::inv structurally. Let me run the baseline v
 [THINKING] Looking at the invariant conditions for frame addresses: `FrameAddress::inv()` checks that the address is page-aligned, matching the requirement in `UserFrame::inv()`. When constructing a new `UserFrame`, the input address must satisfy this alignment invariant, and the resulting frame preserves both the address value and its invariant property.
 
 Most of these invariants should verify automatically without explicit proof steps. Since the proof file is currently empty, I should run the verification to see what actually needs to be proven — there might not be any `admit()` calls to eliminate if the functions already verify cleanly. Let me execute the verification command for the memory management module.
+[RESULT ✓] bash: verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 25
+    ⚠️  cfg-gated exec code: 4
+  Affected functions:
+    - frame.rs:137 ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+There's a compilation/setup error. Let me see the actual error in the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error\[\|error:\|^error" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_0
+
+[THINKING] I need to track down what went wrong with the verus compilation.
+[RESULT ✓] bash: 20:error: Unsupported constant type
+40:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_05-14-42.log
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_05-14-42
+2. Mode: cargo
+3. Crate: kernel
+4. Directory: N/A
+5. Module: mm::phys
+6. Exit code: 101
+7. 0 verified
+8. compilation/setup error (verus did not run)
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=25
+13.   admit=0
+14.   trusted=0
+15.   no_decreases=0
+1...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The `error!` macro in `drop` triggers "Unsupported constant type". Let me see how other verified drops (e.g. KernelFrame::drop) handle logging macros.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src && sed -n '130,175p' mm/phys/kframe.rs
+
+[THINKING] The issue is in the `UserFrame::drop` function where the `error!` logging macro at line 217 is causing an "Unsupported constant type" error when expanded. This is a known problem with using logging macros inside verus-verified functions, even though the constraints allow cfg-gating them. I need to examine how the drop function is structured and check how other modules work around this limitation with the `error!` macro in verified code.
+[RESULT ✓] bash: fn deref(&self) -> &Self::Target {
+        let ptr: usize = self.base.into_raw_value();
+        unsafe { core::slice::from_raw_parts(ptr as *const u8, mem::PAGE_SIZE) }
+    }
+}
+
+/// # Safety
+///
+/// See [`Deref`] impl — the same CR3 invariant applies.
+impl DerefMut for KernelFrame {
+    fn deref_mut...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/macros.rs
+
+[THINKING] I'm checking whether KernelFrame::drop has the necessary verus_verify annotations. Looking at the code, it doesn't seem to have them, but I need to verify this by examining the impl Drop block more carefully. Meanwhile, I notice that upool's drop implementation does have both the `#[verus_verify]` attribute on the impl and `#[verus_spec]` on the function itself.
+
+The real issue is that the `error!` macro inside the verified drop function is causing a front-end compilation error about an unsupported constant type, likely from `module_path!()` or the write! macro. The constraints allow cfg-gating logging macros as an exception, and since `UserFrame::drop` is on the modification list, I could gate the error call. But I'm wondering if this is a pre-existing blocker — whether the module even compiles under Verus currently without my changes, since the error originates from upool.rs which I haven't touched yet.
+[RESULT ✓] view: 175. ///
+176. /// # Parameters
+177. ///
+178. /// - `$($arg:tt)*`: Formatted message to be logged.
+179. ///
+180. macro_rules! error{
+181. 	( $($arg:tt)* ) => ({
+182. 		#[cfg(feature = "smp")]
+183. 		use crate::macros::STDOUT_LOCK;
+184. 		use ::core::fmt::Write;
+185. 		if crate::klog::MAX_LEVEL >= cra...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src && grep -rn "verus_keep_ghost" --include=*.rs | grep -i "error!\|info!\|warn!\|
+
+[THINKING] The `error!` macro is hitting a Verus limitation because it relies on constant strings from `module_path!()` and `extract_function_name!()`, which Verus doesn't support. However, logging macros like `error!` are actually an exception to Verus's cfg-gating rules and can be conditionally compiled.
+
+The solution is to wrap the `error!` call in the drop implementation with `#[cfg(not(verus_keep_ghost))]` so Verus skips parsing it entirely. I should look at how other parts of the codebase use this pattern with logging macros to ensure I'm applying it correctly.
+[RESULT ✓] bash: hal/mem/types/address/aligned/page.rs:201:#[cfg(verus_keep_ghost)]
+hal/mem/types/address/frame.rs:31:#[cfg(verus_keep_ghost)]
+hal/mem/types/address/phys.rs:249:#[cfg(verus_keep_ghost)]
+hal/mem/types/region.rs:447:#[cfg(verus_keep_ghost)]
+mm/phys/kframe.rs:40:#[cfg(verus_keep_ghost)]
+mm/phys/upool.rs...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/macros.rs
+[RESULT ✓] view: 55. ///
+56. /// Logs an INFO-level formatted message with function context.
+57. ///
+58. /// # Parameters
+59. ///
+60. /// - `$($arg:tt)*`: Formatted message to be logged.
+61. ///
+62. macro_rules! info{
+63. 	( $($arg:tt)* ) => (
+64.     #[cfg(not(verus_keep_ghost))]
+65.     {
+66. 		#[cfg(feature = "sm...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The `info!` macro is already cfg-gated with `#[cfg(not(verus_keep_ghost))]`, but `error!` is not. Let me check all logging macros for consistency.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src && grep -n "macro_rules!\|cfg(not(verus_keep_ghost))" macros.rs
+
+[THINKING] I see the issue now — the `info!` macro has the cfg-gate to strip it out under Verus, but `error!` on line 180 doesn't have that same guard, which is why it's causing the compilation error. Since `error!` gets called inside `UserFrame::drop`, I need to apply the same cfg-gating pattern that's already working for `info!`.
+
+The cleanest approach is to add `#[cfg(not(verus_keep_ghost))]` directly to the `error!` macro definition in macros.rs, making it consistent with how `info!` is already handled. This means logging becomes a no-op under Verus across the entire kernel, which is the intended design. Before committing to this, I should check whether the other log-level macros like `warn`, `trace`, and `debug` follow the same pattern to confirm this is the right approach.
+[RESULT ✓] bash: 33:macro_rules! extract_function_name {
+62:macro_rules! info{
+64:    #[cfg(not(verus_keep_ghost))]
+93:macro_rules! trace{
+122:macro_rules! debug{
+151:macro_rules! warn{
+180:macro_rules! error{
+201:macro_rules! run_test {
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src && for m in trace debug warn error; do echo "=== $m ==="; awk "/macro_rules! $m
+[RESULT ✓] bash: === trace ===
+macro_rules! trace{
+	( $($arg:tt)* ) => ({
+		#[cfg(feature = "smp")]
+		use crate::macros::STDOUT_LOCK;
+		use ::core::fmt::Write;
+		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Trace {
+			#[cfg(feature = "smp")]
+			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LO...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Only `info!` is cfg-gated for Verus. `UserFrame::drop` (a listed target) uses `error!`, which Verus can't parse. I'll mirror the existing `info!` pattern on `error!` — this is the sanctioned cfg-gating of logging macros and matches the established codebase precedent.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/macros.rs
+
+[THINKING] I see that `info!` is the only logging macro with cfg-gating to exclude it under Verus verification, while the others remain ungated. Since `upool::drop` now uses `error!`, I need to apply the same cfg-gating treatment to keep it consistent with how `info!` is handled—this ensures the logging gets properly erased during Verus verification.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/macros.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Now re-run verification to see actual Verus errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40

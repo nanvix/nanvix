@@ -178,7 +178,9 @@ macro_rules! warn{
 /// - `$($arg:tt)*`: Formatted message to be logged.
 ///
 macro_rules! error{
-	( $($arg:tt)* ) => ({
+	( $($arg:tt)* ) => (
+    #[cfg(not(verus_keep_ghost))]
+    {
 		#[cfg(feature = "smp")]
 		use crate::macros::STDOUT_LOCK;
 		use ::core::fmt::Write;
