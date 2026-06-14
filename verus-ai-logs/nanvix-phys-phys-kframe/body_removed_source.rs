@@ -29,7 +29,6 @@ use ::core::ops::{
     DerefMut,
 };
 use ::sys::error::Error;
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // Kernel Frame
@@ -76,20 +75,26 @@ impl KernelFrame {
     ///
     // Dependency contract: wrapping a frame goes through `mm::virt::identity_map_page`, which
     // is outside the verification scope of `mm::phys`. On success the returned handle owns the
-    // same physical frame that was passed in.
+    // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
+    // the identity-mapping side effect lives in `mm::virt` and the body's `?`/log closures call
+    // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             base.inv(),
         ensures
             match result {
-                Ok(kf) => kf@ == base@,
+                Ok(kf) => {
+                    &&& kf@ == base@
+                    &&& kf.inv()
+                },
                 Err(_) => true,
             },
     )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> { ... }
 }
 
+#[verus_verify]
 impl KernelFrame {
 
     ///
@@ -101,7 +106,20 @@ impl KernelFrame {
     ///
     /// The base address of the target kernel frame.
     ///
+    // Pure accessor: returns the owned frame's physical address unchanged. `result@ == self@`
+    // gives `kpage` the exact address; `result.inv()` (page alignment carried from `self.inv()`)
+    // lets `into_page_address` and the `KernelStack` arithmetic behind it proceed.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn base(&self) -> FrameAddress { ... }
+}
+
+impl KernelFrame {
 
     ///
     /// # Description
@@ -135,6 +153,16 @@ impl DerefMut for KernelFrame {
     fn deref_mut(&mut self) -> &mut Self::Target { ... }
 }
 
+#[verus_verify]
 impl Drop for KernelFrame {
+    // Releasing the handle returns its physical frame to the global frame allocator via
+    // `super::frame::free`, which is best-effort (`ensures true`) and `opens_invariants none`/
+    // `no_unwind`, so `drop` makes no abstract postcondition. Callers (the manager error path,
+    // `KernelStack::drop`) rely on this being the sole, complete deallocation step. Mirror of
+    // `UserFrame::drop`.
+    #[verus_spec(
+        opens_invariants none
+        no_unwind
+    )]
     fn drop(&mut self) { ... }
 }

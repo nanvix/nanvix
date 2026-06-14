@@ -2,10 +2,10 @@ Traceback (most recent call last):
   File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 3578, in main
     success: bool = run_pipeline(
                     ^^^^^^^^^^^^^
-  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 2660, in run_pipeline
-    toplevel_drift = _check_toplevel_spec_drift(
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 1671, in _check_toplevel_spec_drift
-    def _run_check() -> List[Tuple[str, Any]]:
-                                        ^^^
-NameError: name 'Any' is not defined. Did you mean: 'any'?
+  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 2977, in run_pipeline
+    dialogue_status: str = _run_dialogue(
+                           ^^^^^^^^^^^^^^
+  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 1835, in _run_dialogue
+    phase_checklist = PHASE_REVIEW_CONTEXT[phase]
+                      ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+KeyError: 'final-review'

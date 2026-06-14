@@ -54,3 +54,19 @@ Module: phys-kframe
 [2026-06-14 03:30:26] [PHASE] specification: dialogue-RESOLVED (16m13s)
 [2026-06-14 03:30:26] [SPEC DRIFT] (within specification) Comparing 72d3bf00 → 7cf6779e
 [2026-06-14 03:30:26] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 04:07:17] [BRANCH] Staying on current branch: verus-ai-prove
+[2026-06-15 04:07:17] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/body_removed_source.rs (6627 -> 5268 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: phys-kframe
+Source: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs
+Crate:  kernel
+Branch: verus-ai-prove (base: verus-ai-prove)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: phys-kframe
+============================================================
