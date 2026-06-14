@@ -507,8 +507,7 @@ impl PhysMemoryManager {
             }
         }
         proof! {
-            // REPRODUCER: lemma call removed to expose the underlying obligation.
-            assert(self@ == g_old);
+            lemma_kernel_alloc_contiguous(g_old, self@, frames@, count as nat);
         }
         Ok(())
     }

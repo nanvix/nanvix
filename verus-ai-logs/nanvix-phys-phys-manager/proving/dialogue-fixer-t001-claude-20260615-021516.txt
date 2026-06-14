@@ -380,3 +380,19 @@ Since the invariant already establishes `self@ == g_old` at lines 470 and 489, I
 Turn 24
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error: |assertion|post
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.rs:425:17
+    |                   ^^^^^^ failed this postcondition
+verification results:: 41 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+All four reproduced. Restoring to the green (committed) state and confirming.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/manager.rs.bak src/kernel/src/mm/phys/manager.rs && cp /tmp/manager.proof.rs.
+
+[THINKING] The assertion passes but the postcondition fails—both point to the same issue: the manager's exec functions for the kernel and contiguous paths aren't actually modifying `self`, which blocks all four admits at their core.
+
+The real problem is that `phys_view()` is a parameter-free uninterpreted constant and `Upool::view` has no linking axiom, so there's no way to connect the global mutable state to `self@` transitions. Fixing this would require either redefining the specs to make `phys_view` state-parameterized, threading a ghost token through the frame.rs free functions, or weakening the manager specs—all of which are out of scope or forbidden. This genuinely needs guidance. Let me restore manager.rs to green and then document the exact errors and reproducers.
