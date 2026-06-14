@@ -306,3 +306,72 @@ Turn 12
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/libs/arch/src/x86/mem/paging/pte.rs && make verify-arch 2>&1 | gr
 
 [THINKING] The cached result shows the pte module verification completed with exit 0, but I need to run a clean build to see the full verification summary with the actual count of verified functions and confirm there are no warnings. Let me check the verify script to see how to force a non-cached run.
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.25s
+  47 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=4
+  Unverified function list written to: verus-ai-logs/verify-arc...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== VERUS REWRITE in pte ==="; grep -rn "VERUS REWRITE\|VERUS\b" src/
+
+[THINKING] The fresh build run shows 47 verified items with no errors, and the "CHEATING_DETECTED" status is just flagging external body references and cfg gate attributes that are all benign lint configurations, not actual code execution gating. Now I'm checking the build command separately to verify it matches what the checklist expects.
+
+The verification already ran a full cargo compile of the arch crate with build-std and finished with zero warnings and errors, so the build requirement is satisfied. Let me now go through each checklist item for the pte scope: no specs have been weakened (only additive specs added via git diff, with exec logic unchanged), zero admit() calls remain in the pte files, zero external_body in pte itself (the three crate-wide ones are in TCB-allowed sibling modules), and zero assume/assume_specification calls in pte.
+
+For cfg-gated exec code, pte only uses include! for spec/proof gating and cfg_attr for lint attributes—neither gates actual execution branches. The cheating audit shows pte has zero violations, and the crate-wide external_body and cfg_gate instances are all either in TCB-allowed files or are lint attributes. Since pte claims no Verus limitations, that item passes by default. I need to check for VERUS REWRITE comments in the pte diff—so far I see only the ghost proof! block added to new, with no exec rewrites. Finally, the cross-module regression check shows make verify-arch passed all 47 verifications.
+[RESULT ✓] bash: === VERUS REWRITE in pte ===
+exit:1
+=== confirm no admit/assume crate-wide raw grep ===
+done
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All checklist items verified. Every item PASSES for the pte scope. Writing the review and STOP file.
+[TOOL] report_intent: Writing review verdict
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/dialogue
+
+[THINKING] All the checklist items are passing for the pte scope with no exec rewrites needed, so I'm ready to write up the review and create the STOP file to mark this as resolved.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/dialogue/turn_001_driver.md with 4316 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Review complete. All 10 checklist items **PASS** for the `arch-x86-pte` proving phase. Verdict: **RESOLVED**.
+
+Evidence (fresh, non-cached `make verify-arch`): **47 verified, 0 errors, exit 0**, no warnings.
+
+Per-item findings (pte scope):
+- **admit / external_body / assume in pte**: all **0** (`grep` on `pte*.rs`).
+- **No specs weakened**: git diff vs pre-spec baseline is purely additive; only ghost `proof!` added to `new`, exec logic unchanged; specs are full-equality/faithful with a `closed` View.
+- **cfg-gated exec code**: none — the only `cfg` uses are `include!` gating and `cfg_attr(allow)` lint attrs.
+- **Cross-module regression**: crate-wide `Module: <all>` passes.
+
+The runner's `CHEATING_DETECTED` banner is fully explained and **not** a pte defect:
+- `external_body=3` → `invlpg`, `table::read`, `table::write` — sibling modules, all listed in `tcb-allowed.md`.
+- `cfg_gate=4` → `pde:83/307`, `pte:85/307`, all `#[cfg_attr(verus_keep_ghost, allow(...))]` lint heuristic hits, no exec gating.
+
+No fix requests. Wrote `turn_001_driver.md` and `STOP` (`RESOLVED`).
+
+
+=== Session End ===
+Session: 2b66147a-dcb2-4dc2-ac5d-80a9501c1ecb
+Duration: 201.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-x86-pte/proving/dialogue-reviewer-t001-claude-20260615-011437.jsonl
