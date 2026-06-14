@@ -202,3 +202,81 @@ Let me check the FrameAllocView definitions and run the baseline verification.
 135:    pub open spec fn all_reserved(self, set: Set<int>) -> bool {
 141:    pub open spec fn all_free(self, set: Set<int>) -> bool {
 147:    pub...
+[RESULT ✓] bash: - frame.rs:769 alloc: external_body
+    - frame.rs:799 alloc_contiguous: external_body
+    - frame.rs:820 free_count: external_body
+    - frame.rs:838 free: external_body
+    - frame.rs:880 book: external_body
+    - frame.rs:901 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me see the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs grep -n "e
+
+[THINKING] Something went wrong with the verus compilation—I need to check the actual error message in the logs to see what happened.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2288 ~ kernel[b87f]::mm::phys::manager::PHYS_MEMORY_MANAGER))
+26:error: could not compile `kernel` (bin "ker...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs sed -n '15
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=15
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2288 ~ kernel[b87f]::mm::phys::manag...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The `init` function touches a `static mut` which Verus can't verify — it's listed in tcb-allowed.md as `external_body`. Let me check how other such functions are annotated.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "external_body\|verus_verify\|verus_spec\|fn instance\|fn init" src/kernel/sr
+
+[THINKING] The problem is that `init` is trying to access a mutable static variable that Verus can't verify, yet it's marked with verification attributes and already has a spec defined. According to the TCB documentation, this function should be marked as `external_body` instead, which would bypass verification for this unsafe operation.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+115:    #[verus_spec(result =>
+185:    #[verus_spec(result =>
+224:        #[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]
+263:    #[verus_spec(result =>
+351:    #[verus_spec(result =>
+426:    #[verus_spec(result =>
+476:    #[verus_spec(result =>
+524:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "external_body\|verus_verify\|impl\|fn deref\|fn clear\|fn new" src/kernel/sr
+
+[THINKING] Looking at the annotations in manager.rs, I need to check which functions have `#[verus_verify(external_body)]` versus just `#[verus_verify]` or `#[verus_spec]`. The struct `PhysMemoryManager` at line 68 has `#[verus_verify]`, the impl block starts at line 77 with `#[verus_verify]`, but the `init` function around line 96-103 only has `#[verus_spec]` without the `external_body` attribute I'm looking for.
+
+The TCB comment in the code and the fact that `init` is listed in tcb-allowed.md makes it clear this function should be marked as `external_body` since it accesses static mut and raw memory operations that Verus can't verify directly. I need to add `#[verus_verify(external_body)]` to the `init` function while keeping its spec intact.
+[RESULT ✓] bash: 39:#[verus_verify(external_derive)]
+49:impl View for KernelFrame {
+61:#[verus_verify]
+62:impl KernelFrame {
+78:    // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
+81:    #[verus_verify(external_body)]
+94:    pub(super) fn new(base: FrameAddress) -> Resu...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+`init` accesses a `static mut` (Verus-unsupported) and is listed in tcb-allowed.md as `external_body`. I'll add the attribute matching the established pattern.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm looking at how the `new` method in the verus_verify impl block uses `#[verus_verify(external_body)]`, so I should apply the same attribute to the `init` method in manager.rs. Since `init` is already listed in tcb-allowed.md and handles static mut, this is a valid change that aligns with the existing TCB requirements.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
