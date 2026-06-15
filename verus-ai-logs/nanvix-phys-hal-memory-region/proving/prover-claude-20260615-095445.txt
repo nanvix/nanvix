@@ -299,3 +299,33 @@ The four target functions already have contracts and verify cleanly. Let me forc
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/region.rs && timeout 1200 make verify-kernel MODUL
 
 [THINKING] The region module checks out cleanly with no admit or external_body violations, and all four target functions have proper contracts. The global counts I'm seeing are from dependencies outside the scope. I'm verifying that the check actually ran fresh on the region module rather than using cached results, and the status confirms it ran cleanly with no cheating detected and all four functions accounted for, though it notes the compilation was cached.
+[RESULT ✓] bash: - cache_policy
+    - set_cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - new
+    - new_mmio
+    - from_memory_region
+    - name
+    - typ
+    - perm
+    - cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - fmt
+    - from_virtual_memory_region
+
+=== Summary ===
+  verification: 5 verified,...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All four target functions verify (5 verified, 0 errors, CLEAN). The region module has zero `admit`/`assume`/`external_body`. The proofs discharge automatically from the dependency contracts. Let me confirm no regressions across the full build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 2400 make verify 2>&1 | tail -30
+
+[THINKING] The verification passed with 5 confirmed functions and no errors, so the status is clean. The admit and external_body counts of 12 and 19 are from dependency modules, not the region module itself, and the cheating check confirmed the region module is clear. Looking at the task requirements for zero remaining admit() and assume() calls, those global counts don't apply to this module's scope since they're coming from dependencies.
+
+I've already confirmed via grep that there are no admits in the region files themselves. The four target functions verify cleanly with surgical changes, and the proofs discharge automatically from the dependency contracts, so the task is essentially complete. I should run `make verify` to confirm there are no regressions, though it might take a while since it verifies everything globally.
