@@ -212,3 +212,68 @@ Let me run baseline verification for the module.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] I need to run the baseline verification for the kframe module using the module-scoped verification command with the appropriate MODULE parameter.
+[RESULT ✓] bash: Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: external_body
+    - frame.rs:1479 all...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '1,60p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-34-
+
+[THINKING] Something went wrong during compilation—the verus tool didn't execute. I need to look at the error logs to see what actually failed.
+[RESULT ✓] bash: Timestamp: 2026-06-15_11-34-48
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=15
+  admit=7
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kern...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "error!\|verus_keep_ghost\|map_err" src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The `error!` macro in `KernelFrame::new` is triggering a Verus compilation error because it's using an unsupported constant type in the `write!` macro. The `drop` function handles this by gating the `error!` call with `#[cfg(not(verus_keep_ghost))]`, but `new` is calling `error!` inside `.map_err` closures without the same protection.
+
+I need to check how other functions in the codebase handle this — looking at `UserFrame` in upool.rs to see if there's a pattern for gating `error!` macros when Verus is analyzing the code.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+37:#[cfg(verus_keep_ghost)]
+203:            #[cfg(not(verus_keep_ghost))]
+204:            error!("failed to free user frame: {:?}", e);
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The `error!` macro isn't Verus-compatible. The `drop` function already gates it with `#[cfg(not(verus_keep_ghost))]`, but `new`'s `map_err` closures don't. Let me apply the same established pattern.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] The `error!` macro in kframe's `new` method is causing issues under Verus because it produces an unsupported constant type. I need to conditionally gate these error calls so they don't compile when `verus_keep_ghost` is enabled, similar to how UserFrame handles it in its drop implementation.
+
+I can restructure the `map_err` closures to use a statement-level `#[cfg(not(verus_keep_ghost))]` attribute around the `error!` call. This way, under Verus the closure just returns the error unchanged, while in normal builds it logs before propagating. The variable `e` remains properly used in both cases — either in the error macro and return, or just as the return value.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
