@@ -586,3 +586,135 @@ Working tree restored to the verified state. Now let me run a final clean `make 
 [THINKING] The working tree is now restored to match the good state, and I've verified that the cfg_attr is actually required for compilation—removing it breaks the build. The attribute only gates a lint-allow directive, not any executable code divergence, so this isn't a case of cfg-gated logic differences.
 
 Now I need to run make verify-arch one more time to confirm the restored state passes cleanly and complete the checklist requirement, even though it'll create another PASS commit.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/v...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+48 verified, 0 errors. Now the build/warnings check for the arch crate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" cargo build -p arch --loc
+
+[THINKING] The verification passed with 48 checks and no errors, though the "CHEATING_DETECTED" status is flagged due to some crate-wide residuals in the module files and configuration gates that are all documented as out-of-scope or requiring ghost annotations. Now I'm checking the build separately to confirm there are no warnings and looking at what the build command is set to.
+[RESULT ✓] bash: Compiling arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.56s
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Build clean (0 warnings/errors). Now the AST-consistency check. Let me look for the AST-consistency tooling and the `body_removed_source.rs` artifact.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "=== find ast tooling ==="; f
+
+[THINKING] The build completed successfully with no warnings or errors. Now I'm running the AST-consistency check to verify that the exec AST matches the original dev version aside from ghost annotations. Looking at the git diff, the only change in the exec code is a ghost-only proof block, so everything checks out.
+
+Let me examine the `body_removed_source.rs` artifact and see if there's an AST consistency tool available in the verus-ai tooling to validate this further.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== find ast tooling ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+
+[THINKING] I need to check out the ast_consistency.py script and review the ast-consistency skill documentation, then run it against pte.rs to see what it reveals.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Let me run the AST-consistency checker against the in-scope pte module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref dev s
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PageTableEntry::flags                    MATCH                                
+PageTableEntry::frame_address            MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+AST consistency: 23/23 MATCH, 0 mismatches. Let me verify final git state and the spec-drift diff once more.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -3; echo "=== pte.rs working vs HEAD ==="; git --no-page
+
+[THINKING] The AST consistency check shows all 23 functions and structs in pte.rs match the original dev version byte-for-byte, with the ghost code properly stripped out. The cross-module verification also passed with 48 verified items, so the architecture crate is solid.
+
+For the spec-drift check, I've confirmed via git diff that all changes are purely additive ghost annotations and new spec files — no original `ensures` clauses were removed or weakened, and no exec semantics changed. The two cfg_gate attributes at lines 85 and 307 are required by the verus macro for marking unused impl constructors, but they only gate lint-allow directives, not any executable code. The AST consistency confirms the exec bodies remain identical regardless of these attributes, so there's zero cfg-gated exec code in the final implementation.
+
+Running through the full verification checklist: zero admit/assume/trusted functions, zero decreases clauses, zero external_body calls outside the TCB, all 23 AST comparisons match with no mismatches, no specs were weakened, and the crate-wide verify-arch passed with 48 verified modules and clean build. Everything checks out.
+
+Now I need to write up the driver documentation and finalize the state. Let me check the git log to see if verify3 created a new commit, then write the turn_001_driver.md file.
+[RESULT ✓] bash: 6a8154d3a [verus] verify PASS (cheating detected): arch::all (48 verified, 0 errors, external_body=3 cfg_gate=2)
+b3cd8dc5e [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=2)
+386635c99 [verus-ai] cheating-elimination scaffold END: arch-x86-pt...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+All 12 items verified PASS. Git state clean at a verified PASS commit. Let me write the review and STOP file.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue/STOP
+
+[THINKING] The verify3 run confirmed everything is in a clean PASS state with 48 verified commits and no errors. The accidental FAIL commit got cleaned up, the spec hasn't drifted (only additions, no removals), and all 12 checklist items are passing. Now I'm ready to write the driver review and mark this as RESOLVED.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue/turn_001_driver.md with 4745 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Review complete. **Verdict: RESOLVED** — all 12 checklist items PASS with tool-backed evidence.
+
+**Key findings:**
+- pte module (`pte.rs`/`.spec.rs`/`.proof.rs`) has **zero** `admit`/`assume`/`external_body`/`trusted`/`no_decreases`. The 3 crate-wide `external_body` + 1 `assume` are all in sibling modules (`mod.rs`, `table.rs`, `table.proof.rs`) and all TCB-listed.
+- **AST consistency**: 23/23 exec fns + structs MATCH original `dev` (0 mismatches).
+- **Spec-drift**: diff vs `dev` is purely additive ghost annotations; no `ensures`/`requires` removed.
+- **Verify + build**: 48 verified, 0 errors, exit 0; `cargo build -p arch` clean (0 warnings).
+
+The one item needing real scrutiny was `cfg_gate=2` (`#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` on the two `new` constructors). I empirically tested it: removing the lines breaks compilation (`E0425: cannot find function 'new'`). They are a compiler-required verus lint-allow that gates **only an attribute, not exec logic** (both bodies still AST-MATCH) — not cfg-gated exec cheating.
+
+Note: `make verify-arch` auto-commits each run; my removal experiment committed a transient FAIL state, which I reset out of history. HEAD is back on a clean PASS commit (`6a8154d3a`, 48 verified) and the working tree matches it.
+
+
+=== Session End ===
+Session: 2a006736-1bd6-4939-9285-1b73567a2dfa
+Duration: 367.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue-reviewer-t001-claude-20260615-150137.jsonl
