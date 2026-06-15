@@ -76,3 +76,6 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: hal-memory-region
 ============================================================
+[2026-06-15 09:54:45] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs
+[2026-06-15 09:54:45] [PROVER] Running proving...
+[2026-06-15 09:54:45] [COPILOT] Running: copilot --model claude-opus-4.8 ...
