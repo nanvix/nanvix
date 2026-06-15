@@ -1946,3 +1946,74 @@ Turn 113
 Turn 114
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: error: assertion failed
+verification results:: 51 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  1 errors
+  verification: 51 verified, 1 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks f...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs gr
+[RESULT ✓] bash: 30:error: assertion failed
+31-   --> src/kernel/src/mm/phys/frame.rs:451:20
+32-    |
+33-451 |             assert(pa % spec_page_size() == 0);
+34:    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+35-
+36-verification results:: 51 verified, 1 errors (partial verification with `--veri...
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+refcount's spec lacks `frame.inv()`, but every `FrameAddress` is page-aligned by construction. The codebase-consistent fix (matching `FrameNumber`) is a type invariant on `FrameAddress`. Let me check the blast radius first:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== FrameAddress constructions in verified code (Self( / FrameAddress::
+
+[THINKING] I'm running into an issue where the frame address invariant check is failing in the refcount validation. The problem is that `frame.inv()` isn't actually in scope for the refcount's requires clause—it only expects `self.inv()`. Let me look back at the refcount specification to understand what preconditions are actually required.
+
+Looking at the spec, refcount only guarantees `self.inv()`, unlike the free and share operations which require `frame.inv()`. This means I don't have the alignment guarantee for frame@. So when I try to compute `frame_number = pa/ps`, the physical address pa might not be aligned, which breaks my assumption that `frame@ == frame_number * ps`. 
+
+Actually, this reveals something deeper: the original code using `frame.into_frame_number().into_raw_value()` would have required frame alignment as a precondition, but refcount's spec doesn't provide that guarantee. So the original implementation would have failed the same precondition check—it was just masked by the admit. Without alignment, if pa isn't aligned to page size, then pa isn't in the allocated_frames set at all, which would make the ensures clause fail.
+
+I'm stuck because I can't add `frame.inv()` to the requires clause—that would be weakening the spec, which is forbidden. So I need to figure out how to prove refcount correct without assuming frame alignment.
+
+The key insight is that `allocated_frames` only contains multiples of `ps`, so if `pa` isn't aligned, `allocated.contains(pa)` is false. The code returns `Ok` when `refcount[frame_number]` is positive, but for unaligned `pa`, that would violate the ensures clause which requires `allocated.contains(pa)`. This looks like a real bug—the function returns `Ok` for unaligned addresses when it should return `Err`.
+
+But maybe `FrameAddress` itself guarantees alignment by construction? If alignment is a type invariant that all `FrameAddress` values satisfy, then the function would never actually receive unaligned input, making the spec correct even without explicitly requiring it. So the key insight is that FrameAddress already has an `inv()` method that checks `self@ % spec_page_size() == 0`. If I mark this as a type invariant with `#[verifier::type_invariant]`, then alignment becomes an intrinsic property of FrameAddress itself—every instance is guaranteed page-aligned by construction. This would let refcount's proof go through without needing to explicitly require `frame.inv()` in the precondition, which aligns with the codebase pattern and explains why other methods like `free` and `share` do list it while refcount doesn't.
+
+The constructors all maintain this invariant: `new` is external (so Verus assumes the invariant holds on its result), and `from_raw_value` is verified and validates alignment through PageAligned. Since PageAligned can only be constructed aligned, any PageAligned passed to `new` is guaranteed aligned, making the assumption sound.
+
+For `from_frame_number`, the result is frame × page_size, which is always divisible by page_size, so the invariant holds. The consumer methods like `into_frame_number` and `into_raw_value` don't construct FrameAddress, so they just assume the invariant on entry (which gives them the alignment fact they need).
+
+Now I'm checking whether adding a type invariant to FrameAddress would break other verified constructions across the kernel. The invariant would require every construction to prove alignment, but existing code that requires `frame.inv()` would still work since the invariant just adds automatic enforcement. The real question is whether refcount is the only place that needs this alignment guarantee without currently providing it—other functions like free, share, and book already establish alignment through their preconditions. need to decide whether to report this as a spec defect or work around it. Adding a type invariant to FrameAddress for alignment seems like the right fix, but it's a cross-module change with unknown blast radius. Let me first check how many verified sites construct FrameAddress to measure the impact before committing to that approach. I need to check whether Verus automatically applies type invariants to function parameters or requires explicit `use_type_invariant` calls. Looking at the FrameNumber code in arch, it explicitly calls `use_type_invariant(self)`, so I'll need to do the same in refcount. Since FrameAddress is Copy, I can call it before consuming the frame. The key difference from the arch comment is that FrameAddress is in the same crate as mm/phys, not cross-crate, so `use_type_invariant` should work without issues.
+
+My plan is to add the type invariant attribute to FrameAddress::inv in hal/mem/types/address/frame.rs and then call `use_type_invariant(frame)` in refcount. The type_invariant attribute needs `pub open` visibility like in arch, and since FrameAddress::inv already uses the view (self@), it should work within the module. The existing ensures clause in from_raw_value already proves the invariant, so adding the type invariant obligation shouldn't break anything.
+[RESULT ✓] bash: === FrameAddress constructions in verified code (Self( / FrameAddress::new / from_) ===
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:147:        let paddr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:194:  ...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+`FrameAddress::new` is external (no `#[verus_verify]`) and other constructors already ensure `inv()`, so a type invariant should be low-risk. Let me add it:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm tracing through how `FrameAddress::new` is being called across verified modules like page_directory and page_table, where they construct instances by passing `PageAligned::from_address(...)`. The key issue is that if `new` is external without a verus_spec, Verus assumes the type invariant holds on the result, which means verified callers don't generate proof obligations. However, this creates a soundness gap: `new` is external and assumes alignment, but I need to verify that the `PageAligned` values being passed actually satisfy the alignment requirement.
+
+Looking deeper, the `new` method isn't marked with `#[verus_verify]`, so it's external and safe. The real risk comes from `from_raw_value` and `from_frame_number`, which are construction sites that must now prove the type invariant — but they already ensure `inv()` in their postconditions, so the proof obligation should be the same. The subtle concern is that a type invariant requires the type is never constructed in verified code without proof, and I need to ensure all construction paths in the `impl` block are either external or already prove the invariant.
+
+Let me add the `#[verifier::type_invariant]` annotation to `FrameAddress::inv` and then add `use_type_invariant(frame)` in the refcount code. The construction `Self(...)` should auto-discharge the invariant since `from_raw_value` already has the `PageAligned` value with its alignment property, making the invariant provable. I'll start with the edits and test on `mm::phys` first.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

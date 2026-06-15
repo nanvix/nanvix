@@ -443,6 +443,10 @@ impl Inner {
         proof_decl! {
             let ghost pa: int = frame@;
         }
+        proof! {
+            // Every `FrameAddress` is page-aligned by construction (its type invariant).
+            use_type_invariant(&frame);
+        }
         let raw: usize = frame.into_raw_value();
         let frame_number: usize = raw / mem::FRAME_SIZE;
         proof! {

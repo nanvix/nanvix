@@ -54,6 +54,7 @@ impl View for FrameAddress
 }
 
 impl FrameAddress {
+    #[verifier::type_invariant]
     pub open spec fn inv(&self) -> bool
     {
         self@ % spec_page_size() == 0
