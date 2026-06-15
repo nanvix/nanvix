@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("manager.spec.rs");
 #[cfg(verus_keep_ghost)]
@@ -66,6 +65,7 @@ static PHYS_MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 ///
 /// Physical memory manager.
 ///
+#[verus_verify]
 pub struct PhysMemoryManager {
     upool: Upool,
 }
@@ -74,6 +74,7 @@ pub struct PhysMemoryManager {
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl PhysMemoryManager {
     ///
     /// # Description
@@ -88,9 +89,22 @@ impl PhysMemoryManager {
     ///
     /// Returns `InvalidArgument` if the singleton has already been initialized.
     ///
+    // TCB: bringing up the manager singleton writes a `MaybeUninit` static behind an
+    // `AtomicBool` flag — raw-memory/atomics operations outside Verus's model. On success the
+    // manager layer becomes ready (`phys_view().manager_ready`); the frame partition is
+    // untouched. Listed in `verus-ai-logs/tcb-allowed.md`.
     #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(_) => crate::mm::phys::phys_view().manager_ready,
+                Err(_) => crate::mm::phys::phys_view().manager_ready,
+            },
+    )]
     pub(super) fn init(upool: Upool) -> Result<(), Error> { ... }
+}
 
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
@@ -112,7 +126,10 @@ impl PhysMemoryManager {
     ///   re-entrant or concurrent call can alias the reference.
     ///
     pub unsafe fn get_mut<'a>() -> &'a mut PhysMemoryManager { ... }
+}
 
+#[verus_verify]
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
@@ -134,6 +151,26 @@ impl PhysMemoryManager {
     /// error is returned and any frames allocated by this call are dropped by truncating `frames`
     /// back to empty.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+            old(frames)@.len() == 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
+                    &&& final(frames)@.len() == count
+                    &&& user_addr_set(final(frames)@).len() == count
+                    &&& old(self)@.all_free(user_addr_set(final(frames)@))
+                    &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& final(frames)@.len() == 0
+                },
+            },
+    )]
     pub fn alloc_many_user_frames(
         &mut self,
         count: usize,
@@ -153,6 +190,23 @@ impl PhysMemoryManager {
     /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
     /// instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(uf) => {
+                    &&& old(self)@.user_alloc_ok(1)
+                    &&& old(self)@.free_frames.contains(uf@)
+                    &&& final(self)@ == old(self)@.alloc_one(uf@)
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self)@.user_alloc_ok(1)
+                },
+            },
+    )]
     pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> { ... }
 
     ///
@@ -170,6 +224,15 @@ impl PhysMemoryManager {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(()) => crate::mm::phys::phys_view().frames.free_count()
+                    >= count as nat + spec_kernel_watermark(),
+                Err(_) => crate::mm::phys::phys_view().frames.free_count()
+                    < count as nat + spec_kernel_watermark(),
+            },
+    )]
     fn check_user_watermark(count: usize) -> Result<(), Error> { ... }
 
     ///
@@ -183,6 +246,19 @@ impl PhysMemoryManager {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(kf) => {
+                    &&& old(self)@.free_frames.contains(kf@)
+                    &&& final(self)@ == old(self)@.alloc_one(kf@)
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> { ... }
 
     ///
@@ -205,9 +281,44 @@ impl PhysMemoryManager {
     /// Upon success, `Ok(())` is returned and `frames` is filled with `count`
     /// contiguous entries. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+            old(frames)@.len() == 0,
+            count > 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& final(frames)@.len() == count
+                    &&& kernel_frames_contiguous(final(frames)@, count as nat)
+                    &&& old(self)@.all_free(kernel_addr_set(final(frames)@))
+                    &&& final(self)@ == old(self)@.book_all(kernel_addr_set(final(frames)@))
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& final(frames)@.len() == 0
+                },
+            },
+    )]
     pub fn alloc_many_kernel_frames(
         &mut self,
         count: usize,
         frames: &mut Vec<KernelFrame>,
     ) -> Result<(), Error> { ... }
 }
+
+//==================================================================================================
+// Build-time constant accessors
+//==================================================================================================
+
+// External-bottom trust boundary: `config::kernel::KERNEL_WATERMARK` is generated by the `config`
+// crate's `build.rs` (from `kernel_config.toml`) and lives in a non-Verus dependency crate, so
+// Verus cannot resolve its value. This accessor ties the runtime constant to the abstract
+// `spec_kernel_watermark()`. Listed in `verus-ai-logs/tcb-allowed.md`.
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    ensures
+        ret as nat == spec_kernel_watermark(),
+)]
+fn kernel_watermark() -> usize { ... }

@@ -1,97 +1,24 @@
 {
   "module_name": "phys-manager",
   "log_name": "nanvix-phys-phys-manager",
-  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
-  "completed_phases": [
-    "caller-analysis",
-    "view-design"
-  ],
-  "phase_results": {
-    "caller-analysis": {
-      "phase": "caller-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 126.4,
-      "review_rounds": 0
-    },
-    "view-design": {
-      "phase": "view-design",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 350.1,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 5264.0,
-      "review_rounds": 3
-    }
-  },
-  "prover_session_id": "766b4dd8-a6a2-483a-860d-460a3cffd43c",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai/phys-mod",
-  "verus_branch": "verus-ai/phys-manager",
-  "phase_boundary_shas": {
-    "caller-analysis": "82fb0c8f828b6780f8f2524877262222a144d07f",
-    "view-design": "0c3324ea7c34f40b6f794a863ae1c1c2a492d405",
-    "specification": "d1fd9adcb94e223a70b3181a81b0eeb3eeb4919f"
-  },
+  "base_branch": "verus-ai-prove-bottom-up",
+  "verus_branch": "verus-ai-prove-bottom-up",
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "caller-analysis": "0dc9d50ed081a4d2d5446d8341b798621ea755f1",
-    "view-design": "82fb0c8f828b6780f8f2524877262222a144d07f",
-    "specification": "0c3324ea7c34f40b6f794a863ae1c1c2a492d405"
+    "proving": "e07b877dde68903a2c7b26549e40085ed3396678"
   },
   "phase_history": [
     {
-      "phase": "caller-analysis",
+      "phase": "proving",
       "event": "start",
-      "sha": "0dc9d50ed081a4d2d5446d8341b798621ea755f1",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "caller-analysis",
-      "event": "end",
-      "sha": "82fb0c8f828b6780f8f2524877262222a144d07f",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "start",
-      "sha": "82fb0c8f828b6780f8f2524877262222a144d07f",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "end",
-      "sha": "0c3324ea7c34f40b6f794a863ae1c1c2a492d405",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "start",
-      "sha": "0c3324ea7c34f40b6f794a863ae1c1c2a492d405",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "d1fd9adcb94e223a70b3181a81b0eeb3eeb4919f",
+      "sha": "e07b877dde68903a2c7b26549e40085ed3396678",
       "rollback_iter": 0
     }
   ],
