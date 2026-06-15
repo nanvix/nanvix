@@ -821,3 +821,61 @@ cfg(: 0
 === src/libs/sys/src/sys/mm/address/mod.proof.rs ===
 admit: 0
 a...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running consistency checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/libs/sys
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '=== git diff 192f966ee^..HEAD (3 files) ===' && git --no-pager diff 192f966ee^ 
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === git diff 192f966ee^..HEAD (3 files) ===
+diff --git a/src/libs/sys/src/sys/mm/address/mod.proof.rs b/src/libs/sys/src/sys/mm/address/mod.proof.rs
+new file mode 100644
+index 000000000..6c2f998f2
+--- /dev/null
++++ b/src/libs/sys/src/sys/mm/address/mod.proof.rs
+@@ -0,0 +1 @@
++verus! { } // verus!
+di...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+
+Consistent: ✅ YES (matched=0 mismatched=0 missing=0 extra=0)
+## Functions
+
+Function                                 Status     ...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+# Spec Drift Report
+
+## Summary
+
+- Fu...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys
+[RESULT ✓] report_intent: Intent logged
