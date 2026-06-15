@@ -599,3 +599,113 @@ Since `PageAligned` dereferences to `PhysicalAddress` and `PhysicalAddress` is `
 
 The module is already in its final clean state from the proving phase — no code changes were made, so there's nothing to regress. I should run `make verify` to confirm the kernel still verifies cleanly and the module remains free of cheating.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-15_17-16-45.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Full-crate verification passes (exit 0). Global `external_body=24/cfg_gate=6` are out-of-scope modules. Let me confirm none are in the frame address files.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== external_body/cfg detail mentioning frame address ==="; grep -i "address/frame\|F
+
+[THINKING] The kernel verification passes, but there's a cheating detection flag triggered by external_body and cfg_gate values from other modules outside the frame module's scope. I need to verify that these problematic values aren't actually present in the frame address files by checking the cheating details.
+[RESULT ✓] bash: === external_body/cfg detail mentioning frame address ===
+    - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+
+=== files contributing external_body ===
+<shellId: 34 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== any address/frame entries? ==="; grep -n "address/frame" verus-ai-logs/verify-ker
+
+[THINKING] I'm noticing the cheating-detail.txt format shows entries for page.rs and phys.spec.rs, but there's no corresponding entry for any frame.rs files in the FrameAddress module, which suggests those files contribute zero to the cheating metric.
+[RESULT ✓] bash: === any address/frame entries? ===
+NONE - frame module contributes 0 cheating
+
+=== total external_body & cfg lines ===
+22
+0
+<shellId: 35 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Confirmed: the FrameAddress module contributes **0** to the global cheating count. All 24 external_body / 6 cfg_gate are out-of-scope modules. Writing the report.
+[TOOL] report_intent: Writing fix report
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-hal-frame-address/ ; echo "---"; ls verus-ai-logs/nanvix-phys-
+
+[THINKING] The frame module is completely clean with zero violations across all categories—no admits, assumes, external bodies, trusted annotations, or decreases issues. All the flagged entries I found earlier are coming from other modules outside the frame scope, so the boundary analysis is now fully accounted for.
+
+The module verifies cleanly with three specification assumptions and one axiom function, plus some pre-approved AST deviations that are all documented. Since there are no remaining proof gaps, I don't need to create a verification_todo.md file. I'll write up the fix_report.md now and note that the verification is complete.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_lsp_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+---
+prover-claude-20260615-171135.jsonl
+prover-claude-20260615-171135...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md with 6219 characters
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== source changes (should be none) ==="; git diff --stat -- src/ ; echo "=== untrack
+
+[THINKING] Let me run the module verification one more time to make sure everything checks out, then confirm that only the report and pipeline logs have changed—no source code modifications.
+[RESULT ✓] bash: === source changes (should be none) ===
+=== untracked/modified ===
+ M verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-171135.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-171135.txt
+?? verus-ai-logs/nanvix-phy...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Done. No source changes were needed — the module was already in its final clean state.
+
+## Summary
+
+**Result: PASS** — Zero cheating in scope for `hal-frame-address`.
+
+**Findings:**
+- The three frame files (`frame.rs`/`.spec.rs`/`.proof.rs`) contain **0** `admit()`, `assume()`, `external_body`, `trusted`, or cfg-gated exec. The module cheating gate reports **"✅ No cheating detected"** and verifies with exit 0 (status CLEAN).
+- The base branch's one cheating item — `FrameAddress::into_raw_value` marked `#[verus_verify(external_body)]` — was already eliminated (now body-verified with identical body against `result as int == self@`).
+- The remaining trust boundaries (3× `assume_specification`, 1× `axiom fn`, 1× `uninterp spec fn`) are irreducible within this module — they require verifying the foreign `impl Address for PhysicalAddress` (blocked by Verus-rejected `usize as *const u8` casts) — and are **all governed in `tcb-allowed.md`**. None are flagged by the cheating gate.
+- The global `external_body=24 / cfg_gate=6` are entirely out-of-scope modules; the frame module contributes **0** entries to `cheating-detail.txt`.
+
+**AST consistency:** 3 exec mismatches, all the pre-approved `f(complex_expr)` → `let x = complex_expr; f(x)` deviation, each documented inline; `proof!` blocks are ghost-only. Zero unexplained mismatches.
+
+**Verification TODOs:** None — zero proof gaps.
+
+Report written to `verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: 9f800461-9d25-46d7-8d9e-8a4a5285244c
+Duration: 388.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-171135.jsonl
