@@ -1,0 +1,36 @@
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy-specs/scripts/verify.sh --crate arch  --log-dir verus-ai-logs/verify-arch
+=== Verus Verification (cargo mode) ===
+  Crate     : arch
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/libs/arch/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_14-02-44
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=4
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=4
+  coverage: 18/525 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_14-02-44.log

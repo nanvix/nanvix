@@ -550,3 +550,166 @@ Turn 21
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -50
 
 [THINKING] The build is cached and ready. I'll start the cross-module verification in the background since it takes time, then launch the two sub-agents to work in parallel. Each sub-agent will save their results to separate files with their model name appended. Now I need to write a comprehensive prompt for them.
+[RESULT ✓] bash: |
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1357:42
+     |
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                          ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Verification data gathered. Now launching 2 independent review sub-agents (one per model).
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] The `make verify` cross-module check shows the kernel module has some admits and external body references, but those are out of scope since they're pre-existing kernel state unrelated to the arch-paging-table changes. The kernel verification passes cleanly, and all other modules pass their regression tests as well. Now looking at the arch crate itself, which shows zero assumptions but three external body references, though the admit count appears to be cut off.
+
+The verification output is just low-confidence trigger warnings rather than actual errors, so everything exits cleanly. Cross-module verification passes overall—the kernel's admit and external body counts are pre-existing out-of-scope items, not introduced by this module.
+
+I'm preparing to launch two independent sub-agents to review the changes and write their reports in parallel. I'll give them the file paths, the assume() findings, and verification results so they can run their own checks and generate their reviews to separate files.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review agents are running. While they work, let me read the view design doc to be ready to consolidate.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md
+
+[THINKING] While the sub-agents are running, I'll review the view_design.md file and the second part of the spec covering classification, then verify the view substitution test cases to prepare for consolidation.
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::table`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers this module is **a single hardware page-table page**: a fixed-length
+6. array of `PAGE_TABLE_LENGTH` (= 1024) typed entries, addressed by a *validated*
+7. in-range index (`TableIndex`) and backed by volat...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+I'll start by reading the required skills and the module files, then run all the verification checks myself.
+[TOOL] report_intent: Reading skills and module files
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+I have most skills. Let me read the spec-design skill in sections and start running checks in parallel.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+I'll wait for the two review agents to complete. They're independently running verification and writing their reviews.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] I've got the view structures aligned with the spec, so I'll wait for the sub-agents to finish their work rather than interrupt them. I could check in after a brief delay, but it's probably better to just let them complete and get a notification when they're done.
+[TOOL] report_intent: Reviewing verification status
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me start the long-running verification and read the spec/proof files in parallel.
+[TOOL] report_intent: Running verification and reading specs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tee verus-ai-logs/nanvix-phys-arch-paging-table/final-review/
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: verify>
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // TableIndex — a validated page-table slot number
+5. //==================================================================================================
+6. 
+7. // A `TableInde...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // The `TableEntry` round-trip law: decoding a freshly-encoded entry yields it back.
+4. // This is the abstract contract every `TableEntry` implementor must honour (`raw` is a faithful,
+5. // injective serialization). Stated as a broadcast lemma so callers obtain the read-after-wr...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
