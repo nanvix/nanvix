@@ -1114,3 +1114,50 @@ Now I'm setting up the wrapper structs using the re-export paths from `::arch::m
 Turn 65
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -70
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+Progress — only the `TableEntry` trait bound fails (external trait). Let me check how Verus registers external traits.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "external_trait_specification\|ExternalTraitSpecificationFor" /home/ruize/verus-ai-e
+
+[THINKING] The four type registrations are working, but Verus can't resolve the `TableEntry` trait since it's external and unregistered. I'm weighing whether to register the trait itself—which is complex for external trait specifications—or drop the bound entirely, though that conflicts with Rust's requirement that `E: TableEntry` for the `Table<E>` type.
+
+I'm considering whether to register concrete instantiations instead of the generic type, or use `#[verifier::external_trait_specification]` to declare the external trait. Let me search the codebase for how Verus handles external trait specifications.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/vstd/float.rs:105:#[verifier::external_trait_specification]
+/home/ruize/verus-ai-exp/verus-ai/vstd/float.rs:107:    type ExternalTraitSpecificationFor: IeeeFloatCast<To>;
+/home/ruize/verus-ai-exp/verus-ai/vstd/function.rs:32:#[verifier::external_trait_specification]...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/toolchain/verus/vstd/std_specs/cmp.rs
+[RESULT ✓] view: 8. verus_! {
+9. 
+10. #[verifier::external_trait_specification]
+11. #[verifier::external_trait_extension(PartialEqSpec via PartialEqSpecImpl)]
+12. pub trait ExPartialEq<Rhs: PointeeSized = Self>: PointeeSized {
+13.     type ExternalTraitSpecificationFor: PartialEq<Rhs>;
+14. 
+15.     spec fn obeys_eq_...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+I'll register the `TableEntry` trait via `external_trait_specification`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I'm registering the TableEntry trait using an external trait specification, but I need to account for the fact that TableEntry has a Copy bound. The external trait might need to mirror those super-bounds, though I'll keep it minimal for now. I'm also looking at the from_raw method and other trait methods that need to be handled.
+
+I'll add the external trait specification before ExTable so that the bound `E: ::arch::mem::paging::TableEntry` can resolve properly once the trait is registered.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -55

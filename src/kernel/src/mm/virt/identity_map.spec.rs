@@ -55,6 +55,11 @@ pub struct ExPageDirectoryEntry(::arch::mem::paging::PageDirectoryEntry);
 #[verifier::external_body]
 pub struct ExPageTableEntry(::arch::mem::paging::PageTableEntry);
 
+#[verifier::external_trait_specification]
+pub trait ExTableEntry {
+    type ExternalTraitSpecificationFor: ::arch::mem::paging::TableEntry;
+}
+
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::reject_recursive_types(E)]

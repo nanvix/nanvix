@@ -30,4 +30,4 @@
     - mm/virt/identity_map.spec.rs:48 ExTableIndex (struct): external_type_spec
     - mm/virt/identity_map.spec.rs:52 ExPageDirectoryEntry (struct): external_type_spec
     - mm/virt/identity_map.spec.rs:56 ExPageTableEntry (struct): external_type_spec
-    - mm/virt/identity_map.spec.rs:61 ExTable (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:66 ExTable (struct): external_type_spec
