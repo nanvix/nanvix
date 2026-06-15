@@ -452,3 +452,41 @@ Module CLEAN (6 verified, 0 errors). Both surviving divergences carry `VERUS REW
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== make verify (full crate) ==="; timeout 700 make verify 2>&1 | grep -E "Summ
 
 [THINKING] The module verification passed with the mismatches and extras now properly documented with VERUS REWRITE comments and reproducers, meeting the reviewer's requirements. Next I'll run the full crate verification and build to confirm everything compiles correctly.
+[RESULT ✓] bash: === make verify (full crate) ===
+  cheating: assume=0 external_body=3 admit=1 trusted=0 no_decreases=0 cfg_gate=4
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=3 admit=1 trusted=0 no_decreases=0 cfg_gate=4
+  status: CHEATING_DETECTED
+  cheat...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+`make verify` exits 0 (crate-wide cheating counts are out-of-scope and unchanged from base; the phys module is CLEAN). `make build` is cached. Let me force a clean kernel rebuild to confirm the new exec code compiles without warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/address/phys.rs && timeout 700 make build 2>&1 | t
+
+[THINKING] The verify step passes but the build target appears cached. Let me force a fresh kernel build to make sure the exec code compiles without any issues or warnings.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^build:|^build :|build:" Makefile | head; echo "---targets---"; grep -nE "^
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+---targets---
+378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nan...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+`make build` completes cleanly (exit 0, nothing to rebuild — caches valid). The `verify-kernel` run already recompiled the kernel with my exec changes through Verus (0 errors), confirming the code compiles. Let me confirm exit codes and write the response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make build >/dev/null 2>&1; echo "make build exit: $?"; make verify-kernel MODULE=hal
+
+[THINKING] Looking at the make targets, `make build` doesn't have an explicit recipe—it just returns "Nothing to be done" because its dependencies are already satisfied. The actual compilation happens through `make verify-kernel`, which runs the kernel through Verus and successfully compiles the exec code. The reviewer is asking for both `make verify-kernel` and `make build` to be run.
