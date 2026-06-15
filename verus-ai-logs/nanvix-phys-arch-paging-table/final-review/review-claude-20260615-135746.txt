@@ -713,3 +713,139 @@ Let me start the long-running verification and read the spec/proof files in para
 ────────────────────────────────────────────────────────────
 Turn 3
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && wc -l src/libs/arch/src/x86/mem/paging/table.rs src/libs/arch/src/x86/mem/paging/tabl
+[RESULT ✓] bash: 251 src/libs/arch/src/x86/mem/paging/table.rs
+  123 src/libs/arch/src/x86/mem/paging/table.spec.rs
+   24 src/libs/arch/src/x86/mem/paging/table.proof.rs
+  177 verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md
+  369 verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md
+   39 verus-a...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/repros/L1.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+Critical patterns already visible. Let me read the remaining context files and run the analysis scripts in parallel.
+[TOOL] report_intent: Reading context docs and running scripts
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/repros/L1.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // TableIndex — a validated page-table slot number
+5. //==================================================================================================
+6. 
+7. // A `TableInde...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // The `TableEntry` round-trip law: decoding a freshly-encoded entry yields it back.
+4. // This is the abstract contract every `TableEntry` implementor must honour (`raw` is a faithful,
+5. // injective serialization). Stated as a broadcast lemma so callers obtain the read-after-wr...
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging::table`
+2. 
+3. ## Script Output
+4. 
+5. Raw `find_callers_lsp.py` output reported **7 public exec functions, 0 private,
+6. 2 types (`Table`, `TableIndex`)** and — importantly — **0 external callers for
+7. every public function** (only internal callers of ...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::table`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers this module is **a single hardware page-table page**: a fixed-length
+6. array of `PAGE_TABLE_LENGTH` (= 1024) typed entries, addressed by a *validated*
+7. in-range index (`TableIndex`) and backed by volat...
+[RESULT ✓] view: 1. # Bugs — `arch::x86::mem::paging::table`
+2. 
+3. No code bugs were found in this module. All scope functions admit correct
+4. specs as written; the only obstacles are a Verus language limitation and a
+5. deferred abstraction, both recorded below for the proving phase.
+6. 
+7. ## Not a code bug — Ve...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging::table`
+2. 
+3. ## Script Output
+4. 
+5. Raw `find_callers_lsp.py` output reported **7 public exec functions, 0 private,
+6. 2 types (`Table`, `TableIndex`)** and — importantly — **0 external callers for
+7. every public function** (only internal callers of ...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::table`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers this module is **a single hardware page-table page**: a fixed-length
+6. array of `PAGE_TABLE_LENGTH` (= 1024) typed entries, addressed by a *validated*
+7. in-range index (`TableIndex`) and backed by volat...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. # Bugs — `arch::x86::mem::paging::table`
+2. 
+3. No code bugs were found in this module. All scope functions admit correct
+4. specs as written; the only obstacles are a Verus language limitation and a
+5. deferred abstraction, both recorded below for the proving phase.
+6. 
+7. ## Not a code bug — Ve...
+[RESULT ✓] view: 1. // VERUS-AI LIMITATION id=L1
+2. // construct: codec round-trip (decode-after-encode) over two `uninterp` spec functions
+3. //            parameterized by a structureless generic `E`.
+4. //
+5. // Mirrors `arch::x86::mem::paging::table`:
+6. //   spec_entry_raw<E>(e: E) -> PteWord            (== `en...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[RESULT ✓] view: 1. // VERUS-AI LIMITATION id=L1
+2. // construct: codec round-trip (decode-after-encode) over two `uninterp` spec functions
+3. //            parameterized by a structureless generic `E`.
+4. //
+5. // Mirrors `arch::x86::mem::paging::table`:
+6. //   spec_entry_raw<E>(e: E) -> PteWord            (== `en...
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch
+[RESULT ✓] report_intent: Intent logged
