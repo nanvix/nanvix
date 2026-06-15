@@ -1,0 +1,21 @@
+Timestamp: 2026-06-15_14-52-30
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying module hal::platform::microvm
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
