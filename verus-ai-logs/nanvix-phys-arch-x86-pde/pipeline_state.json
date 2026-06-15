@@ -2,9 +2,11 @@
   "module_name": "arch-x86-pde",
   "log_name": "nanvix-phys-arch-x86-pde",
   "source_path": "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "cae8e1479f46c18ff1c5100eead91afa476073d7"
   },
   "phase_start_shas": {
-    "proving": "5e2a624da810d511f1a8cf08d242f3c3e5a2e648"
+    "proving": "5e2a624da810d511f1a8cf08d242f3c3e5a2e648",
+    "cheating-elimination": "ac1d490823348398309296497160ac6ca93d0cd8"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "cae8e1479f46c18ff1c5100eead91afa476073d7",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "ac1d490823348398309296497160ac6ca93d0cd8",
       "rollback_iter": 0
     }
   ],
