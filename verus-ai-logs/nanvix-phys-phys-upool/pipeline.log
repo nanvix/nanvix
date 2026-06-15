@@ -259,3 +259,6 @@ No fix required.
 [2026-06-15 13:19:01] [CHEATING] ❌ Hard cheating detected (attempt 1), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating_report_1.md
 [2026-06-15 13:19:01] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 13:35:23]   ↳ cheating-fix done in 16m22s (exit=0)
+[2026-06-15 13:35:24] [CHEATING] external_body: 14 (13 on user fns), admit: 4
+[2026-06-15 13:35:24] [CHEATING] ❌ Hard cheating detected (attempt 2), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating_report_2.md
+[2026-06-15 13:35:24] [COPILOT] Running: copilot --model claude-opus-4.8 ...
