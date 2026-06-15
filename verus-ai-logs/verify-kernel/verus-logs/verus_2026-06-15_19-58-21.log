@@ -1,0 +1,33 @@
+Timestamp: 2026-06-15_19-58-21
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+6 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+verification results:: 6 verified, 0 errors
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate specification for `arch::x86::mem::constants::PAGE_SIZE`
+  --> src/libs/arch/src/x86/mem/constants.rs:49:1
+   |
+49 | pub const PAGE_SIZE: usize = 4096;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^ declared here (and not marked as `external`)
+   |
+  ::: src/kernel/src/hal/mem/types/address/frame.spec.rs:45:1
+   |
+45 | pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ specification declared via `assume_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
