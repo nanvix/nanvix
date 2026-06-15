@@ -87,12 +87,7 @@ impl MmioCachePolicy {
     ///
     /// A new [`MmioCachePolicy`] instance.
     ///
-    pub const fn new(write_through: bool, cache_enabled: bool) -> Self {
-        Self {
-            write_through,
-            cache_enabled,
-        }
-    }
+    pub const fn new(write_through: bool, cache_enabled: bool) -> Self { ... }
 
     /// Uncacheable: Write-Through Enabled, Cache Disabled.
     pub const UNCACHEABLE: Self = Self {
@@ -115,9 +110,7 @@ impl MmioCachePolicy {
     ///
     /// `true` if the page is mapped with the Write-Through attribute (PWT=1).
     ///
-    pub fn write_through(&self) -> bool {
-        self.write_through
-    }
+    pub fn write_through(&self) -> bool { ... }
 
     ///
     /// # Description
@@ -128,9 +121,7 @@ impl MmioCachePolicy {
     ///
     /// `true` if caching is enabled for the page (PCD=0).
     ///
-    pub fn cache_enabled(&self) -> bool {
-        self.cache_enabled
-    }
+    pub fn cache_enabled(&self) -> bool { ... }
 }
 //==================================================================================================
 // Memory Region
@@ -163,69 +154,21 @@ impl<T: Address> MemoryRegion<T> {
         size: usize,
         typ: MemoryRegionType,
         perm: AccessPermission,
-    ) -> Result<Self, Error> {
-        // Check if name is too long (byte length).
-        if name.len() > Self::MEMORY_REGION_NAME_MAX {
-            let reason: &str = "memory region name is too long";
-            error!("{reason} (name.len={}, NAME_MAX={})", name.len(), Self::MEMORY_REGION_NAME_MAX);
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
+    ) -> Result<Self, Error> { ... }
 
-        // Check if size of the memory region is valid.
-        if size == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid memory region size"));
-        }
-
-        // Check if memory region is too big.
-        let start_raw_addr: usize = start.clone().into_raw_value();
-        let end_raw_addr: usize = match start_raw_addr.checked_add(size - 1) {
-            Some(end_raw_addr) => end_raw_addr,
-            None => {
-                return Err(Error::new(ErrorCode::TooBig, "memory region is too big"));
-            },
-        };
-
-        // Check if memory region spans outside the address space.
-        if end_raw_addr > T::max_addr() {
-            return Err(Error::new(
-                ErrorCode::InvalidArgument,
-                "memory region spans outside the address space",
-            ));
-        }
-
-        Ok(Self {
-            name: name.to_string(),
-            start,
-            size,
-            typ,
-            perm,
-            cache_policy: None,
-        })
-    }
-
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
+    pub fn name(&self) -> String { ... }
 
     /// Returns the first valid address that lies in the target memory region.
-    pub fn start(&self) -> T {
-        self.start.clone()
-    }
+    pub fn start(&self) -> T { ... }
 
     /// Returns the size of the target memory region.
-    pub fn size(&self) -> usize {
-        self.size
-    }
+    pub fn size(&self) -> usize { ... }
 
     /// Returns the type of the target memory region.
-    pub fn typ(&self) -> MemoryRegionType {
-        self.typ
-    }
+    pub fn typ(&self) -> MemoryRegionType { ... }
 
     /// Returns the permissions of the target memory region.
-    pub fn perm(&self) -> AccessPermission {
-        self.perm
-    }
+    pub fn perm(&self) -> AccessPermission { ... }
 
     ///
     /// # Description
@@ -236,9 +179,7 @@ impl<T: Address> MemoryRegion<T> {
     ///
     /// The [`MmioCachePolicy`] if one was assigned, or `None` otherwise.
     ///
-    pub fn cache_policy(&self) -> Option<MmioCachePolicy> {
-        self.cache_policy
-    }
+    pub fn cache_policy(&self) -> Option<MmioCachePolicy> { ... }
 
     ///
     /// # Description
@@ -249,34 +190,21 @@ impl<T: Address> MemoryRegion<T> {
     ///
     /// - `policy`: The cache policy to assign.
     ///
-    pub fn set_cache_policy(&mut self, policy: MmioCachePolicy) {
-        self.cache_policy = Some(policy);
-    }
+    pub fn set_cache_policy(&mut self, policy: MmioCachePolicy) { ... }
 }
 
 impl<T: Address> PartialEq for MemoryRegion<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.start == other.start
-            && self.size == other.size
-            && self.typ == other.typ
-            && self.perm == other.perm
-            && self.cache_policy == other.cache_policy
-    }
+    fn eq(&self, other: &Self) -> bool { ... }
 }
 
 impl<T: Address> Eq for MemoryRegion<T> {}
 
 impl<T: Address> PartialOrd for MemoryRegion<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> { ... }
 }
 
 impl<T: Address> Ord for MemoryRegion<T> {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.start.cmp(&other.start)
-    }
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering { ... }
 }
 
 //==================================================================================================
@@ -300,15 +228,7 @@ impl<T: Address> TruncatedMemoryRegion<T> {
         size: usize,
         typ: MemoryRegionType,
         perm: AccessPermission,
-    ) -> Result<Self, Error> {
-        // Truncate the size of the memory region to a multiple of the page size.
-        let size: usize = ::sys::mm::align_up(size, PAGE_ALIGNMENT).ok_or_else(|| {
-            let reason: &str = "align_up overflow";
-            error!("TruncatedMemoryRegion::new(): {reason} (name={name:?}, size={size})");
-            Error::new(ErrorCode::InvalidArgument, reason)
-        })?;
-        Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
-    }
+    ) -> Result<Self, Error> { ... }
 
     ///
     /// # Description
@@ -334,50 +254,23 @@ impl<T: Address> TruncatedMemoryRegion<T> {
         size: usize,
         perm: AccessPermission,
         cache_policy: MmioCachePolicy,
-    ) -> Result<Self, Error> {
-        let mut region: Self = Self::new(name, start, size, MemoryRegionType::Mmio, perm)?;
-        region.0.set_cache_policy(cache_policy);
-        Ok(region)
-    }
+    ) -> Result<Self, Error> { ... }
 
-    pub fn from_memory_region(region: MemoryRegion<T>) -> Result<Self, Error> {
-        let cache_policy: Option<MmioCachePolicy> = region.cache_policy();
-        let start: T = region.start().align_down(PAGE_ALIGNMENT)?;
-        let start: PageAligned<T> = PageAligned::from_address(start)?;
-        let name: String = region.name();
-        let size: usize = region.size();
-        let typ: MemoryRegionType = region.typ();
-        let perm: AccessPermission = region.perm();
-        let mut truncated: Self = Self::new(&name, start, size, typ, perm)?;
-        if let Some(policy) = cache_policy {
-            truncated.0.set_cache_policy(policy);
-        }
-        Ok(truncated)
-    }
+    pub fn from_memory_region(region: MemoryRegion<T>) -> Result<Self, Error> { ... }
 
-    pub fn name(&self) -> String {
-        self.0.name()
-    }
+    pub fn name(&self) -> String { ... }
 
     /// Returns the first valid address that lies in the target memory region.
-    pub fn start(&self) -> PageAligned<T> {
-        self.0.start()
-    }
+    pub fn start(&self) -> PageAligned<T> { ... }
 
     /// Returns the size of the target memory region.
-    pub fn size(&self) -> usize {
-        self.0.size()
-    }
+    pub fn size(&self) -> usize { ... }
 
     /// Returns the type of the target memory region.
-    pub fn typ(&self) -> MemoryRegionType {
-        self.0.typ()
-    }
+    pub fn typ(&self) -> MemoryRegionType { ... }
 
     /// Returns the permissions of the target memory region.
-    pub fn perm(&self) -> AccessPermission {
-        self.0.perm()
-    }
+    pub fn perm(&self) -> AccessPermission { ... }
 
     ///
     /// # Description
@@ -388,45 +281,25 @@ impl<T: Address> TruncatedMemoryRegion<T> {
     ///
     /// The [`MmioCachePolicy`] if one was assigned, or `None` otherwise.
     ///
-    pub fn cache_policy(&self) -> Option<MmioCachePolicy> {
-        self.0.cache_policy()
-    }
+    pub fn cache_policy(&self) -> Option<MmioCachePolicy> { ... }
 }
 
 impl<T: Address> PartialEq for TruncatedMemoryRegion<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
+    fn eq(&self, other: &Self) -> bool { ... }
 }
 
 impl<T: Address> Eq for TruncatedMemoryRegion<T> {}
 
 impl<T: Address> PartialOrd for TruncatedMemoryRegion<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> { ... }
 }
 
 impl<T: Address> Ord for TruncatedMemoryRegion<T> {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering { ... }
 }
 
 impl<T: Address> core::fmt::Debug for TruncatedMemoryRegion<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(
-            f,
-            "TruncatedMemoryRegion {{ name: {}, start: {:?}, size: {}, typ: {:?}, perm: {:?}, \
-             cache_policy: {:?} }}",
-            self.name(),
-            self.start(),
-            self.size(),
-            self.typ(),
-            self.perm(),
-            self.cache_policy()
-        )
-    }
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result { ... }
 }
 
 //==================================================================================================
@@ -435,15 +308,7 @@ impl<T: Address> core::fmt::Debug for TruncatedMemoryRegion<T> {
 
 impl TruncatedMemoryRegion<PhysicalAddress> {
     /// Attempts to create a virtual memory region from a physical memory region.
-    pub fn from_virtual_memory_region(region: MemoryRegion<VirtualAddress>) -> Result<Self, Error> {
-        let name: String = region.name();
-        let start: PageAligned<PhysicalAddress> =
-            PageAligned::from_address(PhysicalAddress::from_virtual_address(region.start())?)?;
-        let size: usize = region.size();
-        let typ: MemoryRegionType = region.typ();
-        let perm: AccessPermission = region.perm();
-        TruncatedMemoryRegion::new(&name, start, size, typ, perm)
-    }
+    pub fn from_virtual_memory_region(region: MemoryRegion<VirtualAddress>) -> Result<Self, Error> { ... }
 }
 
 //==================================================================================================
