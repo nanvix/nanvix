@@ -479,3 +479,12 @@ Now the cross-module regression and build, in background.
 ────────────────────────────────────────────────────────────
 Turn 13
 ────────────────────────────────────────────────────────────
+Running both concurrently risks build races. Let me serialize — stop build, run it after verify.
+[TOOL] stop_bash: {'shellId': 'buildsh'}
+
+[THINKING] I'm realizing that running `make verify` and `make build` in parallel could cause build races since they both access the same kernel build directory. To avoid conflicts, I should serialize them instead — stopping the build process and letting verification complete first, then running the build afterward.
+[RESULT ✓] stop_bash: <command with id: buildsh stopped>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
