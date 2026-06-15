@@ -1,0 +1,20 @@
+RESOLVED
+
+All proving-phase checklist items for arch-x86-pde are PASS with tool evidence:
+
+1. No specs weakened — spec_drift.py check arch-x86-pde → exit 0, 0 contract drift.
+2. Zero admit() — none in pde files; cheating admit=0.
+3. Zero external_body (unless TCB-allowed) — zero in pde; the 3 crate-wide entries
+   (mod.rs::invlpg, table.rs::read, table.rs::write) are listed in tcb-allowed.md.
+4. Zero assume/assume_specification — none in pde; the only assume is the TCB-listed
+   table.proof.rs::lemma_entry_roundtrip (out of scope).
+5. No cfg-gated exec code — only standard #[cfg(verus_keep_ghost)] ghost-include
+   guards and cfg_attr lint markers; no exec branches/expressions/match arms.
+6. Cheating audit — pde: admit=0, external_body=0, assume=0, cfg-gated exec=0.
+7. Verus limitation reproducer — N/A; no limitation claimed.
+8. Exec rewrites minimal/equivalent — no VERUS REWRITE comments; exec bodies
+   unchanged from baseline.
+9. Cross-module regression — make verify-arch: 48 verified, 0 errors (whole crate).
+10. Verification + build — 48 verified, 0 errors, 0 warnings, exit 0.
+
+No code changes required.
