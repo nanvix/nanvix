@@ -1214,3 +1214,17 @@ Let me force a fresh, non-cached full-kernel verification to definitively confir
 Let me force a definitive full-kernel re-verification by clearing the kernel's build artifacts so verus runs on everything from scratch. The challenge is that the entire kernel is a single crate, so when I run `make verify-kernel MODULE=mm::phys::kframe`, it only verifies that specific module, which is why it showed "3 verified"—but running the full verification without the MODULE filter still shows "cached" because cargo thinks nothing changed at the crate level.
 
 The real issue is that my MODULE-filtered run updated the cargo cache for the whole kernel crate, but it only actually verified kframe functions, not the entire crate. So I'm not certain whether the whole kernel has been verified with my changes or just the kframe module. The most reliable way forward is to clean the kernel target completely and run a fresh full verification.
+[RESULT ✓] bash: the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1186:13
+     |
+1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+Fresh full-kernel verification: **116 verified, 0 errors** — no regression. Let me confirm kframe is gone from the cheating detail and verify the before/after global counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== kframe in cheating detail? ==="; grep -i "kframe" verus-ai-logs/v
+
+[THINKING] The full kernel verification passed with 116 verified entries and no errors, confirming my changes don't introduce regressions. The "CHEATING_DETECTED" flags are all in out-of-scope files like frame.rs and manager.rs, while my kframe module itself remains clean.
