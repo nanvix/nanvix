@@ -314,3 +314,225 @@ The cached run only re-verified `mm::phys` modules. I need a fresh verification 
 [THINKING] The verification run was cached and only checked the mm::phys modules instead of the actual target phys.rs file I need to verify. Since `make verify-kernel` processes the entire kernel crate, Verus must be skipping recompilation for modules it's already seen, which is why I'm getting stale output from the previous proof target.
 
 I need to force a fresh verification run to actually check the `#[verus_verify]` impl in phys.rs and get accurate cheating counts. The cleanest approach would be to touch phys.rs to trigger recompilation, or check if the verify script has module-specific options. But first I should understand why only mm::phys modules are showing up in the verification notes—either the hal::phys module path isn't included in the build target, or the cached artifacts are masking what actually needs verification.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verifying module" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_12-52-36
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "phys" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "=== full d
+
+[THINKING] I've got 37 modules verified now with no errors, so let me see which ones just passed validation.
+[RESULT ✓] bash: 3:    - mm/phys/frame.rs:137 alloc: external_body
+4:    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+5:    - mm/phys/frame.rs:290 free: external_body
+6:    - mm/phys/frame.rs:368 share: external_body
+7:    - mm/phys/frame.rs:428 refcount: external_body
+8:    - mm/phys/frame.rs:481 book: ex...
+[RESULT ✓] bash: 
+<shellId: 12 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' scripts/verify.sh | grep -n "cheat\|external_body\|detail" ; echo "==="; gre
+
+[THINKING] The grep search didn't find any "verifying module" lines in the fresh log, which is surprising. Looking at the verification results, I see 37 verified with 0 errors, but the cheating-detail.txt file doesn't include entries for phys.rs or phys.spec.rs—specifically, the ExFrameNumber external_type_specification in phys.spec.rs isn't flagged. It seems the cheating detail scanner is just grepping through the source files directly.
+
+Wait, I'm noticing something: the cheating detail output appears identical between the fresh run and the cached run, with the same entries from page.rs, frame.rs, and identity_map.rs. That suggests the scanner is doing a static grep across the entire kernel source, independent of which modules actually verified. But then why doesn't ExFrameNumber show up if the scanner does scan .spec.rs files—it clearly found ExLinkedList in mm/phys/mod.spec.rs. Let me look at the scanner script to understand what it's actually matching.
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+===
+scripts/verify.sh:301:combined = {"assume": 0, "external_body": 0, "admit": 0, "trusted": 0, "no_decreases": 0}
+scripts/verify.sh:305:    combined["external_body"] += r.external_body_count
+scripts/verify.sh:318:# mer...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 336. #     is annotated as `external_type_spec` so reviewers can scope-check.
+337. get_cheating_detail() {
+338.     local scan_dir="$1"
+339.     VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
+340. import sys, os
+341. sys.path.insert(0, os.environ["VERUS_AI_DIR"])
+342. from pathli...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "get_cheating_detail\|scan_dir\|CHEATING_DIR\|SRC_DIR\|source dir\|--crate" scripts
+
+[THINKING] I need to trace through the scanner logic to understand what files it's actually picking up. The scanner globs for Rust files under `CHEATING_DIR`, but I'm not sure if `phys.spec.rs` gets included since it's brought in via `include!` macro rather than being directly in the scan directory. Let me find where `get_cheating_detail` is called to see what `scan_dir` actually resolves to.
+[RESULT ✓] bash: 6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+35:Usage: $(basename "$0") (--crate CRATE | --verus-dir DIR) [OPTIONS]
+38:  --crate CRATE         Cargo crate name (uses: cargo verus verify -p CRATE).
+58:        --crate)
+93:    echo "ERROR: Either --crate or --verus-dir is required." >&...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" CHEATING_DIR="src/kernel/src" python3 -c '
+
+[THINKING] I'm realizing the scanner should be picking up ExFrameNumber since it globs all Rust files under src/kernel/src, which includes phys.spec.rs, and that file has the exact struct with the external_type_specification attribute that the scanner looks for. So either the scanner isn't parsing correctly or there's something else preventing it from being reported.
+
+The issue might be that phys.spec.rs wraps everything in a `verus! { }` macro, and tree-sitter might not descend into macro invocations to find the struct definitions inside. But then ExLinkedList from mod.spec.rs was detected, and that's presumably also inside a verus block, so the parser must handle verus macros somehow. Let me check if there's a difference in how these files are structured or if the cheating-detail.txt output is incomplete.
+
+Actually, the real question is simpler: I know from grep that phys.spec.rs has 1 external_body on ExFrameNumber and 6 assume_specifications, regardless of whether the scanner detects them. The global count shows 25 external_body entries but the detail file lists 24, so there's a discrepancy of 1. Let me re-run the cheating detail generation manually to confirm whether ExFrameNumber appears in the output.
+[RESULT ✓] bash: struct_items found:
+function_items: 0
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '60,80p' src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] The parser isn't finding any structs or functions inside the `verus! { }` macro in phys.spec.rs, but it did locate ExLinkedList in mod.spec.rs—so there's likely a difference in how the code is structured between these files. Let me look at mod.spec.rs around line 73 to see if the struct is defined outside the macro or uses a different pattern.
+[RESULT ✓] bash: // `LinkedList`/`Iter`, which the Rust orphan rule forbids from a downstream crate (E0117), and the
+// pinned `vstd` dependency cannot be extended. Consequently the `for region in list.iter()` loops in
+// `book_physical_memory_regions` / `book_mmio_regions` cannot be body-verified here; those two
+//...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" python3 -c '
+import sys, os
+sys.path.inser
+
+[THINKING] Both files wrap in `verus! { }`, but the parser found ExLinkedList in mod.spec.rs while missing ExFrameNumber in phys.spec.rs—so it must be descending into the verus macro for one but not the other. Let me test the parser directly on mod.spec.rs to see what's different.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.spec.rs structs= ['FrameAllocView', 'ExLinkedList', 'PhysMemView', 'PhysAuth'] root_has_error= True
+src/kernel/src/hal/mem/types/address/phys.spec.rs structs= [] root_has_error= False
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== files changed since specification boundary cdbf5ab ==="; git diff --stat cdbf5ab8
+
+[THINKING] I'm noticing something odd with how the parser handles these files — mod.spec.rs has parsing errors but still finds structs, while phys.spec.rs parses without errors yet finds no structs at all, even though it clearly contains `pub struct ExFrameNumber(FrameNumber);` inside the verus block. The key difference seems to be that phys.spec.rs uses `#[cfg(verus_keep_ghost)]` before the verus macro, which might be causing the tree-sitter parser to handle the code differently.
+
+More importantly, I'm realizing the scanner is missing ExFrameNumber's external_body and six assume_specifications from phys.spec.rs entirely — the reported counts don't reflect what's actually in the file. But for my review, I need to judge the actual code, not just what the scanner caught. Looking at the checklist items against the real phys files, ExFrameNumber is an external type specification for a foreign type (FrameNumber from arch), not a function with external_body. This is a standard Verus pattern for declaring opaque external types, similar to ExLinkedList, so it's acceptable even though the checklist technically focuses on functions.
+
+For the six assume_specifications in phys.spec.rs, most are for the arch crate (FRAME_SIZE, FRAME_SHIFT, FrameNumber methods) which are external and allowed. The question is whether VirtualAddress and its methods are in the sys crate — if so, they'd be at an accepted library boundary like the existing patterns. The spec comments suggest VirtualAddress might be in sys and not yet verified, which would make those assume_specifications the standard pattern for that edge.
+
+I should verify VirtualAddress's actual home crate and confirm there are no admit or cfg-gated exec code violations in phys.rs itself. The cfg gates I see there are on module-level items (includes, View impl) rather than exec branches, so that should be fine. The spec drift concern is harder to check without the actual tool, but the specs were established in the specification phase and shouldn't change during proving.
+[RESULT ✓] bash: === files changed since specification boundary cdbf5ab ===
+
+=== since proving start b35c5d5 ===
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git show --stat 869efa283 | head -30; echo "=== scaffold ==="; git show --stat 9a7a36529 | 
+
+[THINKING] I'm noticing there's no diff between the specification boundary and HEAD, which suggests the prover didn't actually modify anything in the source code despite having commits labeled "proving prover END" and "proving scaffold END". Let me investigate what those commits actually changed.
+[RESULT ✓] bash: commit 869efa2830bfb2cfd4d64eb99a24ac652557cc90
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 12:50:54 2026 +0800
+
+    [verus-ai] proving prover END: hal-phys-address
+
+ .../nanvix-phys-hal-phys-address/pipeline.log      |  1 +
+ .../pipeline_state.json                            |  2 +-
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-124839.txt
+
+[THINKING] The prover phase didn't actually make any changes to the source code—the proofs were already complete from the specification phase, which had already generated the verifying proofs for phys.rs, phys.spec.rs, and phys.proof.rs. Now I'm checking the prover's log file to see what it concluded.
+[RESULT ✓] bash: Output too large to read at once (20.8 KB). Saved to: /tmp/copilot-tool-output-1781499272138-au16zq.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && tail -50 /tmp/copilot-tool-output-1781499272138-au16zq.txt
+[RESULT ✓] bash: [RESULT ✓] bash: ---grep results block---
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-l...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "pub use\|pub struct VirtualAddress\|VirtualAddress" src/kernel/src/hal/mem/types/
+
+[THINKING] So the prover is saying phys.rs is fully verified with 37 items checked, though they initially saw 31 due to caching differences. The external_body and cfg_gate counts of 25 and 10 are from other modules in mm/phys/ that fall outside the actual proof target. I need to refocus my verification checklist strictly on phys.rs itself and its specification and proof, then reconsider whether the assume_specifications and external type specs are acceptable. The external_body in phys.spec.rs for ExFrameNumber is actually an external_type_specification registering the arch's FrameNumber as opaque—this is the standard Verus pattern for foreign types and shouldn't be treated as a body-bypass, so it's acceptable despite being worth noting. For the six assume_specifications in phys.spec.rs, I need to verify each one targets genuinely external code (arch/sys crates) rather than kernel-internal code that should be verified instead. Most of them point to the arch crate, which is external and not Verus-enabled, but I need to check a couple of the VirtualAddress methods to confirm they're also external.
+[RESULT ✓] bash: 21:pub use ::sys::mm::{
+23:    VirtualAddress,
+25:pub use aligned::*;
+26:pub use frame::*;
+27:pub use page::*;
+28:pub use pd::*;
+29:pub use phys::*;
+=== where is VirtualAddress defined ===
+src/libs/sys/src/sys/mm/address/virt.rs
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus!\|verus_spec\|verus_verify\|fn new\|into_raw_value\|assume_specification" sr
+
+[THINKING] VirtualAddress comes from the sys crate, so calling its constructor and conversion methods represents a trust boundary that I'm treating as verified—this aligns with how the codebase already handles external library calls. I'm checking whether sys itself has been verified by the prover, since that would validate these assumptions.
+
+The assume_specifications here were already established and approved during the specification phase, so my job now is to confirm they're genuinely at trust boundaries rather than unnecessarily weakening verified code. I need to look at whether virt.rs in sys actually has verus annotations for VirtualAddress's methods—if it doesn't, then the assumptions are justified.
+[RESULT ✓] bash: 30:#[verus_verify(external_derive)]
+42:    pub const fn new(value: usize) -> Self {
+237:    fn into_raw_value(self) -> usize {
+299:verus! {
+310:} // end verus!
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '299,311p' src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] bash: verus! {
+
+impl View for VirtualAddress {
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0 as int
+    }
+}
+
+} // end verus!
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "VERUS REWRITE\|VERUS_REWRITE" src/kernel/src/hal/mem/types/address/phys.rs src/ke
+
+[THINKING] In `sys`, the `View` implementation for `VirtualAddress` is marked as closed with a simple view definition, but `new` and `into_raw_value` are plain exec functions without verified specs—they sit at the external boundary where the sys crate doesn't provide formal verification. That's why `assume_specification` in phys.spec.rs is the right approach to assign them specifications, and it's a legitimate pattern for this kind of unverified external interface.
+
+Now I'm working through the remaining verification checklist. For spec drift, I can't run the placeholder tool directly, but the source hasn't changed between the specification boundary and HEAD, and the contracts themselves are strong—they're not trivially true statements. For admits, a grep confirms zero in the phys files. For external_body usage, I need to verify it's only in the TCB where appropriate.
+
+The ExFrameNumber is a type registration for a foreign architecture type, not a function body bypass, so that's acceptable. Looking at the assume_specification instances, there are six of them in phys.spec.rs, all positioned at genuine architecture and system boundaries where verification hasn't yet been completed—this aligns with the allowed exceptions. No bare assume() calls exist. The cfg gating only affects ghost code and spec includes, never executable branches. For the proof target, the audit shows zero admits, zero assumes, zero external function bodies, one external type specification, and six assume_specification calls at trust boundaries.
+
+Now I need to verify there are no VERUS REWRITE comments indicating semantic changes to the executable code, then confirm the full verification suite passes with no errors or warnings across all crates.
+[RESULT ✓] bash: exit=1
+=== warnings in fresh kernel verify log ===
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "Crate|Results|verified|errors|Exit code|status|warning|Summary
+
+[THINKING] The verification passed without any VERUS rewrites or kernel warnings, so now I'm running the full `make verify` command to check for cross-module regressions and then building to confirm there are no warnings. Let me look up the available Makefile targets to find the right build command.
