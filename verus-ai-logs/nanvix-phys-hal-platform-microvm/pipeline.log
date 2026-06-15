@@ -135,3 +135,6 @@ In-scope target gva_to_gpa has a complete, caller-usable ensures contract
 PHASE: proving
 Module: hal-platform-microvm
 ============================================================
+[2026-06-15 14:52:32] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+[2026-06-15 14:52:32] [PROVER] Running proving...
+[2026-06-15 14:52:32] [COPILOT] Running: copilot --model claude-opus-4.8 ...
