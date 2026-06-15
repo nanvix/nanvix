@@ -1,97 +1,24 @@
 {
   "module_name": "hal-memory-region",
   "log_name": "nanvix-phys-hal-memory-region",
-  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
-  "completed_phases": [
-    "caller-analysis",
-    "view-design"
-  ],
-  "phase_results": {
-    "caller-analysis": {
-      "phase": "caller-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 133.7,
-      "review_rounds": 0
-    },
-    "view-design": {
-      "phase": "view-design",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 242.6,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 1526.6,
-      "review_rounds": 2
-    }
-  },
-  "prover_session_id": "cbf87cec-8cbe-4cc2-a2ea-f96fcfbfca45",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai/hal-phys-address",
-  "verus_branch": "verus-ai/hal-memory-region",
-  "phase_boundary_shas": {
-    "caller-analysis": "2daa4352027049413fb8d3b9a07e66c816bc891a",
-    "view-design": "e86b4566b81cf46b31d614642b843b99105a63bd",
-    "specification": "879c2a7aba63d5019a0f7a18f377e0d4c7888d71"
-  },
+  "base_branch": "verus-ai-prove",
+  "verus_branch": "verus-ai-prove",
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "caller-analysis": "3a1599bc2d5a930817e0379368c9992db3a999fe",
-    "view-design": "2daa4352027049413fb8d3b9a07e66c816bc891a",
-    "specification": "e86b4566b81cf46b31d614642b843b99105a63bd"
+    "proving": "32eecbc26bb044da56e712aa5af80c89b0e139ea"
   },
   "phase_history": [
     {
-      "phase": "caller-analysis",
+      "phase": "proving",
       "event": "start",
-      "sha": "3a1599bc2d5a930817e0379368c9992db3a999fe",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "caller-analysis",
-      "event": "end",
-      "sha": "2daa4352027049413fb8d3b9a07e66c816bc891a",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "start",
-      "sha": "2daa4352027049413fb8d3b9a07e66c816bc891a",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "end",
-      "sha": "e86b4566b81cf46b31d614642b843b99105a63bd",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "start",
-      "sha": "e86b4566b81cf46b31d614642b843b99105a63bd",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "879c2a7aba63d5019a0f7a18f377e0d4c7888d71",
+      "sha": "32eecbc26bb044da56e712aa5af80c89b0e139ea",
       "rollback_iter": 0
     }
   ],
