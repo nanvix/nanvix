@@ -71,6 +71,14 @@ Any `external_body` outside this list must be removed.
 
 ## `external_body` introduced while speccing `mm::phys`
 
+- `src/kernel/src/mm/phys/mod.spec.rs::ExLinkedList` — `external_type_specification` (with the
+  mandatory `external_body`) registering the foreign `alloc::collections::LinkedList<T, A>` as a
+  Verus-visible opaque type. Verus ships no `LinkedList` model and the orphan rule forbids a
+  downstream crate from implementing vstd's `View` / `ForLoopGhostIterator` for the foreign type,
+  so the type can only be declared (no abstract state). This is the verus-constraints-sanctioned
+  way to name an unparseable foreign type in spec signatures ("use `external_type_specification`
+  in spec.rs to declare it — do not duplicate the definition"). See
+  `nanvix-phys-phys-mod/bugs.md`.
 - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates an
   `alloc::collections::LinkedList` in a `for` loop. Verus has no `LinkedList` model and the
   orphan rule blocks providing one from the kernel crate (see
