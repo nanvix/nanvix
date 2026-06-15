@@ -198,3 +198,99 @@ Turn 4
 ────────────────────────────────────────────────────────────
 No `admit()`/`assume()` present. Let me run module-scoped verification for this module.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -40
+[RESULT ✓] bash: (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem pro...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Verification exit 0, but global cheating check shows admit=12, external_body=19. Let me check whether any are in my module's files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i 
+
+[THINKING] The verification passed with exit code 0, so the "CHEATING_DETECTED" flag with those admit and external_body values is system-wide rather than specific to this module. I need to check the cheating details to see if any of those values appear in the frame.rs files I'm targeting.
+[RESULT ✓] bash: - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/phys/frame.rs:1502 alloc: external_body
+    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1553 free_count: external_body
+    - mm/phys/frame.rs:1571 free: externa...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -i "types/address" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>
+[RESULT ✓] bash: ---count for our module---
+0
+<shellId: 8 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The 12 admits and 19 external_body are all in `mm/phys/*` (out of scope, unlisted). None are in my module. Let me verify there's no `external_body` in my module's files and confirm the module verified with 0 errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "external_body" src/kernel/src/hal/mem/types/address/frame.rs src/kernel/src/
+
+[THINKING] The admit and external_body functions aren't in my module scope—they're in `mm/phys/*` which are unlisted. The "CHEATING_DETECTED" status is picking up those external modules that aren't part of what I'm checking. I'm seeing a cfg-gated exec code warning in `hal::mem::types::address::frame` and need to verify the module verification itself runs without errors.
+[RESULT ✓] bash: exit:1
+=== errors in log ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -3; echo "==="; grep -i "ve
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-08-46.log
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-57-29.log
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-53-41.log
+===
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -in "verified\|error" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11
+[RESULT ✓] bash: === tail of log ===
+     |
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.25s
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The run was cached. Let me confirm the actual verification result for the module from a non-cached log and verify the function count.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-57-29.log verus-a
+
+[THINKING] The cached output means the verification didn't actually run again, so I need to force a fresh check to confirm the module truly verifies. The exit code was 0, and there are no admit/external_body/assume statements in the module, but I should verify this directly rather than relying on the cached result.
+[RESULT ✓] bash: === verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-57-29.log ===
+=== verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-53-41.log ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -in "verified\b\|results\|errors" verus-ai-logs/verify-kernel/verus-logs/verus_2
+[RESULT ✓] bash: Output too large to read at once (36.9 KB). Saved to: /tmp/copilot-tool-output-1781492972999-xi85d9.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -in "verification results" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-
+
+[THINKING] The grep search for "verified" returned too many results, so I'm narrowing down to find the specific verification summary line that shows the count of verified items and errors.
+[RESULT ✓] bash: 
+<shellId: 14 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Exit code 0 confirms verification passed. The admit/external_body counts are all from `mm/phys/*` (out of scope). My module's files have zero admit/assume/external_body. Let me force a non-cached run to be 100% certain the module verifies cleanly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/address/frame.rs && timeout 580 make verify-kernel
+
+[THINKING] I'll force a clean verification run to get actual results instead of relying on cached output, then trust the script's summary which shows the verification completed successfully with some external bodies and admits flagged. I want to force a fresh verification run to confirm there are no lingering errors, so I'll trigger a rebuild to bypass any caching.
