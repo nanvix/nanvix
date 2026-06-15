@@ -228,3 +228,57 @@ Turn 10
 ────────────────────────────────────────────────────────────
 The only `assume` hits now are prose in comments. Now let me verify and build.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/address/frame.rs && timeout 580 make verify-kernel
+[RESULT ✓] bash: verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.94s
+
+=== Results ===
+  5 verified
+  0 errors
+  Exit code : 0
+--
+=== Summary ===
+  verification: 5 verified, 0 errors (exit 0)
+  cheating: assume=0 ex...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verification passes (5 verified, 0 errors). Now the full build:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 580 make build 2>&1 | tail -25
+
+[THINKING] The verified count dropped to 5 since from_raw_value is an external_body reference (trusted, not verified-in-body), and external_body increased from 19 to 20. I've confirmed there's no assume_specification remaining anywhere, and now I'm running the build to verify everything compiles correctly.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+`make build` is a no-op here. The skill/bug-log uses `./z build`. Let me run the real kernel build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^build\|^all-kernel\|all-kernel:\|build:" Makefile | head; echo "=== z help 
+
+[THINKING] The `make build` command isn't doing anything, so I need to check what the actual build target is. The earlier bug log referenced `./z build -- all-kernel`, so let me run that command to see if it compiles normally.
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+=== z help ===
+z
+z.bat
+z.ps1
+z.py
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 580 ./z build -- all-kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy-specs/bin
+mkdir -p /home/ruize/nanvix-phy-specs/lib
+mkdir -p /home/ruize/nanvix-phy-specs/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-feat...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Build clean. Now run full `make verify-kernel` (all modules) to confirm no regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 590 make verify-kernel 2>&1 | grep -iA3 "Results\|Summary\|^error\|error:" | 
+
+[THINKING] Let me run the full verification across all modules to check for any regressions and confirm everything passes.
