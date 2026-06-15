@@ -1,4 +1,4 @@
-# Unverified exec functions: 970/1026
+# Unverified exec functions: 971/1027
   do_debug
   debug
   do_evctrl
@@ -527,6 +527,7 @@
   set_active_guard
   fmt
   drop
+  map_frame
   clear
   deref
   deref_mut

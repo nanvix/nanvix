@@ -985,3 +985,33 @@ Turn 57
 Turn 58
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 1200 make verify-k
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module mm::phys::kframe --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : mm::phys::kframe
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src
+  C...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Module is **CLEAN**: 3 verified, 0 errors, no cheating. Now let me verify no regressions across the full crate and that the normal build still compiles.
+[TOOL] sql: {'description': 'Update todo status', 'query': "UPDATE todos SET status='done' W
+
+[THINKING] The module verification is complete with no errors detected, and I've made progress reducing the gate counts by moving some components to the spec file. Now I need to run the full kernel verification to ensure nothing regressed in the broader system.
+
+I'm also checking that the normal (non-Verus) build still works correctly — since the spec file is only included under the `verus_keep_ghost` flag, the regular build won't see those definitions, and the `map_frame` helper function will just be a normal function call in `new`. The `View` trait implementation is Verus-only anyway, so that's not an issue for the standard build.
+
+Let me run the full `verify-kernel` check and a normal kernel build to confirm everything compiles and verifies properly.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   3 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 1800 make verify-k
