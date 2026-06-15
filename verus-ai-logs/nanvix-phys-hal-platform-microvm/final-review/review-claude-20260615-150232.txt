@@ -390,3 +390,440 @@ z.py
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== external_body in source ==="; grep -rn "external_body\|external\b\|verus_verify\|ve
+
+[THINKING] The verification came back clean, but the cheating summary flags 25 external_body functions and 7 cfg_gate issues across the whole module—though only gva_to_gpa is actually in scope, so the other 30 functions are off-limits. I'm realizing there's a potential blocker here: the task specifies that any external_body not listed in tcb-allowed.md is a blocker, and these 25 functions are in microvm/mod.rs, which...
+
+Actually, I need to clarify whether these 25 external_body counts are pre-existing functions that were never part of this verification effort, or if they're newly introduced. The cheating counter specifically looks for `#[verifier::external_body]` annotations, so I should check the source to see what's actually annotated.
+[RESULT ✓] bash: === external_body in source ===
+256:/// - It assumes that the standard output device is present.
+257:/// - It assumes that the standard output device was properly initialized.
+276:/// - It assumes that the standard output device is present.
+277:/// - It assumes that the standard output device was pr...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "VERUS_AI_VERIFY_SCRIPT" Makefile; echo "---"; sed -n '620,635p' Makefile
+
+[THINKING] I'm realizing the harness's count of 25 external_body functions is actually a heuristic—it's counting exec functions that lack `#[verus_spec]` annotations or contracts as external_body since they're outside the verus! macro and unverified. In Verus, functions in a `#[verus_verify]` crate without explicit verification are typically treated as external automatically. Let me trace through the verify script to understand how it's actually counting these.
+
+The critical issue is that the task requires every external_body not in tcb-allowed.md to be a blocker, but these 25 are pre-existing in out-of-scope functions that I'm explicitly forbidden from touching. Since gva_to_gpa itself has zero external_body, the question becomes whether those 25 are truly in out-of-scope code or if they somehow relate to my changes. I need to check the verify script to confirm what's actually being counted and whether these are genuinely pre-existing.
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+---
+	VERUS_EXTRA_CARGO_ARGS="--lock...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "external_body\|cfg_gate\|def count\|cheating" scripts/verify.sh | head; echo "=== ma
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+103:# Determine verification mode and source directory for cheating detection.
+292:# --- Helper: run cheating detection on a directory, print JSON ---
+293:run_cheating_scan() {
+298:from guardrails import detect_cheating
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -n "external_body_count\|def detect_cheating\|external_body" guardrails.py | 
+[RESULT ✓] bash: 31:    external_body_count: int = 0
+32:    external_body_fn_count: int = 0  # external_body NOT on external_type_specification
+33:    external_body_proof_fn_count: int = 0  # external_body on proof fn (always illegal)
+48:            or self.external_body_count > 0
+52:            # approved deck woul...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '103,140p' scripts/verify.sh
+
+[THINKING] I'm realizing the discrepancy might be because the cheating detection scan runs across the entire kernel source tree, not just the specific module file. So when the summary reports external_body=25, it's counting occurrences throughout all modules in the crate, whereas my grep search was only looking at the microvm/mod.rs file directly.
+[RESULT ✓] bash: # Determine verification mode and source directory for cheating detection.
+# ==============================================================================
+
+TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
+
+if [[ -n "$CRATE_NAME" ]]; then
+    # Cargo mode: find the crate's source directory and root file.
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== VERUS REWRITE comments ==="; grep -rn "VERUS REWRITE" src/kernel/src/hal/platform/m
+
+[THINKING] The cheating scan covers the entire kernel crate with external_body=25 and cfg_gate=7, but those aren't relevant to the microvm scope. For the in-scope module, microvm/mod.rs shows zero external_body, admit, and assume violations in gva_to_gpa and the View/proof files, so I need to verify the spec and proof files match this. I'll run the consistency checks on gva_to_gpa to verify the function's correctness across the AST, coverage, and specification layers.
+[RESULT ✓] bash: === VERUS REWRITE comments ===
+exit 1
+=== ast_consistency ===
+|----------|--------|------------|--------------|
+| `disable_interrupts` | MATCH | ✅ |  |
+| `do_shutdown` | MATCH | ✅ |  |
+| `enable_interrupts` | MATCH | ✅ |  |
+| `get_kstack_guard_base` | MATCH | ✅ |  |
+| `get_kstack_top` | MATCH | ✅ | ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py 
+
+[THINKING] The AST checks are all consistent with no rewrites needed, so I can move forward to analyzing function coverage and specification drift.
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+
+=== spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -20
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== git status ==="; git status --short; echo "=== diff vs base branch ==="; git --no-p
+
+[THINKING] The fn_coverage script needs both the source file and the verus exec file, but in this case mod.rs contains the verus annotations inline rather than in a separate file. Looking at the verify harness output showing "1/31 exec functions have contracts," only gva_to_gpa has a contract in scope, giving 100% coverage for in-scope functions while the other 30 are out of scope.
+
+Since the harness already reports coverage, I'll note that in-scope coverage is 100%. Now I need to verify the build passes and check the changes against the base branch to understand what this effort modified.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/review-claude-20260615-150232.jsonl
+ M verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/review-claude-20260615-150232.txt
+=== diff vs base branch ===
+ .../verus-logs/verus_2026-06-15_15-02-27.log       |   2...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff verus-ai/hal-memory-region...HEAD -- src/kernel/src/hal/platform/microvm/
+
+[THINKING] Looking at the actual code changes across the module files to understand what was modified.
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/platform/microvm/mod.proof.rs b/src/kernel/src/hal/platform/microvm/mod.proof.rs
+new file mode 100644
+index 000000000..a8be3a923
+--- /dev/null
++++ b/src/kernel/src/hal/platform/microvm/mod.proof.rs
+@@ -0,0 +1,26 @@
++// Copyright(c) The Maintainers of Nanvix.
++// Licen...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; grep -n "usize\|nat\|address" spec-design/SKILL.md | head -30; echo "=
+
+[THINKING] I'm noticing a potential inconsistency with the spec design guidelines—the checklist specifies that mathematical types should use int/Seq/Set/Map with an exception for addresses to keep usize, but here addresses are modeled as `nat` instead. The view_design made this choice explicitly, though a strict reviewer might flag this as a violation of the stated constraints.
+[RESULT ✓] bash: 31:   test: **could you have written this spec from just the function signature,
+37:   addresses, prefer `usize` over `int` — addresses are inherently
+38:   non-negative and bounded by the address space.
+93:   signatures, alter control flow, or add exec fields to structs.
+204:    via `external_body`...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now launching the two independent review sub-agents (one per allowed model).
+[TOOL] report_intent: Launching independent review agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] I'm noticing that both the spec and view design documents recommend using `usize` for addresses, but this spec is using `nat` instead in the `spec_gva_to_gpa` function. It's technically not wrong since the exec layer handles the conversion with `result as nat == (...).spec_gva_to_gpa(gva as nat)`, but it does deviate from the preferred convention.
+
+This is worth flagging as a minor advisory during review rather than a blocker. The checklist item about mathematical types has an exception for addresses to keep `usize`, but that's a permission, not a mandate—`nat` is still a valid mathematical type, so the checkbox is satisfiable even with this deviation.
+
+Now I need to launch both sub-agents in parallel to produce their raw reviews. Since the task requires using two separate agents with different models, I'll set them up with full context and have each save their findings, then consolidate the results.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review agents are running independently (claude-opus-4.8 and gpt-5.3-codex). Meanwhile I'll run the cross-module regression check so the consolidated review has that data.
+[TOOL] report_intent: Running cross-module regression
+[TOOL] bash: cd /home/ruize/nanvix-phy; make build 2>&1 | tail -15; echo "=== BUILD EXIT ${PIPESTATUS[0]} ==="
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+=== BUILD EXIT 0 ===
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^build:\|^all:\|^build " Makefile | head; echo "---"; sed -n '/^build:/,/^$/p' Makef
+
+[THINKING] The `make build` command isn't doing anything because the target exists but has no dependencies or recipe to execute. Let me check what the actual build mechanism is — whether it's through the `z` script, a different make target like `all`, or something else entirely.
+[RESULT ✓] bash: 411:all: all-nanvix
+---
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing verification artifacts
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l src/kernel/src/hal/platform/microvm/mod.rs src/kernel/src/hal/platform/microvm/mod.sp
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 999 src/kernel/src/hal/platform/microvm/mod.rs
+    54 src/kernel/src/hal/platform/microvm/mod.spec.rs
+    26 src/kernel/src/hal/platform/microvm/mod.proof.rs
+   139 verus-ai-logs/nanvix-phys-hal-platform-microvm/caller_analysis.md
+   217 verus-ai-logs/nanvix-phys-hal-platform-microvm/view_design.md
+...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -niE "z build|make|command|ca
+
+[THINKING] I'm realizing the `build` target in the Makefile doesn't actually do anything — it's just an empty target with no recipe. The real build happens through `make all` or the `./z` script, and the kernel verification step already compiles everything with cargo. The checklist is asking for `make build`, but I should probably run the actual build command to be thorough.
+[RESULT ✓] bash: 15:- **Windows 11:** GNU Make on PATH, Windows Hypervisor Platform enabled,
+24:3. **GNU Make** is on PATH (`winget install ezwinports.make`).
+31:### Preferred Build Commands (using `z` utility)
+35:./z build -- all
+42:./z build -- kernel
+44:./z build -- all-nanvixd
+46:./z build -- all-uservm
+51:Set t...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/view_design.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 380. ///
+381. /// # Returns
+382. ///
+383. /// A pointer to the top of the boot kernel stack.
+384. ///
+385. pub fn get_kstack_top() -> *const u8 {
+386.     unsafe extern "C" {
+387.         static kstack: u8;
+388.     }
+389.     // Safety: The `kstack` symbol is defined in `start.rs` as a BSS-resident...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // hal::platform::microvm — Specifications (target: `gva_to_gpa`)
+5. //
+6. // The in-scope facet of this module is the MicroVM platform's guest-virtual →
+7. // guest-physical address translation (`gva_to_gpa`)...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // hal::platform::microvm — Proofs (target: `gva_to_gpa`)
+5. //
+6. // `gva_to_gpa` is a pure query, not a state mutation, so there is no transition
+7. // lemma. The single caller-relevant algebraic property is...
+[RESULT ✓] view: 1. # Caller Analysis: `hal::platform::microvm` (`mod.rs`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-hal-platform-microvm/find_callers_lsp_output.md`
+5. (raw output of `scripts/find_callers_lsp.py`).
+6. 
+7. - Crate: `kernel` (intra-crate analysis only; no external crate depends on it...
+[RESULT ✓] view: 1. # View Design: `hal::platform::microvm` (target: `gva_to_gpa`)
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, the in-scope facet of this module is the MicroVM platform's
+6. **guest-virtual → guest-physical address translation**: a *pure, total,
+7. deterministic* function from a `usize` address to...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- kernel 2>&1 | tail -25; echo "=== EXIT ${PIPESTATUS[0]} ==="
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+=== EXIT 2 ===
+<shellId: zbuild completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^all-nanvix:|^kernel|nanvix-kernel|all-nanvix " Makefile | head; echo "--- targets 
+[RESULT ✓] bash: 416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+935:# Note: we intentionally do NOT depend on all-nanvix here, because in standalone mod...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+`make build` isn't a real target here; the authoritative compile is the `verify-kernel` cargo build (exit 0, CLEAN). Let me check on the review agents.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] The verify-kernel step already proved the kernel crate compiles successfully since it ran cargo with verus and exited cleanly, so that's the real compilation check rather than a generic `make build` target. The full nanvix build is heavy and might require additional toolchains, but the kernel compilation evidence is already there.
+
+Now let me check how the agents are progressing.
+I'll start by reading the required skills and key files in parallel.
+[TOOL] report_intent: Reading skills and key files
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo '=== AST CONSISTENCY ===' && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_con
+[TOOL] bash: set -o pipefail; cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -20; echo VER
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === AST CONSISTENCY ===
+
+✅ All exec functions consistent.
+# AST Consistency Report: ast_orig_ge6bi_nl
+
+**Source:** `/tmp/ast_orig_ge6bi_nl.rs`
+**Verus:** `src/kernel/src/hal/platform/microvm/mod.rs`
+
+## Summary
+
+- Functions matched: 28/28
+- Functions mismatched: 0
+- Missing in Verus: 0
+- Extra in Ve...
+Now let me read the spec-design skill and the in-scope files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.proof.rs
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 390.     // the top of the boot kernel stack. Taking its address is safe as it points to a valid memory
+391.     // location reserved for the boot stack.
+392.     unsafe { &kstack as *const u8 }
+393. }
+394. 
+395. ///
+396. /// # Description
+397. ///
+398. /// Returns the base address of the boot kerne...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // hal::platform::microvm — Specifications (target: `gva_to_gpa`)
+5. //
+6. // The in-scope facet of this module is the MicroVM platform's guest-virtual →
+7. // guest-physical address translation (`gva_to_gpa`)...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // hal::platform::microvm — Proofs (target: `gva_to_gpa`)
+5. //
+6. // `gva_to_gpa` is a pure query, not a state mutation, so there is no transition
+7. // lemma. The single caller-relevant algebraic property is...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
