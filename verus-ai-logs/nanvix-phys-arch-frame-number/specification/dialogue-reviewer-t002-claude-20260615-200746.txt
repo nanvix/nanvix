@@ -228,3 +228,116 @@ Turn 5
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -60
 
 [THINKING] I'm concerned the cached result might not be reliable, so I should run a fresh verification to actually exercise the verifier and ensure everything works correctly. The full `make verify` command for cross-module regression testing is especially important given the kernel migration involved.
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_20-08-39
+
+    Finished `dev` profile [optimized + debuginfo] t...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+All crates pass (exit 0, cached). Kernel shows `external_body=23 cfg_gate=6`. The fixer claims these are pre-existing TCB and that the kernel migration only *removed* `assume_specification`s. I must verify this claim against the diff from the phase-start SHA.
+[TOOL] bash: cd /home/ruize/nanvix-phy && BASE=33c9db43ad2071f0dff40fc628e868e970ed77a9; echo "=== files changed since phase start ==
+
+[THINKING] Everything's cached and passing, so all the crates compiled successfully. The kernel shows external_body=23 and cfg_gate=6, which the fixer claims are pre-existing TCB violations, but I need to verify these weren't actually introduced by the changes. I'm a bit concerned about relying on cached results since the verifier didn't re-run—the source hasn't changed since the last commit that included verification, so I should double-check that the baseline is actually correct.
+
+To be thorough, I'm going to trace back through the git history starting from SHA 33c9db43 and examine the kernel spec files to confirm whether the fixer actually added any external_body or assume statements, or if it only removed things as claimed.
+[RESULT ✓] bash: === files changed since phase start ===
+ src/kernel/src/hal/mem/types/address/frame.spec.rs | 19 +++----
+ src/kernel/src/hal/mem/types/address/phys.spec.rs  | 56 ++++++++------------
+ src/libs/arch/Cargo.toml                           |  4 ++
+ src/libs/arch/src/x86/mem/constants.rs             |  4 ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && BASE=33c9db43ad2071f0dff40fc628e868e970ed77a9; echo "=== kernel spec diffs: added lines wit
+
+[THINKING] I'm noticing the number.spec.rs file grew from 1 line (empty block) to 61 lines total, so the diff showing +60 -1 makes sense for the new spec content. Now I need to verify the kernel changes only removed assume_specification calls without adding any external_body or assume statements.
+[RESULT ✓] bash: === kernel spec diffs: added lines with cheating patterns ===
++// concrete value. The previous local `assume_specification[ ::arch::mem::PAGE_SIZE ]`
++// therefore reasons about it directly (no local `external_type_specification`,
++// local `assume_specification` here would duplicate the arch-native...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Added cheating-pattern lines are all **comments**; removed lines are real `assume_specification`/`external_type_specification`/`external_body`. The fixer's claim holds: kernel migration only removed trust boundaries, added no cheating. Now I must verify item 14 (no spec weakening) — compare the removed `assume_specification` contracts against the new arch-native specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && BASE=33c9db43ad2071f0dff40fc628e868e970ed77a9; echo "=== OLD kernel phys.spec.rs assume_spe
+
+[THINKING] The removed lines were all trust-boundary constructs—assume specifications, external type specifications, and their bodies—while the added lines are just comments, so the kernel migration didn't introduce any new cheating patterns, only removed existing ones. Now I'm checking the spec drift concern.
+
+The kernel replaced uninterpreted functions with concrete definitions: `spec_frame_raw_value(frame)` went from `uninterp` to `open { frame@ }`, and `spec_page_size()` went from `uninterp` to `open { ::arch::mem::PAGE_SIZE as int }`. This is actually strengthening the specs, not weakening them, since more is now known and the kernel still verifies. I need to compare what the kernel previously assumed about these functions against what the new native specs provide to confirm they're at least as strong.
+[RESULT ✓] bash: === OLD kernel phys.spec.rs assume_specification blocks (removed) ===
+116:pub assume_specification[ FrameNumber::into_raw_value ](frame: FrameNumber) -> (result: usize)
+117-    ensures
+118-        result as int == spec_frame_raw_value(frame),
+119-        0 <= spec_frame_raw_value(frame) <= spec_max_...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now I'll verify the contract strength. Comparing removed kernel `assume_specification` vs new arch-native specs:
+
+- **`into_raw_value`**: OLD `result as int == spec_frame_raw_value(frame)` + range; NEW `result as int == self@` + same range. Kernel now defines `spec_frame_raw_value(f) = f@` → **equivalent**. ✅
+- **`from_raw_value`**: OLD `Some(f) => value<=max && raw(f)==value; None => value>max`; NEW `(Some <==> value<=max)` + `Some(f) ==> f@==value && f.inv()`. The `<==>` covers both branches, plus adds `f.inv()` → **equal or stronger**. ✅
+
+No weakening (item 14 PASS). Let me confirm the build (item 17) to be thorough.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build -- all 2>&1 | tail -15
+
+[THINKING] I'm comparing the old kernel-assumed contracts for `into_raw_value` against the new architecture-native version, looking at how the specifications and bounds have shifted between the two approaches.
+
+For `from_raw_value`, I'm checking whether the new architecture-native contract is equivalent to or stronger than the old kernel contract. The new version gives me the same guarantees about when `Some` or `None` is returned, plus an additional invariant check on the frame itself, so it's strictly stronger without any weakening. The kernel's `spec_max_frame_number()` is still defined and matches the architecture's version, both reducing to the same value.
+
+I'm also verifying that redefining `spec_frame_raw_value` from uninterpreted to concrete (`frame@`) isn't a weakening — it's actually more informative. The body of `from_raw_value` verifies correctly because `Self::MAX` matches `spec_max_frame_number()` definitionally, and the type invariant is satisfied on construction since the value is bounded by `MAX`. Everything checks out.
+
+Now I'm working through the remaining checklist items. For item 4, the ensures aren't tautological — the None branch meaningfully captures when `value > max`. Item 5 is trickier: the range ensures on `into_raw_value` could arguably be derived from the type invariant plus the spec equality, but the view design explicitly flagged this, and callers don't automatically get the type invariant at arbitrary use sites without invoking `use_type_invariant`.
+
+The key insight is that providing the range directly in the ensures makes the spec immediately usable for callers without requiring them to unfold the type invariant — this is justified by caller usability and matches what the kernel's prior contract included. Since removing it would weaken relative to the original assumed contract, it stays. Item 6 passes because the error paths are meaningful. Item 11 passes on spec completeness. Now checking item 13 on cheating in the module.
+
+The grep confirms no `external_body` in number.rs, and `external_derive` on the struct for the derive macro is standard practice, not function cheating. Items 15 and 16 pass — the code is correct and cross-module verification succeeds. For item 17, I need to verify the build actually passes, not just the verification. Items 7 and 8 also check out — no `assume_specification` in the arch number module itself. The only remaining confirmation is running the build command to ensure it exits cleanly.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.09s
+cp -f --preserve /home/ruize/nanvix-phy/target/debug/mkimage /home/ruize/nanvix-phy/bin/mkimage.elf
+Standalone images built successfully.
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profil...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Build complete (exit 0). All checklist items now PASS. Let me write the turn 2 review and the STOP file.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_002_driver.md
+[TOOL] bash: cd /home/ruize/nanvix-phy && printf 'RESOLVED\n' > verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/ST
+
+[THINKING] The build completed successfully and all checklist items are passing. I'm doing a final verification across the requirements—the two in-scope execution functions both have proper specifications, caller coverage is complete across all test cases, and the view consistency checks are working correctly.
+[RESULT ✓] bash: RESOLVED
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_002_driver.md with 4503 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Turn 2 complete. **Verdict: RESOLVED.**
+
+I independently verified every fixer claim by running tools and reading the diff:
+
+- **`make verify-arch`** → exit 0, CLEAN, 2/525 contracts, `assume=0 external_body=0 admit=0 trusted=0`.
+- **`make verify`** (all crates incl. kernel) → exit 0; `kernel::all` passes after the `assume_specification` removals.
+- **`./z build -- all`** → exit 0.
+
+Both in-scope functions now carry contracts matching `caller_analysis.md`/`view_design.md`:
+- `into_raw_value`: `result as int == self@` + range.
+- `from_raw_value`: `(Some <==> value<=max)` + `f@==value && f.inv()`.
+
+**Spec-drift audit (item 14):** compared the *removed* kernel `assume_specification`s against the new arch-native specs — equivalent for `into_raw_value`, equal-or-stronger for `from_raw_value` (adds `f.inv()`); `uninterp`→`open` are strengthenings. No weakening.
+
+**Kernel cheating audit:** confirmed via diff that added cheating-keyword lines are all comments; only trust constructs were *removed*. The kernel's `external_body=23/cfg_gate=6` is pre-existing TCB.
+
+All 17 checklist items PASS/FIXED. Wrote `turn_002_driver.md` and created `STOP` = `RESOLVED`.
+
+
+=== Session End ===
+Session: 9c0e1778-41aa-48b3-828d-c267b628a6f7
+Duration: 173.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue-reviewer-t002-claude-20260615-200746.jsonl
