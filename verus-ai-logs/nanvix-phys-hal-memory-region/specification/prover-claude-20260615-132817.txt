@@ -945,3 +945,18 @@ Normal build passes. Now re-run module verification to confirm the verus build s
 [THINKING] The build is passing now, but I'm second-guessing whether removing that line was correct since it was already there. Let me think through this: the build failed because line 32 was unused, yet it existed in the original code—so how was the project building before my changes? It seems my modifications must have made that import actually unused, whereas it was being referenced in the baseline version.
 
 I'm overthinking this. The reality is that both imports were duplicates, and my restructuring shifted which one the compiler actually needs. Since the build passes with just line 8, removing line 32 is safe. But I should re-run the verify harness to make sure the verus build still passes and there are no regressions.
+[RESULT ✓] bash: verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+  5 verified
+  0 errors
+    ⚠️  admit: 1
+    - region.rs:218 start: admit
+  Global: assume=0 external_body=25 admit=1 trusted=0 cfg_gate=7
+=== Function Coverage ===
+  Unverified functions:
+  verification: 5 verified...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+Module verification still passes (5 verified, 0 errors). Now run the full `make verify` to check for regressions in other modules:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify 2>&1 | tail -40
