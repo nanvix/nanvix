@@ -929,3 +929,33 @@ Turn 46
 Turn 47
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -A3
+[RESULT ✓] bash: error[E0252]: the name `spec_page_size` is defined multiple times
+   --> src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:32:5
+    |
+ 32 | use crate::hal::mem::spec_page_size;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `spec_page_size` reimported here
+    |
+   ::: src/kernel/src/hal/mem/type...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Just a duplicate import (the existing bottom block already imports it). Let me remove my `use` and fully-qualify.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] I see there's a duplicate import issue — `spec_page_size` is already being imported in the bottom block of page.rs, so I need to remove the redundant `use` statement from spec.rs and instead reference it through the full path `crate::hal::mem::spec_page_size`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -i 's/ spec_page_size()/ crate::hal::mem::spec_page_size()/g' src/kernel/src/hal/mem/type
+[RESULT ✓] bash: 39:// `result as int % crate::hal::mem::spec_page_size() == 0`, so that fact is implied and not
+61:            Err(_) => addr@ % crate::hal::mem::spec_page_size() != 0,
+63:        (result is Ok) <==> (addr@ % crate::hal::mem::spec_page_size() == 0),
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -A3

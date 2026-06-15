@@ -29,8 +29,6 @@
 
 verus! {
 
-use crate::hal::mem::spec_page_size;
-
 // `into_raw_value` — pure newtype identity projection of the abstract address.
 //
 // Callers depend on the returned `usize` equalling the abstract address
@@ -38,7 +36,7 @@ use crate::hal::mem::spec_page_size;
 // (`a.into_raw_value() - p.into_raw_value()`) and page walking
 // (`a.into_raw_value() + k * PAGE_SIZE`) require an identity projection with no
 // masking/shifting. A caller holding `self.inv()` further derives
-// `result as int % spec_page_size() == 0`, so that fact is implied and not
+// `result as int % crate::hal::mem::spec_page_size() == 0`, so that fact is implied and not
 // restated here.
 pub assume_specification<T: Address + View<V = int>> [
     <PageAligned<T> as Address>::into_raw_value
@@ -60,9 +58,9 @@ pub assume_specification<T: Address + View<V = int>> [
     ensures
         match result {
             Ok(p) => p@ == addr@ && p.inv(),
-            Err(_) => addr@ % spec_page_size() != 0,
+            Err(_) => addr@ % crate::hal::mem::spec_page_size() != 0,
         },
-        (result is Ok) <==> (addr@ % spec_page_size() == 0),
+        (result is Ok) <==> (addr@ % crate::hal::mem::spec_page_size() == 0),
 ;
 
 } // verus!
