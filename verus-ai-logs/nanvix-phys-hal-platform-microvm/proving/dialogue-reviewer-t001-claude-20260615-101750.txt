@@ -126,3 +126,101 @@ I'll read the main source file in sections and run the verification in parallel.
 4. //==================================================================================================
 5. // Modules
 6. //=========================================================================================...
+[RESULT ✓] bash: |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1350:21
+     |
+1350 |                     frames.contains(addr) by {
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/fram...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Verification passes (exit 0), but global cheating counts exist. I need to scope these to the microvm module. Let me check the file and the cheating detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i 
+[TOOL] grep: admit|external_body|assume|assume_specification|no_std|verifier::|#\[cfg
+
+[THINKING] The verification passes but the kernel-wide cheating counts show external_body=19, admit=12, and cfg_gate=19 across the whole system. I need to narrow down to the microvm/mod.rs file specifically and examine the cheating details there.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs:11:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs:78:#[cfg(feature = "whp")]
+/h...
+[RESULT ✓] bash: 
+<shellId: 0 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me examine the cheating detail file to understand what's counted and whether microvm is involved.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && wc -l verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "=== cfg_gate 
+
+[THINKING] I'm noticing that the microvm/mod.rs file itself doesn't contain any admit, external_body, or assume directives—those global counts are kernel-wide metrics. The real issue is that this module has many `#[cfg(...)]` attributes, and the checklist specifically prohibits cfg-gated executable code like branches, expressions, and match arms. I need to clarify what the cfg_gate count of 19 actually represents in the context of this checklist.
+[RESULT ✓] bash: 31 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+=== cfg_gate section ===
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] view: 1.     - mm/phys/frame.rs:1408 instance: external_body
+2.     - mm/phys/frame.rs:1446 init: external_body
+3.     - mm/phys/frame.rs:1502 alloc: external_body
+4.     - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+5.     - mm/phys/frame.rs:1553 free_count: external_body
+6.     - mm/phys/frame...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All cheating patterns (admit/external_body) are in `mm/phys/*` and `mm/virt/*` — none in `hal/platform/microvm/`. Now let me understand the cfg_gate counter and check cross-module status. Let me find the verify script.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg_gate\|cfg-gate\|cfg_gated" --include=*.sh --include=Makefile --include=
+
+[THINKING] The cheating patterns are all concentrated in the `mm/phys/` and `mm/virt/` directories, which means the microvm module has zero instances of admit, external_body, and assume violations. I'm noticing a discrepancy though — the cheating check reports cfg_gate=19, but the detail file only shows 31 lines with no cfg_gate entries listed, so I need to trace where that cfg_gate count is actually coming from.
+
+The "No cfg-gated exec code" checklist item is relevant here since microvm/mod.rs contains many `#[cfg(...)]` attributes at the item level. I need to figure out whether the cfg_gate counter is picking these up and if they're being attributed to the microvm module. Let me track down the verification script and the cfg_gate detail output to understand how this metric is being calculated.
+[RESULT ✓] bash: ./scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+./scripts/verify.sh:478:count_cfg_gates() {
+./scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+./scripts/verify.sh:559:    MOD_CFG_GATE="$(count_cfg_gates "$MODU...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The cfg_gate counter only flags `verus_keep_ghost`-gated exec code (the cheating concern), excluding `include!`/`use`/`mod`. The microvm file's only `verus_keep_ghost` cfgs target `include!` (excluded), and the rest are normal feature cfgs. Let me run the module-scoped verification to get authoritative per-module counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat .github/skills/build/SKILL.md 2>/dev/null | grep -i -A3 -B1 "module\|MODULE" | he
+
+[THINKING] So the cfg_gate counter specifically tracks `#[cfg(verus_keep_ghost)]`, `#[cfg(not(verus_keep_ghost))]`, and `#[cfg_attr(...verus_keep_ghost...)]` patterns rather than general feature gates, while filtering out `use`, `mod`, `include!`, `extern`, and log macros. Looking at microvm/mod.rs, there are conditional includes at lines 9 and 11 that use this pattern.
+
+Since those `include!` directives are excluded from the count, and the other feature-based cfgs like `whp`, `pit`, `smp`, and `stdio` are standard platform conditionals rather than verus_keep_ghost gates, the microvm module's cfg_gate count is 0. The global count of 19 must be elsewhere in the kernel. To get module-scoped results, I should run the verification with the MODULE environment variable set, though the checklist item about cfg-gated exec code is really about whether Verus-hiding cfgs are toggling executable code versus normal platform-specific conditional compilation.
+[RESULT ✓] bash: === makefile verify-kernel ===
+325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && MODULE=hal::platform::microvm make verify-kernel 2>&1 | sed -n '/Cheating Pattern Che
