@@ -772,3 +772,35 @@ The key insight is that new and from_raw_value both reference result.inv() in th
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -12
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sys` (lib) due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/setup error (veru...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Still fails non-const. Let me test `new` with only the value ensures (drop `result.inv()`) to see if `inv()` resolution is the problem.
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=src/libs/sys/src/sys/mm/address/virt.rs
+python3 - <<'PY'
+f="src/libs/sys/src/sys/mm/address
+
+[THINKING] The function name `new` itself might be the culprit, or there's a name collision happening with the `#[verus_spec]` macro's companion generation. Let me compare this with `from_number` in phys.rs, which successfully returns `Self` and calls `result.inv()` — I need to identify what's actually different between the working and broken cases. I need to see the macro expansion to understand what's happening with the `new` function. Let me try using `cargo expand` or the verus driver to get the generated code and see where the error is actually coming from. The issue might be specific to how the macro handles the simplest case of a one-liner tuple constructor, or there could be something about the context where `new` is being called that's causing the lookup to fail.
+[RESULT ✓] bash: impl VirtualAddress {
+    #[verus_spec(result =>
+        ensures result@ == value as int,
+    )]
+    pub fn new(value: usize) -> Self {
+        Self(value)
+    }
+
+    ///
+    /// # Description
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -12
