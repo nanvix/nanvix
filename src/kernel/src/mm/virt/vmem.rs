@@ -395,6 +395,9 @@ impl Vmem {
     ///
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
+    // Bare `external_body`, deferred to the proving phase: the returned value is the
+    // concrete page-table representation that the View abstracts away (`internal_inv()`),
+    // so it has no abstract postcondition until that representation is modeled.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         let kpage: KernelPage = {
@@ -416,6 +419,9 @@ impl Vmem {
     ///
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
+    // Bare `external_body`, deferred to the proving phase: the returned value is the
+    // concrete page-table representation that the View abstracts away (`internal_inv()`),
+    // so it has no abstract postcondition until that representation is modeled.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
@@ -668,6 +674,9 @@ impl Vmem {
     /// Upon success, a mutable reference to the page table is returned. Upon failure, an error
     /// code is returned instead.
     ///
+    // Bare `external_body`, deferred to the proving phase: the returned value is a mutable
+    // reference into the concrete page-table representation that the View abstracts away
+    // (`internal_inv()`), so it has no abstract postcondition until that representation is modeled.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn lookup_user_page_table(
         &mut self,
@@ -713,6 +722,9 @@ impl Vmem {
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
+    // Bare `external_body`, deferred to the proving phase: the returned value is the
+    // concrete page-table representation that the View abstracts away (`internal_inv()`),
+    // so it has no abstract postcondition until that representation is modeled.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn lookup_kernel_page_table(
         &mut self,
@@ -820,6 +832,19 @@ impl Vmem {
     /// - `Ok(None)` if the page table or page is not present.
     /// - `Err(_)` on unexpected failures.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            match ret {
+                Ok(Some(fr)) => {
+                    &&& self@.user_mapped(vaddr.addr_nat())
+                    &&& fr.addr_nat() == self@.user[vaddr.addr_nat()].frame
+                },
+                Ok(None) => !self@.user_mapped(vaddr.addr_nat()),
+                Err(_) => true,
+            },
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn try_find_user_frame(
         &self,
@@ -916,6 +941,20 @@ impl Vmem {
     #[verus_spec(ret =>
         requires
             self.inv(),
+            // The callback must accept every present user mapping: each key is a
+            // page-aligned user address that is mapped in the View.
+            forall|v: PageAligned<VirtualAddress>, pte: PageTableEntry|
+                self@.user_mapped(v.addr_nat()) ==> #[trigger] call_requires(f, (v, pte)),
+        ensures
+            match ret {
+                // Coverage: on success, `f` was invoked (and returned `Ok`) for every
+                // present user page, i.e. iteration visits all of `self@.user.dom()`.
+                Ok(_) => forall|v: PageAligned<VirtualAddress>|
+                    #[trigger] self@.user_mapped(v.addr_nat()) ==> exists|pte: PageTableEntry|
+                        #[trigger] call_ensures(f, (v, pte), Ok::<(), Error>(())),
+                // On failure, the first error returned by `f` is propagated.
+                Err(_) => true,
+            },
     )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
