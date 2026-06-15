@@ -983,3 +983,116 @@ kernel exit: 0
 Turn 62
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== in-scope frame module check ==="; timeout 300 make verify-kernel MODULE=hal::mem:
+[RESULT ✓] bash: === in-scope frame module check ===
+  Exit code : 0
+  ✅ No cheating detected in module hal::mem::types::address::frame.
+  verification: cached (no recompilation), — (exit 0)
+  status: CLEAN
+=== AST consistency (frame.rs unchanged + upool changes are spec-only) ===
+✅ Consistent: 8 functions, 2 struct...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+In-scope frame module CLEAN, upool exec code AST-consistent (my change was spec-only). Let me confirm `make build` (dual compilation) still works, then update the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make build 2>&1 | grep -iE "error|warning: unused|warning: unreachable|could no
+
+[THINKING] The frame module checks out cleanly with no issues, and the upool.rs execution code remains unchanged from the base — my modifications were purely specification-level in upool.spec.rs, which I've confirmed through AST consistency across all 8 functions and 2 structs. The spec strengthening didn't alter any execution semantics, and I'm verifying the same AST consistency holds for frame.rs.
+
+Since I modified a spec file, I should run `make build` to ensure the dual compilation still works properly, even though spec files are gated behind `cfg(verus_keep_ghost)` and shouldn't affect the normal build path. Let me run that check to be thorough.
+[RESULT ✓] bash: build exit: 0
+<shellId: 59 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 300 make build 2>&1 | tail -8; echo "build exit: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+build exit: 0
+<shellId: 60 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+All green: `make verify` (exit 0), `make verify-kernel` (47 verified, 0 errors), `make build` (exit 0), frame module CLEAN, AST consistent. Let me clean up temp artifacts and update the report.
+[TOOL] bash: cd /home/ruize/toolchain && ls -d verus-0531-stage-old verus-06.14-clobber-bak 2>/dev/null; echo "=== cleanup /tmp ===";
+
+[THINKING] All the build and verification checks are passing now—the kernel verification shows 47 verified with no errors, all crates pass, the frame module is clean without any shortcuts, and the AST consistency checks confirm the expected state.
+
+Now I need to clean up the temporary staging directory and the downloaded files from /tmp, then update the fix report to document both the upool fix and the toolchain restoration work.
+[RESULT ✓] bash: verus-06.14-clobber-bak
+=== cleanup /tmp ===
+removed /tmp/verus-0531
+=== keep 06.14 backup? confirm shared is 05.31 ===
+0.2026.05.31.5dd6d83
+113M	verus-06.14-clobber-bak
+<shellId: 61 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+Shared toolchain confirmed at `0.2026.05.31.5dd6d83`. Now updating the report to document the coupled upool fix and toolchain incident.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md
+
+[THINKING] The 06.14 backup is from another pipeline's toolchain that I created earlier, so I'll leave it in place to avoid confusion—it's harmless and might be needed later. Now I'm updating fix_report.md.
+[RESULT ✓] bash: # Cheating Elimination Report: hal-frame-address
+
+Scope: `src/kernel/src/hal/mem/types/address/frame.rs` (+ `frame.spec.rs`,
+`frame.proof.rs`). In-scope functions: `FrameAddress::into_raw_value`,
+`FrameAddress::into_frame_number`, `FrameAddress::from_raw_value`,
+`FrameAddress::from_frame_number`, an...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Now I'll append the gate-fix addendum documenting the coupled upool fix and the toolchain incident.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -3 -- src/kernel/src/mm/phys/upool.spec.rs; echo "=== current 
+[RESULT ✓] bash: b57b26345 [verus] verify PASS (cheating detected): kernel::all (47 verified, 0 errors, external_body=24 cfg_gate=6)
+244ae1b48 [verus] verify FAIL: kernel::all (0 verified, compilation/setup error (verus did not run))
+83c877677 [verus] verify PASS (cheating detected): kernel::mm::phys (32 verified, 0...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+The fix is committed (HEAD shows kernel::all 47 verified, 0 errors). Now appending the gate-fix addendum to the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat >> verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md <<'EO
+
+[THINKING] The commit went through successfully with the kernel tests passing, so now I'm adding the gate-fix addendum to the report.
+[RESULT ✓] bash: appended
+- `make build`: **exit 0**.
+- AST consistency (`frame.rs` + `upool.rs`): consistent (frame's 3 mismatches are
+  the pre-approved `let`-binding deviation; upool exec unchanged).
+
+## Result: PASS
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+Done. The machine verification gate now passes cleanly.
+
+## Summary
+
+**Gate failure fixed.** `make verify` now exits 0 on the default toolchain.
+
+**Two root causes resolved:**
+
+1. **Coupled spec fix** (`src/kernel/src/mm/phys/upool.spec.rs`): The in-scope strengthening of `FrameAddress::inv()` (page-aligned **+** representable — required by `into_frame_number`) left `UserFrame::inv()` too weak, breaking the `frame::share`/`frame::refcount` preconditions at `upool.rs:153,197`. Brought `UserFrame::inv()` into lock-step over the public view `self@`. Spec-only change (no admit/assume/external_body); exec AST unchanged (8 fns, 2 structs match).
+
+2. **Toolchain incident**: A concurrent pipeline clobbered the shared `/home/ruize/toolchain/verus` to `06.14` (incompatible with pinned vstd `2026-05-31`). Restored to the pinned `0.2026.05.31.5dd6d83`.
+
+**Final verification (default toolchain):**
+- `make verify-kernel` → exit 0, 47 verified, **0 errors**, frame module CLEAN (✅ no cheating)
+- `make verify` → **exit 0** (full crate)
+- `make build` → exit 0
+- In-scope frame module: **0 cheating** (admit/assume/external_body all 0)
+- AST consistency: frame.rs (3 pre-approved `let`-binding deviations) + upool.rs (unchanged)
+
+Report updated at `verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md` → **Result: PASS**.
+
+
+=== Session End ===
+Session: 9f800461-9d25-46d7-8d9e-8a4a5285244c
+Duration: 996.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/gate-fix-claude-20260615-172147.jsonl

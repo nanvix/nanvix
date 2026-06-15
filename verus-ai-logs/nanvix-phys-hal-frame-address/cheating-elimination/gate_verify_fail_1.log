@@ -1,0 +1,202 @@
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bitmap/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_17-21-39
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  ✅ All 11 exec functions have contracts.
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  coverage: 11/11 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-bitmap/verus-logs/verus_2026-06-15_17-21-39.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --crate sys  --log-dir verus-ai-logs/verify-sys
+=== Verus Verification (cargo mode) ===
+  Crate     : sys
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/sys/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_17-21-40
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.22s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/254 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 2/254 exec functions have contracts
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_17-21-40.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --crate nanvix-slab  --log-dir verus-ai-logs/verify-nanvix-slab
+=== Verus Verification (cargo mode) ===
+  Crate     : nanvix-slab
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/slab/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_17-21-41
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  Detail: verus-ai-logs/verify-nanvix-slab/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  ✅ All 3 exec functions have contracts.
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 3/3 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-nanvix-slab/verus-logs/verus_2026-06-15_17-21-41.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --crate bump-allocator  --log-dir verus-ai-logs/verify-bump-allocator
+=== Verus Verification (cargo mode) ===
+  Crate     : bump-allocator
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bump_allocator/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_17-21-42
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/6 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 3/6 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-15_17-21-42.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --crate kernel  --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_17-21-43
+
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/upool.rs:153:17
+     |
+ 153 |         let r = frame::share(self.addr);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/kernel/src/mm/phys/frame.rs:1016:9
+     |
+1016 |         frame.inv(),
+     |         ----------- failed precondition
+
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/upool.rs:197:17
+     |
+ 197 |         let r = frame::refcount(self.addr);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/kernel/src/mm/phys/frame.rs:1056:9
+     |
+1056 |         frame.inv(),
+     |         ----------- failed precondition
+
+verification results:: 45 verified, 2 errors
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+
+=== Results ===
+  45 verified
+  2 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 45 verified, 2 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=6
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  51/1022 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: 45 verified, 2 errors (exit 101)
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_decreases=0 cfg_gate=6
+  coverage: 51/1022 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_17-21-43.log
+make: *** [Makefile:625: verify-kernel] Error 101

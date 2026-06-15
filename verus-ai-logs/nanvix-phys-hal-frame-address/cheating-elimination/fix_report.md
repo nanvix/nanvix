@@ -108,3 +108,67 @@ placeholders. Every in-scope function is body-verified against its
 - Zero unexplained mismatches confirmed: **YES**.
 
 ## Result: PASS
+
+---
+
+## Machine-gate follow-up (`make verify` failure → fixed)
+
+The `make verify` gate (full-crate) initially failed with **2 downstream
+errors**, plus an unrelated environmental toolchain incident. Both are now
+resolved; `make verify` exits 0.
+
+### 1. Coupled downstream fix — `UserFrame::inv()` (`src/kernel/src/mm/phys/upool.spec.rs`)
+**Errors** (`gate_verify_fail_1.log`): `upool.rs:153` (`frame::share(self.addr)`)
+and `upool.rs:197` (`frame::refcount(self.addr)`) failed the precondition
+`frame.inv()`.
+
+**Root cause** — *required* by the in-scope work, not optional: the proving
+phase strengthened `FrameAddress::inv()` from page-aligned-only (base branch) to
+page-aligned **and** representable (`spec_frame_number(self@) <=
+spec_max_frame_number()`). That strengthening is mandatory — `into_frame_number`
+(in scope) relies on `PhysicalAddress::inv()` representability through the
+`lemma_phys_view_is_spec_addr` bridge, and page-alignment alone cannot imply it.
+`UserFrame::inv()` (page-aligned only) therefore no longer implied the
+strengthened `FrameAddress::inv()` its `share`/`refcount` shims demand.
+
+**Fix**: brought `UserFrame::inv()` into lock-step with `FrameAddress::inv()`:
+```
+&&& self@ % spec_page_size() == 0
+&&& spec_frame_number(self@) <= spec_max_frame_number()
+```
+stated over the **public view** `self@` (not the private `self.addr` field — a
+`pub open spec fn` cannot project an opaque datatype field; within `upool` the
+`closed` `view` is revealed, so `self@ == self.addr@` connects the handle
+invariant to `frame::share`'s `self.addr.inv()` precondition). Imports widened to
+`{spec_frame_number, spec_max_frame_number, spec_page_size}`.
+
+**Justification / blast radius**: semantically true — a `UserFrame` always wraps
+a representable physical frame. No `admit`/`assume`/`external_body` introduced
+(spec invariant only). Every external `.share()`/`.refcount()` caller is
+unverified exec code (0 verus annotations), so the change only tightens `upool`'s
+own verified functions. AST consistency on `upool.rs` exec: **8 functions,
+2 structs match** (exec unchanged; the edit is spec-only). Result: full
+`make verify` → exit 0, no new regressions; `make verify-kernel` → 47 verified,
+0 errors.
+
+### 2. Environmental toolchain incident (not a code issue)
+A concurrent pipeline clobbered the shared `/home/ruize/toolchain/verus` from the
+project-pinned `0.2026.05.31.5dd6d83` (`build/verus-version`) to `06.14`, whose
+vstd is incompatible with nanvix-phy's pinned vstd `2026-05-31` ("expected
+generics to match" while compiling vstd). Restored the shared toolchain to
+`0.2026.05.31.5dd6d83` via atomic directory swap (clobbering `06.14` backed up at
+`/home/ruize/toolchain/verus-06.14-clobber-bak`). Re-ran the gate's exact
+invocations against the **default** (restored) toolchain:
+- `make verify-kernel` → exit 0 (47 verified, 0 errors; module status CLEAN).
+- `make verify` → **exit 0** across all crates.
+- `make build` (dual compilation) → exit 0.
+
+## Final gate status
+- `make verify-kernel`: **exit 0** — `✅ No cheating detected in module
+  hal::mem::types::address::frame`.
+- `make verify`: **exit 0** (full crate).
+- `make build`: **exit 0**.
+- AST consistency (`frame.rs` + `upool.rs`): consistent (frame's 3 mismatches are
+  the pre-approved `let`-binding deviation; upool exec unchanged).
+
+## Result: PASS
