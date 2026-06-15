@@ -1494,3 +1494,18 @@ Turn 96
 ────────────────────────────────────────────────────────────
 Now let me run `make verify-kernel` to confirm the cross-crate spec flow works and no regression.
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel 2>&1 | grep -iE "error|duplicate|verified|status:|verification:" | tail -2
+[RESULT ✓] bash: verification results:: 43 verified, 0 errors
+  43 verified
+  0 errors
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+  verification: 43 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 67 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+Kernel verifies (43 verified, 0 errors) — cross-crate spec flow works. But "CHEATING_DETECTED" — let me check what triggered it.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel 2>&1 | grep -iE "cheating|assume=|external_body=|admit=|trusted=|no_decrea
+
+[THINKING] The cross-crate spec flow is working—43 verified with no errors and the duplicate resolved. But I'm seeing a cheating detection flag, and I need to investigate what triggered it. The assume_specification for into_raw_value was already there before my changes, so let me dig into the cheating report to understand what's happening.
