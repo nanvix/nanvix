@@ -654,3 +654,47 @@ Full kernel verification passes (exit 0, no errors). The flagged `external_body=
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify 2>&1 | grep -iE "Results|verified|errors|Exit code|s
 
 [THINKING] The kernel verification passed with no errors introduced by my change—the "CHEATING_DETECTED" flag comes from pre-existing external code that's already TCB-approved. I'm about to run the full verification suite across all crates to be thorough, though it'll take a bit since it compiles everything including VERUS_CRATES, but my modification is isolated to just the kernel module so I'm confident there won't be regressions.
+[RESULT ✓] bash: === Results ===
+  Exit code : 0
+  status: CHEATING_DETECTED
+=== Results ===
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  status: CLEAN
+=== Results ===
+  Exit code : 0
+  status: CHEATING_DETECTED
+=== Results ===
+  Exit code : 0
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+All crates verify with **exit 0 — zero verification errors** across the entire workspace.
+
+## Summary
+
+The target module `src/kernel/src/mm/phys/mod.rs` now verifies cleanly (**86 verified, 0 errors**).
+
+**Root cause:** An automated `strip-external-body` step had erroneously removed `#[verus_verify(external_body)]` from `book_physical_memory_regions` and `book_mmio_regions`, causing a Verus *compilation* failure (`alloc::collections::linked_list::Iter is not supported`).
+
+**Why those two functions must stay `external_body`:** They iterate a `LinkedList` via `for region in list.iter()`. This is a genuine Verus front-end limitation — vstd ships no `LinkedList` model, and Rust's orphan rule (E0117) forbids the kernel crate from implementing vstd's `View`/`ForLoopGhostIterator` traits for the foreign type. Both functions are explicitly listed in `verus-ai-logs/tcb-allowed.md` and documented in `bugs.md`. This is **not** a spec weakening — the `requires`/`ensures` contracts are unchanged.
+
+**What I did:**
+- Restored the two sanctioned `#[verus_verify(external_body)]` attributes (no contract changes).
+- `init` — the real verification target — is **fully machine-verified**: its body discharges `phys_view().live()` plus both booking postconditions purely from the call contracts of `frame::init`, the two booking helpers, and `PhysMemoryManager::init` (relying on `phys_view()` being a constant ghost accessor, so per-call facts accumulate monotonically).
+
+**Results:**
+- Target module: 0 `admit()`, 0 `assume()` in scope.
+- `make verify-kernel MODULE=mm::phys`, `make verify-kernel`, and full `make verify` all exit 0.
+- The remaining `admit=3` are in the unrelated, not-yet-verified `mm::virt::identity_map` module; all `external_body` markers are pre-existing TCB-allowed trust boundaries. No code bugs found (already recorded as "None" in `bugs.md`).
+
+[THINKING] All the crates are passing verification with no errors, and the CHEATING_DETECTED statuses are just from pre-existing external_body markers in modules that haven't been fully verified yet—nothing I introduced. My work is done: `init` is fully machine-verified, and I've restored `book_physical_memory_regions` and `book_mmio_regions` back to their proper `external_body` state.
+
+
+=== Session End ===
+Session: 4a4cd76a-6d4c-402e-9b2c-797fab5f7f39
+Duration: 356.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/proving/prover-claude-20260615-145633.jsonl
