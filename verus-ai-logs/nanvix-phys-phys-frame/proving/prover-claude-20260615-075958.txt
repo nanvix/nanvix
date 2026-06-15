@@ -1786,3 +1786,104 @@ Turn 100
 Turn 101
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: verification results:: 52 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 23
+    - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:298 free: admit
+    - frame.rs:379 share: admit
+    - frame.rs:442 refcount: admit
+    - frame....
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+`is_covered` verifies. The division approach is validated. Let me record progress and the implementation change, then apply the same pattern to the other methods.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '/^## /p;1,40p' verus-ai-logs/nanvix-phys-phys-frame/bugs.md 2>/dev/nu
+
+[THINKING] The `is_covered` verification passed with all 52 cases confirmed and no errors, so the division strategy is solid. The remaining functions in scope are the frame.rs methods like `alloc`, `alloc_contiguous`, `free`, `share`, `refcount`, `book`, `alloc_range`, and their wrappers, while the manager module functions are out of scope. Now I'm applying the same division technique to the `free` function.
+
+I need to update the SQL todos and note the `into_frame_number` to division change, then work through `refcount`, `share`, and `free` since they all follow the same pattern of taking a `FrameAddress` and computing the frame number.
+[RESULT ✓] bash: # Bugs / Suspicious code — `mm::phys::frame`
+
+## [open] `Inner::alloc_range`: possible off-by-one between body and spec
+## [open] `Inner::alloc_range`: possible off-by-one between body and spec
+
+- Body (frame.rs:588-589, 598, 626):
+  - `start_frame_number = region.start().into_frame_number().into_ra...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to look at the memory management code in that section to understand how the division fix should be applied to the free, share, and refcount operations.
+[RESULT ✓] view: 255.     /// # Parameters
+256.     ///
+257.     /// - `frame`: Address of the frame to free.
+258.     ///
+259.     /// # Returns
+260.     ///
+261.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+262.     ///
+263.     #[verus_spec(result =>
+264.         require...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+The division approach works. Now let me create a comprehensive helper lemma that serves `refcount`, `share`, `free`, `book`, and `is_covered`. Let me replace `lemma_is_covered`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm working through the refcount implementation, starting with the simpler read-only case. I need to convert the frame number calculation to use raw values divided by frame size, then trace through the logic for the refcount slice and bitmap, understanding how the allocated_frames set relates to the refcount data structure.
+
+Now I'm mapping out the key invariants: the set_bits bitmap tracks which frames are allocated (a bit is set if and only if its refcount is positive), and the frame address is computed by multiplying the frame number by the page size. The refcount function has three cases — if the frame number exceeds the refcount array length, it returns an error with the guarantee that the frame isn't allocated; if the refcount value is zero, same error; otherwise it returns the count and ensures the frame is in the allocated set with the correct refcount value. The proof relies on showing that when frame_number is out of bounds, it can't possibly be in the set_bits bitmap, so the frame address can't be allocated. Writing lemma specification... For the allocated predicate, I'm verifying both directions: if a frame number is in the set, then the address exists in allocated; conversely, if an address is allocated, I can extract the frame number and confirm it's in the set. The refcounts key predicate turns out to be identical to allocated's condition, so they're equivalent. For the refcount value itself, the Map applies a function that divides the address by page size to index into the refcount array, giving me the refcount at that frame number—but only when the key is actually present.
+
+Now I'm checking the refcount slice invariants: within the valid range, a frame has a positive refcount if and only if it's in the set; beyond that range, refcounts are zero. This means for any frame number, whether it's in the valid range or the tail, the refcount being positive matches exactly whether it's in the set. For the free predicate, I'm doing the same verification—a frame is free when it's in the valid range but not in the set, and I can show both directions of the equivalence hold. I think I can either keep the existing lemma and use this new reasoning, or rewrite the is_covered predicate directly with this cleaner characterization.
+
+I'm consolidating this into a single comprehensive lemma that captures all the frame facts at once, then having is_covered use it. The key insight is that is_covered returns true exactly when the frame number is less than num_bits, which follows from the union of allocated and free—both of which require being in the valid range. I need to be careful about triggers for the choose expressions, and since the lemma references private fields from the inner module, it has to stay module-private. Let me write out lemma_frame_facts now.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+Now update `is_covered` to use the new lemma:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+Now let me look at the `Inner` struct and the `refcount`/`bitmap` field types and their access specs:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the logical equivalence for `is_covered` — it needs to show that a frame number being less than the bit count is equivalent to it being in either the allocated or free set. Using the frame facts lemma, both allocated and free contain a page address when the frame number is in range and the bit is set or unset respectively. So I need to verify that `fn < nbits` is logically equivalent to `(0 <= fn < nbits && set) || (0 <= fn < nbits && !set)`, which simplifies to just `0 <= fn < nbits`.
+
+Now I'm moving to the `refcount` function. I'm rewriting it to use integer division with the lemma to establish the frame number from the raw address value. The function takes a `FrameAddress` by value, converts it to a raw integer, divides by the frame size to get the frame number, then uses the lemma to verify the relationship between the address and frame number before checking bounds and returning the refcount value.
+
+I need to verify that `FrameAddress` is `Copy` — it derives `Copy` so calling `into_raw_value()` doesn't actually move it, which means I can still use `frame` in error messages afterward. The frame's invariant gives me that its address is page-aligned, so `pa % spec_page_size() == 0` holds.
+
+Now I'm looking at the `refcount` field type to understand what `self.refcount.len()` returns and how it relates to the spec length.
+[RESULT ✓] view: 60. ///
+61. /// Sits in BSS rather than on the kernel heap because the slab allocator caps single
+62. /// allocations at a few hundred bytes, but a full refcount table for the configured
+63. /// memory size is much larger.
+64. ///
+65. /// # Size impact
+66. ///
+67. /// This array is unconditionally r...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+Now let me rewrite `refcount` (read-only, simplest of the three FrameAddress methods):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through how Verus handles the refcount field—it's a mutable slice of bytes, so indexing with `self.refcount[frame_number]` requires bounds checking, and Verus tracks this through its sequence abstraction to ensure the index is valid before accessing the element.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

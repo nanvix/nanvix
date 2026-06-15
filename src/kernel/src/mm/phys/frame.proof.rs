@@ -71,18 +71,32 @@ impl Inner {
     }
 }
 
-// Relates the integer frame index `pa / PAGE_SIZE` of a page-aligned address `pa` to coverage by
-// the bitmap: `pa` is tracked (allocated or free) iff its frame index is within `num_bits`.
-proof fn lemma_is_covered(inner: &Inner, pa: int, frame_number: int)
+// Relates the integer frame index `fn_ = pa / PAGE_SIZE` of a page-aligned address `pa` to the
+// abstract view of the allocator. Every method that turns an address parameter into a bitmap index
+// uses these equivalences to connect the executable index to the spec-level frame sets/maps.
+proof fn lemma_frame_facts(inner: &Inner, pa: int, fn_: int)
     requires
         inner.inv(),
         pa >= 0,
         pa % spec_page_size() == 0,
-        frame_number == pa / spec_page_size(),
+        fn_ == pa / spec_page_size(),
     ensures
-        (frame_number < inner.bitmap@.num_bits) <==> (
-            inner@.allocated_frames.contains(pa)
-            || inner@.free_frames.contains(pa)
+        pa == fn_ * spec_page_size(),
+        fn_ >= 0,
+        inner@.allocated_frames.contains(pa) <==> (
+            0 <= fn_ < inner.bitmap@.num_bits && inner.bitmap@.set_bits.contains(fn_)
+        ),
+        inner@.refcounts.contains_key(pa) <==> (
+            0 <= fn_ < inner.bitmap@.num_bits && inner.bitmap@.set_bits.contains(fn_)
+        ),
+        inner@.refcounts.contains_key(pa) ==> inner@.refcounts[pa] == inner.refcount@[fn_],
+        (0 <= fn_ < inner.refcount@.len()) ==> (
+            inner.refcount@[fn_] > 0 <==> (
+                0 <= fn_ < inner.bitmap@.num_bits && inner.bitmap@.set_bits.contains(fn_)
+            )
+        ),
+        inner@.free_frames.contains(pa) <==> (
+            0 <= fn_ < inner.bitmap@.num_bits && !inner.bitmap@.set_bits.contains(fn_)
         ),
 {
     let ps: int = spec_page_size();
@@ -90,41 +104,68 @@ proof fn lemma_is_covered(inner: &Inner, pa: int, frame_number: int)
     assert(ps > 0);
     assert(inner.bitmap.inv());
     assert(inner.bitmap@.wf());
-    // pa == frame_number * ps (since pa is a multiple of ps).
+    // pa == fn_ * ps (since pa is a multiple of ps).
     vstd::arithmetic::div_mod::lemma_fundamental_div_mod(pa, ps);
-    assert(pa == ps * frame_number);
-    assert(pa == frame_number * ps) by (nonlinear_arith)
-        requires pa == ps * frame_number;
-    assert(frame_number >= 0) by (nonlinear_arith)
-        requires pa >= 0, ps > 0, pa == frame_number * ps;
-    // Forward: if the frame index is within range, `pa` is either allocated or free.
-    if frame_number < nbits {
-        assert(pa == frame_addr_of(frame_number));
-        if inner.bitmap@.set_bits.contains(frame_number) {
+    assert(pa == ps * fn_);
+    assert(pa == fn_ * ps) by (nonlinear_arith)
+        requires pa == ps * fn_;
+    assert(fn_ >= 0) by (nonlinear_arith)
+        requires pa >= 0, ps > 0, pa == fn_ * ps;
+
+    // allocated_frames.contains(pa) <==> (fn_ in range && set).
+    assert(inner@.allocated_frames.contains(pa) <==> (
+        0 <= fn_ < nbits && inner.bitmap@.set_bits.contains(fn_)
+    )) by {
+        if inner@.allocated_frames.contains(pa) {
+            let i = choose|i: int|
+                #[trigger] inner.bitmap@.set_bits.contains(i) && pa == frame_addr_of(i);
+            assert(inner.bitmap@.set_bits.contains(i) && pa == frame_addr_of(i));
+            assert(0 <= i < nbits);
+            assert(pa == i * ps);
+            assert(i == fn_) by (nonlinear_arith)
+                requires ps > 0, i * ps == fn_ * ps;
+        }
+        if 0 <= fn_ < nbits && inner.bitmap@.set_bits.contains(fn_) {
+            assert(pa == frame_addr_of(fn_));
             assert(inner@.allocated_frames.contains(pa));
+        }
+    };
+
+    // refcounts share the same key predicate as allocated_frames.
+    assert(inner@.refcounts.contains_key(pa) <==> inner@.allocated_frames.contains(pa));
+    if inner@.refcounts.contains_key(pa) {
+        assert(inner@.refcounts[pa] == inner.refcount@[pa / ps]);
+        assert(pa / ps == fn_);
+    }
+
+    // refcount slice (for indices within its length) is positive iff the corresponding bit is set.
+    if 0 <= fn_ < inner.refcount@.len() {
+        if fn_ < nbits {
+            assert(inner.bitmap@.set_bits.contains(fn_) <==> inner.refcount@[fn_] > 0);
         } else {
-            assert(inner@.free_frames.contains(pa));
+            assert(inner.refcount@[fn_] == 0);
+            assert(!inner.bitmap@.set_bits.contains(fn_));
         }
     }
-    // Backward: tracked addresses have a frame index within range.
-    if inner@.allocated_frames.contains(pa) {
-        let i = choose|i: int|
-            #[trigger] inner.bitmap@.set_bits.contains(i) && pa == frame_addr_of(i);
-        assert(inner.bitmap@.set_bits.contains(i) && pa == frame_addr_of(i));
-        assert(0 <= i < nbits);
-        assert(pa == i * ps);
-        assert(i == frame_number) by (nonlinear_arith)
-            requires ps > 0, i * ps == frame_number * ps;
-    }
-    if inner@.free_frames.contains(pa) {
-        let i = choose|i: int|
-            0 <= i < nbits && !(#[trigger] inner.bitmap@.set_bits.contains(i))
-                && pa == frame_addr_of(i);
-        assert(0 <= i < nbits && pa == frame_addr_of(i));
-        assert(pa == i * ps);
-        assert(i == frame_number) by (nonlinear_arith)
-            requires ps > 0, i * ps == frame_number * ps;
-    }
+
+    // free_frames.contains(pa) <==> (fn_ in range && clear).
+    assert(inner@.free_frames.contains(pa) <==> (
+        0 <= fn_ < nbits && !inner.bitmap@.set_bits.contains(fn_)
+    )) by {
+        if inner@.free_frames.contains(pa) {
+            let i = choose|i: int|
+                0 <= i < nbits && !(#[trigger] inner.bitmap@.set_bits.contains(i))
+                    && pa == frame_addr_of(i);
+            assert(0 <= i < nbits && pa == frame_addr_of(i));
+            assert(pa == i * ps);
+            assert(i == fn_) by (nonlinear_arith)
+                requires ps > 0, i * ps == fn_ * ps;
+        }
+        if 0 <= fn_ < nbits && !inner.bitmap@.set_bits.contains(fn_) {
+            assert(pa == frame_addr_of(fn_));
+            assert(inner@.free_frames.contains(pa));
+        }
+    };
 }
 
 }

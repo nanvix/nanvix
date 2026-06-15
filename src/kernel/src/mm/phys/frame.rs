@@ -440,8 +440,18 @@ impl Inner {
             },
     )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
-        proof! { admit(); }
-        let frame_number: usize = frame.into_frame_number().into_raw_value();
+        proof_decl! {
+            let ghost pa: int = frame@;
+        }
+        let raw: usize = frame.into_raw_value();
+        let frame_number: usize = raw / mem::FRAME_SIZE;
+        proof! {
+            assert(mem::FRAME_SIZE as int == spec_page_size());
+            assert(raw as int == pa);
+            assert(pa % spec_page_size() == 0);
+            assert(frame_number as int == pa / spec_page_size());
+            lemma_frame_facts(self, pa, frame_number as int);
+        }
 
         if frame_number >= self.refcount.len() {
             let reason: &str = "frame number out of bounds";
@@ -547,7 +557,7 @@ impl Inner {
             assert(raw as int == pa);
             assert(pa % spec_page_size() == 0);
             assert(frame_number as int == pa / spec_page_size());
-            lemma_is_covered(self, pa, frame_number as int);
+            lemma_frame_facts(self, pa, frame_number as int);
         }
         frame_number < nbits
     }
