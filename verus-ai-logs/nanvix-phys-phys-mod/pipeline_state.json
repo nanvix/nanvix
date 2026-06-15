@@ -2,9 +2,11 @@
   "module_name": "phys-mod",
   "log_name": "nanvix-phys-phys-mod",
   "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "d49b92c8c1200eeacf67c1dc3cea0748cda43748"
   },
   "phase_start_shas": {
-    "proving": "a39678349ca04f5fcf61b7e25bb348c2a4102b55"
+    "proving": "a39678349ca04f5fcf61b7e25bb348c2a4102b55",
+    "cheating-elimination": "75cc41d2636fa65506cdf6f5a099f24684d19528"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "d49b92c8c1200eeacf67c1dc3cea0748cda43748",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "75cc41d2636fa65506cdf6f5a099f24684d19528",
       "rollback_iter": 0
     }
   ],
