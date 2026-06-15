@@ -1,0 +1,30 @@
+Timestamp: 2026-06-15_14-25-41
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+40 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: postcondition not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:218:13
+    |
+218 |             crate::hal::mem::spec_addr(&result) == self@.start,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+221 |         self.start.clone()
+    |         ------------------ at the end of the function body
+
+verification results:: 40 verified, 1 errors
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
