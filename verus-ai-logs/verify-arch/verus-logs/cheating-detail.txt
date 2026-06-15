@@ -1,3 +1,4 @@
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
     - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
     - x86/mem/paging/table.rs:209 read: external_body
     - x86/mem/paging/table.rs:246 write: external_body

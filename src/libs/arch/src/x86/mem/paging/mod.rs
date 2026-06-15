@@ -76,6 +76,7 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 // hence every caller-side invariant is preserved. This matches the inherited upstream
 // `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
 #[inline]
+#[verus_verify(external_body)]
 pub unsafe fn invlpg(vaddr: usize) {
     core::arch::asm!(
         "invlpg ({0})",

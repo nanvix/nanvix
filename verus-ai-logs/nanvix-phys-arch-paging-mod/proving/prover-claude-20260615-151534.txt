@@ -232,3 +232,54 @@ Turn 7
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; make verify-arch 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The verification passed with 48 verified and 0 errors even though the `external_body` annotation was stripped, yet it's still reporting `external_body=2`. I'm puzzled about where those external_body references are coming from since the invlpg function no longer has the annotation. It seems like Verus might be treating functions without `#[verus_spec]` or `verus!` wrapping differently, allowing them to verify despite having inline asm bodies.
+
+Actually, I think I see what's happening — functions outside `verus!` blocks are treated as external (trusted) by default, so invlpg is being handled as a plain Rust function that Verus doesn't verify. The cheating check is reporting `external_body=2` and `cfg_gate=2` with a CHEATING_DETECTED status, so I need to figure out which two functions are being flagged as external and whether that's acceptable given that invlpg should be allowed.
+[RESULT ✓] bash: - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The strip-external-body probe removed `#[verus_verify(external_body)]` from `invlpg`. Let me review the module's unsupported notes to confirm the trust boundary before deciding.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; cat verus-ai-logs/nanvix-phys-arch-paging-mod/verus-unsupported.md
+
+[THINKING] The two external_body instances in table.rs are on the TCB-allowed list and belong to a different module, so they're outside my scope. The lemma_entry_roundtrip "assume" is actually the broadcast axiom with external_body, which the cheating check labels differently. I'm realizing that invlpg isn't counted as external_body because it sits outside the verus! block, so Verus treats it as external automatically without needing the annotation.
+
+Since invlpg is genuinely unverifiable inline assembly and lives outside verus!, it's trusted-external by default, which is the cleanest approach — no explicit external_body annotation needed, and the cheating check passes. The upstream code only gives invlpg a trivial spec through assume_specification, so it doesn't need a contract in the arch crate itself. The current state might already be correct: invlpg outside verus! means it's external/trusted, and verification shows 48/0 with no errors. The key question is whether to restore the `#[verus_verify(external_body)]` annotation on invlpg or leave it as a plain Rust function outside verus!. Both approaches pass verification, but they differ in how they document the trust boundary. Since invlpg is listed in tcb-allowed.md and the expected state from the pipeline shows it should have the external_body annotation, I should restore it to properly record this as a deliberate trust decision rather than leaving it implicitly trusted without annotation. So the key distinction is that `#[verus_verify(external_body)]` actually brings the function into Verus's accounting as a trusted external body, whereas without it the function is completely ignored by verification. Since invlpg uses inline assembly that Verus fundamentally can't verify, and it's explicitly listed as TCB-allowed with justification, restoring the annotation is the correct and transparent approach. Let me add it back and verify the build still passes while properly tracking this as an external_body function.
+[RESULT ✓] bash: # Verus-Unsupported Constructs — `arch::x86::mem::paging` (`mod.rs`)
+
+This file records language/library constructs in the `paging` module (`mod.rs`)
+that Verus cannot translate or verify, together with the minimal reproduction and
+the trust-boundary mitigation used.
+
+## 1. Inline assembly (`core::a...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Confirmed: `invlpg` is inline asm (`core::arch::asm!`), genuinely unverifiable by Verus, on the TCB-allowed list with the documented mitigation being `#[verus_verify(external_body)]`. The strip-probe removed it; the correct action is to restore it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] report_intent: Restoring TCB-allowed external_body
+
+[THINKING] So `invlpg` has inline assembly that can't be verified, and the proper fix is to add back the `#[verus_verify(external_body)]` annotation since it's already documented as TCB-allowed—I need to restore that.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; make verify-arch 2>&1 | tail -30
