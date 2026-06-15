@@ -105,7 +105,6 @@ impl FrameAddress {
     // `mm::phys` callers can invoke it. The raw value coincides with the
     // address's abstract view (newtype identity). Removed when `hal::mem` is
     // verified.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result as int == self@,
