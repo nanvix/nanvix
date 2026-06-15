@@ -385,3 +385,170 @@ Turn 12
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch MODULE=x86::mem::paging 2>&1 | grep -nE "Module|module|cheating|exte
 
 [THINKING] I need to get the full output from the analysis to see the module-level findings, particularly looking for the x86::mem::paging module results or confirmation that no cheating was detected there.
+[RESULT ✓] bash: 6:/home/ruize/nanvix-phy-specs/scripts/verify.sh --crate arch --module x86::mem::paging --log-dir verus-ai-logs/verify-arch
+9:  Module    : x86::mem::paging
+23:  Module x86::mem::paging:
+24:    ⚠️  external_body: 3
+25:    ⚠️  cfg-gated exec code: 2
+26:  Affected functions:
+27:    - mod.rs:80 invlpg:...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rnE "#\[cfg(_attr)?\((not\()?verus_keep_ghost" src/libs/arch/src/x86/mem/paging
+
+[THINKING] Looking at the x86 memory paging module structure, I can see it's organized across mod.rs, table.rs, and several submodules for page directory entries, page table entries, flags, and frames. The verification shows that the critical operations—invlpg for TLB invalidation, and the read/write operations on page tables—are all properly marked as external functions in the TCB. There are also two configuration-gated ghost code sections using conditional compilation.
+
+However, I'm realizing there's a scope question here: this review is specifically for arch-paging-mod, which means I should focus on what's in mod.rs itself. The cfg gates I counted might actually be spread across the submodules in the paging directory rather than in mod.rs, and the table.rs items belong to a separate module that would have been reviewed independently. Let me search through the paging directory to identify which cfg(verus_keep_ghost) gates are actually present and determine which ones fall within the scope of this particular review.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:10:#[cfg(verus_keep_ghost)]
+src/libs/arc...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find /home/ruize/verus-ai-exp/verus-ai -iname "*ast-consist*" -o -iname "*spec-drift*
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "body_removed_source\|spec_drift\|ast.consist\|ast_consist" scripts/ /home/r
+
+[THINKING] I'm looking at two specific cfg gate flags in pte.rs at lines 85 and 307 — both using `#[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]` attributes. The scanner skips entries with 'derive(' or 'feature(' in them, but these don't match that pattern, so it flags them because they're attached to executable code like functions. Even though these are lint-only allow attributes, the detection logic still marks them since the target is actual implementation code rather than just declarations.
+
+For mod.rs specifically, the cfg gates at lines 8 and 10 target `include!(...)` statements which the scanner correctly skips, so they don't get counted. The only actual cheating in mod.rs scope is the invlpg external_body marked as TCB-listed. The cfg_gate count of 2 and the table.rs external_body count of 2 belong to sibling modules that are already handled in their own separate reviews, so they're outside the scope of this arch-paging-mod review.
+
+Since the verify command runs crate-wide and aggregates all modules, it shows CHEATING_DETECTED overall, but that includes sibling modules already reviewed separately. I need to evaluate the checklist items specifically against mod.rs itself, and for cross-module regression checks and builds, those should pass at the broader level.
+
+Going through the remaining checklist items: mod.rs has zero admit, assume, trusted functions, and no_decreases clauses. The cfg-gated code is only includes, which are allowed. The invlpg external_body is TCB-listed, so that passes. For AST consistency and spec-drift checks, I need to find those specific skills or commands in the verus-ai tooling. The invlpg isn't a rewrite—it's an external_body with a trust-boundary comment and documented in verus-unsupported.md, so there are no exec rewrites to verify. Cross-module regression would be checked via the full crate verification, and the build should have zero errors and warnings.
+
+I notice the prompt template had placeholders like `{tcb_allowed_file}`, `{spec_drift_cmd}`, `{verus_cmd_all}` that weren't substituted, so I need to locate those actual commands.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/__pycache__/spec_drift.cpython-312.pyc
+---scripts---
+---verus-ai scripts---
+/...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/.git/logs/refs/heads/main:39:4d35c8a970fb4d712c796fc9c20e9d0499d9b2b2 e3759784875648338ba009d95d06efe911ae0cf9 Ruize Tang <1466040111@qq.com> 1776328180 +0800	commit: ast_consistency: add exp as primary base branch candidate
+/home/ruize/verus-ai-exp/verus-ai/.git/lo...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md 2>/dev/nul
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch --show-current; git --no-pager log --oneline -3 2>/dev/null; ec
+
+[THINKING] I need to check the current git branch and find the base reference to run the AST consistency check on mod.rs. The body_removed_source.rs file in the log directory should be the original source I need to compare against, so I'll verify the git status first and then run the consistency check.
+[RESULT ✓] bash: verus-ai-prove
+97e5b5bbd [verus] verify PASS (cheating detected): arch::x86::mem::paging (cached (no recompilation), —, external_body=3 cfg_gate=2)
+becd9dde5 [verus] verify PASS (cheating detected): arch::x86::mem::paging (cached (no recompilation), —, external_body=3 cfg_gate=2)
+c2cc7420e [verus-ai...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -- src/libs/arch/src/x86/mem/paging/mod.rs | head -20
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch -a 2>/dev/null | head -30; echo "---tags---"; git --no-pager ta
+
+[THINKING] I'm on the verus-ai-prove branch, but ast_consistency auto-detect only works on verus-ai/* branches, so I need to manually specify a base reference. Let me trace through the git history of mod.rs to find the original unmodified version before verification annotations were added, which should help me identify the correct base branch.
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phys-address
+...
+[RESULT ✓] bash: 9d15cbcda [verus] verify PASS (cheating detected): arch::all (48 verified, 0 errors, external_body=3 cfg_gate=2)
+77945a775 [verus-ai] proving strip-external-body: arch-paging-mod (1)
+343e85f36 [verus] verify PASS (cheating detected): arch::all (48 verified, 0 errors, admit=1 external_body=3 cfg_gate...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show dev:src/libs/arch/src/x86/mem/paging/mod.rs 2>/dev/null | sed -n 
+
+[THINKING] I'm looking at the original invlpg code from a specific commit and need to verify AST consistency between the exec version and the base dev branch. The exec body now has an external_body attribute while the original was just the asm function, but since AST consistency strips ghost annotations like external_body, they should match up. Let me run the consistency check against the dev base reference.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+mod flag...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref dev s
+
+[THINKING] The exec body of invlpg remains unchanged—only ghost annotations and verification attributes were added in the verified version, which the AST consistency check should strip out anyway. Let me run the tool to verify this passes.
+[RESULT ✓] bash: ✅ Consistent: 1 functions, 0 structs match.
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.m
+
+[THINKING] The AST consistency check passed for mod.rs, so now I'm moving on to check for spec drift by running the spec_drift.py script.
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check arch-paging-mod
+[RESULT ✓] bash: Module:   arch-paging-mod
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.rs
+Baseline: 28a962d5c247
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed:...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "build|z |make|ca
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -12
+
+[THINKING] Spec drift checks out. Now I need to run the full architecture crate verification without the MODULE restriction to test cross-module regression—the git log showed 48 verified modules with 0 errors, so let me confirm that by running the complete verification and build commands.
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operation...
