@@ -2,11 +2,12 @@
   "module_name": "hal-phys-address",
   "log_name": "nanvix-phys-hal-phys-address",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "528a89ffea81bf969b7682b6220f2c0adfe7d1fc",
     "view-design": "fe3b55053593f816bbce2b7fdac150daedffd4a5",
-    "specification": "555acf11bc01d41483680f57c62e33160918773d"
+    "specification": "555acf11bc01d41483680f57c62e33160918773d",
+    "proving": "b35c5d5323dd8bef69912a9b01ef1b9f94a81cf8"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "cdbf5ab82293d9a23ffa65ed5c8ca4caeaeee5c8",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "b35c5d5323dd8bef69912a9b01ef1b9f94a81cf8",
       "rollback_iter": 0
     }
   ],
