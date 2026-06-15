@@ -414,3 +414,100 @@ Makefile
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[RESULT ✓] bash: | |_- Verus treats this datatype as 'opaque' because it is marked 'external_body'
+...
+246 |           Self { _private: () }
+    |           ^^^^^^^^^^^^^^^^^^^^^ this constructor is disallowed
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+
+=== Results ===
+  0 verified
+  c...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The constructor error confirms `Upool` is opaque (external_body struct), so `Upool::new`/`alloc` genuinely need `external_body` (they're trust boundaries listed in tcb-allowed.md). Let me check vstd's ManuallyDrop support for `leak`, then plan.
+[TOOL] bash: grep -rn "ManuallyDrop" /home/ruize/verus-ai-exp/verus-ai/vstd/ 2>/dev/null | head -20
+
+[THINKING] So the `Self` constructor is blocked because `Upool` is marked as `external_body`, which means it's opaque to the verifier. This means `Upool::new` and `Upool::alloc` can't actually be verified while maintaining that opacity—they need to be `external_body` themselves, and they're already listed in the tcb-allowed.md file, which confirms this is expected.
+
+The real issue is that the automated strip-external-body step removed the annotation from functions that genuinely need it. Since tcb-allowed.md explicitly documents these as trust boundaries with justification, I should restore `external_body` on both functions—that's consistent with the constraint that external_body is only permitted for functions listed in the approved tcb-allowed.md. undaries, so they need external_body). Now I'm working through the proof obligations for the remaining six UserFrame functions. For `UserFrame::new`, I need to verify that constructing a UserFrame with a valid address preserves the invariant — the view equals the input address and the invariant holds because the input satisfies it. For `UserFrame::address`, the getter returns the underlying FrameAddress, so the result's view matches self's view and the invariant is preserved. Since the view is closed but transparent within the module where the proof lives, these should verify automatically or with minimal unfolding.
+
+For `UserFrame::leak`, I'm using ManuallyDrop to extract the address without running the destructor — the tricky part is whether Verus understands ManuallyDrop's deref semantics and field access through it, which might require specs from vstd. For `UserFrame::share`, I bridge the invariant from self to self.addr (both require `addr@ % ps == 0`), call the underlying frame::share, and reconstruct the UserFrame. For `UserFrame::refcount`, I similarly bridge the invariant and delegate to frame::refcount. For `UserFrame::drop`, I call frame::free which has no preconditions, so the invariant requirement is satisfied.
+
+Most proofs should be automatic, but I need to check vstd's ManuallyDrop support since that's the main obstacle.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/vstd/cell/pcell.rs:8:use core::mem::ManuallyDrop;
+/home/ruize/verus-ai-exp/verus-ai/vstd/cell/pcell.rs:46:   `ManuallyDrop<UnsafeCell<T>>`. This is because dropping the contents is unsound
+/home/ruize/verus-ai-exp/verus-ai/vstd/cell/pcell.rs:85:    // the permission...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/std_specs/manually_drop.rs
+[RESULT ✓] view: 1. #![allow(unused_imports)]
+2. 
+3. use super::super::prelude::*;
+4. use core::mem::ManuallyDrop;
+5. use core::ops::Deref;
+6. 
+7. verus! {
+8. 
+9. #[verifier::external_type_specification]
+10. #[verifier::external_body]
+11. #[verifier::reject_recursive_types_in_ground_variants(V)]
+12. pub struct ExMan...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me check the proving logs to understand the intended workflow for the stripped functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool; ls -R proving/ 2>/dev/null | head -40; e
+
+[THINKING] For the `leak` method, I'm wrapping `self` in `ManuallyDrop` to preserve its address, then accessing the `addr` field through automatic dereferencing. The thinking trails off into how this translates to Verus...
+
+In Verus, when I dereference `this` (a `ManuallyDrop<Self>`), the deref spec returns `this.view_ref()`, which gives me `&self`. Since `this@ === self`, dereferencing preserves the identity, so `this.addr` ultimately equals `self.addr`. The result is a `FrameAddress` where `result@ = self@` and `result.inv()` holds because it inherits the invariant from `self.addr`.
+
+I need to verify that Verus handles the field access correctly through the deref mechanism, so I'll write the proofs and test it. The `UserFrame::view` is a closed spec function, but since `proof.rs` is included into `upool.rs`, they're in the same module scope, so the view should unfold transparently.
+
+Now I'm planning the actual edits: re-add `external_body` to `Upool::new` and `Upool::alloc`. Both functions are listed in `tcb-allowed.md` with justification—they're at a genuine external trust boundary where the struct is opaque and the constructor can't be verified. The pipeline stripped these two functions expecting either proofs or restoration, and since proofs aren't feasible, restoring them is the right approach.
+[RESULT ✓] bash: proving/:
+prover-claude-20260615-125739.jsonl
+prover-claude-20260615-125739.txt
+=== pipeline.log tail ===
+- fn_coverage: 7/7 matched. Cheating (upool): admit=0 assume=0 trusted=0, external_body=3 (TCB-allowed facade).
+
+Documented upstream limitations (not faulted, not rollback): refcount-transition
+...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Confirmed: the spec phase ended with `external_body=3 (TCB-allowed facade)` — the strip step removed 2 that must be restored (genuine trust boundaries in tcb-allowed.md). Let me restore them and create a plan.
+[TOOL] sql: {'description': 'Create todos for upool functions', 'query': "INSERT INTO todos 
+
+[THINKING] Looking at the spec phase log, I see that the function coverage matched all 7 items, with 3 external_body entries in upool initially: the `Upool` struct itself plus its `new` and `alloc` methods. The strip step removed the two function definitions, leaving just the struct as the intended final state.
+
+My approach is to restore the `#[verus_verify(external_body)]` annotations on those two methods, then work through verifying the six UserFrame functions. For the `share` function specifically, I need to check whether the precondition `self.addr.inv()` follows automatically from `self.inv()` when Verus unfolds the UserFrame view—it should work since the view is transparent within the module, but I might need an explicit assertion with a reveal if the proof doesn't go through automatically. Both `inv()` and `refcount` should match automatically since `UserFrame::view` is transparent within the module and reduces to `self.addr@` definitionally. For `leak`, I need to verify that field access through `ManuallyDrop` preserves the invariant—since `ManuallyDrop::new` ensures `this@ === self`, dereferencing gives `this.addr === self.addr`, so the result should work, possibly with a reveal. Let me start writing the proof bodies and add them only where verification fails.
+
+Now I'll restore the external_body annotations on the Upool functions and run verification to see which UserFrame proofs actually need work.
+[RESULT ✓] sql: 9 row(s) inserted. Last inserted row ID: 9.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now let me run verification to see which UserFrame functions need proof help.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
