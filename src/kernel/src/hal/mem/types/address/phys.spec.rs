@@ -30,14 +30,12 @@ use vstd::arithmetic::div_mod::{
 };
 use vstd::bits::lemma_usize_shr_is_div;
 
-// `FrameNumber` lives in the `arch` crate, which is not Verus-enabled and has no
-// `View`/datatype registration reachable here. Declare it to Verus as an opaque
-// external datatype so it may appear in spec-fn parameters and the
-// `assume_specification`s below. Its internals are not modeled (`external_body`):
-// its abstract index is projected by `spec_frame_raw_value`.
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFrameNumber(FrameNumber);
+// `FrameNumber` now lives in the Verus-verified `arch` crate, which natively
+// registers it as a datatype and supplies its `View`/contracts. The kernel
+// therefore reasons about it directly (no local `external_type_specification`,
+// which would now duplicate the arch-native datatype registration). Its abstract
+// index is `frame@` (arch's `View for FrameNumber`), projected by
+// `spec_frame_raw_value` below.
 
 // ── Frame-number trust-boundary projections (arch `FrameNumber`) ──────────────
 //
@@ -47,7 +45,11 @@ pub struct ExFrameNumber(FrameNumber);
 // prescribes. `spec_max_frame_number()` denotes `FrameNumber::MAX`.
 
 // The integer index of a frame number (`0 ..= spec_max_frame_number()`).
-pub uninterp spec fn spec_frame_raw_value(frame: FrameNumber) -> int;
+// Defined as arch's native `View` (`frame@`); arch's `FrameNumber::into_raw_value`
+// / `from_raw_value` contracts speak in terms of this same abstract index.
+pub open spec fn spec_frame_raw_value(frame: FrameNumber) -> int {
+    frame@
+}
 
 // The largest representable frame number. Mirrors `arch FrameNumber::MAX ==
 // MAX_ADDRESS / FRAME_SIZE - 1 == usize::MAX / FRAME_SIZE - 1`. Interpreting it
@@ -73,14 +75,11 @@ pub open spec fn spec_from_number(frame_view: int) -> int {
 
 // ── `arch`/`sys` library-edge `assume_specification`s ─────────────────────────
 
-// `::arch::mem::FRAME_SIZE` is the frame size (alias of `PAGE_SIZE`), tied to the
-// canonical `spec_page_size()`. It is strictly positive (`== 4096`); positivity is
-// the load-bearing fact for the division/modulo reasoning in the constructors.
-pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
-    ensures
-        result == spec_page_size(),
-        spec_page_size() > 0,
-;
+// `::arch::mem::FRAME_SIZE` is the frame size (alias of `PAGE_SIZE`). Its native
+// `#[verus_verify]` contract in the now-verified `arch` crate supplies its value,
+// from which `result == spec_page_size()` and `spec_page_size() > 0` follow. A
+// local `assume_specification` here would duplicate the arch-native spec, so it is
+// removed.
 
 // `::arch::mem::FRAME_SHIFT == log2(FRAME_SIZE)`. Bounded below the pointer width
 // so `raw_addr >> FRAME_SHIFT` is well-defined, and `2^FRAME_SHIFT == FRAME_SIZE`
@@ -111,23 +110,12 @@ pub assume_specification[ <VirtualAddress as Address>::into_raw_value ](
         result as int == addr@,
 ;
 
-// `FrameNumber::into_raw_value` projects a frame number to its index; every
-// `FrameNumber` value is in range (`0 ..= MAX`) by construction.
-pub assume_specification[ FrameNumber::into_raw_value ](frame: FrameNumber) -> (result: usize)
-    ensures
-        result as int == spec_frame_raw_value(frame),
-        0 <= spec_frame_raw_value(frame) <= spec_max_frame_number(),
-;
-
-// `FrameNumber::from_raw_value` succeeds iff `value <= MAX`, preserving the index.
-pub assume_specification[ FrameNumber::from_raw_value ](value: usize) -> (result: Option<FrameNumber>)
-    ensures
-        match result {
-            Some(f) => value as int <= spec_max_frame_number()
-                && spec_frame_raw_value(f) == value as int,
-            None => value as int > spec_max_frame_number(),
-        },
-;
+// `FrameNumber::into_raw_value` and `FrameNumber::from_raw_value` now carry native
+// `#[verus_spec]` contracts in the verified `arch` crate, imported directly across
+// the crate boundary (`result as int == frame@`, i.e. `spec_frame_raw_value(frame)`,
+// in range `0 ..= spec_max_frame_number()`; `from_raw_value` succeeds iff
+// `value <= spec_max_frame_number()`, preserving the index). Local
+// `assume_specification`s here would duplicate them, so they are removed.
 
 // ── Type invariant ───────────────────────────────────────────────────────────
 //

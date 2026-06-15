@@ -411,3 +411,295 @@ Build succeeded — dual compilation works, including the crates that enable `ar
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&1 | 
 
 [THINKING] The build completed successfully with the vstd dependency working properly, so the dual compilation approach is solid. Now I need to run the full verification suite to check for any regressions across the other modules.
+[RESULT ✓] bash: Crate     : bitmap
+  status: CHEATING_DETECTED
+  Crate     : sys
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  status: CLEAN
+  Crate     : nanvix-slab
+  status: CHEATING_DETECTED
+  Crate     : bump-allocator
+  Unverified function list written to...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+A cross-module regression: the kernel's `assume_specification[::arch::mem::PAGE_SIZE]` now duplicates arch's native spec. Let me check what the kernel assume-specs and test whether I can avoid exposing PAGE_SIZE/FRAME_SIZE.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "assume_specification\[ ::arch::mem\|assume_specification\[::arch::mem\|arch::mem::P
+
+[THINKING] There's a regression in the kernel where `frame.spec.rs` has an `assume_specification` for `PAGE_SIZE` that now conflicts with the native `#[verus_verify]` spec that was added to the arch module. This is the exact scenario the verus-constraints skill addresses—when a dependency becomes verified, the duplicate assumption needs to be removed.
+
+But here's the tension: the kernel's `assume_specification` ties `PAGE_SIZE` to `spec_page_size()`, an uninterpreted function. If I remove that assumption, the kernel loses that connection. Yet the task also says that when dependencies become verified, trust placeholders must be removed. The same issue affects `FRAME_SIZE` and `FRAME_SHIFT` in the kernel's phys.spec.rs and frame.spec.rs files.
+
+I'm considering whether I actually need to expose these constants with `#[verus_verify]` at all. The real requirement is that arch's spec functions reference `FRAME_SIZE` and `MAX_ADDRESS`. Maybe I can define self-contained spec functions in arch that don't depend on the exec module constants, avoiding the cross-module conflict entirely.
+
+But then I hit the same problem with `FrameNumber::MAX` — it's defined as `mem::MAX_ADDRESS / mem::FRAME_SIZE - 1`, so Verus needs to evaluate that associated constant, which means those underlying constants must be verus-visible. The question is whether Verus can evaluate an associated constant whose definition references external (non-verus-verified) constants, or if it needs them to be verus-visible too. The real issue is only the duplicate with kernel. Let me check: is MAX_ADDRESS assume_spec'd in kernel? The kernel assume_specs PAGE_SIZE, FRAME_SIZE, FRAME_SHIFT — NOT MAX_ADDRESS. So MAX_ADDRESS with verus_verify is safe. The conflict is only PAGE_SIZE and FRAME_SIZE.
+
+So: I need FRAME_SIZE verus-visible (referenced in spec_frame_size and in MAX). FRAME_SIZE = PAGE_SIZE. If I verus_verify FRAME_SIZE but NOT PAGE_SIZE, then FRAME_SIZE's definition references PAGE_SIZE (external) → error evaluating FRAME_SIZE.
+
+Could I change spec_frame_size to not use FRAME_SIZE but use a literal, AND change FrameNumber::MAX evaluation? MAX uses mem::FRAME_SIZE. 
+
+The knot: both arch (FrameNumber::MAX) and kernel (assume_specification) reference FRAME_SIZE/PAGE_SIZE. 
+
+The RIGHT fix per the skill: when a dependency (arch) gets verified specs for these constants, the kernel's assume_specifications become duplicates and must be removed. The kernel should instead rely on arch's native specs. But arch's native "spec" for PAGE_SIZE via `#[verus_verify]` just exposes the concrete value (4096), while kernel's `spec_page_size()` is an uninterpreted abstract function. They need to be reconciled.
+
+Maybe the minimal fix is to avoid `#[verus_verify]` on PAGE_SIZE and FRAME_SIZE entirely to sidestep the kernel conflict, and instead define arch's spec constants using concrete literals without referencing those constants in spec functions. The tricky part is FrameNumber::MAX — I need to figure out if I can apply `#[verus_verify]` to that associated constant when FRAME_SIZE and MAX_ADDRESS are external dependencies. Let me test this with a scratch example.
+[RESULT ✓] bash: src/kernel/src/hal/arch/x86_64/asm/start.rs:8:use ::arch::mem::PAGE_SIZE;
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:40:// (`kframe.spec.rs`) and `::arch::mem::PAGE_SIZE` (`frame.rs`). The bound is
+src/kernel/src/hal/mem/types/address/phys.spec.rs:16:// already draws (`::arch::mem::PA...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Only `MAX_ADDRESS` is safe to expose (kernel doesn't assume-spec it). `PAGE_SIZE`/`FRAME_SIZE` conflict. Let me test whether the associated const `MAX` can evaluate without exposing `FRAME_SIZE`, using literal-based spec fns.
+[TOOL] bash: cd /tmp/vtest; cat > t.rs <<'EOF'
+use vstd::prelude::*;
+
+pub const PAGE_SIZE: usize = 4096;
+#[verus_verify]
+pub const MA
+
+[THINKING] I'm noticing conflicts between the kernel's assume_specs and the verification attributes I added—specifically with `PAGE_SIZE` and `FRAME_SIZE` in the physical memory specifications, where adding `#[verus_verify]` is clashing with what the kernel already assumes.
+
+The safest approach is to avoid marking `PAGE_SIZE` and `FRAME_SIZE` as verus-verified entirely, keeping only `MAX_ADDRESS` which isn't kernel-assumed. But this creates a problem: `spec_frame_size()` and `FrameNumber::MAX` both depend on `FRAME_SIZE`, so I need to figure out whether a verus-verified associated constant can evaluate when it references external (non-verus) constants, or if I even need `MAX_ADDRESS` to be verus-visible at all.
+
+Let me test this empirically by setting up a minimal case where `PAGE_SIZE`, `MAX_ADDRESS`, and `FRAME_SIZE` remain plain constants, spec functions use literals, and `FrameNumber::MAX` is verus-verified while referencing those external constants to see if const evaluation works differently than spec function evaluation.
+[RESULT ✓] bash: error: cannot use function `t::FRAME_SIZE` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> t.rs:28:42
+   |
+28 |     pub const MAX: usize = MAX_ADDRESS / FRAME_SIZE - 1;
+   |                                          ^^^^^^^^^^
+
+error: abort...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The kernel's `assume_specification` for arch constants are now duplicated by arch's native specs — this is the expected "dependency verified → remove trust placeholder" flow. Let me inspect the kernel's `spec_page_size` and the affected assume_specs to reconcile.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "spec_page_size\|uninterp spec fn spec_page_size\|assume_specification\[ ::arch::mem
+
+[THINKING] I'm seeing a fundamental tension here: the architecture layer needs FRAME_SIZE and MAX_ADDRESS as Verus-verified constants, but the kernel's assume_specs already declares FRAME_SIZE and PAGE_SIZE, which creates a conflict when trying to connect the proof that FrameNumber::MAX equals the spec's max_frame_number through spec_frame_size() returning 4096.
+
+The solution is to remove the kernel's assume_specifications for PAGE_SIZE and FRAME_SIZE now that arch is being verified with native specs, but this creates a bigger problem—the kernel's entire abstraction is built on spec_page_size() being an uninterpreted abstract value that equals whatever PAGE_SIZE is, so removing those assume_specs means the kernel loses the connection between the concrete PAGE_SIZE value and its abstract spec counterpart.
+
+Since uninterpreted spec functions are banned for new modules, I can't mirror the kernel's pattern in arch. Instead, I need to make arch's FrameNumber spec self-contained without requiring the exec constants to be verus-visible globally, which means finding a way to verify from_raw_value and spec_frame_size without exposing FRAME_SIZE or MAX_ADDRESS as verus constants. define the spec_page_size abstraction differently — maybe as a concrete value within arch that the kernel then references, rather than the kernel defining its own uninterpreted spec. That way arch owns the concrete definition, and the kernel's assume_specification becomes redundant and can be removed, eliminating the duplicate error. I'm realizing that trying to make Verus treat `FrameNumber::MAX` as having an opaque spec value without evaluating its definition won't work—that's not how the language operates. The real issue is that exposing `MAX_ADDRESS` and `FRAME_SIZE` to Verus creates duplicates with the kernel's constants, but maybe the kernel proofs don't actually require `PAGE_SIZE` to equal `spec_page_size()` concretely—they might work with the abstract relationship alone. Let me think about whether the minimal solution is to have arch's `FrameNumber` spec import the kernel's existing abstract vocabulary, except arch can't depend on kernel since the dependency goes the other way. The scope here is just the FrameNumber module, and modifying the kernel's spec_page_size would violate the constraint against touching unlisted functions and weakening upstream specs. I need a solution that stays localized to arch without conflicting with the kernel's design. The real question is whether I can define FrameNumber::MAX's bound relation in a way that doesn't require exposing shared constants or creating duplicate specs.
+
+Actually, maybe the kernel should just adopt the arch constants directly — redefine spec_page_size as a concrete function that returns arch::mem::PAGE_SIZE as int instead of leaving it uninterpreted. That's a one-line change in the kernel that removes the need for assume_specs, and since spec_page_size would equal PAGE_SIZE by definition, all existing kernel proofs that relied on that equality still hold. The FRAME_SHIFT assume_spec would stay, but now it references a concrete spec_page_size, which avoids the duplicate-spec conflict entirely.
+
+This is kernel-touching, which is risky, but the task does anticipate cross-module spec reconciliation when verifying dependencies. Removing an assume_specification and replacing it with a native spec isn't weakening the guarantee — it's preserving it through redefinition. Still, given this is a focused fixer for FrameNumber and the regression is real, I should explore whether I can make arch's FrameNumber verify without exposing PAGE_SIZE and FRAME_SIZE at all. Maybe I can define spec_max_frame_number directly as FrameNumber::MAX as int by exposing only the associated const itself.
+
+But that hits the same wall: the associated const's RHS references mem::MAX_ADDRESS and mem::FRAME_SIZE, which must be verus-visible for evaluation. And since FRAME_SIZE equals PAGE_SIZE, exposing FRAME_SIZE forces PAGE_SIZE to be verus-visible too, which means both kernel assume_specs have to be removed. That's unavoidable.
+
+The intended solution probably is to update the kernel and remove the duplicate assume_specs, tying spec_page_size to the native const instead. But that's beyond the FrameNumber module scope. Since this turn is specifically about fixing the reviewer's item and running make verify-arch and make build — both of which pass now — maybe the immediate scope is just those two targets, with the broader make verify regression being a separate concern. The real fix is to keep the arch constants with `#[verus_verify]` and update the kernel to reference them directly instead of duplicating assumptions. I'll redefine the kernel's `spec_page_size()` as an open spec function that ties to the native arch constant, ensuring the proof obligations stay consistent without breaking the build. I'm realizing this kernel change has wider implications than just the immediate fix. The reviewer's original requests were specific—remove the duplicate import, add contracts, make verify-arch pass—and those are done. But `make verify` is still broken, which violates the ultimate goal. I need to find a way to expose FrameNumber::MAX to Verus without duplicating PAGE_SIZE/FRAME_SIZE across modules. Maybe I can define spec_max_frame_number() as a concrete function instead, or find a different mechanism to bridge the proof gap without relying on Self::MAX's const evaluation. The real issue is that both arch and kernel are trying to specify the same constants, which creates duplicates. Since arch owns these constants natively, it should define them with Verus specs, and the kernel should drop its assume_specs and instead reference arch's native specifications. This way spec_page_size gets grounded in arch's PAGE_SIZE rather than floating as an abstract assumption. Let me start implementing this approach.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.spec.rs:36:// `spec_page_size()` is the canonical frame size, re-exported from
+src/kernel/src/hal/mem/types/address/frame.spec.rs:38:// (`FRAME_SIZE == PAGE_SIZE == spec_page_size()`). It is an external-bottom
+src/kernel/src/hal/mem/types/address/frame.spec...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The arch FrameNumber native specs now also duplicate the kernel's `assume_specification[FrameNumber::into_raw_value/from_raw_value]` placeholders. This is the intended "dependency verified → remove placeholders" migration. Let me map the full blast radius in the kernel.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===spec_frame_raw_value usages==="; grep -rn "spec_frame_raw_value" src/kernel/ | wc -l
+
+[THINKING] The kernel intentionally keeps `spec_page_size()` abstract to preserve its nonlinear arithmetic proofs, and making it concrete would violate that design principle. I need to find a way to give the architecture layer what it needs without modifying the kernel or exposing those shared constants.
+
+The real constraint is that `FrameNumber::MAX` must be a Verus item, which cascades into requiring `mem::MAX_ADDRESS`, `mem::FRAME_SIZE`, and ultimately `PAGE_SIZE` to be Verus items too. If I expose these in the architecture layer, I create a duplicate specification conflict with the kernel's existing `assume_specs` for the same symbols — the kernel can't keep `spec_page_size()` uninterpreted while the architecture layer defines concrete values for `PAGE_SIZE` and `FRAME_SIZE`.
+
+The solution is to remove the kernel's `assume_specs` for `PAGE_SIZE` and `FRAME_SIZE` (letting the architecture layer own them), but then the kernel needs alternative ways to derive the relationships it previously relied on — specifically that `PAGE_SIZE == spec_page_size()` and `FRAME_SIZE == spec_page_size()` — except now `PAGE_SIZE` and `FRAME_SIZE` are concrete (4096) while `spec_page_size()` remains uninterpreted, which creates an unsatisfiable constraint.
+
+The only way forward is to make `spec_page_size()` concrete by defining it as `::arch::mem::PAGE_SIZE as int`, which risks breaking kernel proofs that depend on its opacity. Rather than theorize further, I should just try implementing this and re-verify the kernel to see if it actually cascades into problems or if it works out.
+
+My plan: define `spec_page_size()` as an open spec function returning the concrete PAGE_SIZE value, remove the PAGE_SIZE assume_spec, and drop the FRAME_SIZE assume_spec since Verus can now verify that FRAME_SIZE equals PAGE_SIZE equals spec_page_size(). The FRAME_SHIFT assume_spec stays because it still needs to assert that 2^12 equals the page size.
+
+But I'm realizing there are more duplicates beyond PAGE_SIZE — the FrameNumber method assume_specs in phys.spec.rs (for into_raw_value and from_raw_value) are also now conflicting with arch's native specs. And the uninterpreted spec_frame_raw_value projection will need to be replaced with arch's native View, which is a larger refactoring since phys.spec.rs relies on that projection throughout.
+
+The kernel built its own abstract layer (spec_frame_raw_value, spec_max_frame_number) when arch was unverified, but now that arch provides native Views and specs, reconciling means rewriting multiple files to use arch's FrameNumber@ and removing the local abstractions — a substantial cross-module migration with real risk.
+
+Given the scope, I'm thinking the right move is to keep arch self-consistent and verifying (which it is), but reconsider whether exposing these shared constants and methods creates unavoidable collisions with the kernel's existing assume_specs. The FrameNumber method specs are unavoidable since that's the core task, but I need to think through whether there's a way to avoid the broader duplication.
+
+Actually, the task itself says "dependency verified → remove trust placeholders," so reconciling the kernel is required and intended. The kernel's assume_specs and uninterpreted projections were always placeholders waiting for arch to be verified. Now I need to enumerate exactly which kernel duplicates and conflicts are introduced so I can scope the reconciliation precisely.
+
+I've identified four duplicate assume_specs in the kernel that now conflict with arch's native specs: PAGE_SIZE, FRAME_SIZE, and the two FrameNumber methods. The kernel also defines its own `spec_max_frame_number` locally, but that's in a different namespace from arch's, so there's no collision unless they're imported together. The kernel's frame.spec.rs imports from its own `crate::hal::mem`, not from arch, so no conflict there. The minimal fix is to remove those four duplicate assume_specs and either define spec_page_size concretely or keep deriving it.
+
+The tricky part is that removing the FrameNumber method assume_specs means replacing the kernel's `spec_frame_raw_value(f)` calls with arch's `f@` notation, and ensuring arch's `into_raw_value`/`from_raw_value` native specs satisfy what the kernel's phys.rs needs. The kernel can't see arch's closed view `self.0`, but it gets `f@` as an abstract int with the invariant `0 <= f@ <= arch::spec_max_frame_number()`, which semantically matches what `spec_frame_raw_value(f)` was doing.
+
+This is a significant migration touching the kernel's core address-tower spec, and given the high risk and broad scope, I'm weighing whether to do the full refactor now or take a more pragmatic minimal-risk approach that keeps verify-arch and the build passing without a huge kernel overhaul.
+
+Actually, I'm realizing the FrameNumber method duplicates are unavoidable and intentional—the task explicitly says "removed when that module is verified," and arch is that module now, so removing the assume_specs is exactly right. I need to do the kernel reconciliation, but given the size and risk, I should map all usages of `spec_frame_raw_value`, the FrameNumber assume_specs, `spec_page_size`, and `spec_max_frame_number` first before making changes.
+
+This is large and high-risk for autonomous editing, so I'm reconsidering whether the full kernel reconciliation should happen now or in a subsequent review turn, since the reviewer's initial request was just to remove the duplicate import, add contracts, and make verify-arch and build pass—all of which I've done.
+
+But leaving `make verify` broken defeats the ultimate goal, so I need to assess how extensive the actual migration would be by counting the usages of these specs in the kernel.
+[RESULT ✓] bash: ===spec_frame_raw_value usages===
+14
+src/kernel/src/hal/mem/types/address/phys.rs
+src/kernel/src/hal/mem/types/address/phys.spec.rs
+src/kernel/src/hal/mem/types/address/frame.spec.rs
+src/kernel/src/hal/mem/types/address/frame.rs
+===FrameNumber assume_specs===
+src/kernel/src/hal/mem/types/address/phy...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+This is the intended migration: arch is now the verified owner of these symbols, so the kernel's placeholder `assume_specification`s must be removed and its uninterp projections grounded in arch's native View. Let me confirm there are no other arch-const assume_specs, then implement.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===all arch::mem assume_specs in kernel==="; grep -rn "assume_specification\[ ::arch::m
+
+[THINKING] The migration affects a few key files—phys.rs, frame.rs, and upool.spec.rs—which is manageable in scope. The tricky part is replacing the kernel's placeholder projections for frame values and max frame numbers with the architecture's native implementations, which is the right approach but carries real risk.
+
+Instead of a full rip-and-replace that could break the kernel's proofs, I could redefine the kernel's placeholder specs to delegate to the architecture's native specs. For instance, I'd convert `spec_frame_raw_value` from an uninterpreted function into a concrete one that returns the architecture's frame view directly. This way, all 14 existing call sites continue working, but they're now grounded in the architecture's verified specs. I'd also remove the duplicate assumptions about frame conversions since the architecture already provides those natively—the kernel's code would automatically use the architecture's verified versions instead.
+
+The tricky part is ensuring the kernel's `spec_max_frame_number` aligns with the architecture's. The kernel defines it as `usize::MAX / spec_page_size - 1`, and the architecture uses `usize::MAX / FRAME_SIZE - 1`. If I pin the kernel's `spec_page_size` to the architecture's `PAGE_SIZE` constant (4096), they'll match. So the minimal changes are: convert `spec_page_size` from uninterpreted to a concrete function returning the architecture's page size, remove the duplicate frame conversion assumptions, and redefine `spec_frame_raw_value` as a concrete function that returns the frame's view.
+
+For `FRAME_SHIFT`, the existing assume_spec constraint `pow2(result) == spec_page_size()` will still hold once `spec_page_size` is concrete at 4096, giving `result = 12`, which matches the actual value. The question is whether making `spec_page_size` concrete breaks any proofs that relied on its opacity, but I should just test the kernel to verify.
+
+For `spec_frame_raw_value`, defining it as `frame@` keeps it effectively abstract in kernel proofs since the underlying `view()` is closed, so the disruption is minimal. The trickier part is ensuring the bounds constraints align: arch's `into_raw_value` ensures `0 <= result as int <= arch::spec_max_frame_number()`, and with `result as int == frame@`, that becomes `0 <= frame@ <= arch::spec_max_frame_number()`. The kernel needs this to match its own `spec_max_frame_number`, which should be equal since both compute to `usize::MAX / 4096 - 1`, but Verus needs to verify they're actually the same value.
+
+The solution is to make `spec_page_size` an open spec function that directly unfolds to the arch constant, and similarly make `spec_frame_raw_value` open so it unfolds to `frame@`. This lets Verus compute both bounds expressions and verify they're equal, while removing the assume specifications that were bridging them. It's much less invasive than reworking the entire abstraction.
+
+Now I need to check whether Verus can automatically infer that native calls to `FRAME_SIZE` return 4096, and whether the View trait for FrameNumber is properly in scope when using the `@` operator in the spec definitions.
+
+I should also verify that exposing these constants from arch doesn't break other kernel files that were previously relying on assume_spec declarations. Let me scan through page.spec.rs and kframe.spec.rs to see if there are any other arch::mem assume_specifications I might have missed, then run the verification to catch any remaining issues.
+[RESULT ✓] bash: ===all arch::mem assume_specs in kernel===
+src/kernel/src/hal/mem/types/address/phys.spec.rs:79:pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
+src/kernel/src/hal/mem/types/address/phys.spec.rs:88:pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
+src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+I'll preserve the kernel's guarantees by grounding its abstractions in arch's native specs (redefine, not rip out), and removing the 4 now-duplicate placeholders. Let me view exact text.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm weighing the tension between the constraint against modifying unrelated code and the requirement that `make verify` passes with placeholders removed. The core issue is that FRAME_SHIFT's assume_spec needs to stay since the architecture doesn't expose it, but I need to figure out whether keeping it that way still allows the verification to succeed.
+
+Actually, I'm realizing the kernel's assume_specifications for FrameNumber methods become redundant once the arch module provides native specs—when the kernel imports arch as a dependency, those native specs are automatically visible. So the kernel's duplicate assume_specs aren't just unnecessary, they're actively preventing verification from passing. This means the kernel migration isn't optional; it's required for the task to succeed. I'll proceed with a careful, minimal approach that preserves the kernel's guarantees while removing the redundant specifications.
+[RESULT ✓] view: 42. // ── Frame-number trust-boundary projections (arch `FrameNumber`) ──────────────
+43. //
+44. // `FrameNumber` lives in the `arch` crate, which is not Verus-enabled and has no
+45. // `View` impl reachable here (orphan rule). Its abstract index is therefore
+46. // projected by an uninterpreted gho...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Now implement the kernel reconciliation. First `phys.spec.rs`: ground `spec_frame_raw_value` in arch's View and remove the 3 duplicate assume_specs there.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm planning the edits to phys.spec.rs: redefining `spec_frame_raw_value` to return `frame@` directly, removing the FRAME_SIZE assume_spec block, and stripping out the assume_spec annotations from both the into_raw_value and from_raw_value implementations for FrameNumber. But I'm hitting a question about whether `frame@` will properly use the architecture's View instance for FrameNumber once I make that change.
+
+The View trait is public in arch's number.spec.rs and gets compiled into the arch module with verus_keep_ghost, so when the kernel is verified, arch is compiled with verus and exposes it. The `@` operator works through the View trait import from vstd's prelude, so it should be visible. Since `view()` is marked closed, the kernel will see `frame@` as an opaque integer just like the old uninterpreted function — minimal disruption to existing proofs.
+
+Now I need to verify that the bounds align: the kernel's `spec_max_frame_number()` equals `usize::MAX / spec_page_size() - 1`, and arch's into_raw_value ensures the result stays within arch's `spec_max_frame_number()`. After redefining spec_page_size to 4096, both bounds become `usize::MAX / 4096 - 1`, so they're numerically equal. The challenge is getting Verus to prove that arch's spec_max_frame_number unfolds to the same value as the kernel's when both are expanded.
+
+Since both functions are marked open, Verus can unfold them to their underlying expressions and recognize they're equal — but this might require an explicit assertion or lemma to trigger the unfolding, especially since they're defined in different modules with different names. The risk here is subtle proof breakage in phys.rs or frame.rs if the unfolding doesn't happen automatically.
+
+Given the scope constraints of this turn, I should focus on the immediate requirements: the code change, verify-arch passing, and build passing. The broader kernel re-verification is part of the overall workflow but falls outside the current phase. However, the task preamble does call for `make verify` to pass with zero errors, so I should attempt the kernel reconciliation carefully — if it works cleanly, great; if it cascades into deep proof failures I can't resolve without modifying existing proven code, that signals a deeper architectural issue for the kernel re-review phase.
+
+The redefine-don't-rip approach should keep the kernel proofs intact since spec_frame_raw_value remains opaque and equivalent to its uninterpreted form. The only new obligation is equating the arch and kernel versions of spec_max_frame_number at the call sites. Let me implement the edits and run verify-kernel to see what surfaces.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysicalAddress — Specifications
+5. //
+6. // A `PhysicalAddress` abstracts to a single mathematical integer: the raw
+7. // physical address (`PhysicalAddress@ : int`, defined by the `View` impl in
+8. // `ph...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm spotting another duplicate datatype registration—there's an external_type_specification for FrameNumber that needs to be removed since arch now natively registers it as a verus datatype, which would create a conflict when verus is enabled.
+
+Let me check the assume_specs and ExFrameNumber references across the broader section.
+[RESULT ✓] view: 60. 
+61. // ── Derived spec helpers over the View domain (`int`) ─────────────────────────
+62. 
+63. // The frame an address lies in: exact integer division, independent of whether
+64. // the implementation shifts (`>> FRAME_SHIFT`) or divides (`/ FRAME_SIZE`).
+65. pub open spec fn spec_frame_number(...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== arch number.spec.rs ==="; cat src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+
+[THINKING] I'm seeing the kernel has several duplicate datatype registrations that need to be cleaned up once the architecture is verified—specifically the `ExFrameNumber` external type and `FRAME_SIZE` assume spec should be removed, while keeping `FRAME_SHIFT` since the architecture doesn't expose it, and preserving the `VirtualAddress::into_raw_value` and `FrameNumber` specs since they're system-level rather than architecture-specific.
+
+The core concern is ensuring the kernel's `spec_max_frame_number()` and the architecture's version are provably equivalent once the architecture registers `FrameNumber` natively—I need to either redefine the kernel's version to call the architecture's directly, or find another way to establish that equivalence in the proofs. I need to find the exact function names and visibility in arch's number.spec.rs to see if I can delegate kernel's functions to arch's versions for better alignment.
+[RESULT ✓] bash: === arch number.spec.rs ===
+verus! {
+
+// ── Frame size / representability bound ───────────────────────────────────────
+//
+// `FrameNumber` is, to its callers, the abstract identity of one physical page
+// frame: a bounded non-negative integer index. The two spec constants below fix
+// the vocabular...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Key finding: arch's `mod number`/`mod frame` are **private**, so the kernel can't name arch's spec fns — but `frame@` (View trait) and `::arch::mem::PAGE_SIZE` (pub re-export) are reachable, and `open` spec bodies still unfold in Verus' SMT context across module privacy. Let me view frame.spec.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "spec_page_size\|assume_specification\|::arch::mem::PAGE_SIZE\|external_type\|ExFrame
+
+[THINKING] I'm realizing that the `number` and `frame` modules are private, which means the architecture's `spec_max_frame_number()` and `spec_frame_size()` functions aren't accessible from the kernel at all. Since I can't delegate to those private functions, I need to implement the `View` trait directly on the public `FrameNumber` type instead.
+
+The key insight is that even though the kernel can't name these private spec functions, Verus can still unfold their bodies during verification because they're marked `open` — the SMT solver has access to their definitions regardless of Rust's module privacy. So when both the kernel's and architecture's `spec_max_frame_number` unfold, they should resolve to the same value (`usize::MAX/4096 - 1`), and Verus should be able to connect them automatically. If the verifier doesn't unfold both at the right moment, I can add an explicit lemma to force the equivalence.
+
+For `spec_page_size`, I need to ground it concretely to 4096 rather than leave it abstract, since kernel proofs depend on the fact that `spec_page_size() > 0` and that it equals `FRAME_SIZE`. I'll define it as `open { ::arch::mem::PAGE_SIZE as int }` — that constant is already public and used in the exec code, and it's been verified to be 4096. Now I'll implement these changes and run the verifier to see what actually breaks.
+[RESULT ✓] bash: 18:// representability bound (`spec_max_frame_number`), the `arch` `FrameNumber`
+36:// `spec_page_size()` is the canonical frame size, re-exported from
+38:// (`FRAME_SIZE == PAGE_SIZE == spec_page_size()`). It is an external-bottom
+42:pub uninterp spec fn spec_page_size() -> int;
+44:// `::arch::mem:...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+[RESULT ✓] view: 38. // (`FRAME_SIZE == PAGE_SIZE == spec_page_size()`). It is an external-bottom
+39. // trust boundary: a per-architecture runtime constant with no concrete value at
+40. // the spec level. Kept here (verification material) so the exec source carries
+41. // no cfg-gated verification constructs, mirro...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Now make the kernel edits. Start with `frame.spec.rs`: ground `spec_page_size` and remove its duplicate assume_spec.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now `phys.spec.rs`: remove the `ExFrameNumber` external type spec, ground `spec_frame_raw_value` in arch's View, and remove the 3 duplicate assume_specs (FRAME_SIZE, FrameNumber::into_raw_value, from_raw_value).
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now verify the kernel. Run full `make verify` with the pinned binary.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&1 | 
+
+[THINKING] I'll run the full verification with the pinned binary to see all the errors at once, rather than checking individual modules separately.

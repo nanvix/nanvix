@@ -35,17 +35,14 @@ use crate::hal::mem::{
 //
 // `spec_page_size()` is the canonical frame size, re-exported from
 // `crate::hal::mem` and shared by the whole address tower
-// (`FRAME_SIZE == PAGE_SIZE == spec_page_size()`). It is an external-bottom
-// trust boundary: a per-architecture runtime constant with no concrete value at
-// the spec level. Kept here (verification material) so the exec source carries
-// no cfg-gated verification constructs, mirroring `phys.rs`.
-pub uninterp spec fn spec_page_size() -> int;
-
-// `::arch::mem::PAGE_SIZE` is the runtime page size, tied to `spec_page_size()`.
-pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
-    ensures
-        result == spec_page_size(),
-;
+// (`FRAME_SIZE == PAGE_SIZE == spec_page_size()`). It is grounded in the now
+// Verus-verified `arch` crate: the canonical frame size is the abstract value of
+// `::arch::mem::PAGE_SIZE`, whose native `#[verus_verify]` contract supplies its
+// concrete value. The previous local `assume_specification[ ::arch::mem::PAGE_SIZE ]`
+// is therefore removed (it would now duplicate the arch-native specification).
+pub open spec fn spec_page_size() -> int {
+    ::arch::mem::PAGE_SIZE as int
+}
 
 // ── View ─────────────────────────────────────────────────────────────────────
 //
