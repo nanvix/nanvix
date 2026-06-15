@@ -925,3 +925,266 @@ Turn 4
 ────────────────────────────────────────────────────────────
 AST all MATCH, no real guardrail violations (only doc comments). Now running verification, spec drift, and git diff.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -25
+[RESULT ✓] bash: - virt_to_phys
+    - is_valid_physical_address
+    - is_valid_physical_region
+    - max_physical_address
+    - parse_bootinfo
+    - log_control_registers
+    - register_ramfs_mmio_region
+    - read_ramfs_registers
+    - read_control_register
+    - tsc_base_frequency_mhz
+    - register_pic_ioports
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo '=== TOP OF mod.rs ===' && sed -n '1,40p' src/kernel/src/hal/platform/microvm/mod.rs &
+[RESULT ✓] bash: === TOP OF mod.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//=====================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification CLEAN, exit 0. Now spec drift and git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== SPEC DRIFT ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.p
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git branches ===" && git --no-pager branch -a 2>&1 | head; echo "=== diff stat ==
+[RESULT ✓] bash: === git branches ===
+  dev
+  exp
+  verus-ai/bump-allocator
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phys-address
+* verus-ai/hal-platform-microvm
+  verus-ai/phys-frame
+  verus-ai/phys-kframe
+  verus-ai/phys-manager
+=== diff stat ===
+ src/kernel/src/hal/platform/microvm/...
+[RESULT ✓] bash: === SPEC DRIFT ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 29 comple...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Let me confirm the mod.rs diff only adds spec annotations (no exec changes).
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff verus-ai/hal-memory-region...HEAD -- src/kernel/src/hal/platform/microv
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/platform/microvm/mod.rs b/src/kernel/src/hal/platform/microvm/mod.rs
+index dc65a532a..a247763dd 100644
+--- a/src/kernel/src/hal/platform/microvm/mod.rs
++++ b/src/kernel/src/hal/platform/microvm/mod.rs
+@@ -5,6 +5,12 @@
+ // Modules
+ //===================================...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+All checks complete. Let me verify the final-review directory exists and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review && echo "=== in-scope 
+[RESULT ✓] bash: === in-scope external_body/admit count confirm ===
+src/kernel/src/hal/platform/microvm/mod.rs:0
+src/kernel/src/hal/platform/microvm/mod.spec.rs:0
+src/kernel/src/hal/platform/microvm/mod.proof.rs:0
+=== actual admit() calls ===
+src/kernel/src/hal/platform/microvm/mod.proof.rs:10:// exposed as a View-l...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && rg -n "microvm|log_control_registers|register_ramfs_mmio_region|read_ramfs_registers|read_c
+[RESULT ✓] bash: 
+<shellId: 33 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] rg: hal::platform|platform::microvm|kernel/src/hal/platform/microvm|gva_to_gpa|mod.rs
+[RESULT ✓] rg: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md:7:- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+/home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md:18:- `src/kernel/src/mm/phys/mod.rs::book_mmio_regions` — same std-`LinkedList`
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 221. require marking the whole `impl Address for PageAligned<T>` verified, which currently
+222. triggers a Verus front-end panic (`vir/src/traits.rs:511 assertion failed:
+223. !method_impls.contains(&p)`) on this generic trait impl. It is therefore specced with
+224. `assume_specification` in `page.s...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re, pathlib
+files = [
+ 'src/kernel/src/hal/platform/microvm/mod.rs'
+[RESULT ✓] bash: admit=0
+assume=0
+external_body=0
+assume_specification=0
+trusted=0
+cfg_gated_exec=0
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+All confirmed. The single `admit()` match is in a comment. Writing the final review.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md with 8903 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.gpt-5.3-code
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Review complete. Verdict: **PASS**.
+
+## Summary
+
+I performed a strict independent final verification of the `gva_to_gpa` Verus effort. Full report written to `verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md`.
+
+**Findings across all 8 dimensions:**
+
+1. **Spec quality** — Correct & complete. `ensures result == gva` (directly usable) + `result as nat == spec_gva_to_gpa(gva as nat)` (View vocabulary). The `nat` vs `usize` modeling is a **minor, non-blocking** stylistic deviation: the binding caller fact is in `usize` and the `gva as nat` lift is lossless, so no soundness/usability impact.
+2. **Caller coverage — 5/5.** Totality, purity/determinism, identity, injectivity (lemma `lemma_translation_injective`), and valid encoding all mapped. Coverage-of-RAM correctly left out of scope.
+3. **Proof completeness** — 0 `admit()`, 0 `external_body` in scope (the one "admit" hit is a comment).
+4. **TCB** — `gva_to_gpa` not in tcb-allowed and carries no trust mechanism. No new boundary. The crate-wide `external_body=25`/`cfg_gate=7` are pre-existing/out-of-scope; in-scope adds 0.
+5. **AST consistency — PASS.** All 28 functions MATCH; exec body unchanged; no `// VERUS REWRITE`.
+6. **Verification — CLEAN, exit 0.** spec_drift: 0 contract drift (no weakening). Diff is additive-only (+96, 0 deletions).
+7. **Guardrails** — admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0 (only standard `include!` of spec/proof files; `use vstd::prelude::*` un-gated).
+8. **Bugs** — No bugs.md; no bugs found.
+
+**Result: PASS** — zero admit, zero assume, zero unlisted external_body in scope, AST PASS, verification CLEAN, all caller expectations covered, specs not weakened, no outstanding bugs.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 155s, total_turns: 0, model: claude-opus-4.8, duration: 155s
+
+Review complete. Verdict: **PASS**.
+
+## Summary
+
+I performed a strict independent final ver...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Verification Review — `hal::platform::microvm::gva_to_gpa`
+2. 
+3. ## Checklist
+4. - [x] 1) Spec quality reviewed (external-top contract + View assessment)
+5. - [x] 2) Caller coverage checked against `caller_analysis.md`
+6. - [x] 3) Proof completeness checked (`admit`, `external_body` in-s...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+Completed. I performed the full independent final review and wrote the raw Markdown report to:
+
+`/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.gpt-5.3-codex.md`
+
+Final verdict: **PASS**.
+
+Key outcomes:
+- Caller coverage: **5/5**
+- In-scope guardrails: `admit=0`, `assume=0`, `external_body=0`, `assume_specification=0`, `cfg-gated exec=0`
+- AST consistency: **PASS** (no mismatches; no `// VERUS REWRITE`)
+- Verification: **CLEAN**, exit `0`
+- Spec drift: **no contract drift**
+- TCB: **no new trust boundaries in scope**
+- `bugs.md` absent; no in-scope bugs found.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 162s, total_turns: 0, model: gpt-5.3-codex, duration: 162s
+
+Completed. I performed the full independent final review and wrote the raw Markdown report to:
+...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Both agents returned PASS. Let me verify their raw files exist and review them before consolidating.
+[TOOL] bash: cd /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review; ls -la; echo "=== claude tail ===
+[RESULT ✓] bash: total 1276
+drwxrwxr-x 1 ruize ruize     238 Jun 15 15:08 .
+drwxrwxr-x 1 ruize ruize     444 Jun 15 15:02 ..
+-rw-rw-r-- 1 ruize ruize    8983 Jun 15 15:08 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize    4743 Jun 15 15:08 final_review.gpt-5.3-codex.md
+-rw-rw-r-- 1 ruize ruize 1211819 Jun 15 15:08 r...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Both independent reviews (claude-opus-4.8 and gpt-5.3-codex) reached PASS with identical findings. Writing the consolidated review.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md
+
+[THINKING] Both reviews passed with matching findings, so I'm consolidating everything into the final review document using the standard template. My verification checks all came back clean—no admits or assumptions in scope, AST passed, clean exit status, no spec drift, full caller coverage, and no bugs identified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md with 10350 characters
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Done. Final comprehensive review complete.
+
+## Summary
+
+I ran two **independent** sub-agent reviews (one per allowed model):
+- `final_review.claude.md` — claude-opus-4.8
+- `final_review.gpt-5.3-codex.md` — gpt-5.3-codex
+
+Both reached **PASS** independently with identical findings, and I cross-verified every dimension myself before consolidating into `final_review.md`.
+
+**Key results for the in-scope target `gva_to_gpa`:**
+- **Guardrails (in-scope):** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0 — no BLOCKERs.
+- **Caller coverage:** 5/5 (totality, purity/determinism, identity, injectivity, valid encoding).
+- **AST consistency:** PASS (all 28 fns MATCH; no `// VERUS REWRITE`; exec body unchanged).
+- **Verification:** `make verify-kernel` CLEAN, exit 0; `spec_drift` 0 drift (additive-only diff, no weakening).
+- **TCB:** no new trust boundary; crate-wide `external_body=25`/`cfg_gate=7` are pre-existing, out-of-scope (the approved TCB in `mm/phys` etc.).
+- **Bugs:** none found; `bugs.md` correctly absent.
+
+**One non-blocking advisory:** the spec models addresses as `nat` while spec-design *prefers* `usize` — sound and lossless (`result == gva` is the usize-level binding fact), no action required.
+
+**Result: PASS** — all checklist items satisfied.
+
+Note: `make build` is not a real Make target in this repo; the authoritative compile is the `verify-kernel` cargo build, which succeeded (exit 0).
+
+
+=== Session End ===
+Session: 97140f9e-c2a8-43b6-947b-374a489b73d8
+Duration: 424.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/review-claude-20260615-150232.jsonl
