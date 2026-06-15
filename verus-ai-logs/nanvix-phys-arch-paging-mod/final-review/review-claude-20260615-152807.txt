@@ -323,3 +323,243 @@ Let me run verification to establish baseline while I review the existing files.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -40
 
 [THINKING] I need to run `make verify-arch` to establish a baseline since arch is a valid target in VERUS_CRATES, and I'm kicking off the command asynchronously since it may take some time. The documentation files are located in the verus-ai/docs directory.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] The verification passed successfully. I'm seeing 3 instances of external_body cheating in the arch crate—invlpg, table::read, and table::write—all of which are already documented in tcb-allowed.md. There are also 2 cfg_gate instances I need to investigate further by checking the cheating-detail.txt file.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). In-scope `mod.rs` has only `invlpg` as `external_body` (listed in tcb-allowed.md). Now launching the 2 independent review sub-agents.
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] I'm looking at three external body references in tcb-allowed.md — invlpg from mod.rs and the table read/write operations — and trying to reconcile what the summary reports versus what the detailed breakdown shows. The lemma_entry_roundtrip appears to be marked with assume in the details but the summary counts it as assume=0, which suggests there might be a discrepancy in how the script is detecting or categorizing this broadcast proof function.
+
+For my actual scope in mod.rs, the only cheating is invlpg's external_body, which is already approved. The cfg_gate=2 count isn't shown in the detail view, but I should verify whether the `#[cfg(verus_keep_ghost)]` annotations on the include statements count as cfg gates — though these are standard spec/proof imports and shouldn't trigger the guardrail against cfg-gated exec code. Since there are no VERUS REWRITE comments in mod.rs, the AST consistency check should be straightforward.
+
+Now I'm ready to launch the two independent review agents in parallel with comprehensive context about file paths, verification results, and the cheating elimination work already done. Each will produce their own review file that I'll consolidate afterward.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review sub-agents are running in the background. I'll wait for them to complete before consolidating.
+I'll start by reading all the in-scope files, reference files, and skills in parallel.
+[TOOL] report_intent: Reading in-scope module and references
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the reference files and skills.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/verus-unsupported.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Script Output
+4. 
+5. Ran:
+6. 
+7. ```bash
+8. python /home/ruize/verus-ai-exp/verus-ai/scripts/find_callers_lsp.py \
+9.   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs \
+10.   --project-dir /home/ruize/nanvix-phy
+11. ...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Status / TL;DR
+4. 
+5. **No non-trivial `View` is needed for this module.**
+6. 
+7. The single in-scope function, `invlpg`, is a free-standing `unsafe fn` whose
+8. only effect is on the CPU's Translation Lookaside Buffer (TLB) — hardware ...
+[RESULT ✓] view: 1. # Verus-Unsupported Constructs — `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. This file records language/library constructs in the `paging` module (`mod.rs`)
+4. that Verus cannot translate or verify, together with the minimal reproduction and
+5. the trust-boundary mitigation used.
+6. 
+7. ## 1. Inli...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing paging module
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/verus-unsupported.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Script Output
+4. 
+5. Ran:
+6. 
+7. ```bash
+8. python /home/ruize/verus-ai-exp/verus-ai/scripts/find_callers_lsp.py \
+9.   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/mod.rs \
+10.   --project-dir /home/ruize/nanvix-phy
+11. ...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. ## Status / TL;DR
+4. 
+5. **No non-trivial `View` is needed for this module.**
+6. 
+7. The single in-scope function, `invlpg`, is a free-standing `unsafe fn` whose
+8. only effect is on the CPU's Translation Lookaside Buffer (TLB) — hardware ...
+[RESULT ✓] view: 1. # Verus-Unsupported Constructs — `arch::x86::mem::paging` (`mod.rs`)
+2. 
+3. This file records language/library constructs in the `paging` module (`mod.rs`)
+4. that Verus cannot translate or verify, together with the minimal reproduction and
+5. the trust-boundary mitigation used.
+6. 
+7. ## 1. Inli...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me check for bugs.md, read the relevant skills, and run verification in parallel.
+[TOOL] report_intent: Reading skills and running verification
+[TOOL] bash: ls -la /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/ 2>&1; echo "---bugs---"; cat /home/ruize/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "admit\|assume\|external_body\|assume_specification\|cfg(" src/libs/arch/src/
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: total 96
+drwxrwxr-x 1 ruize ruize   432 Jun 15 15:28 .
+drwxrwxr-x 1 ruize ruize  1848 Jun 15 13:52 ..
+-rw-rw-r-- 1 ruize ruize  2741 Jun 15 15:15 body_removed_source.rs
+drwxrwxr-x 1 ruize ruize   136 Jun 14 11:52 caller-analysis
+-rw-rw-r-- 1 ruize ruize  6533 Jun 14 11:54 caller_analysis.md
+drwxrwxr...
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:10:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:77:// `assume_specification[ ::arch::mem::paging::invlpg ]` (no `requires`/`ensures`).
+src/libs/arch/src/x86/mem/paging/mod.r...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me run verification and inspect AST consistency artifacts and skills.
+[TOOL] report_intent: Running make verify-arch
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -40
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/body_removed_source.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. //==================================================================================================
+4. // Modules
+5. //=============================================================================================...
