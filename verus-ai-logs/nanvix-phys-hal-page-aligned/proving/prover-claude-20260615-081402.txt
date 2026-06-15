@@ -816,3 +816,15 @@ Now I need to run the full verification suite to make sure nothing broke when I 
 Turn 54
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel 2>&1 | grep -iE "veri
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+  cheating: assume=0 external_body=19 admit=16 trusted=0 no_decreases=0 cfg_gate=19
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Full kernel verify passed (exit 0), with cheating counts unchanged from baseline (I added no admit/assume/external_body — I removed one assume_specification). Let me get the explicit verified/errors total and run the broader `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; cat verus-ai-logs/verify-kernel/verus-lo
+
+[THINKING] The kernel verification passed with no new cheating counts introduced—the admit, external_body, and cfg_gate numbers stayed the same, and I actually removed one assume_specification. Now I need to pull the full verification output to confirm there's no regression in the error counts.
