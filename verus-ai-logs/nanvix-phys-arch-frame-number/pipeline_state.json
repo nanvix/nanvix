@@ -2,12 +2,13 @@
   "module_name": "arch-frame-number",
   "log_name": "nanvix-phys-arch-frame-number",
   "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -69,7 +70,8 @@
     "caller-analysis": "7ec15f58a1f13c1d6f93e36287918dc243a288e3",
     "view-design": "f01a3a9a114f45bd8a011d8ae29175d1378c68a8",
     "specification": "33c9db43ad2071f0dff40fc628e868e970ed77a9",
-    "proving": "f7c66d6e56e8b244c9487f95c09fcb5208416f2b"
+    "proving": "f7c66d6e56e8b244c9487f95c09fcb5208416f2b",
+    "cheating-elimination": "6df2ff9a7afeec5b77288e217f6ea9362e3d79d5"
   },
   "phase_history": [
     {
@@ -118,6 +120,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "b9bf2cd6b8f97f3bdc278bb25c8d16f1ce4a3752",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "6df2ff9a7afeec5b77288e217f6ea9362e3d79d5",
       "rollback_iter": 0
     }
   ],
