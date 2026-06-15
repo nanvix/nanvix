@@ -82,3 +82,55 @@ Module: phys-kframe
 [2026-06-15 11:46:27]   ↳ dialogue-reviewer-t1 done in 3m31s (exit=0)
 [2026-06-15 11:46:27] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-15 11:46:27] [DIALOGUE] proving ended after 1 turns: RESOLVED (212s)
+[2026-06-15 11:46:27] [PHASE] proving: dialogue-RESOLVED (12m21s)
+[2026-06-15 11:46:27] [SPEC DRIFT] (within proving) Comparing 31731f9c → 6fc46dff
+[2026-06-15 11:46:27] [SPEC DRIFT] (within proving) No changes detected
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] (after proving) Checking entry fns against verus-ai-prove-bottom-up: ["src/kernel/src/mm/phys/frame.rs:['Inner::alloc', 'Inner::alloc_contiguous', 'Inner::free', 'Inner::share', 'Inner::refcount', 'Inner::book', 'Inner::is_covered', 'Inner::alloc_range', 'instance', 'alloc', 'alloc_contiguous', 'free_count', 'free', 'is_covered', 'book', 'alloc_range', 'share', 'refcount']", "src/kernel/src/mm/phys/kframe.rs:['KernelFrame::new', 'KernelFrame::base', 'KernelFrame::drop']", "src/kernel/src/mm/phys/manager.rs:['PhysMemoryManager::init', 'PhysMemoryManager::alloc_many_user_frames', 'PhysMemoryManager::alloc_user_frame', 'PhysMemoryManager::check_user_watermark', 'PhysMemoryManager::alloc_kernel_frame', 'PhysMemoryManager::alloc_many_kernel_frames']", "src/kernel/src/mm/phys/mod.rs:['book_physical_memory_regions', 'book_mmio_regions', 'init', 'test']", "src/kernel/src/mm/phys/upool.rs:['UserFrame::new', 'UserFrame::address', 'UserFrame::leak', 'UserFrame::share', 'UserFrame::refcount', 'UserFrame::drop', 'Upool::new', 'Upool::alloc']"]
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry file not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::alloc (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::free (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::share (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::refcount (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::book (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::is_covered (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:Inner::alloc_range (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:instance (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:alloc (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:alloc_contiguous (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:free_count (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:free (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:is_covered (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:book (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:alloc_range (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:share (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/frame.rs:refcount (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry file not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/kframe.rs
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/kframe.rs:KernelFrame::new (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/kframe.rs:KernelFrame::base (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/kframe.rs:KernelFrame::drop (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry file not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::init (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_many_user_frames (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_user_frame (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::check_user_watermark (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_kernel_frame (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_many_kernel_frames (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry file not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/mod.rs
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/mod.rs:book_physical_memory_regions (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/mod.rs:book_mmio_regions (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/mod.rs:init (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/mod.rs:test (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry file not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:UserFrame::new (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:UserFrame::address (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:UserFrame::leak (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:UserFrame::share (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:UserFrame::refcount (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:UserFrame::drop (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:Upool::new (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove-bottom-up: src/kernel/src/mm/phys/upool.rs:Upool::alloc (available: []...)
+[2026-06-15 11:46:27] [TOPLEVEL DRIFT] (after proving) ✅ All entry point specs match base branch
+[2026-06-15 11:46:27] ✅ proving: PASS (0/0)
+[2026-06-15 11:46:27] [GATE] Running build: make build
+[2026-06-15 11:46:27] [GATE] Running verify: make verify
