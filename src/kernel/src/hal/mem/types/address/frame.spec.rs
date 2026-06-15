@@ -8,22 +8,8 @@ use crate::hal::mem::types::address::phys::{
     spec_max_frame_number,
 };
 
-verus! {
-
-// =================================================================================================
-// Dependency contract for the not-yet-verified `Address` implementation of `PhysicalAddress`.
-//
-// `PhysicalAddress::from_raw_value` validates that `value` denotes a physical address; on success
-// the abstract address is exactly the raw input. This placeholder is removed once `phys`'s
-// `Address` impl carries its own `#[verus_spec]`.
-// =================================================================================================
-pub assume_specification[ <PhysicalAddress as ::sys::mm::Address>::from_raw_value ](value: usize)
-    -> (result: Result<PhysicalAddress, ::sys::error::Error>)
-    ensures
-        match result {
-            Ok(pa) => pa@ == value as int,
-            Err(_) => true,
-        },
-;
-
-} // verus!
+// The former `assume_specification` for `<PhysicalAddress as ::sys::mm::Address>::from_raw_value`
+// was removed: it supplied a trusted, unverified contract to a kernel-internal (intra-crate)
+// callee that is not sanctioned in `tcb-allowed.md`. Its sole consumer, `FrameAddress::from_raw_value`,
+// is instead carried as a TCB-listed `#[verus_verify(external_body)]` (see `frame.rs`), so no
+// intra-crate trust hole remains here.

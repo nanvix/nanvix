@@ -1,3 +1,4 @@
+    - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
     - mm/phys/frame.rs:1408 instance: external_body
     - mm/phys/frame.rs:1446 init: external_body
     - mm/phys/frame.rs:1502 alloc: external_body

@@ -87,8 +87,11 @@ impl FrameAddress {
 #[verus_verify]
 impl FrameAddress {
     // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()` and
-    // its abstract address equals the raw input. Verified against the `PhysicalAddress` /
-    // `PageAligned` dependency contracts.
+    // its abstract address equals the raw input. `external_body` (TCB-sanctioned per
+    // `tcb-allowed.md`) until the intra-crate `PhysicalAddress` `Address` impl carries its own
+    // verified `#[verus_spec]`; the strengthened contract below is preserved verbatim so callers
+    // keep the full `fa@ == raw_addr` guarantee.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
