@@ -314,7 +314,8 @@ impl Inner {
                 self.refcount@.len() >= self.bitmap@.num_bits,
                 hi <= self.bitmap@.num_bits,
                 forall|j: int| lo <= j < i ==> self.refcount@[j] == 1,
-                forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+                forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < i)
+                    ==> self.refcount@[k] == old_self.refcount@[k],
         ))]
         for i in frame_number..frame_number + count {
             #[cfg(not(verus_keep_ghost))]
@@ -329,7 +330,7 @@ impl Inner {
         proof! {
             assert(self.refcount@.len() == old_self.refcount@.len());
             assert forall|j: int| lo <= j < hi implies self.refcount@[j] == 1 by {}
-            assert forall|k: int| !(lo <= k < hi) implies
+            assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
                 self.refcount@[k] == old_self.refcount@[k] by {}
             lemma_book_range(&old_self, self, lo, hi);
             lemma_internal_inv_implies_wf(self);

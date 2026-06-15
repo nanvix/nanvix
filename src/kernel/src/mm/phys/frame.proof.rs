@@ -698,7 +698,8 @@ proof fn lemma_book_range(old_inner: &Inner, new_inner: &Inner, lo: int, hi: int
             BitmapView::range_set(lo, hi)),
         new_inner.refcount@.len() == old_inner.refcount@.len(),
         forall|j: int| lo <= j < hi ==> new_inner.refcount@[j] == 1,
-        forall|i: int| !(lo <= i < hi) ==> new_inner.refcount@[i] == old_inner.refcount@[i],
+        forall|i: int| 0 <= i < new_inner.refcount@.len() && !(lo <= i < hi)
+            ==> new_inner.refcount@[i] == old_inner.refcount@[i],
     ensures
         new_inner.internal_inv(),
         new_inner@.allocated_frames =~= old_inner@.allocated_frames.union(frame_set(lo, hi)),

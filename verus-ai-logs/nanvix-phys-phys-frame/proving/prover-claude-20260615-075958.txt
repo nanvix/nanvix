@@ -4417,3 +4417,166 @@ Turn 286
 Turn 287
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.r
+[RESULT ✓] bash: error: invariant not satisfied at end of loop body
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+   --> src/kernel/src/mm/phys/frame.rs:317:51
+   --> src/kernel/src/mm/phys/frame.rs:317:72
+   --> src/kernel/src/mm/phys/frame.rs:333:17
+   --> src/kernel/src/mm/phys/frame.rs:333:38
+   --> src/kernel/s...
+
+────────────────────────────────────────────────────────────
+Turn 288
+────────────────────────────────────────────────────────────
+Let me get the detailed error context:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-kernel/verus-logs/*.log 2>/dev/null | grep -A6 "inva
+
+[THINKING] The invariant check is failing because Verus validates it at the end of the loop body before incrementing the loop variable i. After setting refcount[i]=1, the invariant that requires all indices outside the range [lo, i) to have their original refcount values breaks at k=i, since that index now has a modified value.
+
+I need to reconsider how Verus handles invariants in for-loops over ranges. The typical pattern should be that the invariant holds at the start of each iteration, describing what's been completed in [lo, i). But the error suggests the check happens at the end of the body with the current i value, not the incremented one. Let me look more carefully at how the bitmap's working loop structures its invariant to understand the correct pattern. I'm checking whether Verus actually substitutes `i+1` at the end of the body or if it's checking with the current `i` value, and whether the `loop_old` snapshot and update assertion are interfering with the invariant verification. The individual clauses seem to hold after substitution, so the failure might stem from how Verus handles the snapshot or the interaction between the update and the loop invariant.
+
+I'm also considering whether the issue is that `i+1` could overflow at the boundary—if `hi` equals `usize::MAX`, then `hi+1` would overflow, though in practice `i < hi` in the loop body so `i+1 <= hi` should be safe.
+
+Let me try a simpler fix: remove the `loop_old` reference and reformulate the invariant to be more robust. The real question is whether Verus checks the invariant at the end of the loop body with the current `i` or with `i+1`. If it's checking with the current `i` after the element is set, then the invariant as written wouldn't be provable—but the bitmap code uses this pattern successfully, so Verus must be checking with `i+1`. That means the failure is something else entirely. I need to see the actual detailed error message to understand what's going wrong.
+[RESULT ✓] bash: error: invariant not satisfied at end of loop body
+   --> src/kernel/src/mm/phys/frame.rs:306:17
+    |
+306 |                 forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 289
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "third_loop_invariant\|second_loop_invariant\|first_loop_invariant" 
+
+[THINKING] The issue is with the forall quantifier over unbounded k values — when k falls outside the range [lo, i), the refcount array access goes out of bounds for negative indices or indices beyond the array length. The "recommendation not met" message is flagging this indexing violation, but the real problem is that the invariant itself fails because the quantified statement tries to access refcount at invalid indices.
+
+Let me reconsider whether the loop variable substitution is actually happening as expected. I should check how Verus handles the loop invariant semantics and whether it's properly substituting the updated loop counter into the forall clause.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.proof.rs:492:    spec fn alloc_range_first_loop_invariant(
+src/libs/bitmap/src/lib.proof.rs:537:    spec fn alloc_range_second_loop_invariant(
+src/libs/bitmap/src/lib.proof.rs:603:    spec fn alloc_range_third_loop_invariant(
+src/libs/bitmap/src/lib.rs:368:                sel...
+
+────────────────────────────────────────────────────────────
+Turn 290
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.proof.rs
+[RESULT ✓] view: 603.     spec fn alloc_range_third_loop_invariant(
+604.         self: &Self,
+605.         old_self: &Self,
+606.         pre_alloc_self: Self,
+607.         size: usize,
+608.         start: usize,
+609.         alloc_offset: usize,
+610.     ) -> bool
+611.     {
+612.         &&& self.bits.inv()
+613.    ...
+
+────────────────────────────────────────────────────────────
+Turn 291
+────────────────────────────────────────────────────────────
+The `forall k` ranges over unbounded `k`, including out-of-bounds indices — that's the "recommendation not met" and the real failure. Let me check what `lemma_book_range` actually requires and bound `k`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "lemma_book_range" src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The bitmap loop invariant tracks progress through `alloc_offset`, where the "done" range spans from the start up to `start + alloc_offset`. The key insight is that the invariant describes all bits as set within that completed prefix, excluding the current position being processed—so it's measuring what's been finished, not what's being worked on.
+
+My approach should follow the same pattern: the invariant references the loop variable and describes the completed range, then at the end of each iteration the loop variable increments and the invariant shifts to include the newly-processed element. But I'm hitting a "recommendation not met" error that might stem from how the loop variable `i` is being substituted at the end of the body. When Verus checks the invariant after incrementing `i` to `i+1`, the clause needs to hold for the updated state—specifically, the refcount array after the update operation needs to satisfy the invariant that all elements outside the range `[lo, i+1)` remain unchanged from the original.
+
+The bitmap's approach works because its invariant describes only the completed prefix, which doesn't change when the next element is processed. My invariant, by contrast, explicitly references the loop variable in a way that might not be getting properly verified under Verus's end-of-body semantics. The issue is that when accessing `refcount@[k]` for indices outside the sequence bounds, Verus returns an unspecified value that's deterministic per sequence. Since `refcount@` and `old_self.refcount@` are different sequences, their out-of-bounds values could differ, making the invariant clause `!(lo<=k<i+1) ==> refcount@[k]==old[k]` potentially false for k >= len. However, at loop entry this clause held trivially because the sequences were identical, so after the update I need to verify how the invariant maintains across iterations.
+
+The cleaner approach is to restrict the quantifier to valid indices only: instead of checking all k, I'd bound the forall to `0 <= k < self.refcount@.len()` and only assert the frame property for indices within bounds. This avoids the out-of-bounds indexing problem entirely and matches what the lemma actually requires.
+[RESULT ✓] bash: 690:proof fn lemma_book_range(old_inner: &Inner, new_inner: &Inner, lo: int, hi: int)
+<shellId: 157 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 292
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 690. proof fn lemma_book_range(old_inner: &Inner, new_inner: &Inner, lo: int, hi: int)
+691.     requires
+692.         old_inner.inv(),
+693.         0 <= lo <= hi <= old_inner.bitmap@.num_bits,
+694.         forall|j: int| lo <= j < hi ==> !old_inner.bitmap@.set_bits.contains(j),
+695.         new_inne...
+
+────────────────────────────────────────────────────────────
+Turn 293
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn lemma_refcount_book\|fn lemma_refcount_bump" src/kernel/src/mm/ph
+
+[THINKING] The lemma itself allows unbounded quantification over the index range, which verifies fine, but the challenge is proving this property holds at the loop exit. My loop invariant needs to establish the same unbounded quantification property for the refcount array at that point.
+
+When I update `self.refcount[i] = 1`, Verus models this as an array update operation. For indices outside the modified range, the update preserves the old values, but for out-of-bounds indices, Verus doesn't automatically simplify the indexing through the update lemma, so I can't directly conclude that out-of-bounds indices match the original values.
+
+The real issue is that my invariant requires the unbounded property to hold for all k, but I can only prove it for valid indices. The lemma itself verifies with this unbounded precondition because the caller provides it as an assumption, but when I actually call the lemma, I need to prove it—and I can't prove equality of out-of-bounds indices unless the sequences are structurally identical. Let me check how the single-frame version handles this constraint. So the key insight is that when I construct a new sequence by repeatedly calling `update`, the out-of-bounds indices are preserved from the original sequence — `update` doesn't touch them. The problem is Verus's `Seq::update` axiom only specifies in-bounds behavior, so it can't automatically prove that out-of-bounds indices remain unchanged. If I try to maintain the relationship symbolically as a chain of updates in the loop invariant, that becomes unwieldy. I should check whether `lemma_refcount_book` itself uses `update` directly in its precondition rather than requiring an unbounded forall, which might sidestep this issue entirely.
+[RESULT ✓] bash: 252:proof fn lemma_refcount_bump(old_inner: &Inner, new_inner: &Inner, fnn: int, new_val: u8, pa: int)
+498:proof fn lemma_refcount_book(old_inner: &Inner, new_inner: &Inner, fnn: int, pa: int)
+<shellId: 158 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 294
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 498. proof fn lemma_refcount_book(old_inner: &Inner, new_inner: &Inner, fnn: int, pa: int)
+499.     requires
+500.         old_inner.inv(),
+501.         0 <= fnn < old_inner.bitmap@.num_bits,
+502.         !old_inner.bitmap@.set_bits.contains(fnn),
+503.         new_inner.refcount@ == old_inner.refcoun...
+
+────────────────────────────────────────────────────────────
+Turn 295
+────────────────────────────────────────────────────────────
+The fix: bound the index. `lemma_refcount_book` uses structural `update` equality, but my range lemma uses an unbounded `forall` — out-of-bounds indexing isn't provable from `Seq::update`. Let me bound both the lemma precondition and the loop invariant to valid indices:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see that `lemma_refcount_book` uses a structural equality for the refcount update rather than an unbounded forall, which is the more robust approach. I should apply the same pattern to `lemma_book_range` by updating its precondition to use a structural relationship instead. Since this is my own lemma in frame.proof.rs, I can modify it freely.
+
+The loop produces a sequence of updates across the range, not just a single one, so I need to express the invariant structurally by maintaining the length equality and proving it through the update chain. The simplest fix is to change line 701 from the unbounded forall to a bounded version that only quantifies over valid indices, then update the loop invariant accordingly to match. Since the lemma body only uses in-bounds indices anyway, bounding the quantifier won't break anything.
+
+I should verify that lemma_book_range is one I wrote myself (not locked), which it is, so I can modify it. The bounded precondition is actually what the lemma body needs—it requires knowing that refcount[i] equals the old value for in-bounds indices outside the [lo,hi) range. Let me check the current line numbers in the source and make both changes.
+[RESULT ✓] view: 300.         }
+301.         proof_decl! { let ghost lo: int = frame_number as int; }
+302.         proof_decl! { let ghost hi: int = frame_number as int + count as int; }
+303.         // Newly allocated frames have a single owner.
+304.         #[cfg_attr(verus_keep_ghost, verus_spec(
+305.            ...
+
+────────────────────────────────────────────────────────────
+Turn 296
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 297
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 298
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to verify that lemma_book_range's body still holds with the bounded precondition, since it references refcount[i] for valid indices. Then I should check what fact gets passed at the call site in alloc_contiguous around line 701, particularly in the post-loop block.
+[RESULT ✓] view: 326.                 assert(self.refcount@ == loop_old.refcount@.update(i as int, 1));
+327.                 assert(self.bitmap == loop_old.bitmap);
+328.             }
+329.         }
+330.         proof! {
+331.             assert(self.refcount@.len() == old_self.refcount@.len());
+332.             asse...
+
+────────────────────────────────────────────────────────────
+Turn 299
+────────────────────────────────────────────────────────────
+I need to update the post-loop assertion at line 333 to the bounded form to match the new lemma precondition:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 300
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
