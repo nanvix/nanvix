@@ -2847,3 +2847,63 @@ Turn 176
 [THINKING] I'm checking that FrameNumber and FrameAddress are properly imported in frame.rs, and verifying that `FrameNumber::spec_max()` is accessible. The `from_frame_number` function should return a result by converting the frame number through `spec_from_number` and `spec_frame_raw_value`, where the raw value is just the frame number itself cast as an integer.
 
 Now I'm tracing through the assertion: the frame address should equal the physical address by chaining the ensures clauses together. The frame number's raw value equals the index, `spec_frame_raw_value` returns that index, and `spec_from_number` multiplies it by the page size to get the physical address. Since these spec functions are public in phys.spec.rs, Verus should be able to expand the ensures and verify the assertion works.
+[RESULT ✓] bash: error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:177:20
+verification results:: 71 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  1 errors
+  verification: 71 verified, 1 errors (exit 101)
+  status: V...
+
+────────────────────────────────────────────────────────────
+Turn 177
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 170.             assert(pa % spec_page_size() == 0);
+171.             assert(pa >= 0) by (nonlinear_arith) requires idx >= 0, spec_page_size() > 0, pa == idx * spec_page_size();
+172.             lemma_frame_facts(&old_self, pa, idx);
+173.             assert(old_self@.free_frames.contains(pa));
+174. ...
+
+────────────────────────────────────────────────────────────
+Turn 178
+────────────────────────────────────────────────────────────
+The `by (compute)` couldn't evaluate the arch constants. Let me check what spec facts are available for `MAX_ADDRESS`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "MAX_ADDRESS\|spec_max\|FRAME_SIZE\|PAGE_SIZE" src/libs/arch/src/x86
+
+[THINKING] I'm running into an issue where the `by (compute)` tactic can't verify that `(u32::MAX as int) <= FrameNumber::spec_max()` because `spec_max()` depends on architecture constants that might not be transparent to the computation. I need to check whether `mem::MAX_ADDRESS` and `mem::FRAME_SIZE` are properly exposed as transparent constants so the tactic can actually evaluate them. I can establish that `mem::FRAME_SIZE` equals 4096 through the existing spec lemma relating it to `spec_page_size()`, which Verus should recognize as a constant value. For `MAX_ADDRESS`, I need to find whether there's a spec function exposing it in the arch module, or I can work around it by asserting the bound on `FrameNumber::spec_max()` directly using the known relationship between the constants.
+[RESULT ✓] bash: ---- find spec files ----
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+src/libs/arch/src/x86/mem/paging/table.spec.rs
+src/libs/arch/src/x86/mem/paging/pde.spec.rs
+src/libs/arch/src/x86/mem/paging/pte.spec.rs
+src/libs/arch/src/x86/mem/paging/mod.spec.rs
+<shellId: 103 completed with exit code...
+
+────────────────────────────────────────────────────────────
+Turn 179
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "MAX_ADDRESS\|FRAME_SIZE\|PAGE_SIZE\|FRAME_SHIFT" src/libs/arch/src/
+[RESULT ✓] bash: 39:/// Log2 PAGE_SIZE
+50:pub const PAGE_SIZE: usize = 4096;
+51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+58:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+82:pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+97:pub const MAX_ADDRESS: usize = usize::MAX;
+105:pub const FRAM...
+
+────────────────────────────────────────────────────────────
+Turn 180
+────────────────────────────────────────────────────────────
+The consts are concrete but `by (compute)` needs help. Let me restructure the bound proof:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] These are concrete constants that Verus should be able to evaluate directly, so the `by (compute)` tactic might be failing due to type conversions or because it doesn't traverse into constants from other crates. I'll try asserting the value step by step using regular asserts that reference the const definitions instead, starting with checking that `FrameNumber::spec_max()` equals the maximum unsigned size divided by 4096 minus one, though I need to account for `mem::MAX_`.
+
+Actually, the real issue might be that `by (compute)` can't handle `usize::MAX` symbolically. Let me restructure by first establishing the const equalities with plain asserts, then using `by (compute)` only on pure literal arithmetic where it should definitely work. I should also verify that `idx <= FrameNumber::spec_max()` follows from the chain `idx < nbits < u32::MAX <= spec_max`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 181
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

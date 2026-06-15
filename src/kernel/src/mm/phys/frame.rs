@@ -174,7 +174,11 @@ impl Inner {
             // The index is below `u32::MAX`, hence representable as a frame number.
             assert(nbits as int == self.bitmap@.num_bits);
             assert(idx < nbits as int);
-            assert((u32::MAX as int) <= FrameNumber::spec_max()) by (compute);
+            assert(nbits < u32::MAX);
+            assert(mem::MAX_ADDRESS as int == usize::MAX as int);
+            assert(mem::FRAME_SIZE as int == 4096);
+            assert(FrameNumber::spec_max() == (usize::MAX as int) / 4096 - 1);
+            assert((u32::MAX as int) <= (usize::MAX as int) / 4096 - 1) by (compute);
             assert(idx <= FrameNumber::spec_max());
         }
         self.refcount[frame_number] = 1;
