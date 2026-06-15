@@ -77,6 +77,20 @@ impl PhysicalAddress {
     ///
     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
     ///
+    // Deliberately bypasses the RAM-range validity check (MMIO GPAs may lie
+    // outside tracked RAM). On success it is pure identity wrapping
+    // (`r@ == addr@`); the `unsafe` contract — that `addr` denotes a valid MMIO
+    // frame — is encoded as `requires` (frame-representability) so the result
+    // satisfies the type invariant and may later flow into `into_frame_number`.
+    #[verus_spec(result =>
+        requires
+            spec_frame_number(addr@) <= spec_max_frame_number(),
+        ensures
+            match result {
+                Ok(r) => r@ == addr@ && r.inv(),
+                Err(_) => true,
+            },
+    )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
         Ok(Self(addr))
     }
@@ -98,12 +112,30 @@ impl PhysicalAddress {
     ///
     /// A [`PhysicalAddress`] associated with the given `frame_number`.
     ///
+    // The produced address is the frame's base address (`frame * FRAME_SIZE`).
+    // Alignment (`result@ % FRAME_SIZE == 0`) and the type invariant follow from
+    // this value relation, so they are not listed separately.
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_from_number(spec_frame_raw_value(frame)),
+    )]
     pub fn from_number(frame: FrameNumber) -> Self {
+        proof! { admit(); }
         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
+    // Total projection: yields the containing frame (`self@ / FRAME_SIZE`). The
+    // receiver's invariant guarantees the computed index fits a `FrameNumber`,
+    // so the internal `unwrap()` never panics.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+    )]
     pub fn into_frame_number(self) -> FrameNumber {
+        proof! { admit(); }
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
         // Safety: the following unwrap is safe because a physical address has a valid frame number.

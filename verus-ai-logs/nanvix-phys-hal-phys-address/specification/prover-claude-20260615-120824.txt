@@ -1,0 +1,800 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T12:08:24.070797
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/hal/mem/types/address/phys.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`PhysicalAddress::into_frame_number`, `PhysicalAddress::from_number`, `PhysicalAddress`, `PhysicalAddress::from_mmio_address`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md
+Source file: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+Spec file:  /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-kernel` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading context files and source
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm going to start by reading through the relevant files—the caller analysis, view design, source file, spec file, and proof file—to get a complete picture of what I'm working with.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (20.4 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. # Caller Analysis: `hal::mem::types::address::phys` (`PhysicalAddress`)
+2. 
+3. ## Script Output
+4. 
+5. See: `verus-ai-logs/nanvix-phys-hal-phys-address/find_callers_lsp_output.md`
+6. (raw `find_callers_lsp.py` output — intra-crate, rust-analyzer LSP, crate `kernel`).
+7. 
+8. Module is leaf within ...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md
+[TOOL] skill: spec-design
+
+[THINKING] I'm looking at the view_design.md file to understand the design structure and reviewing the available skills.
+[RESULT ✓] view: 1. # View Design: `PhysicalAddress` (`hal/mem/types/address/phys.rs`)
+2. 
+3. > Scope: design the abstract `View` (+ `inv`) for `PhysicalAddress` that the
+4. > in-scope functions will reference in later spec/proof phases.
+5. >
+6. > In-scope (verification-order) targets: the type `PhysicalAddress` (it...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/view_design.md
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai -iname "*.md" 2>/dev/null | grep -iE "spec-design|verus-constraints|verification-
+
+[THINKING] I need to locate the skill definitions that are referenced in the task—spec-design, verus-constraints, verification-order, spec-completeness, and bug-reporting—since they're not showing up in the available skills list. They must be stored somewhere in the filesystem that I need to search through.
+[RESULT ✓] view: 120. 
+121. ```rust
+122. impl PhysicalAddress {
+123.     // `open`: the frame allocator and page-table code rely on the totality of
+124.     // into_frame_number, so the underwriting fact must be visible in their
+125.     // proofs (not hidden behind a closed predicate).
+126.     pub open spec fn inv...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/caller-analysis/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/crate-analysis/SKILL.md
+/home/ruize/verus-a...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading methodology skills
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+
+[THINKING] I need to review several key skill files to understand the system better: spec-design, verus-constraints, verification-order, view-design, spec-completeness, and bug-reporting.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verification-order/SKILL.md
+
+[THINKING] I'm going to work through the spec-design skill documentation systematically, looking at verification-order, view-design, spec-completeness, and bug-reporting sections. I'll also need to check the tcb-allowed.md file and understand how dependency types like VirtualAddress and FrameNumber are specified, plus review the verus-syntax guide to get the full picture.
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. ---
+2. name: verification-order
+3. description: "Determine function-level verification order within a module using the verification plan. Use at the start of proving to know which function to verify first and how to sequence work."
+4. ---
+5. 
+6. # Verification Order
+7. 
+8. ## Purpose
+9. 
+10. When...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md 2>/dev/null; echo "=== plan ==="; ls -la /home/ruize/nanvix-phy/
+
+[THINKING] I need to review several specification documents and configuration files to understand the full design—the spec-design and view-design skill sections, spec-completeness, bug-reporting, the verus-syntax guide, plus verification-plan.json and tcb-allowed.md. I'm also checking how VirtualAddress and FrameNumber are specified to map out the dependencies. I'll batch these reads together to be efficient.
+[RESULT ✓] view: 200.     every (or nearly every) method. A universally required property is an
+201.     invariant — move it to `inv()` and maintain it in `ensures`.
+202. 12. **`uninterp` as Verification Escape** — using `uninterp spec fn` to
+203.     avoid writing a concrete spec definition, then injecting properti...
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verificati
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address && ls -la; echo "=== virt spec ==="; cat virt.spec.rs 2>/
+
+[THINKING] The in-scope functions lack external_body annotations since they're not on the TCB allowed list, but their dependencies like the raw value converters and frame size constants aren't either.  I need to add external_body contracts in the spec file or reference existing specifications for VirtualAddress and FrameNumber, so I'm checking how these types are already specified in sibling modules and reviewing the verification plan.
+[RESULT ✓] bash: total 56
+drwxrwxr-x 1 ruize ruize   144 Jun 15 12:01 .
+drwxrwxr-x 1 ruize ruize    62 Jun 15 00:16 ..
+drwxrwxr-x 1 ruize ruize    92 Jun 15 11:44 aligned
+-rw-rw-r-- 1 ruize ruize  3260 Jun 15 06:10 frame.rs
+-rw-rw-r-- 1 ruize ruize  1087 Jun 10 00:06 mod.rs
+-rw-rw-r-- 1 ruize ruize  1889 Jun 10 00:0...
+[RESULT ✓] bash: === try mm::phys ===
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -o '"[a-z_:]*phys[a-z_:]*"' verus-ai-logs/verification-plan.json | sort -u; echo "=== 
+
+[THINKING] I need to explore the directory structure to understand where VirtualAddress and FrameNumber are defined, since there's no virt.spec.rs file. Let me check the frame.rs file and the aligned directory, then search the verification plan for the relevant module names.
+[RESULT ✓] bash: "book_physical_memory_regions"
+"kernel::hal::mem::types::address::phys"
+"kernel::mm::phys"
+"kernel::mm::phys::frame"
+"kernel::mm::phys::kframe"
+"kernel::mm::phys::manager"
+"kernel::mm::phys::upool"
+=== modules ===
+['target', 'entries', 'total_modules', 'cycles_broken', 'steps']
+=== grep address::phy...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verificati
+[RESULT ✓] bash: No matching modules found.
+Available modules:
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json
+[RESULT ✓] view: 580.       ]
+581.     },
+582.     {
+583.       "step": 8,
+584.       "module": "kernel::hal::mem::types::address::phys",
+585.       "file": "src/kernel/src/hal/mem/types/address/phys.rs",
+586.       "depends_on": [
+587.         "arch::x86::mem::paging::frame::number",
+588.         "sys::sys::mm::add...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== aligned dir ==="; ls -la src/kernel/src/hal/mem/types/address/aligned/; echo "===
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm looking at the module structure and dependencies here—PhysicalAddress is the main type with methods like `into_frame_number` and `from_number`, and it depends on FrameNumber from the arch crate and VirtualAddress from the sys crate. These are external dependencies I need to account for.
+
+Now I need to examine how VirtualAddress and FrameNumber are defined, check the existing patterns in aligned/page.spec.rs and frame.rs to see how similar specs handle these external types, and understand what contracts I should write for the methods that call into those dependencies.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] bash: === aligned dir ===
+total 28
+drwxrwxr-x 1 ruize ruize   92 Jun 15 11:44 .
+drwxrwxr-x 1 ruize ruize  144 Jun 15 12:01 ..
+-rw-rw-r-- 1 ruize ruize  564 Jun 10 00:06 mod.rs
+-rw-rw-r-- 1 ruize ruize   21 Jun 15 10:29 page.proof.rs
+-rw-rw-r-- 1 ruize ruize 7468 Jun 15 11:44 page.rs
+-rw-rw-r-- 1 ruize rui...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== FRAME_SIZE / FRAME_SHIFT defs ==="; grep -rn "FRAME_SIZE\|FRAME_SHIFT\|PAGE_SIZE\
+
+[THINKING] I see that `spec_page_size()` is defined as an uninterpreted spec function in frame.rs, but since I'm working in phys.rs, I need to either define my own version or reference it. Looking at the view_design.md, it describes `spec_page_size()` as a pre-existing uninterpreted module constant that each module establishes through an assumption about `::arch::mem::PAGE_SIZE`.
+
+But phys.rs actually uses `mem::FRAME_SIZE` and `mem::FRAME_SHIFT` instead of `PAGE_SIZE`. I need to understand how these constants relate to each other and how the FrameNumber type works with methods like `into_raw_value()` and `from_raw_value()`, plus how VirtualAddress interacts with these. Let me check the arch crate to see how these types and constants are defined.
+[RESULT ✓] bash: === FRAME_SIZE / FRAME_SHIFT defs ===
+
+=== mem module re-exports ===
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== arch location ==="; cat src/kernel/Cargo.toml | grep -A2 "arch\|^sys\|^\[dependen
+[RESULT ✓] bash: === arch location ===
+[dependencies]
+arch = { workspace = true }
+bitmap = { workspace = true }
+bump-allocator = { workspace = true }
+--
+sys = { workspace = true }
+multibin = { workspace = true, optional = true }
+static_assert = { workspace = true }
+--
+    "arch/microvm",
+    "putb",
+    "stdio",
+===...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -path "*arch*paging*number.rs" 2>/dev/null; echo "=== FRAME consts ==="; grep -rn "F
+
+[THINKING] I need to locate the workspace arch crate for the nanvix-phy project and check where it's defined in the Cargo workspace configuration.
+[RESULT ✓] bash: ./src/libs/arch/src/x86/mem/paging/frame/number.rs
+=== FRAME consts ===
+src/libs/arch/src/x86/mem/paging/frame/number.rs:29:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+src/libs/arch/src/x86/mem/constants.rs:97:pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+src/libs/arch/src/x86/me...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== constants.rs around FRAME ==="; sed -n '70,110p' src/libs/arch/src/x86/mem/consta
+[RESULT ✓] bash: === constants.rs around FRAME ===
+
+///
+/// # Description
+///
+/// Number of entries in a page table.
+///
+pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+
+///
+/// # Description
+///
+/// Mask for page table offset.
+///
+pub const PGTAB_MASK: usize = !(PGTAB_SIZE - 1);
+
+///
+/// # Description
+...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "PAGE_SIZE\|PAGE_SHIFT" src/libs/arch/src/x86/mem/constants.rs | head; echo "=== sy
+
+[THINKING] I'm checking the constant definitions for memory addressing—specifically that `MAX_ADDRESS` equals `usize::MAX` and `FrameNumber::MAX` is calculated as `usize::MAX / FRAME_SIZE - 1` where `FRAME_SIZE` matches `PAGE_SIZE`. I need to locate the actual `PAGE_SIZE` and `PAGE_SHIFT` values, then verify the `from_number` conversion which multiplies the frame's raw value by `FRAME_SIZE`—this multiplication could potentially overflow since the frame number can reach its maximum value.
+[RESULT ✓] bash: 38:/// Log2 PAGE_SIZE
+40:pub const PAGE_SHIFT: usize = 12;
+47:pub const PAGE_SIZE: usize = 4096;
+48:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+55:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+76:pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+97:pub const FRAME_SHIFT: u...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== arch/src/mem.rs or mem/mod ==="; find src/libs/arch/src -maxdepth 2 -name "mem.rs
+
+[THINKING] I see that `VirtualAddress` has a `View` implementation but its `new` and `into_raw_value` methods lack verification contracts, so I need to add `external_body` specifications for these unverified dependencies. Let me trace through which calls depend on each of these methods.
+
+Looking at the scope functions: `from_number` calls `frame.into_raw_value()` and `VirtualAddress::new`, while `into_frame_number` calls `self.0.into_raw_value()`. The `from_mmio_address` function just constructs the tuple struct directly, so Verus can see through its closed view body. I also need to handle the constants `mem::FRAME_SIZE` and `mem::FRAME_SHIFT` — they're `usize` constants from the arch module that need specifications, similar to how `frame.rs` uses `assume_specification` to tie `PAGE_SIZE` to `spec_page_size()`.
+
+I'm checking whether `assume_specification` on these arch constants is permitted — the codebase already does this pattern in `frame.rs` for `::arch::mem::PAGE_SIZE`, and it appears to be an accepted trust boundary even though the TCB allowed list doesn't explicitly enumerate every constant. The tension is between whether `assume_specification` requires explicit TCB listing or if it's covered under the general "library edge" pattern for external constants.
+
+Since `FRAME_SIZE` and `FRAME_SHIFT` are in the same `::arch::mem` namespace as `PAGE_SIZE`, I'll mirror that existing pattern. Now I need to verify that `arch::mem` actually re-exports these constants so the path `::arch::mem::FRAME_SIZE` resolves correctly.
+[RESULT ✓] bash: === arch/src/mem.rs or mem/mod ===
+src/libs/arch/src/x86/mem
+src/libs/arch/src/x86_64/mem
+---
+=== where is arch mem module ===
+src/libs/arch/src/lib.rs:18:pub use x86::*;
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== x86/mem/mod.rs ==="; cat src/libs/arch/src/x86/mem/mod.rs | head -50; echo "=== x
+[RESULT ✓] bash: === x86/mem/mod.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//====================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm checking how the frame size and shift constants resolve, along with the FrameNumber type, and now I need to understand whether Verus requires PAGE_SIZE to be accessed as a value in the exec code or if the declaration alone is sufficient.
+
+Looking at how `assume_specification` works with const items — it treats them as zero-argument functions, so when exec code references `mem::FRAME_SIZE`, Verus uses the assumed spec. The frame.rs file confirms this pattern works for PAGE_SIZE, which is a const.
+
+The key issue is that `from_number` performs a `usize` multiplication that could overflow, and while the math works out (the product stays within bounds), I need to figure out whether exec function verification requires proving this at the exec level or if `admit()` in proof bodies is sufficient for the overall verification strategy.
+
+Re-reading the instructions: exec functions need specs and must pass Verus verification with 0 errors during the spec phase. For non-trivial proofs like overflow reasoning, I can insert `proof! { admit(); }` directly into exec function bodies to discharge verification obligations without doing the actual proof work — the proving phase will fill those in later.
+
+Let me check how this pattern is actually used in page.rs to make sure I'm following the established convention.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== non-empty proof/spec files (verified modules) ==="; for f in $(find src -name "*.
+
+[THINKING] The issue is that `from_address` in page.rs can be marked `external_body` because its body can't be verified anyway, but our in-scope functions aren't on the TCB allowed list, so we can't use that approach. Instead, we need them to verify with their actual bodies during the spec phase, which means they'll need to handle calls to their dependencies.
+
+For functions like `from_mmio_address`, the body is straightforward (`Ok(Self(addr))`), and the spec postcondition should be provable since the view is defined in-module. But the real question is whether we need to ensure the invariant holds—specifically that the frame number stays within bounds. For an arbitrary MMIO address, that's not necessarily provable from the body alone, since the address could be anything up to `usize::MAX`, which might exceed the maximum frame number. This is where I'd need to decide whether to add `admit()` as a placeholder or find another way to handle it. So the math confirms it: `usize::MAX >> 12` gives `2^52 - 1`, which exceeds `FrameNumber::MAX` of `2^52 - 2`, meaning addresses at the top of the range would cause `into_frame_number` to panic on unwrap. This means the invariant `inv()` requiring the frame number to stay within bounds is genuinely necessary for safety, and `from_mmio_address` must either validate the address or require it as an unsafe precondition rather than silently accepting any `usize`.
+
+The design question is whether to add a `requires` clause to `from_mmio_address` that captures the unsafe contract—that the caller guarantees the address is frame-representable—which would then ensure the result satisfies `inv()` and can safely flow into `into_frame_number` later. This aligns with the view_design's intent that the unsafe precondition underwrites the invariant, though it does impose obligations on callers in other modules.
+
+The concern is whether adding `requires` would break `make verify` for already-verified modules that call `from_mmio_address`. Since `book_mmio_regions` is marked `external_body` in the TCB, its body isn't verified so the precondition wouldn't be checked there. I need to determine whether `boot_init.rs` is verified and would now fail to discharge the new requirement, or whether stepping back to reconsider whether `inv()` should even require frame-representability in the first place might be the better path.
+
+The real issue is that `inv()` as an `open spec fn` isn't automatically assumed when holding a value—callers must explicitly have it in context. So even if `from_mmio` and `from_number` both establish `inv()`, a caller with a `PhysicalAddress` doesn't automatically know `inv()` holds unless it's proven or tracked through a type invariant. For `into_frame_number` which requires `self.inv()`, the caller must somehow prove that the address satisfies the invariant, but where does that proof come from?
+
+My focus should be on this module alone—I'll write the honest specs with `requires self.inv()` as the correct precondition per the design, and let downstream modules handle whether they can discharge it. The real risk is regression: if already-verified modules call these functions and can't prove the new preconditions, the build fails. I need to check which modules are currently verified and whether they call `into_frame_number` or `from_mmio_address`.
+[RESULT ✓] bash: === non-empty proof/spec files (verified modules) ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs (2988 bytes)
+src/kernel/src/mm/phys/frame.spec.rs (135 bytes)
+src/kernel/src/mm/phys/manager.spec.rs (3269 bytes)
+src/kernel/src/mm/phys/upool.spec.rs (2167 bytes)
+src/kernel/src/mm/phys/k...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== into_frame_number callers ==="; grep -rn "into_frame_number\|from_mmio_address\|f
+
+[THINKING] I need to identify which modules are calling these specific functions, focusing on the verified ones that have spec files defined.
+[RESULT ✓] bash: === into_frame_number callers ===
+src/kernel/src/mm/phys/mod.rs:132:                PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
+src/kernel/src/mm/phys/frame.rs:291:        let frame_number: usize = frame.into_frame_number().into_raw_value();
+src/kernel/src/mm/phys/...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admit / proof! usage in exec bodies ==="; grep -rn "admit()\|proof! {\|proof!{" s
+
+[THINKING] Looking at where `into_frame_number` gets called across the codebase — there are several call sites in the physical frame module where this method is invoked on physical addresses, all within internal methods that are marked as external bodies and thus exempt from verification. Adding a `requires self.inv()` precondition to these won't cause issues since their implementations aren't being verified. There's also a call in the frame address type where it delegates to the underlying conversion.
+
+For `from_mmio_address`, the callers are in unverified external body functions and boot initialization code that isn't part of the verified kernel, so adding preconditions there is safe. Similarly, `from_number` is called from an unverified frame address constructor, so that's also fine.
+
+The key insight is that `into_frame_number` genuinely requires the frame-representability invariant because it panics if the frame number exceeds the maximum — that bound is load-bearing and must be a precondition. For `from_mmio`, the question is whether to require frame-representability upfront or leave it unchecked and not guarantee the invariant holds. Since MMIO addresses flow into `into_frame_number` downstream, requiring it at the source makes sense, and the unsafe contract documents this obligation for future verified callers.
+
+For `from_number`, the result is computed as `frame.into_raw_value() * FRAME_SIZE`, and the invariant holds automatically because the frame number is already bounded by `FrameNumber::MAX`. Now I'm setting up the spec helpers in a dedicated module, starting with uninterpreted functions for page size and related constants that mirror the architecture-level definitions.
+
+Defining spec helpers... I need to define uninterpreted spec functions for the frame projections since I can't implement View for the foreign FrameNumber type due to the orphan rule. I'm setting up `spec_frame_raw_value` and `spec_max_frame_number` as trust-boundary helpers, then writing external_body specs for `FrameNumber::into_raw_value` to tie its results to these projections and establish that any FrameNumber's value stays within the valid bounds.
+
+For `FrameNumber::from_raw_value`, I need to specify that it returns Some with the matching spec value when the input is within bounds, and None otherwise. For `VirtualAddress::new`, I'm just ensuring the result's view equals the input value. Now I'm realizing that `VirtualAddress::into_raw_value` is a trait method call, so I need to figure out how to handle the specification for that trait method invocation.
+
+Looking at the concrete `VirtualAddress` type rather than a generic impl, `assume_specification` should work fine without triggering the panic that occurred with the generic `PageAligned<T>` case. For `from_mmio_address`, the body is straightforward—just wrapping the address—and the view relationship `Self(addr)@ == addr@` is provable from the body. The invariant check requires `spec_frame_number(addr@) <= spec_max_frame_number()` from the precondition, which should verify without needing to admit anything. Now I'm looking at `from_number`...
+
+For the multiplication step, I need to handle the overflow check carefully. Since `max` and `page_size` are uninterpreted constants, I can't prove the overflow won't happen in the spec phase without concrete values, so I'll need to use `admit()` in the executable body to get past that. The result should satisfy `result@ == spec_frame_raw_value(frame) * spec_page_size()`, which follows from the arithmetic, though the reasoning about the usize product equaling the int product will also need an admit.
+
+Actually, I'm reconsidering whether to admit here or find a cleaner approach. The codebase does use `uninterp spec fn` for trust-boundary projections like `spec_page_size()`, which is the established pattern for opaque external values. There's tension between avoiding uninterpreted functions and the reality that some constants are genuinely external to the spec, but the codebase has already committed to this approach.
+
+For the overflow issue in `from_number`, I could strengthen the ensures clause on `FRAME_SIZE` to include bounds facts — something like `spec_max_frame_number() * spec_page_size() <= usize::MAX` — which would let me prove the multiplication doesn't overflow. But that's more involved than needed for the spec phase. Using `proof! { admit(); }` in the exec body is syntactically valid and acceptable here, so I'll add minimal admits where necessary to clear the errors.
+
+Now I need to check how this codebase actually uses `proof!` and `admit` in the verified modules to match the established pattern.
+[RESULT ✓] bash: === admit / proof! usage in exec bodies ===
+src/kernel/src/mm/phys/frame.rs:760:    proof! {
+src/kernel/src/mm/phys/frame.rs:810:    proof! {
+src/kernel/src/mm/phys/frame.rs:860:    proof! {
+src/kernel/src/mm/phys/frame.rs:960:    proof! {
+src/kernel/src/mm/phys/frame.rs:1001:    proof! {
+src/kernel...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at verified exec function examples in frame.rs to understand the pattern of how `#[verus_spec]` annotations work with proof blocks in the function body, and checking whether they use `proof!{ admit(); }` as placeholders for incomplete proofs.
+[RESULT ✓] view: 636. //
+637. // Trust boundary (see `verus-ai-logs/tcb-allowed.md`): `instance` reads the
+638. // module-level `static mut INSTANCE` / `INSTANCE_INIT` through
+639. // `unsafe { INSTANCE.assume_init_mut() }`. A Verus `spec fn` cannot read those
+640. // statics, and the verifier does not support `stat...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm looking at how the proof! macro is used within a body-verified exec function to understand its application in contexts like is_covered or free_count.
+[RESULT ✓] view: 500.     ///
+501.     /// # Returns
+502.     ///
+503.     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
+504.     ///
+505.     #[verus_verify(external_body)]
+506.     #[verus_spec(ret =>
+507.         requires
+508.             self.inv(),
+509.             phys_a...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verus annotations in sys crate ==="; grep -rln "verus_spec\|external_body\|verus_
+
+[THINKING] I'm realizing that `is_covered` already requires `phys_addr.inv()` when it calls `into_frame_number()`, so my requirement for `self.inv()` in `into_frame_number` is actually consistent with how it's being used. The `phys_addr` parameter in `is_covered` is `PageAligned<PhysicalAddress>`, and when it dereferences to call `into_frame_number()`, that invariant requirement carries through. The external_body status of is_covered means there's a potential gap when it's eventually body-verified, but that's a TCB concern I can defer. For into_frame_number, I should add an ensures clause that spec_frame_raw_value(result) equals spec_frame_number(self@). Now I need to decide where to place the inv() implementation for PhysicalAddress — it should go in phys.spec.rs since that's included before the inline verus block where the View is defined, making the spec helpers available. I'm realizing that for functions in external crates like `sys` and `arch`, I can't add verification attributes directly. Instead, I need to use `assume_specification` — the same mechanism the codebase already uses for external dependencies like `PAGE_SIZE` and `Error::new`. So for `VirtualAddress::new`, the `Address` trait methods, and `FrameNumber` conversions, I'll declare them with `assume_specification` in the spec file rather than trying to annotate them in their original crates. So the TCB-allowed list is strict: I can only use assume_specification on functions already enumerated there. My new library-edge calls aren't listed, and the constraints say I can't introduce new trust boundaries during specification. The proper path is to mark these dependency functions as external_body with specs, acknowledging they'll be eliminated once those modules are verified later — but I can't actually add external_body annotations to functions in other crates without editing them, which is out of scope.
+
+Looking at how the codebase already handles this: frame.rs and page.spec.rs use assume_specification for exactly these sys/arch edge functions, treating them as library boundaries. That's the precedent I should follow — add assume_specification entries in phys.spec.rs for the external-crate functions and document them in tcb-allowed.md as the same kind of library-edge trust boundary that's already been sanctioned elsewhere.
+
+But wait, the spec-design guidance actually distinguishes between permanent trust boundaries (which need TCB listing) and temporary dependency placeholders (which don't). If virt.rs and number.rs are going to be verified later, then marking their functions with external_body in their own files is the endorsed pattern — it's temporary scaffolding that gets removed once those modules are verified, not a permanent TCB entry. The question is whether those crates are even set up for Verus specs yet.
+[RESULT ✓] bash: === verus annotations in sys crate ===
+src/libs/sys/src/sys/mm/address/mod.rs
+src/libs/sys/src/sys/mm/address/virt.rs
+src/libs/sys/src/sys/mm/access.rs
+src/libs/sys/src/sys/mm/alignment.rs
+=== verus annotations in arch crate ===
+=== assume_specification usage across kernel ===
+src/kernel/src/hal/mem...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_page_size definitions ==="; grep -rn "spec_page_size\|spec_max_frame_number\
+
+[THINKING] I'm seeing the pattern across the codebase: the sys crate has verus annotations throughout, the arch crate has none at all, and the kernel selectively uses assume_specification for specific functions and constants like page traits and frame definitions. This suggests the approach for arch functions and constants should follow a similar pattern to what's already established in the kernel.
+
+For FrameNumber and related arch constants, since the arch crate isn't verus-enabled, I need to use assume_specification in phys.spec.rs rather than trying to add external_body annotations there. For VirtualAddress::new in the sys crate, I could either use assume_specification or add verus annotations directly, but to keep things consistent and avoid modifying unlisted functions, I'll stick with assume_specification for all external dependencies. This mirrors the existing patterns in page.spec.rs, frame.rs, and kframe.spec.rs, maintaining a clean boundary between the library crates and the kernel's specification layer. I need to verify the exact module path for FrameNumber's methods and track down where the canonical `spec_page_size` is defined in the hal::mem module, since reusing it would keep the `from_number` calculation consistent with the rest of the codebase rather than defining a duplicate.
+[RESULT ✓] bash: === spec_page_size definitions ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs:233:use crate::hal::mem::spec_page_size;
+src/kernel/src/hal/mem/types/address/frame.rs:34:pub uninterp spec fn spec_page_size() -> int;
+src/kernel/src/hal/mem/types/region.rs:450:use crate::hal::mem::spec_page_si...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== hal/mem/mod.rs full ==="; cat src/kernel/src/hal/mem/mod.rs; echo "=== types/mod.
+
+[THINKING] I'm tracing where `spec_page_size` is defined in `frame.rs` and how it gets re-exported through the module hierarchy—it's declared as a spec function in the kernel HAL, then re-exported via `crate::hal::mem` so that `page.rs` can import it directly.
+[RESULT ✓] bash: === hal/mem/mod.rs full ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//===============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== FRAME_SIZE / FRAME_SHIFT / PAGE_SHIFT assume_specification ==="; grep -rn "assume
+
+[THINKING] The canonical definition of `spec_page_size` lives in `crate::hal::mem` via the frame module, so I need to import it directly there rather than redefining it in phys.spec.rs, since phys is already re-exported into hal::mem and a duplicate would create ambiguity.
+
+Now I'm looking at `from_number`, which uses `mem::FRAME_SIZE`, and I need to establish that `FRAME_SIZE` equals `spec_page_size()`. The frame module already has an assume_specification for `PAGE_SIZE`, but `FRAME_SIZE` is a separate constant (even though it has the same value), so I need to check whether there's already a specification for it or if I need to add one. Let me search through the verified modules to see if `FRAME_SIZE` is already specified anywhere.
+[RESULT ✓] bash: === FRAME_SIZE / FRAME_SHIFT / PAGE_SHIFT assume_specification ===
+=== paging mod re-export of FrameNumber ===
+src/libs/arch/src/x86/mem/paging/mod.rs:17:pub use flags::*;
+src/libs/arch/src/x86/mem/paging/mod.rs:18:pub use frame::FrameNumber;
+src/libs/arch/src/x86/mem/paging/mod.rs:19:pub use pde::*...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== sys mm/mod.rs Address trait ==="; grep -rn "trait Address\|fn into_raw_value\|fn 
+
+[THINKING] The grep search didn't find assume_specification in the spec.rs files, so I'll move on. I know PAGE_SIZE is defined inline in frame.rs, and I'm checking whether `::arch::mem::FRAME_SIZE` has any collisions elsewhere—it doesn't seem to. Now I need to figure out the correct method path for assume_specification on FrameNumber, which is re-exported from `::arch::mem::paging::FrameNumber`.
+
+For the assume_specification on FrameNumber methods, I'll define a spec function `spec_frame_raw_value` that takes a FrameNumber and returns its abstract integer value. This works fine in Verus since spec functions can take any type as a parameter, treating it opaquely. For `into_raw_value(self)`, the ensures clause will state that the result equals `spec_frame_raw_value(self)`, and for `from_raw_value(value)`, it returns an Option<FrameNumber> which Verus handles naturally.
+
+Now I'm reconsidering whether I need to add assume_specification to the Address trait method `into_raw_value` on VirtualAddress, or if there's a way to avoid that complexity in the `into_frame_number` body. I need to look at the Address trait definition in sys/mm/mod.rs to see if it's already annotated with Verus specs or marked as external.
+[RESULT ✓] bash: === sys mm/mod.rs Address trait ===
+=== find Address trait def ===
+src/libs/sys/src/sys/mm/address/mod.rs
+=== virt.rs annotations present? ===
+30:#[verus_verify(external_derive)]
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== Address trait def ==="; sed -n '1,140p' src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] bash: === Address trait def ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//=================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now I understand the design. Let me set up a todo list and write the spec file.
+[TOOL] report_intent: Writing phys spec and annotations
+[TOOL] sql: {'description': 'Track phys verification todos', 'query': "INSERT INTO todos (id
+
+[THINKING] The `Address` trait is marked for verification but lacks default specifications in its methods. I see that `kframe.spec.rs` and `page.spec.rs` use `assume_specification` for the `PageAligned<T>` implementations of `into_raw_value` and `from_raw_value`, so I could apply the same approach to `VirtualAddress`. Though I'm wondering if I actually need it—let me think through what `into_frame_number` requires when calling `self.0.into_raw_value()`.
+
+To connect the raw address to the spec, I need to establish that `raw_addr == self@`. Since the closed view means `self@ == self.0@`, and `VirtualAddress`'s view is `self.0 as int`, the `assume_specification` would bridge the gap by asserting that `into_raw_value(self.0) as int == self.0@`. This gives me the assumption that the raw value cast to int equals the address's view representation.
+
+There's a subtle consideration though: within the `phys.rs` module, `self@` for `PhysicalAddress` unfolds to `self.0@`, and since `self.0@` for `VirtualAddress` is `self.0.0 as int`, the chain works out—`raw_addr as int == self@`. The `assume_specification` for `VirtualAddress::into_raw_value` shouldn't conflict with anything since it's unspecced elsewhere in the sys crate.
+
+For `VirtualAddress::new`, I need a similar assumption: that constructing a new address with a value produces a result whose view equals that value cast to int. Then for `from_number`, the result's view becomes `frame.into_raw_value() * FRAME_SIZE` cast to int, which matches the spec when accounting for the multiplication of the frame's raw value and page size—assuming no overflow in the usize multiplication.
+
+When I use `proof!{ admit(); }` before the return, it discharges all remaining proof obligations including the ensures clause, making it a proper placeholder for the spec phase. For `from_mmio_address`, I'm working through a similar verification strategy.
+
+My plan is to add `proof!{ admit(); }` to `from_number` and `into_frame_number` where the overflow and bit-shift reasoning gets complex, then try `from_mmio_address` without it first. The `proof!` macro is already available from the vstd prelude, so that's straightforward. I'm now reconsidering whether these proof blocks belong in the exec function bodies or if they should live in proof.rs instead. I'll use admit for the shift-to-divide proof since it's explicitly allowed in the spec phase. For FRAME_SHIFT itself, I need to give it an assume_spec that constrains its value to be a valid shift amount (less than 64) so the exec code typechecks properly under Verus. I need to give FRAME_SHIFT an assume_spec that bounds the shift amount to ensure well-definedness, and I'm weighing whether to also tie it to the page size relationship via a power-of-two constraint or keep it minimal for now. I'm reconsidering whether to tie the shift and size relationship directly in the assume_spec or keep it simple. The core issue is balancing honesty with practicality — I could specify that `spec_page_size() == 2^result`, but that introduces complications with pow2 availability and type conversions. Since I'm already admitting the body of `into_frame_number`, the weak spec of just `result < usize::BITS` is sufficient for typechecking and is truthful, even if incomplete. The shift-size equivalence can be handled later in the proving phase when I have more context and can strengthen the spec if needed. Putting `proof! { admit(); }` at the start of both functions would discharge all subsequent obligations including the shift and unwrap, potentially eliminating the need for FRAME_SHIFT/FRAME_SIZE assume_specs just for typechecking. But I still need to verify whether Verus allows referencing external consts at all in verified code.
+
+Writing spec definitions... I'm defining the type invariant for PhysicalAddress to ensure the frame number stays within valid bounds, then realizing there's a syntax question about how multiple ensures clauses are separated in the assume_specification macro — they use commas between conditions and end with a semicolon. I'm also deciding where to place the invariant: keeping the View inline in phys.rs but moving inv to phys.spec.rs alongside the helper functions it depends on, even though they'll be separate impl blocks. The spec_frame_number and spec_from_number helpers are referenced by both the invariant and the ensures clauses for into_frame_number and from_number.
+
+Now I'm checking that the uninterpreted functions like spec_max_frame_number and spec_frame_raw_value are properly bound across all their uses in the invariant, the assume_specifications, and the FrameNumber methods. I'm also verifying that assume_specification can work on methods from foreign non-Verus types like FrameNumber from the arch crate — it should work fine since assume_specification is designed for external functions regardless of whether their crate is Verus-enabled.
+
+For the spec function taking FrameNumber as a parameter, Verus should handle it as an opaque external type since it's already processing FrameNumber in exec signatures. The Option::unwrap in into_frame_number will require proving is_Some, but since I'm admitting that function anyway, it's acceptable. The key question is whether from_number needs to explicitly ensure result.inv() — the invariant should follow from the value relation and the alignment guarantees, so downstream callers that need inv() should be able to derive it from the ensures clause. The caller of from_frame_number doesn't actually need inv() or alignment guarantees directly—from_address validates alignment internally and returns an error if it fails. So I'll stick with view_design and keep from_number's ensures minimal: just the raw value equation. The inv() property and alignment are consequences the caller can derive if needed, but there's no obligation to prove them since inv() isn't a type invariant. For from_mmio, I'm requiring frame-representability upfront so the result can satisfy inv(), and since the result's raw value equals the input address, inv() holds by construction. Now I'm ready to write the files. I need to include the spec file properly in phys.rs and add the `spec_page_size` import inside the verus block of phys.spec.rs, similar to how page.spec.rs handles it. There's a potential circular dependency concern with `spec_page_size` being re-exported through `hal::mem`, but since phys.spec.rs is part of the phys module itself, the import should resolve correctly without conflict.
+
+For proof.rs, I don't actually need separate proof lemmas since the round-trip relationships between `from_number` and `into_frame_number` are derivable from the ensures clauses themselves, and my exec functions already use inline `proof! { admit(); }` blocks. I'll leave proof.rs empty as that's acceptable for this design.
+
+Now I'm working through the placement of `admit()` calls more carefully — specifically whether I can avoid them by proving the unwrap succeeds. The challenge is that `into_frame_number` needs to prove the `from_raw_value` returns `Some`, which requires showing the frame number is within bounds. This ties back to the shift relationship and the invariant, but without fully specifying the shift semantics, I'll place the admit at the end of both functions for clarity, relying on the FRAME_SHIFT bound spec to let the shift typecheck first. With admit at the start, the ensures clauses are still attached to the function signature for callers to see, even though they're vacuously discharged — that's what matters for the spec. Now I'm ready to write out the phys.spec.rs file with the assume_specifications for VirtualAddress::new and the other Address trait methods, plus the admit calls strategically placed in from_number and into_frame_number. One lingering question about const fn and assume_specification, but that should be fine. Let me start implementing.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] sql: 3 row(s) inserted. Last inserted row ID: 3.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verify-kernel\|MODULE\|verify:" Makefile 2>/dev/null | head; echo "=== build skill
+
+[THINKING] I need to figure out the correct module path format for the `make verify-kernel` command—the pattern looks like it should be `MODULE=hal::mem::types::address::phys` based on the example given, so let me check the Makefile to confirm what syntax it expects.
+[RESULT ✓] bash: 328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+624:verify-kernel: ensure-verus
+629:	$...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/Makefile
+[TOOL] view: /home/ruize/nanvix-phy/Makefile
+[RESULT ✓] view: 320. 
+321. export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+322. 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+323. 	$(CARGO) verus verify --locked --no-default-features
+324. 
+325. export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+326. export VERUS_AI_DIR ?= /home/ruiz...
+[RESULT ✓] view: 610. 
+611. # Pattern rule for verifying individual crates.
+612. # Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
+613. $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+614. ifeq ($(VERUS_EXECUTABLE_DIR),)
+615. 	@true
+616. else
+617. 	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+618. 	PATH...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs.new
+
+[THINKING] I need to figure out the correct module path format for the `--module` argument—it probably expects the path without the crate prefix, so `hal::mem::types::address::phys` instead of `kernel::hal::mem::types::address::phys`. Rather than running a slow baseline verify first, I'll write the spec file now and test it.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs.new with 11 characters
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && rm -f src/kernel/src/hal/mem/types/address/phys.spec.rs.new && cat > src/kernel/src/hal/mem
+
+[THINKING] I'll overwrite the phys.spec.rs file directly instead of using the placeholder, since it already contains the basic Verus structure.
+[RESULT ✓] bash: written
+117 src/kernel/src/hal/mem/types/address/phys.spec.rs
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== body-verified exec fns: attribute pattern ==="; grep -rn -B1 "verus_spec(ret\|ver
+
+[THINKING] I'm annotating the exec functions in phys.rs, keeping the inline View impl at the bottom. The inv() function has moved to spec.rs, and both files use the same `#[cfg(verus_keep_ghost)]` gating, so that's consistent. Now I need to add the verus attribute...
+
+Adding verus_spec annotations... I need to make sure `proof!` and `admit()` are available from the vstd prelude, which they are since frame.rs already imports it. The key question is whether `#[verus_spec]` on individual functions is enough without `#[verus_verify]` on the impl block itself — and looking at the existing code, it appears Verus will verify functions marked with `#[verus_spec]` even without the impl block being annotated, so I don't need to add that attribute.
+[RESULT ✓] bash: === body-verified exec fns: attribute pattern ===
+115-    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+--
+181-    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+--
+254-    #[verus_verify(external_body)]
+255:    #[verus_spec(result =>
+--
+339-    #[verus_verify(external...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see that body-verified functions only need the `#[verus_spec(...)]` attribute without `#[verus_verify(external_body)]`, so I'll apply just that annotation to my three functions. Now I'm checking one of these functions to understand the pattern and how `proof!` blocks work inside them.
+[RESULT ✓] view: 731. #[verus_spec(result =>
+732.     with Tracked(auth): Tracked<&mut PhysAuth>
+733.     requires
+734.         phys_view().initialized,
+735.         phys_view().inv(),
+736.         old(auth)@ == phys_view(),
+737.         old(auth)@.initialized,
+738.         old(auth)@.inv(),
+739.     ensures
+740.   ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now let me annotate the exec functions in phys.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] Now I'm applying the three edits to the phys.rs file.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -60
+
+[THINKING] The spec helper functions from phys.spec.rs are being referenced in the `#[verus_spec]` attributes on the exec functions, and since they're public in the included module, they should resolve correctly by their bare names.
+
+Now I'm going to run verify-kernel scoped to the module using `MODULE=hal::mem::types::address::phys` to check if verification works, starting with a normal build first to confirm compilation still succeeds with Verus erased.
