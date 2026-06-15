@@ -6,7 +6,7 @@
   "current_phase_idx": 2,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "6659da14-79df-4d98-8c88-457eaf10692e",
   "completed": false,
   "base_branch": "virt-mm-ai-spec-property-analysis",
   "verus_branch": "virt-mm-ai-spec-property-analysis",
