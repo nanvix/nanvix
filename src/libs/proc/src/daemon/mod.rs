@@ -8,6 +8,7 @@
 use crate::{
     identity::ProcessIdentity,
     message,
+    ForkSyncAckMessage,
     ForkSyncMessage,
     LookupMessage,
     ProcessManagementMessage,
@@ -78,6 +79,11 @@ struct ProcessRecord {
     /// Used to acknowledge a fork-sync request regardless of whether it races ahead of the
     /// process-creation event.
     fork_clone_done: bool,
+    /// Whether the fork-clone of this process could not be dispatched to the filesystem daemon (the
+    /// notification failed to build or send). Used to release a blocked fork-sync waiter with a
+    /// failure acknowledgement instead of leaving it deadlocked on a snapshot that will never be
+    /// taken.
+    fork_clone_failed: bool,
     /// Termination status once the process has terminated and is awaiting reap by `waitpid()`.
     /// `Some(status)` marks a zombie; `None` marks a live (or not-yet-terminated) process.
     zombie: Option<i32>,
@@ -92,6 +98,7 @@ impl ProcessRecord {
             parent,
             children: Vec::new(),
             fork_clone_done: false,
+            fork_clone_failed: false,
             zombie: None,
         }
     }
@@ -270,15 +277,20 @@ impl ProcessDaemon {
         // been taken, letting parent and child proceed past unduplicated filesystem state.
         if parent != ProcessIdentifier::KERNEL {
             let clone_dispatched: bool = self.notify_fork_clone(parent, child);
-            if clone_dispatched {
-                if let Some(record) = self.processes.get_mut(&child) {
+            if let Some(record) = self.processes.get_mut(&child) {
+                if clone_dispatched {
                     record.fork_clone_done = true;
+                } else {
+                    // The fork-clone notification could not be dispatched. Mark the failure so that
+                    // a fork-sync waiter (whether already pending below or arriving later) is
+                    // released with a failure acknowledgement rather than left blocked forever.
+                    record.fork_clone_failed = true;
                 }
             }
         }
 
         // Release a parent (and its child) that is already blocked awaiting fork synchronization.
-        // Two conditions must hold before the waiter is acknowledged:
+        // Two conditions must hold before the waiter is acknowledged with success:
         //
         // 1. The waiter must match the kernel-attributed real parent of this child. A pending entry
         //    whose waiter differs was injected by a process that named a `child` that is not
@@ -286,10 +298,11 @@ impl ProcessDaemon {
         //    without acknowledging, so it cannot inject a spurious acknowledgement into a victim's
         //    mailbox or displace the genuine waiter.
         // 2. The fork-clone must have actually been dispatched to the filesystem daemon, tracked by
-        //    `fork_clone_done`. If the notification failed to send, the flag stays `false` and the
-        //    waiter is left pending rather than acknowledged: releasing it would let parent and
-        //    child proceed past a filesystem snapshot that was never taken, mirroring the
-        //    `fork_clone_done` gating on the fork-sync fast path in `handle_fork_sync()`.
+        //    `fork_clone_done`. If the notification failed to send, the waiter is instead released
+        //    with a failure acknowledgement so that `fork()` aborts rather than acknowledged with
+        //    success: a success acknowledgement would let parent and child proceed past a filesystem
+        //    snapshot that was never taken, mirroring the `fork_clone_done` gating on the fork-sync
+        //    fast path in `handle_fork_sync()`.
         if let Some(pos) = self
             .pending_fork_syncs
             .iter()
@@ -316,14 +329,16 @@ impl ProcessDaemon {
                 self.release_fork_sync(waiting_parent, child);
             } else {
                 // Genuine waiter but the fork-clone was not dispatched (the notification failed to
-                // send). Leave it pending rather than acknowledge a snapshot that was never taken;
-                // it is reclaimed when the child terminates.
+                // build or send). Release it with a failure acknowledgement so that `fork()` aborts
+                // in both parent and child instead of deadlocking forever on a snapshot that was
+                // never taken.
+                self.pending_fork_syncs.swap_remove(pos);
                 ::syslog::warn!(
-                    "fork-clone not dispatched, leaving fork-sync waiter blocked (parent={:?}, \
-                     child={:?})",
+                    "fork-clone not dispatched, failing fork-sync waiter (parent={:?}, child={:?})",
                     waiting_parent,
                     child
                 );
+                self.fail_fork_sync(waiting_parent, child);
             }
         }
 
@@ -918,10 +933,12 @@ impl ProcessDaemon {
     /// filesystem state of `child` has been duplicated.
     ///
     /// If the child's fork-clone has already been dispatched to the filesystem daemon, the parent
-    /// and child are released immediately. Otherwise the request is recorded and they are released
-    /// once the child's process-creation event dispatches the clone. Either way, the release is
-    /// ordered after the fork-clone on the filesystem daemon's receive path, so neither process can
-    /// race ahead of the snapshot.
+    /// and child are released immediately with a success acknowledgement. If the fork-clone could
+    /// not be dispatched, they are released with a failure acknowledgement so that `fork()` aborts
+    /// instead of hanging. Otherwise the request is recorded and resolved once the child's
+    /// process-creation event dispatches (or fails to dispatch) the clone. A success release is
+    /// always ordered after the fork-clone on the filesystem daemon's receive path, so neither
+    /// process can race ahead of the snapshot.
     fn handle_fork_sync(&mut self, parent: ProcessIdentifier, child: ProcessIdentifier) {
         ::syslog::info!("fork-sync request (parent={:?}, child={:?})", parent, child);
 
@@ -944,13 +961,21 @@ impl ProcessDaemon {
             }
         }
 
-        let cloned: bool = self
+        let (cloned, failed): (bool, bool) = self
             .processes
             .get(&child)
-            .map(|record| record.fork_clone_done)
-            .unwrap_or(false);
+            .map(|record| (record.fork_clone_done, record.fork_clone_failed))
+            .unwrap_or((false, false));
         if cloned {
             self.release_fork_sync(parent, child);
+        } else if failed {
+            // The fork-clone could not be dispatched: abort the fork rather than block forever.
+            ::syslog::warn!(
+                "fork-clone not dispatched, failing fork-sync request (parent={:?}, child={:?})",
+                parent,
+                child
+            );
+            self.fail_fork_sync(parent, child);
         } else {
             // Replace any stale entry for this child before recording the new waiter, preserving
             // the at-most-one-waiter-per-child invariant that the map previously guaranteed.
@@ -960,24 +985,42 @@ impl ProcessDaemon {
     }
 
     /// Releases a parent and its freshly forked child that are blocked awaiting fork
-    /// synchronization, by acknowledging both. The fork-clone has already been dispatched to the
-    /// filesystem daemon, so these acknowledgements are necessarily ordered after it.
+    /// synchronization, by acknowledging both with success. The fork-clone has already been
+    /// dispatched to the filesystem daemon, so these acknowledgements are necessarily ordered after
+    /// it.
     fn release_fork_sync(&self, parent: ProcessIdentifier, child: ProcessIdentifier) {
+        self.send_fork_sync_ack(parent, child, ForkSyncAckMessage::STATUS_SUCCESS);
+    }
+
+    /// Releases a parent and its freshly forked child that are blocked awaiting fork
+    /// synchronization, by acknowledging both with a failure status. Used when the fork-clone could
+    /// not be dispatched to the filesystem daemon, so that `fork()` aborts in both processes instead
+    /// of deadlocking on a snapshot that will never be taken.
+    fn fail_fork_sync(&self, parent: ProcessIdentifier, child: ProcessIdentifier) {
+        self.send_fork_sync_ack(parent, child, ErrorCode::TryAgain.get());
+    }
+
+    /// Sends a fork-sync acknowledgement carrying `status` to both the `parent` and the `child`.
+    fn send_fork_sync_ack(&self, parent: ProcessIdentifier, child: ProcessIdentifier, status: i32) {
         for pid in [parent, child] {
-            match message::fork_sync_ack(pid) {
+            match message::fork_sync_ack(pid, status) {
                 Ok(ack) => {
                     if let Err(e) = ::sys::kcall::ipc::__kcall_send(&ack) {
                         ::syslog::warn!(
-                            "release_fork_sync: failed to acknowledge (pid={:?}, error={:?})",
+                            "send_fork_sync_ack: failed to acknowledge (pid={:?}, status={:?}, \
+                             error={:?})",
                             pid,
+                            status,
                             e
                         );
                     }
                 },
                 Err(e) => {
                     ::syslog::warn!(
-                        "release_fork_sync: failed to build acknowledgement (pid={:?}, error={:?})",
+                        "send_fork_sync_ack: failed to build acknowledgement (pid={:?}, \
+                         status={:?}, error={:?})",
                         pid,
+                        status,
                         e
                     );
                 },

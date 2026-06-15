@@ -45,6 +45,26 @@ pub struct ForkSyncMessage {
 // NOTE: The size of a fork-sync message must match the size of a process management message payload.
 ::static_assert::assert_eq_size!(ForkSyncMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
+///
+/// # Description
+///
+/// A message sent by the process manager daemon to release a parent or child blocked on a fork-sync
+/// request. The `status` field conveys the outcome of the fork synchronization: `0` when the
+/// fork-clone was successfully dispatched to the filesystem daemon, or a non-zero error code when it
+/// could not be dispatched. A non-zero status lets a blocked `fork()` abort instead of hanging
+/// forever on a snapshot that will never be taken.
+///
+#[repr(C, packed)]
+pub struct ForkSyncAckMessage {
+    /// Outcome of the fork synchronization: `0` on success, or a non-zero error code on failure.
+    pub status: i32,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+
+// NOTE: The size of a fork-sync acknowledgement message must match the size of a process management
+// message payload.
+::static_assert::assert_eq_size!(ForkSyncAckMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -101,9 +121,60 @@ impl ForkSyncMessage {
     }
 }
 
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
+impl ForkSyncAckMessage {
+    /// Status value that marks a successful fork synchronization.
+    pub const STATUS_SUCCESS: i32 = 0;
+
+    /// Size of padding.
+    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new fork-sync acknowledgement message.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Outcome of the fork synchronization (`0` on success, a non-zero error code on
+    ///   failure).
+    ///
+    pub fn new(status: i32) -> Self {
+        Self {
+            status,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a byte array into a fork-sync acknowledgement message.
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: Byte array.
+    ///
+    /// # Returns
+    ///
+    /// A fork-sync acknowledgement message.
+    ///
+    pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a fork-sync acknowledgement message into a byte array.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding byte array.
+    ///
+    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+}
 
 /// Wraps a process management message destined to `destination` into an IPC message sent from
 /// `source`.
@@ -161,16 +232,19 @@ pub fn fork_sync_request(
 /// # Parameters
 ///
 /// - `destination`: Process identifier of the process to release.
+/// - `status`: Outcome of the fork synchronization (`0` on success, a non-zero error code on
+///   failure).
 ///
 /// # Returns
 ///
-/// Upon successful completion, a fork-sync acknowledgement message is returned. Otherwise, an error
-/// is returned instead.
+/// Upon successful completion, an IPC message carrying a fork-sync acknowledgement is returned.
+/// Otherwise, an error is returned instead.
 ///
-pub fn fork_sync_ack(destination: ProcessIdentifier) -> Result<Message, Error> {
+pub fn fork_sync_ack(destination: ProcessIdentifier, status: i32) -> Result<Message, Error> {
+    let ack_message: ForkSyncAckMessage = ForkSyncAckMessage::new(status);
     let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
         ProcessManagementMessageHeader::ForkSyncAck,
-        [0u8; ProcessManagementMessage::PAYLOAD_SIZE],
+        ack_message.into_bytes(),
     );
 
     Ok(wrap(ProcessIdentifier::PROCD, destination, pm_message))

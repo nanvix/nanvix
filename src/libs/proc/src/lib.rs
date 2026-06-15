@@ -43,6 +43,7 @@ pub use message::{
     wait_request,
     wait_response,
     ForkCloneMessage,
+    ForkSyncAckMessage,
     ForkSyncMessage,
     LookupMessage,
     LookupResponseMessage,
