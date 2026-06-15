@@ -103,7 +103,8 @@ impl IdentityMapView {
 // types / given trusted external specifications here so that the in-scope identity-map bodies can
 // be translated. These are placeholders: when the underlying modules are verified, their real
 // `#[verus_spec]` contracts supersede them. The intra-call obligations they would discharge are
-// currently `admit()`-ed in the exec bodies, so minimal (state-free) contracts suffice.
+// covered by the `#[verus_verify(external_body)]` boundary on the exec bodies (TCB-listed in
+// `verus-ai-logs/tcb-allowed.md`), so minimal (state-free) contracts suffice.
 //==================================================================================================
 
 use super::page_table_allocator::PageTableBss;

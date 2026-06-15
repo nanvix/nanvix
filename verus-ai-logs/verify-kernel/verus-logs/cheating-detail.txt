@@ -24,4 +24,4 @@
     - mm/virt/identity_map.rs:534 ensure_pt: external_body
     - mm/virt/identity_map.rs:625 ensure_pte: external_body
     - mm/virt/identity_map.rs:714 identity_map_page: external_body
-    - mm/virt/identity_map.spec.rs:143 ExPageTableBss (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:144 ExPageTableBss (struct): external_type_spec

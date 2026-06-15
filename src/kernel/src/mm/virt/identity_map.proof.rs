@@ -3,10 +3,9 @@ verus! {
 //==================================================================================================
 // Transition lemmas for the kernel identity map
 //
-// Signatures only during the specification phase; bodies are `admit()` placeholders that the
-// proving phase discharges. They expose the monotonicity / idempotence / accessibility facts of
-// the View transitions (`spec_install_page`, `spec_map_page`) that the in-scope exec functions
-// (`ensure_pte`, `identity_map_page`) rely on.
+// These lemmas carry fully discharged proof bodies (no `admit()`/`assume()`). They expose the
+// monotonicity / idempotence / accessibility facts of the View transitions (`spec_install_page`,
+// `spec_map_page`) that the in-scope exec functions (`ensure_pte`, `identity_map_page`) rely on.
 //==================================================================================================
 
 // Installing a page makes that page a member of `mapped` (the V==P realization performed by

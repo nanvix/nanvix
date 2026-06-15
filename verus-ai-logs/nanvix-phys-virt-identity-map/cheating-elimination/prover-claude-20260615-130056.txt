@@ -549,3 +549,91 @@ My spec edit persisted (the pipeline tooling committed it); exec source is uncha
 [THINKING] The pipeline tooling must have auto-committed my spec file changes during the verification run, which explains why the comment now appears in HEAD even though I didn't explicitly commit it myself. The git status showing only log files as modified confirms the edit persisted through that process.
 
 I should stop worrying about the git mechanics and just verify that the executable source matches the original baseline from the START commit, which it does. Now I need to run the full crate verification to make sure removing that assumption didn't introduce any regressions.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Full kernel verify exits 0 — no regression from removing `as_ptr`. Let me check the `cfg(verus_keep_ghost)` lines in the module to confirm they're not cheating cfg-gated exec code.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The verification ran with cached results and only showed a note for the mm::virt::identity_map module, exiting cleanly with no errors. The as_ptr removal didn't cause any issues, and the global state remained unchanged across the metrics.
+
+Now I'm checking whether the cfg_gate count of 19 includes any entries from identity_map itself. The earlier grep found cfg gates in identity_map.rs at specific lines, but the cheating detail didn't list identity_map as contributing to cfg_gate counts. I need to understand what cfg_gate actually counts and whether identity_map is involved, particularly around the concern about using cfg gates to hide execution code differences between verus and non-verus builds.
+[RESULT ✓] view: 20. // Imports
+21. //==================================================================================================
+22. 
+23. use vstd::prelude::*;
+24. #[cfg(verus_keep_ghost)]
+25. include!("identity_map.spec.rs");
+26. #[cfg(verus_keep_ghost)]
+27. include!("identity_map.proof.rs");
+28. 
+29. use s...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+All cheating in this module is now TCB-sanctioned (3 `external_body` + `ExPageTableBss`), the dead `as_ptr` assume_specification is removed, and full-kernel verify passes. Let me do a final precise scan for any real admit/assume and confirm the `FixedSizeBumpAllocator::new` placeholder is genuinely required.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== real admit()/assume() calls (exclude comments/assume_init/assume_specificat
+
+[THINKING] The `#[cfg(verus_keep_ghost)]` attributes at those lines are the standard pattern for including spec and proof files during Verus verification—they're ghost-only includes that don't affect exec code, and this approach is used consistently throughout the codebase. Now I'm checking whether the `#[cfg(feature = "test")]` at line 739 is actually marking a test function.
+
+These cfg gates are identical to the base branch, so they're pre-existing and not introduced by my changes. The global cfg_gate count of 19 doesn't attribute any to identity_map in the cheating details, which only flagged external_body and external_type_spec for other modules. Since the source file is unchanged from base, I introduced zero new cfg gates.
+
+Looking at the full picture: the three external_body declarations and the external_type_spec are TCB-listed exceptions, the assume_specification for as_ptr was removed, and the FixedSizeBumpAllocator::new remains as a necessary placeholder for a verified out-of-scope static. The module verifies cleanly with no admits or assumes in the actual source, and the proof file contains real lemmas. The remaining question is whether FixedSizeBumpAllocator::new's assume_specification counts as cheating or is justified as a not-yet-verified-callee placeholder.
+
+Checking the gate's accounting: it reports assume=0, and the cheating detail only lists external_body, external_type_spec, and admit—assume_specification isn't counted in any of those categories. So the assume_specification for new doesn't trip the cheating gate, and it's a documented placeholder class that gets eliminated once the bump_allocator module is verified. This means the cheating determination is complete.
+
+The module's remaining violations are entirely TCB-sanctioned external_body items, which are explicitly allowed by the task rules. I've already made a genuine reduction by removing the dead as_ptr assume_specification. The three functions that remain with external_body are listed in tcb-allowed.md, so keeping them is the correct outcome—the task permits this exception. Since these are external_body (not admit or assume), there's nothing to record in verification_todo.md as a proof gap. The phase passes.
+
+Now I'm preparing the fix_report.md with precise before/after counts. The starting state had three external_body functions, one external_type_spec, and two assume_specifications. After my changes, I've removed the as_ptr assume_specification, leaving one, while the three TCB-allowed external_body functions and the external_type_spec remain unchanged. The `FixedSizeBumpAllocator::new` assume_specification can't be eliminated since it's in an out-of-scope crate and the static initializer needs it as a sanctioned placeholder—there's no way to provide a real spec without touching unlisted code. Let me do one final check to confirm there are no other admit or assume statements hiding in the three module files beyond what I've already found.
+[RESULT ✓] bash: === real admit()/assume() calls (exclude comments/assume_init/assume_specification) ===
+exit grep: 1
+=== remaining cheating markers ===
+src/kernel/src/mm/virt/identity_map.spec.rs:106:// currently `admit()`-ed in the exec bodies, so minimal (state-free) contracts suffice.
+src/kernel/src/mm/virt/iden...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Zero real `admit()`/`assume()` calls confirmed. Two stale comments reference `admit()` placeholders that are now real proofs / `external_body`. Let me update them for accuracy.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] I've confirmed there are no actual admit() or assume() function calls across the three files—just comments referencing them and a couple of specification markers. The proof file mentions that bodies are admit() placeholders, though the thought cuts off mid-sentence.
+
+The bodies are actually real proofs now, making that comment stale and misleading. I need to update the stale comments in both proof.rs and spec.rs to reflect the current state: the proof bodies are genuine implementations, not placeholders, and the exec bodies use external_body rather than admit(). Let me check the proof file header to make sure I update it accurately.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // Signatures only during the specification phase; bodies are `admit()` placeholders that the
+7. // proving phase disch...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+[RESULT ✓] view: 100. //
+101. // The kernel HAL paging layer (`arch::mem::paging` types/functions) and the kernel
+102. // `page_table_allocator` storage marker are not verified yet. They are registered as external
+103. // types / given trusted external specifications here so that the in-scope identity-map bodies can...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Now let me re-verify the module to confirm the comment edits didn't break anything.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | sed -n '/=== Res
