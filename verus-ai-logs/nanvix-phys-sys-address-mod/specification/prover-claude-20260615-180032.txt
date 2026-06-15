@@ -1750,3 +1750,47 @@ Turn 105
 ────────────────────────────────────────────────────────────
 Working tree is clean (05-31, no patch). Now run verify-sys with the correctly pinned verus:
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=mm::address 2>&1 | tail -25
+[RESULT ✓] bash: - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_from
+    - fmt
+    - new
+    - seconds
+    - nanoseconds
+    - checked_sub
+    - checked_add_duration
+    - checked_sub_duration
+    - partial_cmp
+    - cmp
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error...
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '15,80p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-25-49.log
+
+[THINKING] The test failed almost immediately with a compilation error—verus didn't even run. Let me check the logs to see what went wrong.
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: could not find module mm::address specified by --verify-module or --verify-only-module
+       available modules are:
+       - sys::mm::access
+       - sys::mm::address
+       - sys...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+The 05-31 verus compiles vstd cleanly. Just need the crate-qualified module path:
+[TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=sys::mm::address 2>&1 | tail
+
+[THINKING] The 05-31 version compiles vstd without the atomic error, but the module path needs to be `sys::mm::address` instead of just `mm::address`. I should retry with the full module path including the crate prefix.
