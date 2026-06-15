@@ -940,3 +940,264 @@ Turn 17
 [TOOL] report_intent: Running module verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "upool\.rs|mm::phys::upool|upool" verus-ai-logs/verify-kernel/verus-l
+[RESULT ✓] bash: 17:    - mm/phys/upool.rs:255 new: external_body
+18:    - mm/phys/upool.rs:288 alloc: external_body
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 60}
+[RESULT ✓] read_bash: (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Verification passed (exit 0). Let me confirm the verus PASS count and that no upool admits exist.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE "verified|errors" verus-ai-logs/verify-kernel/verus-logs/verus_202
+[RESULT ✓] bash: === upool entries in cheating detail ===
+    - mm/phys/upool.rs:255 new: external_body
+    - mm/phys/upool.rs:288 alloc: external_body
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE "[0-9]+ verified, [0-9]+ error" verus-ai-logs/verify-kernel/verus-
+[RESULT ✓] bash: 
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "admit=$(rg -n "admit\\s*\\(" src/kernel/src/mm/phys/upool.rs src/kern
+[RESULT ✓] bash: admit=0
+assume=0
+assume_specification=0
+external_body=2
+cfg_attr=4
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -iE "verified|error" verus-ai-logs/verify-kernel/verus-logs/verus_2026
+[RESULT ✓] bash: 
+<shellId: 36 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -40 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_13-46-08.l
+[RESULT ✓] bash: 1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1187:38
+     |
+1187 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+     |                   ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== upool mentions in log ==="; grep -in "upool" verus-ai-logs/verify
+[RESULT ✓] bash: === upool mentions in log ===
+=== warning count in log ===
+0
+=== verification:/cheating:/status from log tail ===
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review && cat > /home/ruize/n
+[RESULT ✓] bash: 
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys::upool`
+2. 
+3. ## Checklist
+4. - [ ] 1. Spec quality for 8 in-scope functions (gaps found; see blockers)
+5. - [ ] 2. Caller coverage for all expectations (partial: 8/15)
+6. - [x] 3. Proof completeness in upool files (`admit()==0`; only approved `external_bo...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Final review written to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt-5.3-codex.md`
+
+**Final Result: FAIL**
+
+- **Upool cheating counts (scoped to upool files):**
+  - admit: **0**
+  - assume: **0**
+  - external_body: **2** (`Upool::new`, `Upool::alloc`)
+  - assume_specification: **0**
+  - cfg-gated exec: **1** (logging gate in `drop`; total cfg attrs: 4)
+
+- **Caller coverage:** **8/15**
+
+- **BLOCKERS:**
+  1. Incomplete caller contract coverage.
+  2. `UserFrame::drop` lacks functional release ensures.
+  3. `UserFrame::share` missing `+1` transition and err-path unchanged-state guarantees (documented deferral, unresolved for strict sign-off).
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': True, 'timeout': 30}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 280s, total_turns: 0, model: gpt-5.3-codex, duration: 277s
+
+Final review written to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phy...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+
+[THINKING] Codex is flagging this as a failure with low caller coverage, but I'm noticing the cfg-gated logging in the drop function should actually be allowed according to the checklist—it's marked as one of the permitted patterns alongside imports, derives, and debug assertions. So Codex might be applying an overly strict classification here.
+All data gathered. Let me verify the do-not-touch defs are unmodified and check for any add_ref/release helpers actually present.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git status whole phys dir (clean=unmodified) ==="; git status --s
+[RESULT ✓] bash: === git status whole phys dir (clean=unmodified) ===
+=== add_ref/release present anywhere in upool? ===
+src/kernel/src/mm/phys/upool.rs:280:                    &&& final(self)@ == old(self)@.alloc_one(uf@)
+=== confirm only Upool::new/alloc carry external_body attr ===
+250:    #[verus_verify(external...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+I have all the data. Let me write the comprehensive review file.
+[TOOL] report_intent: Writing final review file
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-phys-upool/final-review && ls -la verus-
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: total 1596
+drwxrwxr-x 1 ruize ruize     194 Jun 15 13:49 .
+drwxrwxr-x 1 ruize ruize     486 Jun 15 13:42 ..
+-rw-rw-r-- 1 ruize ruize    6477 Jun 15 13:49 final_review.gpt-5.3-codex.md
+-rw-rw-r-- 1 ruize ruize 1548424 Jun 15 13:50 review-claude-20260615-134235.jsonl
+-rw-rw-r-- 1 ruize ruize   73477 J...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md with 17213 characters
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 120s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 406s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review file", tool_calls_completed: 39, (timed out w...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+I'm waiting for the claude review sub-agent to finish writing its review (the codex one is done and reports FAIL). I'll consolidate once it completes.
+Review written. Summary:
+
+## Final Result: **FAIL** (strict, completeness-only — no hard blockers)
+
+**Cheating counts (upool scope, exact):**
+- `admit()`: **0**
+- `assume()`: **0**
+- `external_body`: **2** — `Upool::new` (upool.rs:250) and `Upool::alloc` (upool.rs:271), both TCB-approved
+- `assume_specification`: **0**
+- cfg-gated exec: **0 semantic** (the one `cfg(not(verus_keep_ghost))` at upool.rs:207 gates only the `error!` logging macro — sanctioned)
+- `uninterp spec fn`: 1 (`View for Upool::view`, mechanical consequence of the TCB facade methods)
+
+**Caller coverage: 5/8 fully, 3/8 partial** — `share`, `drop`, `leak` have their reference-count discipline (share `+1`, drop `release`, leak no-release) deferred, not realized as ensures.
+
+**BLOCKERS: NONE.** Verus PASSES (exit 0, 0 errors, 0 in-scope warnings); spec-drift clean; TCB compliant; AST's 1 MISMATCH is a pre-approved logging-macro cfg-gate (semantically identical, no `// VERUS REWRITE`); no code bugs.
+
+**Why FAIL:** Under the strict rubric, the single failing item is spec sufficiency / caller coverage — the contracts for `UserFrame::share`/`drop`/`leak` are not "sufficient to reject bugs" (a non-incrementing share, a leaking drop, or a freeing leak would all satisfy them). This is a **documented, sound, technically-forced §8 deferral** (0-arg `uninterp phys_view()` constant + unverified `frame::free`/`frame::share`), to be lifted when the frame free-function ghost-token layer is proven — not a cheating/soundness/TCB violation. A reviewer accepting the deferral as an in-scope phase boundary could reasonably score PASS.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 30, 'wait': True}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 416s, total_turns: 0, model: claude-opus-4.8, duration: 414s
+
+Review written. Summary:
+
+## Final Result: **FAIL** (strict, completeness-only — no hard bl...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Both reviews complete. Let me read the raw files to consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review && echo "=== CLAUDE ===" && 
+
+[THINKING] Both reviews are complete, but they both hit the FAIL threshold on the strict rubric because of incomplete caller coverage. There are no critical blockers though—no admit, assume, or unapproved external_body issues, and verus passes. Now I'm pulling the raw review files to extract the details and write up the consolidated final review.
+[RESULT ✓] bash: === CLAUDE ===
+269 final_review.claude.md
+=== CODEX ===
+131 final_review.gpt-5.3-codex.md
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.gpt-5.3-codex.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/final-review/final_review.claude.md
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys::upool`
+2. 
+3. ## Checklist
+4. - [ ] 1. Spec quality for 8 in-scope functions (gaps found; see blockers)
+5. - [ ] 2. Caller coverage for all expectations (partial: 8/15)
+6. - [x] 3. Proof completeness in upool files (`admit()==0`; only approved `external_bo...
+[RESULT ✓] view: 1. # Final Verification Review — `mm::phys::upool`
+2. 
+3. > Independent, STRICT final review of the `phys-upool` module.
+4. > Reviewer: Copilot CLI (claude). Branch: `verus-ai-prove-bottom-up`.
+5. > Date: 2026-06-15. No source/spec/proof code was modified during this review.
+6. 
+7. In-scope function...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Both reviews agree on the hard facts (no blockers; FAIL only on caller-coverage completeness). Let me run the remaining checklist commands (`make verify`, `make build`) that neither sub-agent ran, then consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^verify|^build|^verify-kernel|verify:" Makefile 2>/dev/null | hea
+
+[THINKING] Both reviews confirm the same key findings: no admits or assumptions in the upool, two external bodies that are TCB-approved, no semantic issues with the configuration-gated execution aside from one sanctioned logging gate, and the AST shows no semantic mismatches beyond the pre-approved stripped config on the logging macro. Verus passes cleanly with zero errors, spec drift is clean, there are no code bugs, and the bugs.md deferral remains valid.
+
+The disagreement centers on how to classify the caller-coverage gaps. The codex marks them as "BLOCKER P0" because the refcount discipline for share/drop/leak operations isn't fully realized as ensures clauses—a documented deferral under section 8. I'm counting this as a specification completeness issue rather than a hard blocker, since the task's formal blocker definition (admit>0, assume>0, or external_body outside TCB) isn't triggered. However, the strict rubric requires all checklist items to be checked, and the incomplete caller coverage means several specification and proving items remain unchecked, which forces a FAIL verdict despite no hard blockers being present.
+
+Now I'm working through the final_review.md template, marking each checklist item honestly based on both analyses. Most items pass—all public functions have callers searched, caller expectations are documented, the view design is sound, and the core specifications are in place. But the caller-coverage items fail because the share/drop/leak refcount expectations lack corresponding ensures clauses, and this incompleteness cascades to other specification and proving checklist items.
+
+I'm also noting the codex concern about subsumed ensures—result.inv() in new/address/leak might be derivable from the address invariant, but I'll mark it checked with a note since it's debatable rather than a clear failure. The error paths are mostly meaningful, though share's Err clause omits the unchanged-state guarantee, and drop has no ensures at all, which is a gap I need to flag.
+
+The core issue is that while the specs are technically written for the caller, they're incomplete for the critical refcount discipline around share/drop/leak—a caller can't actually prove resource release happened with what's documented. I'm marking caller coverage and spec completeness as failing, keeping the other items checked where they're literally true, and treating the sufficiency gap as the root problem. The core issue is whether I need to run the full `make verify` and `make build` commands myself to properly check those boxes, since the sub-agents only ran module-specific verification. The global cheating detector shows pre-existing admits in other files that are out of scope, but to be thorough I should execute the complete verification suite to confirm the checklist items.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+---targets---
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===== make verify (full) =====" && timeout 900 make verify 2>&1 | tai
