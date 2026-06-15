@@ -847,12 +847,10 @@ pub(super) fn free_count() -> usize {
     // recover `num_bits >= 0` from the `usize` result of `number_of_bits()`.
     // `Bitmap::inv()` references the bitmap's private backing slice, so the bound
     // is opaque in this module and cannot be derived inside `lemma_free_count`.
-    let nbits: usize = inner.bitmap.number_of_bits();
-    let used: usize = inner.bitmap.usage();
     proof! {
         lemma_free_count(inner);
     }
-    nbits - used
+    inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 
 /// Free a frame previously returned by [`alloc`].

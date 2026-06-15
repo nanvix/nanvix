@@ -533,3 +533,69 @@ Turn 22
 
 I ran the module-scoped verification earlier and got exit code 0, but that only verified the mm::phys module specifically. To be thorough, I should run the full `make verify-kernel` without any module restrictions to confirm all 32 modules pass verification across the entire kernel.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.24s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=23 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  Detail: v...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===reproducers dir==="; ls -la verus-ai-logs/nanvix-phys-phys-frame/reproducers/ 2>/d
+
+[THINKING] Looking at the kernel verification results, all the metrics check out—exit code is clean, and the external_body count of 23 is accounted for in the allow-list. Now I need to verify that the cfg_gate count of 9 doesn't include any executable code within frame.rs itself.
+
+I've already confirmed that frame.rs only has the two verus_keep_ghost include gates, which gate ghost-only spec and proof includes rather than executable code. The checklist explicitly permits this since it only restricts cfg-gated exec code, not ghost includes. So that passes.
+
+Going through the full checklist for frame.rs: no admit calls, no assume calls (the assume_init_mut is just a Rust stdlib method), no trusted functions, no exec code without decreases clauses, no cfg-gated exec code, and all 11 external_body references are listed in tcb-allowed.md. The AST diff shows only ghost additions and zero-cost let bindings with erased proof blocks—semantically equivalent to the base. For the one exec deviation in free_count, I need to verify it has the VERUS REWRITE comment and a minimal reproducer.
+
+Actually, looking closer, the free_count change uses "VERUS DEVIATION (pre-approved...)" instead of "VERUS REWRITE" and doesn't include a minimal reproducer. The split of `number_of_bits() - usage()` into named bindings is a genuine exec rewrite, even though it's trivially equivalent. The checklist requires "VERUS REWRITE comment and minimal reproducer" for all exec rewrites, so this deviation comment doesn't follow the required format and lacks the reproducer—that's a potential FAIL unless the pre-approval covers the comment format difference.
+
+Let me check if there's a reproducers directory or project standard that clarifies the "VERUS REWRITE" convention and whether this pre-approved deviation satisfies the requirement.
+[RESULT ✓] bash: ===reproducers dir===
+total 8476
+drwxrwxr-x 1 ruize ruize     228 Jun 15 08:31 .
+drwxrwxr-x 1 ruize ruize     688 Jun 15 09:59 ..
+-rw-rw-r-- 1 ruize ruize    2766 Jun 15 07:55 01_shim_fails.rs
+-rwxrwxr-x 1 ruize ruize 4330080 Jun 15 08:30 02_goal_is_false
+-rw-rw-r-- 1 ruize ruize    2096 Jun 15 07:5...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I found one "VERUS DEVIATION" comment at line 845 for the free_count variable—it's the only rewrite of an existing expression in the file. The checklist requires both a VERUS REWRITE comment and a minimal reproducer, so I need to evaluate whether this passes or fails based on what's in the reproducers directory, which contains general test cases that justify the PhysAuth approach and shim implementation.
+
+Looking at the mutating shims (alloc, alloc_contiguous, book, alloc_range, share), they all follow the same pattern: binding the instance result and the operation result, then adding a ghost proof block that captures the frame state. These let-bindings are mechanically necessary to write the proof! block inline and have zero runtime cost. The pure-query shims (is_covered, refcount) remain unchanged. The free_count split is the only true deviation to an existing computation, and while it's documented with a comment, it doesn't use the standard "VERUS REWRITE" marker and lacks a dedicated minimal reproducer.
+
+Strictly speaking, this is a minor checklist violation—the deviation is benign and documented, but doesn't follow the exact convention required for exec rewrites. ry the "VERUS REWRITE" marker since it's addressing a genuine Verus limitation where the let-bindings materialize usize bounds that wouldn't be available inline. The split itself may seem unnecessary at first, but Verus needs those intermediate bindings to properly track the numeric constraints required by the lemma precondition.
+
+Now I'm moving through the remaining items: the mutating shims with their `let r = instance()` and `let res = ...` patterns are ghost scaffolding that don't need special markers since they're semantically equivalent to the original. Item 8 is the only one that fails the checklist — it needs either the standardized "VERUS REWRITE" comment plus a minimal reproducer showing why the inlined form fails, or I should revert the split entirely to keep the exec body byte-identical if it turns out the split isn't actually necessary for verification.
+[RESULT ✓] view: 836.         // Pure query over the shared `PhysAuth` carrier: returns the size of the
+837.         // free pool. The free set is finite (it is carved from the finite bitmap),
+838.         // which the watermark caller (`check_user_watermark`) relies on to reason
+839.         // with `spec_watermark...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Testing if free_count split is necessary
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I should test whether the split is actually necessary by temporarily inlining it and running verification—if it passes, the split was unnecessary and I can revert; if it fails, that confirms the rewrite is justified. As a reviewer, I can gather the evidence needed to write a precise, well-grounded fix request.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1500 make verify-kernel MODULE=mm::phys 2>&1 | grep -A30 "=== Results\|error\|verif
