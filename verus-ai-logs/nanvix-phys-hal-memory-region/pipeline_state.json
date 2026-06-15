@@ -2,9 +2,11 @@
   "module_name": "hal-memory-region",
   "log_name": "nanvix-phys-hal-memory-region",
   "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "6d742d57a70b4d6df3d8c1b371085214fd522de5"
   },
   "phase_start_shas": {
-    "proving": "32eecbc26bb044da56e712aa5af80c89b0e139ea"
+    "proving": "32eecbc26bb044da56e712aa5af80c89b0e139ea",
+    "cheating-elimination": "c4b739de01c17a1c95fa1fb872c3098de7b46b28"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "6d742d57a70b4d6df3d8c1b371085214fd522de5",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "c4b739de01c17a1c95fa1fb872c3098de7b46b28",
       "rollback_iter": 0
     }
   ],
