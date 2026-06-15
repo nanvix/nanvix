@@ -1222,3 +1222,30 @@ Turn 18
 [TOOL] report_intent: Running module verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: external_body
+    - frame.rs:1479 all...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | tail -40
+[RESULT ✓] report_intent: Intent logged
+The mismatches are exec changes. I need to determine the baseline being compared and whether these are pre-refactored or introduced during verification. Let me investigate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . -name "pipeline_state.json" 2>/dev/null | head; echo "=== check tool
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json
+...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
