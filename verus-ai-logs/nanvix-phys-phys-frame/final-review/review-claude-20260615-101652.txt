@@ -668,3 +668,286 @@ Turn 6
 ────────────────────────────────────────────────────────────
 Turn 9
 ────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+[RESULT ✓] view: 221.             self.refcount[i] = 1;
+222.         }
+223.         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+224.             Some(frame_number) => frame_number,
+225.             None => {
+226.                 let reason: &str = "frame number is out of bounds"...
+[RESULT ✓] view: 461.         requires
+462.             old(self).inv(),
+463.             phys_addr.inv(),
+464.         ensures
+465.             final(self).inv(),
+466.             match result {
+467.                 Ok(()) => {
+468.                     &&& old(self)@.free_frames.contains(phys_addr@)
+469.           ...
+[RESULT ✓] view: 741.         final(auth)@.inv(),
+742.         // Strong post-state contract carried by the `PhysAuth` token: a successful
+743.         // allocation moves one free frame into `allocated_frames` with refcount 1;
+744.         // an error leaves the allocator unchanged. `old(auth)@` names the pre-state...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use super::PhysMemView;
+5. use super::PhysAuth;
+6. use super::phys_view;
+7. use crate::hal::mem::spec_page_size;
+8. use vstd::map::*;
+9. use vstd::set_lib::*;
+10. use vstd::relations::injective_on;
+11. use vstd::arithmetic::mul::{
+12.     lemma_mul_is...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+While that runs, let me read the view_design and skill docs.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] view: 1. # View Design: `mm::phys::frame`
+2. 
+3. > **Re-run after rollback (specification → view-design, attempt 1/1).**
+4. > The previous design modeled the global frame-allocator singleton with an
+5. > **argument-free, uninterpreted constant** `phys_view() -> PhysMemView`. A
+6. > constant has the same v...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: File too large to read at once (25.1 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::frame`
+2. 
+3. ## Script Output
+4. 
+5. See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+6. (raw output of `find_callers_lsp.py` for `src/kernel/src/mm/phys/frame.rs`).
+7. 
+8. Summary from the script: 19 exec functions (10 `pub(super)` / trait-pub, 9
+...
+[RESULT ✓] view: 1. # Bugs / specification limitations — `src/kernel/src/mm/phys/frame.rs`
+2. 
+3. No *code* bugs were found (no overflow, off-by-one, missing bounds check, or
+4. unchecked cast). The earlier **specification-architecture limitation** (post-state
+5. effects inexpressible over a constant `phys_view()`) ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me read the key skill docs and check the verification scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for s in spec-design verus-constraints ast-consistency bug-reporting spec-completeness spec
+[RESULT ✓] bash: === spec-design ===
+ls: cannot access '.github/skills/spec-design': No such file or directory
+=== verus-constraints ===
+ls: cannot access '.github/skills/verus-constraints': No such file or directory
+=== ast-consistency ===
+ls: cannot access '.github/skills/ast-consistency': No such file or director...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] view: 1. # View Design: `mm::phys::frame`
+2. 
+3. > **Re-run after rollback (specification → view-design, attempt 1/1).**
+4. > The previous design modeled the global frame-allocator singleton with an
+5. > **argument-free, uninterpreted constant** `phys_view() -> PhysMemView`. A
+6. > constant has the same v...
+[RESULT ✓] view: 221.                 frames: FrameAllocView {
+222.                     refcounts: self.frames.refcounts.insert(addr, self.frames.refcounts[addr] - 1),
+223.                     ..self.frames
+224.                 },
+225.                 ..self
+226.             }
+227.         }
+228.     }
+229. }
+230. `...
+[RESULT ✓] view: 441.   `03`). This is the defect being fixed. ❌
+442. 
+443. - **A *pair* of 0-ary constants `phys_view_pre()` / `phys_view_post()`.** Lets a
+444.   *single* shim state a transition, but cannot **sequence**: the `post` of one
+445.   operation must equal the `pre` of the next, which two constants canno...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find / -type d -name "spec-design" 2>/dev/null; echo "---"; find / -path "*skills*" -name "
+[TOOL] rg: spec-design|verus-constraints|ast-consistency|bug-reporting|spec-completeness|spec-drift-check
+[RESULT ✓] rg: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-101652.jsonl
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-101652.txt
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/dia...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo '== external_body attrs in frame files ==' && rg -n "verus_verify\(external_body\)" sr
+[RESULT ✓] bash: == external_body attrs in frame files ==
+src/kernel/src/mm/phys/frame.rs:115:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/frame.rs:181:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/frame.rs:254:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/frame.rs:339:    #[veru...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/docs/skills/spec-design
+/mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/spec-design
+/mnt/shared/view-design-exp/kheap-worker7-clean/docs/skills/spec-design
+/mnt/shared/verus-ai-improve5-kheap-claw/docs/skills/spec-design
+/mnt/shared/kheap-mas-exp/docs/skills/spec-d...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re
+p='src/kernel/src/mm/phys/frame.rs'
+lines=open(p).read().splitli
+[RESULT ✓] bash: 115: alloc (fn line 137)
+181: alloc_contiguous (fn line 210)
+254: None (fn line ?)
+339: share (fn line 368)
+411: refcount (fn line 428)
+459: book (fn line 481)
+505: is_covered (fn line 517)
+535: None (fn line ?)
+644: instance (fn line 652)
+677: init (fn line 689)
+880: free (fn line 896)
+<shellId: 18...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && for s in ast-consistency bug-reporting spec-design; do echo "===== $
+[RESULT ✓] bash: ===== ast-consistency =====
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re
+p='src/kernel/src/mm/phys/frame.rs'
+lines=open(p).read().splitli
+[RESULT ✓] bash: 115: alloc (fn line 137)
+181: alloc_contiguous (fn line 210)
+254: free (fn line 290)
+339: share (fn line 368)
+411: refcount (fn line 428)
+459: book (fn line 481)
+505: is_covered (fn line 517)
+535: alloc_range (fn line 565)
+644: instance (fn line 652)
+677: init (fn line 689)
+880: free (fn line 896)
+<...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verifyphys', 'delay': 60}
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && for s in spec-completeness spec-drift-check; do echo "===== $s =====
+[RESULT ✓] read_bash: - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+ ...
+[RESULT ✓] bash: ===== spec-completeness =====
+cat: spec-completeness/SKILL.md: No such file or directory
+===== spec-drift-check =====
+---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to en...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] rg: frame\.rs::instance|frame\.rs::init|Inner::alloc|Inner::alloc_contiguous|Inner::free|Inner::share|Inner::refcount|Inner::book|Inner::is_covered|Inner::alloc_range|frame\.rs::free
+[RESULT ✓] rg: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md:37:- `src/kernel/src/mm/phys/frame.rs::init`
+/home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md:55:- `src/kernel/src/mm/phys/frame.rs::instance` — `static mut` singleton accessor;
+/home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md:68:- `Inner::al...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Verification is cached (exit 0) but the cheating detector reports `cfg_gate=9` and `CHEATING_DETECTED`. Let me inspect the details closely — this is critical for the guardrails check.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>&1 | head -120
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refc...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification commands
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys
+[RESULT ✓] report_intent: Intent logged
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/verify-kernel/verus-logs/ && echo "---grep cfg in detail/log---" && gr
+[RESULT ✓] bash: total 948
+drwxrwxr-x 1 ruize ruize 12786 Jun 15 10:19 .
+drwxrwxr-x 1 ruize ruize    20 Jun 15 00:55 ..
+-rw-rw-r-- 1 ruize ruize  1310 Jun 15 10:19 cheating-detail.txt
+-rw-rw-r-- 1 ruize ruize 12719 Jun 15 10:16 coverage-unverified.txt
+-rw-rw-r-- 1 ruize ruize  1011 Jun 15 00:55 verus_2026-06-15_00-5...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
