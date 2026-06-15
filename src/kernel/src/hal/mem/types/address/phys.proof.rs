@@ -3,6 +3,10 @@ use vstd::arithmetic::div_mod::{
     lemma_mod_bound,
 };
 use vstd::arithmetic::mul::lemma_mul_inequality;
+use vstd::arithmetic::power2::{
+    lemma2_to64,
+    lemma_pow2_strictly_increases,
+};
 use vstd::bits::lemma_usize_shr_is_div;
 
 verus! {
@@ -59,10 +63,23 @@ pub proof fn lemma_frame_index(
         frame_number as int == spec_frame_number(addr@),
         frame_number as int <= spec_max_frame_number(),
 {
-    // `raw_addr >> shift == raw_addr / 2^shift == raw_addr / spec_page_size()`.
-    assert(shift < usize::BITS) by {
-        assert(usize::BITS == 64);
+    // From `spec_page_size() == pow2(shift)` and `PAGE_SIZE == 4096 == pow2(12)`, the shift is
+    // exactly `12`, hence below `usize::BITS` on every supported target. `pow2` is strictly
+    // increasing, so this is the only solution.
+    lemma2_to64();
+    assert(spec_page_size() == 4096);
+    assert(pow2(shift as nat) == 4096);
+    if shift < 12 {
+        lemma_pow2_strictly_increases(shift as nat, 12);
+        assert(false);
     }
+    if shift > 12 {
+        lemma_pow2_strictly_increases(12, shift as nat);
+        assert(false);
+    }
+    assert(shift == 12);
+
+    // `raw_addr >> shift == raw_addr / 2^shift == raw_addr / spec_page_size()`.
     lemma_usize_shr_is_div(raw_addr, shift);
 
     // Bridge the `nat` division from the shift lemma to the `int` division in

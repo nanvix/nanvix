@@ -801,3 +801,81 @@ Now fix the shift precondition by establishing `usize::BITS == 64`:
 Turn 51
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B2
+[RESULT ✓] bash: note: verifying module hal::mem::types::address::phys
+
+error: assertion failed
+  --> src/kernel/src/hal/mem/types/address/phys.proof.rs:64:16
+   |
+64 |         assert(usize::BITS == 64);
+   |                ^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 5 verified, 1 errors (partial veri...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "usize::BITS\|BITS ==\|arch_word_bits\|global size_of\|usize, 8\|usize as.*6
+
+[THINKING] The first lemma checks out with five verifications, but the `usize::BITS == 64` assertion is blocking progress. Verus doesn't have this as a built-in fact, so I need to figure out how the original code handles this constraint. Looking at `into_frame_number`, it calls `lemma2_to64()` and uses shift operations, where shift is `FRAME_SHIFT = 12`. The lemma takes shift as a parameter with the requirement that shift is less than 64, but I'm stuck on how to establish that `usize::BITS` actually equals 64.
+
+The core issue is that Verus treats `usize::BITS` conservatively — it could be 32 or 64 depending on the target architecture. So proving `shift < 64` doesn't automatically give me `shift < usize::BITS` if the system might be 32-bit. However, the actual caller passes `FRAME_SHIFT = 12`, which is less than 32 anyway, so it would be safe on either architecture. The lemma's requires clause demands `shift < 64`, but that's too loose for a 32-bit system. I need to either tighten the lemma's precondition or find a way to assert the actual target width.
+[RESULT ✓] bash: src/kernel/src/event/manager.rs:183:    interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
+src/kernel/src/event/manager.rs:184:    pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],
+src/kernel/src/event/manager.rs:185:    exception_ownership: [Option<Proces...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+The kernel target is 32-bit (`usize::BITS == 32`). I'll derive `shift < 32` from `spec_page_size() == pow2(shift)` rather than from `shift < 64`.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n "pub.*proof fn lemma_pow2\|strictly_increasing\|lemma_pow2_adds\|pub.*fn
+
+[THINKING] The target is 32-bit, so `usize::BITS` is 32 and `usize::MAX` equals 4,294,967,295. This fundamentally shifts the calculations—with a frame size of 4096, the maximum spec value M changes accordingly.
+
+Now I'm realizing the core issue: the lemma requires `shift < 64`, but on a 32-bit target, I actually need `shift < 32` for the proof to work. The caller establishes that `FRAME_SHIFT` is 12, which satisfies both bounds, but the lemma's requires clause is too weak—it allows shift values up to 63, which would break the proof on a 32-bit architecture where shift must be less than the pointer width.
+
+Rather than tightening the lemma's requires (which would restrict callers), I can derive the bound I need from the existing constraint `spec_page_size() == pow2(shift)`. Since `spec_page_size()` is 4096 and `pow2` is injective, this forces `shift == 12`, which is definitely less than 32. So I can prove the necessary bound without changing the lemma's contract. I should avoid modifying the lemma signature since that could trigger drift checks. Instead, I'll derive `shift < usize::BITS` directly from the existing requirement that `spec_page_size() == pow2(shift as nat)`, using monotonicity properties of the power function to establish the bound.
+[RESULT ✓] bash: 32:pub open spec fn pow2(e: nat) -> nat {
+122:pub broadcast proof fn lemma_pow2_pos(e: nat)
+130:pub broadcast proof fn lemma_pow2(e: nat)
+142:pub broadcast proof fn lemma_pow2_unfold(e: nat)
+154:pub broadcast proof fn lemma_pow2_adds(e1: nat, e2: nat)
+165:pub broadcast proof fn lemma_pow2_subtracts(...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/power2.rs
+[RESULT ✓] view: 178. pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
+179.     requires
+180.         e1 < e2,
+181.     ensures
+182.         #[trigger] pow2(e1) < #[trigger] pow2(e2),
+183. {
+184.     lemma_pow2(e1);
+185.     lemma_pow2(e2);
+186.     lemma_pow_strictly_increases(2, e1, e2);
+187....
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm proving shift < 32 by contradiction: if shift were at least 32, then pow2(shift) would be at least 4294967296, which exceeds the page size of 4096. Since the spec requires pow2(shift) to equal 4096, this creates a contradiction. I can use the strictly increasing property of powers of 2 to formalize this, or directly assert that pow2(shift) equals 4096 and derive the bound from there. Since shift equals 12 (derived from pow2(shift) == 4096 and the injectivity of pow2), I can prove shift < usize::BITS by showing that 12 is strictly less than usize::BITS, which Verus knows is at least 32. I'll establish shift == 12 by contradiction: if shift were less than or greater than 12, pow2(shift) would differ from pow2(12) by strict monotonicity, contradicting pow2(shift) == 4096. Then I can inline this reasoning directly into the lemma proof. Now I'm verifying that PAGE_SIZE is indeed 4096 and working through the division bridge between the bitshift operation and the specification. The lemma gives me frame_number as a natural number division result, and I need to connect that to the spec's definition using the invariant from addr. The second ensures clause follows directly from the address invariant, so I'll write out both conditions.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Now add the needed imports for the power2 lemmas:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B2
+
+[THINKING] I'm noticing that `lemma2_to64()` is already being invoked within the `into_frame_number` proof block using the fully-qualified path, so calling it again in my lemma shouldn't be a problem. I need to verify there's no import conflict since `pow2` is already imported in spec.rs and I'm working with the same module path.
+
+Now I'm checking the arithmetic: on a 32-bit target, `usize::MAX` is 4294967295, which means `spec_max()` should equal 1048574 after the division and subtraction. The key issue is whether the `usize` division in `spec_max()` matches the `int` division in my code — they should be equivalent for non-negative values, but I need to verify that `spec_max()` unfolds correctly since it's marked `open`, and that the constant definitions align properly when converting between `usize` and `int` arithmetic.
