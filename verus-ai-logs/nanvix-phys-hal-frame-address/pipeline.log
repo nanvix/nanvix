@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[PIPELINE] NOTE: added cfg-gated include!(frame.spec.rs, frame.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[2026-06-15 16:19:57] [BRANCH] Base: verus-ai/sys-virt-address → Verus: verus-ai/hal-frame-address
+[2026-06-15 16:19:57] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/body_removed_source.rs (3388 -> 2945 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: hal-frame-address
+Source: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+Crate:  kernel
+Branch: verus-ai/hal-frame-address (base: verus-ai/sys-virt-address)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: hal-frame-address
+============================================================
