@@ -790,3 +790,68 @@ All green. Let me capture clean `make verify-arch` output and write the fixer re
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&
 
 [THINKING] All the verification checks are passing cleanly—the architecture verification shows no errors, the full build completes successfully, and there are no issues across any crates. Now I'll run the architecture verification one more time to get a clean output, then document the results in the fixer response file.
+[RESULT ✓] bash: Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 2/525 exec functions have contracts
+  status: CLEAN
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/ 2>/dev/null; echo "---
+[RESULT ✓] bash: turn_001_driver.md
+---driver---
+## Turn 1: Full checklist sweep — primary FAIL is "every in-scope exec function has requires/ensures"
+
+### Progress
+- Done (PASS): items 7, 8, 10, 12, 13, 15 (see status table).
+- Current FAIL (blocking, fix first): item 1 — in-scope exec functions have **no** contrac...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+All checks pass. Writing the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_spec\|verus_verify\|use_type_invariant\|fn into_raw_value\|fn from_raw_value\|
+
+[THINKING] I've got all the context I need now. Let me pull the specific line numbers from number.rs so I can reference them accurately in the fixer response, then I'll write out the turn_001_fixer.md file in the dialogue directory.
+[RESULT ✓] bash: 26:#[verus_verify(external_derive)]
+28:pub struct FrameNumber(usize);
+36:    #[verus_verify]
+37:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+55:    #[verus_spec(result =>
+60:    pub fn into_raw_value(self) -> usize {
+61:        proof! { use_type_invariant(&self); }
+66:#[verus_v...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue/turn_001_fixer.md with 4699 characters
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+FIXED. Summary of what I did:
+
+**Reviewer's blocking issue (item 1):** crate didn't compile + no contracts on the two in-scope functions. Both resolved.
+
+- **`number.spec.rs`**: removed the duplicate `use crate::mem;` (E0252 fix); kept View (`type V = int`, closed `self.0 as int`) + `inv()` as a `#[verifier::type_invariant]`.
+- **`number.rs`**: added `#[verus_verify(external_derive)]` to the struct, `#[verus_verify]` to `MAX`, and `#[verus_spec]` contracts to both `into_raw_value` (range via `use_type_invariant`, `result as int == self@`) and `from_raw_value` (bidirectional Some/None, index preservation, `f.inv()`).
+- Verus-enabled the `arch` crate (Cargo.toml, Makefile, `#[verus_verify]` on the referenced constants).
+- **Kernel migration** (required so full `make verify` still passes): removed the 4 now-duplicate placeholder `assume_specification`s + the `ExFrameNumber` external type spec, grounding `spec_page_size`/`spec_frame_raw_value` in arch's native `PAGE_SIZE`/`View` — guarantees preserved, none weakened.
+
+**Verification:**
+- `make verify-arch` → CLEAN, 0 errors, all cheating counts 0.
+- `make verify` (full) → exit 0, every crate 0 errors (kernel 47 verified). The `CHEATING_DETECTED` tags are pre-existing TCB I didn't touch — `git diff` confirms no added `external_body`/`admit`/`assume`.
+- `./z build -- all` → exit 0.
+
+Response written to `turn_001_fixer.md`.
+
+
+=== Session End ===
+Session: 154dbd3f-a338-4dab-b815-e41ebd138681
+Duration: 1042.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue-fixer-t001-claude-20260615-195024.jsonl
