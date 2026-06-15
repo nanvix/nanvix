@@ -1249,3 +1249,475 @@ The mismatches are exec changes. I need to determine the baseline being compared
 ────────────────────────────────────────────────────────────
 Turn 18
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int,...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-phys-frame/pipeline_state.json 2>/dev/null | 
+[RESULT ✓] view: 1079. def detect_base_ref() -> str:
+1080.     """Auto-detect the base branch fork point.
+1081. 
+1082.     On ``verus-ai/*`` branches, returns the merge-base commit with the
+1083.     first matching candidate parent branch (main, master, develop).
+1084. 
+1085.     Returns:
+1086.         A git commit ...
+[RESULT ✓] bash: {
+    "module_name": "phys-frame",
+    "log_name": "nanvix-phys-phys-frame",
+    "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs",
+    "current_phase": "cheating-elimination",
+    "current_phase_idx": 4,
+    "completed_phases": [
+        "proving",
+        "che...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'PY'
+from pathlib import Path
+p=Path('src/kernel/src/mm/phys/fr
+[RESULT ✓] bash: 49: #[cfg(verus_keep_ghost)] -> include!("frame.spec.rs");
+52: #[cfg(verus_keep_ghost)] -> include!("frame.proof.rs");
+147: #[cfg(not(verus_keep_ghost))] -> error!("{error:?}");
+153: #[cfg(not(verus_keep_ghost))] -> debug_assert_eq!(self.refcount[frame_number], 0);
+191: #[cfg(not(verus_keep_ghost))]...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "warning|note: Verus printed" verus-ai-logs/verify-kernel/verus-logs/
+[RESULT ✓] bash: 79:note: Verus printed one or more automatically chosen quantifier triggers
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Let me examine the nature of each mismatch and check `into_frame_number` semantics plus git history.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in "Inner::is_covered" "Inner::alloc" "Inner::share" "free_count"; do
+[RESULT ✓] bash: ##### Inner::is_covered #####
+## Inner::is_covered (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,4 +1,11 @@
+     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+-        frame_number < self...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'PY'
+import re, pathlib
+file=pathlib.Path('src/kernel/src/mm/ph
+[RESULT ✓] bash: Inner::alloc line 136: verus_spec=True external_body=False
+Inner::alloc_contiguous line 255: verus_spec=False external_body=False
+Inner::free line 456: verus_spec=False external_body=False
+Inner::share line 604: verus_spec=False external_body=False
+Inner::refcount line 712: verus_spec=True external_...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] rg: verus_verify\(external_body\)
+[TOOL] rg: \badmit\(
+[TOOL] rg: \bassume\(
+[TOOL] rg: pub assume_specification
+[TOOL] rg: cfg\((not\()?verus_keep_ghost\)|cfg_attr\(verus_keep_ghost
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.spec.rs:2
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:7
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:28
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] rg: verus_verify\(external_body\)
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:1235:#[verus_verify(external_body)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:1271:#[verus_verify(external_body)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:1327:#[verus_ve...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Let me check `into_frame_number` semantics and the git history of these exec changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "fn into_frame_number" src/kernel/src/hal/ src/libs/ 2>/dev/null |
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:147:    pub fn into_frame_number(self) -> FrameNumber {
+src/kernel/src/hal/mem/types/address/phys.rs:165:    pub fn into_frame_number(self) -> FrameNumber {
+=== PageAligned into_frame_number ===
+src/kernel/src/hal/mem/types/address/frame.rs:147:    pub f...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 160.         requires
+161.             self.inv(),
+162.         ensures
+163.             spec_frame_raw_value(result) == spec_frame_number(self@),
+164.     )]
+165.     pub fn into_frame_number(self) -> FrameNumber {
+166.         let raw_addr: usize = self.0.into_raw_value();
+167.         // Bind `FR...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] rg: frame\.rs::(instance|init|alloc\b|alloc_contiguous|free\b|book\b|alloc_range)
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:7:- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:70:- `src/kernel/src/mm/phys/frame.rs::init`
+/home/ruize/nanvix-phy-s...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] rg: into_frame_number\(|/ mem::FRAME_SIZE|size_of usize == 8
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:462:        let frame_number: usize = raw / mem::FRAME_SIZE;
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:610:        let frame_number: usize = raw / mem::FRAME_SIZE;
+/home/ruize/nanvix-phy-specs-bottom-...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] rg: start_frame_number\.\.|end_frame_number|\.\.=
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:918:                let end_frame_number = (region@.start + region@.size) / spec_page_size();
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:919:                let frame_numbers = vstd::set_lib::set_int_r...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] glob: verus-ai-logs/**/final-review/final_review*.md
+[RESULT ✓] glob: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-paging-mod/final-review/final_review.claude.md
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-pag...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.codex.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-hal-frame-address/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review — `arch-frame-number`
+2. 
+3. ## Spec Quality
+4. 
+5. ### Scope checked
+6. - Type: `FrameNumber` (View + `inv`)
+7. - Fns: `FrameNumber::from_raw_value`, `FrameNumber::into_raw_value`
+8. 
+9. ### Contract assessment
+10. - `from_raw_value` contract is precise and complete:...
+[RESULT ✓] view: 1. # Final Independent Review — `hal::mem::types::address::frame` (`FrameAddress`)
+2. 
+3. ## Checklist
+4. - **Caller Analysis:** **FAIL** — 11/12 caller expectations are contract-covered; `from_raw_value` error semantics remain under-specified (`Err(_) => true`).
+5. - **View Design:** **PASS** — `Fr...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Let me check git history for how these exec changes were committed, and check the verification progress.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== BUG FIX commits touching frame.rs ==="; git log --oneline --all -
+[RESULT ✓] bash: === BUG FIX commits touching frame.rs ===
+=== when was division introduced (is_covered) ===
+3988bcd9a [verus] verify FAIL: kernel::mm::phys (78 verified, 2 errors)
+9bc17a078 [verus] verify PASS (cheating detected): kernel::mm::phys (69 verified, 0 errors, admit=22 external_body=11 cfg_gate=13)
+971b8...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 90}
+[RESULT ✓] read_bash: === Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 16
+    ⚠️  admit: 4
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_co...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Verification exits 0. Let me confirm the verus error count and run function coverage scoped to frame.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== verus verified/errors ==="; grep -rn "verified,\|errors" verus-ai
+[RESULT ✓] bash: === verus verified/errors ===
+=== cheating detail for frame admit ===
+(no frame admit lines above = good)
+=== fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-phys-frame/final-review && cat > verus-a
+[RESULT ✓] bash: 
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review: phys-frame (gpt-5.3-codex)
+2. ## Checklist
+3. - [ ] **Caller Analysis** — Covered **6/15** caller expectations; missing key wrapper guarantees (notably Err-state preservation and several success-transition facts) in `frame.rs` wrapper specs (`alloc`/`alloc_contiguous...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Review complete. I independently audited specs/proofs/TCB/guardrails, ran the required verification and drift checks, ran AST consistency, reconciled bugs, and wrote the full report to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.codex.md`
+
+Final verdict in report: **FAIL**.  
+Primary reasons: **AST consistency mismatch (9 functions)** and **incomplete caller-facing wrapper contract coverage** versus caller expectations.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': True, 'timeout': 60}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 332s, total_turns: 0, model: gpt-5.3-codex, duration: 329s
+
+Review complete. I independently audited specs/proofs/TCB/guardrails, ran the required verifica...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/verify-kernel/verus-logs/ | tail; echo "=== grep summary i
+[RESULT ✓] bash: verus_2026-06-15_11-09-13.log
+verus_2026-06-15_11-09-44.log
+verus_2026-06-15_11-10-33.log
+verus_2026-06-15_11-10-47.log
+verus_2026-06-15_11-20-39.log
+verus_2026-06-15_11-21-10.log
+verus_2026-06-15_11-22-05.log
+verus_2026-06-15_11-25-54.log
+verus_2026-06-15_11-26-35.log
+verus_2026-06-15_11-26-44.log
+...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.codex.md
+
+[THINKING] Codex came back with a FAIL due to AST consistency issues across 9 functions and incomplete caller coverage. I need to review its full report and wait for my own analysis to compare.
+[RESULT ✓] view: 1. # Final Comprehensive Review: phys-frame (gpt-5.3-codex)
+2. ## Checklist
+3. - [ ] **Caller Analysis** — Covered **6/15** caller expectations; missing key wrapper guarantees (notably Err-state preservation and several success-transition facts) in `frame.rs` wrapper specs (`alloc`/`alloc_contiguous...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in 11-25-54 11-26-35 11-26-44; do echo "=== $f ==="; grep -n "verific
+[RESULT ✓] bash: === 11-25-54 ===
+=== 11-26-35 ===
+=== 11-26-44 ===
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== last 11-25-54 content ==="; tail -20 verus-ai-logs/verify-kernel/
+[RESULT ✓] bash: === last 11-25-54 content ===
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+     ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Codex flagged two blockers: 9 AST-consistency mismatches and incomplete caller coverage (6/15). I need to independently verify the AST mismatch claim since it's the critical one. Let me read the skill and run the tool myself.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+
+[THINKING] Codex identified two critical issues: AST consistency has 9 mismatches that need verification, and caller coverage is incomplete at 6 out of 15. I'm skeptical about how Codex is interpreting "AST consistency" since these mismatches could be serious, so I want to independently examine what the ast_consistency.py tool actually measures before accepting those results.
+
+The tool compares the exec AST between the verus-annotated and non-verus versions of each function to ensure semantic equivalence. A mismatch indicates the exec code differs between the `#[cfg(verus_keep_ghost)]` view and the shipped version—which could represent real divergences or just spec/proof annotations that the tool is flagging. I need to dig into the skill itself to understand what's acceptable here and run the tool myself to verify the findings.
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_contiguous                  MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me check the verification result count and count any trigger warnings in the latest run.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && L=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-25-54.log; ech
+[RESULT ✓] bash: === result line ===
+=== count of trigger-note blocks ===
+1
+=== lines those notes point to ===
+30:   --> src/kernel/src/mm/phys/frame.rs:313:17
+37:   --> src/kernel/src/mm/phys/frame.rs:314:46
+43:   --> src/kernel/src/mm/phys/frame.rs:329:13
+49:   --> src/kernel/src/mm/phys/frame.rs:330:38
+55:    -->...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+The 9 AST mismatches are real exec-code changes. Per the skill, even pre-approved deviations need documenting comments — and there are zero `VERUS REWRITE`/`DEVIATION` comments. Let me inspect the actual diffs to judge severity.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for fn in "free_count" "Inner::is_covered" "Inner::refcount" "Inner::free" 
+
+[THINKING] The AST consistency tool is flagging 9 mismatches between the `Inner::*` methods and `free_count` — their exec code differs from the original after stripping annotations. Since I'm on the `verus-ai-prove-bottom-up` branch, I need to figure out what baseline it's comparing against, especially since the proving phase rewrote `alloc_range` to use a half-open loop, which is documented in bugs.md.
+
+These 9 mismatches likely correspond to documented deviations like the division change in `into_frame_number()` and the half-open loop rewrite, but the real issue is that none of them have the required `// VERUS DEVIATION` or `// VERUS REWRITE` comments — the grep found zero. The skill requires any mismatch to either be restored, be pre-approved with a comment, or have a VERUS DEVIATION comment with evidence. Right now there are 9 mismatches with no annotations, which is a legitimate finding.
+
+I need to actually diff one of these functions to see whether the exec changes are trivial things like intermediate lets and named returns (pre-approved) or substantive rewrites like the documented division change.
+[RESULT ✓] bash: ===== free_count =====
+## free_count (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,4 +1,11 @@
+ pub(super) fn free_count() -> usize {
+     let inner = instance();
+-    inner.bitmap.number_of_bits() - inner.bitmap.usage()
++    // VERUS DEVIATION (pre-approved: intermediate value). The two bitmap r...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== all logs with results line (most recent last) ==="; for f in $(ls
+[RESULT ✓] bash: === all logs with results line (most recent last) ===
+verus_2026-06-15_11-09-44.log: verification results:: 85 verified, 0 errors (partial verification with `--verify-*`)
+verus_2026-06-15_11-09-13.log: verification results:: 84 verified, 1 errors (partial verification with `--verify-*`)
+verus_2026-0...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The mismatches use `// VERUS DEVIATION` comments (not `VERUS REWRITE`). Codex's claim of "no comments" is partly wrong. Let me check how many deviation sites are documented vs undocumented, and inspect the remaining diffs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== VERUS DEVIATION/BUG FIX comments in frame.rs ===" && grep -n "VER
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for fn in "Inner::book" "Inner::alloc_range" "Inner::alloc" "Inner::alloc_c
+
+[THINKING] I see the issue now—Codex was wrong about there being no VERUS comments. Looking at the actual code, there are VERUS DEVIATION annotations in places like free_count and is_covered with explanatory notes about intermediate values. I need to go through each diff and assess what's actually happening.
+
+For free_count, the split into intermediate locals is pre-approved and semantically identical. For is_covered, the change from `into_frame_number().into_raw_value()` to `into_raw_value() / mem::FRAME_SIZE` is documented in bugs.md as an accepted robustness fix—it handles the edge case where into_frame_number would panic on top-of-memory frames. The comment explains this, though it doesn't use the exact VERUS prefix format. But for refcount and the other methods with the same division change, the diff doesn't show explanatory comments, which is concerning. The division change is actually behavior-changing on an edge case (avoiding a panic that `into_frame_number` would trigger), though bugs.md documents it as accepted. The real question is whether all the substantive division sites have the required inline comments — `is_covered` does, but `refcount`, `free`, and `share` appear to lack them, which creates a documentation gap. I need to verify whether these sites actually have comments in the source and check the other affected functions like `book` and `alloc_range` to determine if this passes the strict gate or fails due to missing deviation documentation.
+[RESULT ✓] bash: === VERUS DEVIATION/BUG FIX comments in frame.rs ===
+462:        let frame_number: usize = raw / mem::FRAME_SIZE;
+610:        let frame_number: usize = raw / mem::FRAME_SIZE;
+721:        let frame_number: usize = raw / mem::FRAME_SIZE;
+812:        let frame_number: usize = raw / mem::FRAME_SIZE;
+881...
+[RESULT ✓] bash: ===== Inner::book =====
+## Inner::book (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,12 +1,20 @@
+     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
++        
++        let raw: ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+These are substantive: `Inner::alloc_range` was restructured (coverage check moved out of loop) and `Inner::alloc_contiguous` gained a brand-new up-front `count > nbits` guard. Several division-change sites lack `// VERUS DEVIATION` comments. This corroborates the AST blocker. Let me check on the claude reviewer.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+
+[THINKING] I'm realizing these aren't minor tweaks—several represent significant changes to the core logic. The `Inner::alloc_range` function, for instance, has been substantially refactored: the original implementation looped through each index with an inclusive range and checked coverage per iteration, calculating the end frame dynamically, while the new version performs upfront bounds validation before proceeding.
+
+More concerning is `Inner::alloc_contiguous`, which now includes an entirely new guard clause that rejects oversized requests before delegating to `bitmap.alloc_range`. The original had no such check—it relied on the bitmap method itself to fail. This adds a new early-return path with a different error code than what the original would have produced, even though both ultimately return an error. The comment suggests this was added to enforce a precondition of `bitmap.alloc_range`, but it's a behavioral change that isn't explicitly documented as such in bugs.md.
+
+The AST consistency tool is reporting 9 mismatches, and several are genuinely substantive logic changes. The division fix and loop restructure are documented in bugs.md, though the documentation is incomplete. The `alloc_contiguous` guard isn't clearly justified as a Verus limitation—it looks more like a precondition-satisfaction addition. Given the strict requirement that every mismatch must either be restored or documented with proper deviation justification, the tool's FAIL verdict has merit. Even if these changes are individually defensible, the checklist demands all items pass, and the AST consistency check is failing.
+
+I'm reconsidering the verdict framing. The task is strict: PASS only if all checklist items are checked. The AST consistency item requires zero mismatches with proper documentation for any semantically-equivalent rewrites. The tool reports 9 mismatches, and several lack the full `// VERUS DEVIATION` comment trail with alternatives-tried evidence. The `alloc_contiguous` guard especially needs better justification. I'm leaning toward FAIL on the strict criteria, though I should wait for independent review before finalizing the consolidated verdict.
+Let me confirm the nature of the remaining mismatches (alloc_contiguous, book, refcount, alloc_range) and verify the resolved-bug claims.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in "Inner::alloc_contiguous" "Inner::book" "Inner::refcount" "Inner::
+[RESULT ✓] bash: ##### Inner::alloc_contiguous #####
+--- source
++++ verus
++        // `Bitmap::alloc_range` requires `count <= num_bits`. Reject oversized requests up front;
++        // this leaves the allocator state untouched, satisfying the `Err` contract.
++        let nbits: usize = self.bitmap.number_of_bits();...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Let me view the full original `alloc_range` to assess the control-flow restructuring.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && BASE=$(git merge-base HEAD dev); echo "BASE=$BASE"; echo "=== original allo
+[RESULT ✓] bash: BASE=7e180a4a49ab761925f623e5a355b7973960527d
+=== original alloc_range ===
+    fn alloc_range(
+        &mut self,
+        region: &TruncatedMemoryRegion<PhysicalAddress>,
+    ) -> Result<(), Error> {
+        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && BASE=7e180a4a49ab761925f623e5a355b7973960527d; echo "=== original alloc_con
+[RESULT ✓] bash: === original alloc_contiguous ===
+    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+        let frame_number: usize = match self.bitmap.alloc_range(count) {
+            Ok(index) => index,
+            Err(error) => {
+                error!("{error:?} (count={count})")...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me read the cheating-elimination bugs.md and latest cheating report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-elimination/bugs.md ==="; cat verus-ai-logs/nanvix-phys-
+[RESULT ✓] bash: === cheating-elimination/bugs.md ===
+# Bugs / Blockers — `mm::phys` cheating elimination (phys-frame phase)
+
+## Context-Dependent — manager.proof.rs §8 ghost-token attachment never built (manager.proof.rs:16, 35, 55, 159)
+
+**What**: Four `admit()` lemmas in `manager.proof.rs`
+(`lemma_manager_attache...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+I have all the evidence needed. Let me verify the final-review directory exists and confirm the assume_specification count.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-phys-frame/final-review; echo "=== assum
+[RESULT ✓] bash: === assume_specification count in frame.spec.rs ===
+2
+=== external_body attr count in frame.rs ===
+7
+=== cfg(not(verus_keep_ghost)) sites in frame.rs ===
+23
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+
+
+=== Session End ===
+Session: 5b9d788b-8377-43a6-accc-cd9da107f8e0
+Duration: 773.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-112112.jsonl
