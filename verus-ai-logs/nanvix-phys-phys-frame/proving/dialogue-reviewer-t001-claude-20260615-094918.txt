@@ -518,3 +518,77 @@ Turn 19
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/frame.proof.rs && make verify-kernel 2>&1 | grep -iE 'verifyin
 
 [THINKING] The cached verification shows exit 0 with no errors or warnings reported by Verus, and since the prior full runs confirmed 31 verified with 0 errors, this passes. I'm considering whether to force a fresh verification of the frame module to be absolutely certain, though that would take additional time.
+[RESULT ✓] bash: verification results:: 32 verified, 0 errors
+  32 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=23 admit=0 trusted=0 no_decreases=0 cfg_gate=9
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+  verification: 32 verified, 0...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "LOG: $LOG"
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build 2>&1 | tail -25
+
+[THINKING] The verification passed cleanly with 32 verified items and no errors, so now I'm checking the full log to confirm there are no warnings and then running the build to verify everything compiles correctly.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_09-53-16.log
+0
+0 warnings in verus log
+=== build (verus-erased compile) ===
+<shellId: 20 completed with exit code 0>
+[RESULT ✓] bash: # network namespaces. This is only the case in L2 deployments (Linux only).
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "microvm" -p uservm
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.10s
+cp -f --preserve /home/ruize/nanvix-phy/targe...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+All checklist items verified. Let me record findings and finalize.
+[TOOL] report_intent: Writing review and STOP
+[TOOL] bash: cd /home/ruize/nanvix-phy && rm -f verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md && echo remo
+
+[THINKING] The build completed successfully with no warnings or errors. Now I'm going through the verification checklist: the specs haven't drifted, there are zero admit() calls across the codebase, and I'm checking that external_body only appears within the trusted code base.
+
+All 11 external_body declarations in frame.rs are listed in the TCB-allowed file, so that passes. There are no assume or assume_specification calls in the frame files, no cfg-gated executable code beyond the spec/proof includes, and the cheating audit counts are documented correctly. The Verus limitation reproducers exist and no new limitations were claimed, so no rewrites are needed. Cross-module regression testing shows 32 verified modules with zero errors.
+
+Now I need to write the full review to turn_001_driver.md documenting all PASS items and create a STOP file with RESOLVED status. Since that file already exists from a prior run, I'll overwrite it with the complete review.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: removed
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_001_driver.md with 5389 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Review complete. All 10 proving-phase checklist items **PASS** with reproduced tool evidence.
+
+**Key verifications (run myself, not trusted verbally):**
+- **Spec drift**: `spec_drift.py` vs specification END → exit 0, zero drift; `git diff` of frame exec/spec/proof files empty.
+- **external_body**: exactly 11 in `frame.rs`, each individually matched to `tcb-allowed.md` (8 `Inner::*` methods, `instance()`, `init`, Drop-path `frame::free`). Shims are body-verified, not gated.
+- **admit / assume / assume_specification**: 0 in all frame files.
+- **cfg-gated exec**: only the two ghost `include!` lines (counter-excluded) — 0 exec gates.
+- **Cross-module**: `make verify-kernel` → 32 verified, 0 errors, exit 0.
+- **Build**: `./z build` → `[OK]`, 0 warnings; Verus log `grep -c warning` = 0.
+
+Wrote full review to `turn_001_driver.md` and created `STOP` = `RESOLVED`.
+
+
+=== Session End ===
+Session: 62642f12-ef4f-4268-ae18-792b457cfc9e
+Duration: 313.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-reviewer-t001-claude-20260615-094918.jsonl
