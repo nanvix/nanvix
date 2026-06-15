@@ -646,3 +646,13 @@ Full kernel verification passes (exit 0). Now let me run `make verify` (full cra
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | tail -40
 
 [THINKING] The kernel verification passes without errors, and the cheating counts remain unchanged from the global state—fourteen external body items that are tcb-approved, three admit items outside scope, and zero assume items. These are all pre-existing issues belonging to other modules, not part of the physical modification scope. Now I'm looking at what the task requires for the next step.
+[RESULT ✓] bash: note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int,...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | grep -iE "verify-(bitmap|bump|sys|arch|nanvix
