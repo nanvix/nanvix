@@ -850,3 +850,45 @@ Verus
 ────────────────────────────────────────────────────────────
 Turn 7
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: error: expected generics to match: 
+        expected 
+        found bool
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+105 | atomic_...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 make verify-sys
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 161.     ///
+162.     /// - `rhs`: The value to subtract.
+163.     ///
+164.     /// # Returns
+165.     ///
+166.     /// Upon success, the new [`VirtualAddress`] is returned. Upon failure (underflow), `None` is
+167.     /// returned instead.
+168.     ///
+169.     pub fn checked_sub(&self, rhs: usize)...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Well-formedness invariant for `VirtualAddress`.
+4. //
+5. // `VirtualAddress` is a thin, infallible newtype over a pointer-sized integer.
+6. // Its abstract state (`self@ : int`) is exactly the numeric virtual address.
+7. // The single universal property every constructible valu...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
