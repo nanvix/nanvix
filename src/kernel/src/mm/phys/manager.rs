@@ -93,6 +93,7 @@ impl PhysMemoryManager {
     // `AtomicBool` flag — raw-memory/atomics operations outside Verus's model. On success the
     // manager layer becomes ready (`phys_view().manager_ready`); the frame partition is
     // untouched. Listed in `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
