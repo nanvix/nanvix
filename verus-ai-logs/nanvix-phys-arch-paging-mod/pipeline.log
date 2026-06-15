@@ -149,3 +149,23 @@ Module: arch-paging-mod
 [2026-06-15 15:23:33] [DIALOGUE] Reviewer turn 1 (remaining: 3600s)...
 [2026-06-15 15:23:33] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 15:27:58]   ↳ dialogue-reviewer-t1 done in 4m25s (exit=0)
+[2026-06-15 15:27:58] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 15:27:58] [DIALOGUE] STOP detail:
+RESOLVED
+
+All 12 cheating-elimination checklist items PASS for arch-paging-mod
+(src/libs/arch/src/x86/mem/paging/mod.rs), with tool evidence recorded in
+turn_001_driver.md:
+
+- admit=0, assume=0, trusted=0, no_decreases=0 (make verify-arch + grep).
+- mod.rs cfg gates only guard `include!` of spec/proof (allowed).
+- Single external_body `invlpg` is TCB-listed in verus-ai-logs/tcb-allowed.md.
+- AST consistency vs `dev`: 1 function, 0 mismatches.
+- Spec drift (baseline 28a962d5c247 → HEAD): 0 contract drift.
+- Cross-module: make verify-arch Exit 0 (48 verified, 0 errors).
+- Build: ./z build -- all => [OK], 0 errors / 0 warnings.
+
+Crate-wide CHEATING_DETECTED is attributable solely to TCB-approved external_body
+(invlpg; table::read/write owned by arch-paging-table) and lint-only cfg `allow`
+attributes in pte.rs (owned by arch-x86-pte) — none in the mod.rs target.
+[2026-06-15 15:27:58] [DIALOGUE] cheating-elimination ended after 1 turns: RESOLVED (266s)
