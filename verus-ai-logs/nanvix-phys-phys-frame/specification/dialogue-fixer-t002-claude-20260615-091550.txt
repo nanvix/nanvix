@@ -825,3 +825,126 @@ Let me run an incremental verify to confirm the frame.rs mutating shims verify (
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] Running an incremental verify on the frame.rs shims to check for errors, though I expect the upool callers will show `requires false` errors since they're using the tokenless versions. The frame shims themselves should verify cleanly.
+[RESULT ✓] bash: - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+    - frame.rs:652 instance: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_09-30-43.log | hea
+
+[THINKING] Most of the verification passed with 30 checks succeeding, but there are 2 errors that appear to stem from the cascade in upool.rs where Upool::alloc and UserFrame::share call their tokenless versions. I should verify these are the only expected failures and that the frame shims themselves are working correctly.
+[RESULT ✓] bash: 36:error: postcondition not satisfied
+49:error: precondition not satisfied
+66:error: postcondition not satisfied
+79:error: precondition not satisfied
+90:error: precondition not satisfied
+100:error: could not compile `kernel` (bin "kernel") due to 5 previous errors
+=== error locations ===
+31:   --> s...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+All errors are the expected upool cascade — the 5 frame.rs mutating shims now verify with strong carrier contracts (30 verified). Phase 3: update the verified callers in upool.rs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] All the errors are isolated to upool.rs in two places, which matches what I expected from the cascade. I've verified all the mutating shims in frame.rs against the strong carrier contracts—30 verifications complete. Now I'm moving into Phase 3 to update the callers in upool.rs, starting with Upool::alloc and UserFrame::share to ensure they maintain the thread carrier and strong post-state requirements.
+
+Looking at the call graph, I realize UserFrame::refcount doesn't need fixing yet since frame::refcount is still tokenless and unchanged. The only callers I need to fix are the ones whose shims I tokenized: Upool::alloc and UserFrame::share. The other tokenized shims (alloc_contiguous, book, alloc_range) have external_body callers that don't require threading, so they're already good. Now I'm updating Upool::alloc by adding the tracked PhysAuth parameter.
+
+I need to import PhysAuth into upool.rs, then restructure the alloc method to thread the token through frame::alloc. The tricky part is handling the Result type with the `?` operator while applying the call-site annotation. I'm thinking through how to pass the tracked reference correctly — since auth is already `&mut PhysAuth`, I need to reborrow it when passing to the tracked parameter. Now I'm working through the proof obligations for `Upool::alloc`. The precondition that `old(auth)@ == phys_view()` holds because we haven't modified auth before calling `frame::alloc`, and that function's own precondition is satisfied by our reborrowed reference. After the call succeeds, `frame::alloc` ensures the auth state is updated with the allocation, and since `UserFrame::new` gives us the address spec, the postcondition that `allocated` contains the frame and refcount is 1 follows from what `frame::alloc` guarantees. For the error case, `frame::alloc` leaves auth unchanged, so we just return the error without further mutation. There's a subtle point about the borrow and match—after the call, auth's state is whatever `frame::alloc` left it, and the verifier correctly tracks that as the final state for the ensures clause.
+
+For `UserFrame::share`, I'm adding the tracked auth parameter and writing the preconditions that auth matches the physical view and both are initialized and valid. The postcondition branches on success or failure—on success, the returned handle has the same spec as self, is valid, and auth is updated by the share operation; on failure, I need to specify what happens to auth.
+
+Defining error case postcondition... I'm checking whether removing the `phys_view()` facts from the ensures clause is acceptable—since the original spec included those but I'm replacing them with carrier-based invariants. The unverified callers don't depend on those old ensures, and `UserFrame::share` is in scope for modification (only the `Inner::*` specs are off-limits). The carrier-based `final(auth)@.inv()` provides the equivalent strength. I also need to verify that the `with` clause doesn't break the execution signature for unverified callers, and then add the necessary import for `PhysAuth` to make it available in the verification context.
+
+Updating the imports and writing the code changes...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && head -20 src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] Checking the import statements in the upool.spec.rs file to make sure they're correct.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// UserFrame / Upool - Specifications
+//
+// `UserFrame` is an RAII owning handle to one reference of a reference-counted
+// physical user frame, abstracted by the physical address of the frame it owns
+// (`UserFrame@ : in...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Now let me look at the current upool.rs `share` and `alloc` exec functions and their specs:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 110.     ///
+111.     /// Adds a new reference to the underlying physical frame and returns a fresh
+112.     /// [`UserFrame`] handle that owns that reference. The two handles share the
+113.     /// same physical frame, and the frame is only reclaimed once both handles are
+114.     /// dropped.
+115....
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Let me check the current `frame::alloc` and `frame::share` shim contracts to align the caller ensures:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking the strong contracts for `frame::alloc` and `frame::share` in the frame.rs file to see how they align with the ensures clauses I've written.
+[RESULT ✓] view: 696.         bitmap.number_of_bits(),
+697.         (bitmap.number_of_bits() * mem::FRAME_SIZE) / constants::MEGABYTE,
+698.     );
+699. 
+700.     let nframes: usize = bitmap.number_of_bits();
+701.     if nframes > NFRAMES {
+702.         return Err(Error::new(
+703.             ErrorCode::InvalidArgume...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+Now update `UserFrame::share` and `Upool::alloc` to thread the carrier:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] Now I'm updating the `share` and `alloc` functions in upool.rs, using `child =>` to name the result and applying the `#[verus_spec(with Tracked(&mut *auth))]` attribute on the let binding for the call-site `with`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I need to verify that UserFrame::new maintains the invariant where the returned frame's address matches the input address, and that it properly inherits the invariant from the address parameter.
+[RESULT ✓] view: 60.             // refcount change occur (ownership semantics come from `Drop`/`leak`),
+61.             // so `new` says nothing about `phys_view()`.
+62.             ret@ == addr@,
+63.             ret.inv(),
+64.     )]
+65.     pub fn new(addr: FrameAddress) -> Self {
+66.         Self { addr }
+67.   ...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Now run verify-kernel to check the cascade is resolved:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+
+[THINKING] I'm verifying that the UserFrame invariants hold after allocation—the frame address matches the returned address and the invariant is satisfied. The Upool allocation gives us the frame with the correct address and invariant, and the frame allocation confirms the auth state is preserved with the address properly recorded in the allocated set and refcount initialized to one. Everything checks out, so I'm running the verification again.

@@ -122,28 +122,39 @@ impl UserFrame {
     /// `self`. On failure, an error is returned.
     ///
     #[verus_spec(child =>
+        with Tracked(auth): Tracked<&mut PhysAuth>
         requires
             self.inv(),
             phys_view().initialized,
             phys_view().inv(),
+            old(auth)@ == phys_view(),
+            old(auth)@.initialized,
+            old(auth)@.inv(),
         ensures
-            phys_view().inv(),
-            phys_view().initialized,
-            // On success: a fresh handle aliasing the same physical frame (equal
-            // view), well-formed, and the frame is still allocated (it has gained
-            // a reference). On failure: no reference acquired; `self` is untouched.
+            final(auth)@.initialized,
+            final(auth)@.inv(),
+            // Strong post-state contract carried by the `PhysAuth` token. On
+            // success: a fresh handle aliasing the same physical frame (equal
+            // view), well-formed, and the frame gained one reference (it is still
+            // allocated). On failure: no reference acquired and the allocator is
+            // left unchanged.
             match child {
                 Ok(handle) => {
                     &&& handle@ == self@
                     &&& handle.inv()
-                    &&& phys_view().frames.allocated_frames.contains(handle@)
+                    &&& final(auth)@ == old(auth)@.spec_share(self@)
+                    &&& final(auth)@.frames.allocated_frames.contains(handle@)
                 },
-                Err(_) => true,
+                Err(_) => final(auth)@ == old(auth)@,
             },
     )]
     pub fn share(&self) -> Result<UserFrame, Error> {
-        frame::share(self.addr)?;
-        Ok(Self { addr: self.addr })
+        #[verus_spec(with Tracked(&mut *auth))]
+        let r = frame::share(self.addr);
+        match r {
+            Ok(()) => Ok(Self { addr: self.addr }),
+            Err(e) => Err(e),
+        }
     }
 
     ///
@@ -245,28 +256,39 @@ impl Upool {
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
     #[verus_spec(result =>
+        with Tracked(auth): Tracked<&mut PhysAuth>
         requires
             phys_view().initialized,
             phys_view().inv(),
+            old(auth)@ == phys_view(),
+            old(auth)@.initialized,
+            old(auth)@.inv(),
         ensures
-            phys_view().inv(),
-            phys_view().initialized,
-            // On success: a well-formed handle owning the freshly allocated,
-            // page-aligned frame, which was free immediately before the call. The
-            // post-state effect (the frame now being reserved with refcount 1) is
-            // not expressible against the fixed pre-state `phys_view()`; it is
-            // inherited from `frame::alloc` and lives in the trusted `manager`
-            // boundary. See `verus-ai-logs/nanvix-phys-phys-frame/bugs.md`.
+            final(auth)@.initialized,
+            final(auth)@.inv(),
+            // Strong post-state contract carried by the `PhysAuth` token. On
+            // success: a well-formed handle owning the freshly allocated,
+            // page-aligned frame, which is now reserved with refcount 1 (it was
+            // free immediately before the call). On failure: the allocator is left
+            // unchanged. `old(auth)@` names the pre-state and `final(auth)@` the
+            // post-state — the before/after transition a fixed `phys_view()`
+            // constant could not express.
             match result {
                 Ok(uf) => {
                     &&& uf.inv()
-                    &&& phys_view().frames.free_frames.contains(uf@)
+                    &&& final(auth)@ == old(auth)@.spec_alloc_one(uf@)
+                    &&& final(auth)@.frames.allocated_frames.contains(uf@)
+                    &&& final(auth)@.frames.refcounts[uf@] == 1
                 },
-                Err(_) => true,
+                Err(_) => final(auth)@ == old(auth)@,
             },
     )]
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
-        let addr: FrameAddress = frame::alloc()?;
-        Ok(UserFrame::new(addr))
+        #[verus_spec(with Tracked(&mut *auth))]
+        let r = frame::alloc();
+        match r {
+            Ok(addr) => Ok(UserFrame::new(addr)),
+            Err(e) => Err(e),
+        }
     }
 }

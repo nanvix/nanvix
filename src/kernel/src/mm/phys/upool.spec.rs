@@ -22,6 +22,7 @@ verus! {
 
 use crate::hal::mem::spec_page_size;
 use crate::mm::phys::phys_view;
+use crate::mm::phys::PhysAuth;
 
 /// Abstract view of a [`UserFrame`]: the physical address of the frame it owns.
 ///
