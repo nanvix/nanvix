@@ -237,3 +237,163 @@ description: Guide for building, formatting, linting, and spell-checking Nanvix 
 
 Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
 covers all build-sy...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== external_body in microvm ==="; grep -i "microvm" verus-ai-logs/verify-kernel/veru
+
+[THINKING] The verification passed successfully. The cheating metrics show 25 external_body and 7 cfg_gate violations across the entire kernel crate, but the microvm module itself has zero violations in all categories. I'm checking the cheating-detail file to confirm none of these violations are actually in the microvm/mod.rs target file.
+[RESULT ✓] bash: === external_body in microvm ===
+=== cfg_gate lines ===
+=== any microvm/mod.rs ===
+<shellId: 4 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== detail file head ==="; head -80 verus-ai-logs/verify-kernel/verus-logs/cheating-d
+[RESULT ✓] bash: === detail file head ===
+    - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/frame.rs:137 alloc: external...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== full detail ==="; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 
+
+[THINKING] The external_body items are all coming from other modules like mm/phys and hal/mem rather than microvm/mod.rs itself, and they're all on the TCB allowed list. The microvm proving target has no external_body, admit, or assume entries. Now I'm looking at the cfg_gate value of 7 to understand what that entails.
+[RESULT ✓] bash: === full detail ===
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "=== wc ==="
+[RESULT ✓] bash: === wc ===
+25 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+=== tail ===
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    - mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg_gate\|cfg_gated\|cfg-gate\|cfg\b" scripts/verify.sh | head -30
+
+[THINKING] I'm noticing a discrepancy between the detail file showing 25 external_body items and the summary reporting cfg_gate=7, which doesn't appear in the details. I need to understand how the cfg_gate counter works—it's likely counting the `#[cfg(...)]` attributes in mod.rs rather than the external items. Let me trace through the script to see what cfg_gate actually measures and check for cfg-gated exec implementations specific to the microvm target.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg(verus_keep_ghost)\|cfg(not(verus_keep_ghost))\|cfg_attr(verus_keep_ghost" src
+[RESULT ✓] bash: src/kernel/src/hal/platform/microvm/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/platform/microvm/mod.rs:11:#[cfg(verus_keep_ghost)]
+<shellId: 9 completed with exit code 0>
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -5 -- src/kernel/src/hal/platform/microvm/mod.spec.rs src/kernel/src/hal/
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls .github/skills/ | grep -i drift; find . -path ./target -prune -o -iname "*spec-drift*" -
+
+[THINKING] The cfg_gate counter tracks `#[cfg(verus_keep_ghost)]` and `#[cfg(not(verus_keep_ghost))]` patterns, but in microvm/mod.rs the two instances target `include!` directives that get filtered out anyway, so microvm doesn't contribute to the count.
+
+The feature cfgs for whp/pit/smp are legitimate platform gates, not verus_keep_ghost gates, so they don't count as cheating. Since the module-level report shows nothing for microvm and the code has no admit, external_body, or assume statements in executable code, I'm confident microvm passes the checklist. Now I need to run the build to verify there are no errors or warnings, then check the spec drift.
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] bash: 11eef1d4c [verus] verify PASS: kernel::hal::platform::microvm (2 verified, 0 errors)
+c9088e380 [verus] verify PASS (cheating detected): kernel::hal::platform::microvm (2 verified, 0 errors, admit=1 external_body=25 cfg_gate=7)
+6c5703ac7 [verus-ai] caller-analysis START: hal-platform-microvm
+=== stat...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec.rs diff from first proving commit to HEAD ==="; git --no-pager diff c9088e38
+
+[THINKING] Looking at the git history, the proving phase is already complete—the kernel verification passed with two verified items and zero errors. The admit was discharged in the prior commit, so the proof body is now empty. I need to check for spec drift by comparing the spec file between the original caller-analysis commit and the current state.
+[RESULT ✓] bash: === spec.rs diff from first proving commit to HEAD ===
+=== proof.rs diff ===
+diff --git a/src/kernel/src/hal/platform/microvm/mod.proof.rs b/src/kernel/src/hal/platform/microvm/mod.proof.rs
+index 1b055838b..a8be3a923 100644
+--- a/src/kernel/src/hal/platform/microvm/mod.proof.rs
++++ b/src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Verification passes. Now running the build to confirm 0 errors/0 warnings.
+[TOOL] report_intent: Building kernel to check warnings
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 ./z build 2>&1 | tail -40
+
+[THINKING] Looking at the changes between the admit commit and HEAD, the main modification is that `admit()` was removed from proof.rs with its body now empty and discharged through the open identity definition. Since spec.rs remains unchanged and the mod.rs spec attribute is untouched, this means the spec hasn't been weakened. The verification checks are passing: no spec weakening since the files are identical, zero admit calls since it's been removed, and zero external_body in the target with all 25 globals accounted for.
+
+Now I need to verify the build completes without warnings. The verification step already built with Verus, but I should run the kernel build explicitly to confirm zero warnings before finalizing the checklist.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-ke...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All checks pass. Writing the review and STOP file.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/dialogue
+
+[THINKING] The build completed successfully with no errors or warnings, and all checklist items are passing. Now I'm writing up the review document and marking this as resolved.
+[RESULT ✓] bash: 
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/dialogue/STOP with 9 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/dialogue/turn_001_driver.md with 4177 characters
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Review complete. **All 10 proving-phase checklist items PASS** for `hal::platform::microvm`.
+
+Evidence:
+- **`make verify-kernel`** → exit 0; module verifies (`2 verified, 0 errors`).
+- **`./z build`** → exit 0, 0 errors, 0 warnings.
+- **Spec drift**: `git diff` of `mod.spec.rs` vs the specification phase is empty — specs unchanged, not weakened. The only proving change was deleting `admit()` from `lemma_translation_injective` (now discharged by the `open` identity definition).
+- **Cheating audit (target module)**: admit=0, external_body=0, assume=0, cfg-gated exec=0. The global `external_body=25`/`cfg_gate=7` are all in other modules and TCB-allowed; `cheating-detail.txt` has no microvm entry. The 2 `#[cfg(verus_keep_ghost)]` in microvm only gate `include!` of spec/proof (excluded).
+- No `// VERUS REWRITE`, no claimed limitation, no rewrites.
+
+Wrote `turn_001_driver.md` and created `STOP` with `RESOLVED`.
+
+
+=== Session End ===
+Session: 6430bc73-e9d1-4fad-b3e4-254583c4f157
+Duration: 165.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/dialogue-reviewer-t001-claude-20260615-145335.jsonl
