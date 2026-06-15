@@ -1794,3 +1794,92 @@ The 05-31 verus compiles vstd cleanly. Just need the crate-qualified module path
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=sys::mm::address 2>&1 | tail
 
 [THINKING] The 05-31 version compiles vstd without the atomic error, but the module path needs to be `sys::mm::address` instead of just `mm::address`. I should retry with the full module path including the crate prefix.
+[RESULT ✓] bash: - from
+    - from
+    - from
+    - try_from
+    - fmt
+    - new
+    - seconds
+    - nanoseconds
+    - checked_sub
+    - checked_add_duration
+    - checked_sub_duration
+    - partial_cmp
+    - cmp
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  ch...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '18,80p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-26-05.log
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: could not find module mm::address specified by --verify-module or --verify-only-module
+       available modules are:
+       - sys::mm::access
+       - sys::mm::address
+       - sys::mm::address::virt
+       - ...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '600,640p' Makefile; echo "=== MODULE / verify-module refs ==="; grep -n "verify-modul
+
+[THINKING] The MODULE variable is still showing up as `mm::address` even after the Makefile processes it, so I need to trace through how the verify-module flag gets constructed during the build.
+[RESULT ✓] bash: if [ ! -f "$$verus_path" ]; then \
+		echo "Error: VERUS_EXECUTABLE_DIR is set to '$(VERUS_EXECUTABLE_DIR)' but no $(VERUS_BINARY) found there."; \
+		exit 1; \
+	fi; \
+	if [ "$(IS_WINDOWS)" != "yes" ] && [ ! -x "$$verus_path" ]; then \
+		echo "Error: $(VERUS_BINARY) at '$$verus_path' is not executable...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "VERUS_AI_VERIFY_SCRIPT\|VERUS_AI_DIR" Makefile | head; echo "=== find script ==="; l
+
+[THINKING] The verify script is stripping the crate prefix `sys::` from the module path before passing it to verus, but verus is returning errors that include the full `sys::mm::address` path. This mismatch suggests the script expects verus to list modules without the crate prefix, yet verus is actually including it in its output.
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+326:export VERUS_AI_DIR ?= /home/ruize/verus-ai-exp/verus-ai
+619:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+627:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+62...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verify-module\|verify-only\|module\|sed\|s/.*::\|crate" scripts/verify.sh | grep -i 
+[RESULT ✓] bash: 42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+66:        --module)
+166:        CMD+=(-- --verify-module "$MODULE_ARG")
+192:        CMD+=(--verify-module "$MODULE")
+477:# When MODULE is set, counts only for module files; otherwise whole crate.
+513:# --- Determine modu...
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 150. 
+151.     # Append extra cargo arguments (e.g., -Z build-std, --target).
+152.     if [[ -n "${VERUS_EXTRA_CARGO_ARGS:-}" ]]; then
+153.         # shellcheck disable=SC2206
+154.         CMD+=($VERUS_EXTRA_CARGO_ARGS)
+155.     fi
+156. 
+157.     MODULE_ARG="$MODULE"
+158.     if [[ -n "$CRATE_NAME" ...
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+The verify script strips the `sys::` prefix, but this verus build wants the full path. Work around via double-prefix:
+[TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=sys::sys::mm::address 2>&1 |
+
+[THINKING] I'm realizing the issue is a version mismatch—the script strips the `sys::` prefix before passing it to verus, but this version expects the full module path including the crate prefix. Rather than modifying the verify script itself, I could just invoke verus directly without going through that stripping step.
