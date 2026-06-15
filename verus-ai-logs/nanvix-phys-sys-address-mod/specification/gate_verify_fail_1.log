@@ -1,0 +1,158 @@
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bitmap/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_18-39-34
+
+    Checking vstd v0.0.0-2026-05-31-0205
+error: expected generics to match: 
+        expected 
+        found u8
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+91 | atomic_specs_int!(atomic_specs_u8, AtomicU8, u8);
+   | ------------------------------------------------ in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found u16
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+92 | atomic_specs_int!(atomic_specs_u16, AtomicU16, u16);
+   | --------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found u32
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+93 | atomic_specs_int!(atomic_specs_u32, AtomicU32, u32);
+   | --------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found usize
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+96 | atomic_specs_int!(atomic_specs_usize, AtomicUsize, usize);
+   | --------------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found i8
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+98 | atomic_specs_int!(atomic_specs_i8, AtomicI8, i8);
+   | ------------------------------------------------ in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found i16
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+99 | atomic_specs_int!(atomic_specs_i16, AtomicI16, i16);
+   | --------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found i32
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+100 | atomic_specs_int!(atomic_specs_i32, AtomicI32, i32);
+    | --------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found isize
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+103 | atomic_specs_int!(atomic_specs_isize, AtomicIsize, isize);
+    | --------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found bool
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+105 | atomic_specs_bool!(atomic_specs_bool, AtomicBool, bool);
+    | ------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_bool` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `vstd` (lib) due to 9 previous errors
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  ✅ All 11 exec functions have contracts.
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  coverage: 11/11 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-bitmap/verus-logs/verus_2026-06-15_18-39-34.log
+make: *** [Makefile:617: verify-bitmap] Error 101
