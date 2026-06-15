@@ -1156,3 +1156,338 @@ Turn 23
 ────────────────────────────────────────────────────────────
 Verus binary exists at the default path. Let me run `make verify-sys` (allowing several minutes).
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys 2>&1 | tail -60
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Verus passed (exit 0) but flagged `cfg_gate=1`. Let me inspect the cheating detail and the unverified coverage, then run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail.txt ==="; cat verus-ai-logs/verify-sys/verus-logs/cheating-
+[RESULT ✓] bash: === cheating-detail.txt ===
+
+=== coverage-unverified (virt only) ===
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== full cheating-detail dir ==="; ls -la verus-ai-logs/verify-sys/verus-logs/ 
+[RESULT ✓] bash: === full cheating-detail dir ===
+total 628
+drwxrwxr-x 1 ruize ruize 9132 Jun 15 11:02 .
+drwxrwxr-x 1 ruize ruize   20 Jun 13 23:26 ..
+-rw-rw-r-- 1 ruize ruize    0 Jun 15 11:02 cheating-detail.txt
+-rw-rw-r-- 1 ruize ruize 3000 Jun 15 11:02 coverage-unverified.txt
+-rw-rw-r-- 1 ruize ruize  318 Jun 13...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/final-review && cat > verus-ai-lo
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 60 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Review — `sys-virt-address`
+2. 
+3. ## Checklist
+4. 
+5. ### Caller Analysis
+6. - [x] Read `caller_analysis.md` and extracted in-scope caller expectations.
+7. - [ ] All caller-required properties are covered by in-scope formal contracts.
+8. 
+9. ### View Design
+10. - [x] Read `view_design.md...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The `cheating-detail.txt` is empty and no virt functions are in the unverified list for our scope. Let me confirm what `cfg_gate=1` counts (the standard spec-include pattern) and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg_gate\|verus_keep_ghost\|cfg(not\|include!" scripts/verify.sh 2>/dev/null
+[RESULT ✓] bash: 478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+503:        if any(target.startswith(k) for k in ['use ', 'use(', 'include!', 'extern ', 'mod ']):
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Cleaning review artifacts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -rf .review-tmp && echo cleaned_review_tmp=yes && ls verus-ai-logs/nanvix-phys-sys
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: cleaned_review_tmp=yes
+ast-report
+ast-report-sysvirt
+final_review.codex.md
+make_build.out
+make_verify_sys.out
+review-claude-20260615-105731.jsonl
+review-claude-20260615-105731.txt
+<shellId: 62 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '478,520p' scripts/verify.sh
+[RESULT ✓] bash: count_cfg_gates() {
+    local scan_dir="$1"
+    python3 -c "
+import re, sys
+from pathlib import Path
+
+src_dir = Path('$scan_dir')
+count = 0
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+
+for rs_file in sorted(src_dir.glob('**/*.rs')):
+    lines = rs_file.read_text().splitlines()
+...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Done. Full review saved to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md`
+
+Summary:
+- **Overall Result: FAIL**
+- **Guardrails (virt.rs/virt.spec.rs/virt.proof.rs):** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated-exec(`cfg(not(verus_keep_ghost))`)=0
+- **Verification:**  
+  - `make verify-sys`: **FAIL (strict)**; output shows `status: CHEATING_DETECTED` and `cfg_gate=1` (though `verify_sys_exit=0`, error lines=0)  
+  - `make build`: **PASS** (`build_exit=0`)
+- **Top issues:** missing spec for `into_raw_value`, `impl Address for VirtualAddress` lacks `#[verus_verify]`, AST count reported mismatches (`⚠️ 3 mismatched`).
+The `cfg_gate=1` excludes `include!`/`use`, so virt.rs's two include lines don't count. Let me find which file in the `sys` crate the cfg_gate=1 comes from (it's out of our scope), then run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/sys/src')
+cf
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs:151: #[cfg(verus_keep_ghost)]  -> target: verus! {
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+cfg_gate=1 is in `alignment.rs` (out of scope, gating a `verus!` block — not exec code). virt.rs contributes 0. Now let me run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 540 make build 2>&1 | tail -40
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: buildsh completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+`make build` has no recipe. Let me check the proper build command (the repo uses `./z`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | grep -iE "build|all|check|compile" | head; ech
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+485:install: all-nanvix
+522:release: all install release-generate-ma...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+`make build` is a no-op; the repo builds via `./z`. Let me run `./z check` (compilation validation).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 580 ./z check 2>&1 | tail -50
+[RESULT ✓] bash: [ERROR] Unknown command: 'check'
+Valid commands: build, test, verify, clean, distclean, setup, run, bench, help
+<shellId: zcheck completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+`./z` uses different commands. Let me run `./z build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 590 ./z build 2>&1 | tail -50
+[RESULT ✓] bash: RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home/ruize/nanvix-phy-specs/build/targets/x86-user.json  -p nvx-crt0 --features "c-main trace" && true
+    Finished `dev` profile [optimized + ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Build PASS. I now have all evidence. Let me verify the final-review directory exists and confirm the `into_raw_value` / Address-impl annotation state precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-sys-virt-address/final-review/ 2>/dev/null; echo "==
+[RESULT ✓] bash: total 2080
+drwxrwxr-x 1 ruize ruize     300 Jun 15 11:03 .
+drwxrwxr-x 1 ruize ruize     524 Jun 15 10:57 ..
+drwxrwxr-x 1 ruize ruize      46 Jun 15 11:00 ast-report
+drwxrwxr-x 1 ruize ruize      46 Jun 15 11:00 ast-report-sysvirt
+-rw-rw-r-- 1 ruize ruize    5889 Jun 15 11:03 final_review.codex.md
+-r...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 403s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review report", tool_calls_completed: 44, (timed out...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': False}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 405s, total_turns: 0, model: gpt-5.3-codex, duration: 266s
+
+Done. Full review saved to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-a...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Codex finished (FAIL). Waiting for the claude agent to finish writing its report.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+
+[THINKING] Codex is flagging several issues: the `into_raw_value` function is missing its specification, the implementation lacks Verus verification, there are three AST mismatches, and one configuration gate is set. I'm waiting for the Claude agent to help me review both files and address these problems.
+I have all evidence. Let me write the final review report.
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md with 12583 characters
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Report saved. Let me clean up the temp scratch file I referenced and verify the file is in place.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 12698 Jun 15 11:06 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+--- no scratch files left in repo ---
+clean
+<shellId: 67 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Review complete. Report saved to `final-review/final_review.claude.md`.
+
+## Summary to Orchestrator
+
+**Overall Result: FAIL**
+
+**Guardrail counts** (virt.rs + virt.spec.rs + virt.proof.rs): `admit=0`, `assume=0`, `external_body=0`, `assume_specification=0`, cfg-gated-exec=0. *(All clean. The only cfg in virt.rs is the standard `#[cfg(verus_keep_ghost)] include!` for spec/proof. The crate-level `cfg_gate=1` reported by verify-sys traces to out-of-scope `alignment.rs:151`.)*
+
+**Verus:** PASS — `make verify-sys` → exit 0, `2 verified, 0 errors`.
+**Build:** PASS — `./z build` → `[OK] Build complete.` (`make build` is a no-op in this repo.)
+
+**Top issues:**
+1. **BLOCKER:** `VirtualAddress::into_raw_value` (in-scope) has **no `#[verus_spec]`** and its `impl Address for VirtualAddress` block has **no `#[verus_verify]`** → unverified, no contract. The caller-relied round-trip inverse (`result as int == self@`, required by both caller_analysis & view_design) is missing; 3 call sites (mmio.rs:67, sync.rs:37/65) can't derive `new(x).into_raw_value()==x`. Desk-reject coverage gap.
+2. **Medium:** `clone_address` is an extra uncontracted exec fn vs baseline (added by a sibling `kernel::all` commit as a now-required trait method; fn_coverage says REMOVE). Out of in-scope set.
+3. **Low:** `bugs.md` missing (should record `None`).
+4. **Info:** AST `1 mismatched` + spec-drift "ensures removed" are **false positives** from the duplicate `from_raw_value` name (inherent vs trait); per-function diff = MATCH, working tree == HEAD. In-scope exec code is byte-identical to baseline.
+
+`new` and inherent `from_raw_value` are correctly and cleanly specified/verified — the failure is purely the unspecified, unverified in-scope `into_raw_value`.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 445s, total_turns: 0, model: claude-opus-4.8, duration: 445s
+
+Review complete. Report saved to `final-review/final_review.claude.md`.
+
+## Summary to Orch...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Both agents independently conclude **FAIL** with the same core blocker: in-scope `into_raw_value` has no spec and its impl block lacks `#[verus_verify]`. Let me read both raw reviews and resolve the one discrepancy (verify-sys PASS vs CHEATING_DETECTED) myself.
+[TOOL] report_intent: Reconciling and consolidating reviews
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+
+[THINKING] Both agents identify the same core issue: `into_raw_value` lacks a spec despite being in-scope, and the `impl Address for VirtualAddress` block is missing verification annotations, leaving it unverified. There's a disagreement on the outcome though—I'm seeing that claude expects verify-sys to pass while codex flags it as a failure due to strict-mode interpretation, with the cfg_gate=1 discrepancy stemming from out-of-scope alignment.rs.
+
+I need to read through both review files directly and verify the disputed verify-sys result myself to settle this authoritatively, then consolidate everything into the final review.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. # Final Review — `sys-virt-address`
+2. 
+3. ## Checklist
+4. 
+5. ### Caller Analysis
+6. - [x] Read `caller_analysis.md` and extracted in-scope caller expectations.
+7. - [ ] All caller-required properties are covered by in-scope formal contracts.
+8. 
+9. ### View Design
+10. - [x] Read `view_design.md...
+[RESULT ✓] view: 1. # Final Review — `sys-virt-address` (`VirtualAddress`)
+2. 
+3. Independent, skeptical, review-only assessment of the Verus verification effort
+4. for `src/libs/sys/src/sys/mm/address/virt.rs`.
+5. 
+6. In-scope target functions (ONLY these): `VirtualAddress::new`,
+7. `VirtualAddress::from_raw_value`...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Both agents agree: **FAIL**, same root blocker. Let me quickly verify the two disputed tooling points myself (cfg_gate source, impl-block annotation) before consolidating.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== impl Address block annotation (lines 164-168) ===" && sed -n '164,168p' src
+
+[THINKING] Both reviewers identified the same core issue: `into_raw_value` is unspecified and the impl block for `Address` on `VirtualAddress` lacks the `#[verus_verify]` attribute. I'm checking whether trait implementations automatically inherit verification from the trait definition itself, since `Address` is marked with `#[verus_verify]` at the trait level.
+
+Looking at the verification output, only 2 functions are verified (the `new` and inherent `from_raw_value`), which confirms `into_raw_value` isn't covered. The discrepancies between the two reviews on the cfg_gate source and AST counts appear to be tooling artifacts, but they don't change the fundamental result: both agree the code fails verification due to the missing trait method implementation. I'll verify the cfg_gate origin and then consolidate the findings into the final review.
+[RESULT ✓] bash: === impl Address block annotation (lines 164-168) ===
+    }
+}
+
+impl Address for VirtualAddress {
+    ///
+=== alignment.rs:145-155 ===
+}
+
+//==================================================================================================
+// Material for verification
+//===============================...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Both confirmed independently. The `impl Address for VirtualAddress` block (line 167) indeed lacks `#[verus_verify]`, so `into_raw_value` is unspecified **and** unverified — the central blocker. The `cfg_gate=1` is the benign standard `#[cfg(verus_keep_ghost)] verus!` ghost guard in out-of-scope `alignment.rs:151`, not cheating exec. Writing the consolidated review.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.md
+
+[THINKING] I'm confirming that the `impl Address for VirtualAddress` block at line 167 lacks the `#[verus_verify]` attribute, meaning the `into_raw_value` and `from_raw_value` trait methods aren't being verified. The `cfg_gate=1` I found earlier comes from the standard ghost-include pattern in alignment.rs, not from any verification-bypassing configuration.
+
+Both virt.rs and mod.rs also use `#[cfg(verus_keep_ghost)]`, but the counter appears to only flag the verus! block in alignment.rs—this is a benign false-positive since it's the accepted idiom for marking specification material, not executable code hiding. The actual cfg-gated exec count is zero.
+
+The consolidated verdict is FAIL: the core blocker remains that `into_raw_value` is in-scope but unspecified, and its implementation block isn't under `#[verus_verify]`, making the caller's round-trip property unprovable. Now I'm writing the final_review.md following the required template structure with strict checklist enforcement. Writing final review...
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.md with 11488 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-sys-virt-address/final-review/*.md
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 12698 Jun 15 11:06 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  5889 Jun 15 11:03 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 11571 Jun 15 11:07 verus-ai-lo...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Done. Two independent sub-agent reviews (claude-opus-4.8, gpt-5.3-codex) plus orchestrator verification are saved; consolidated into `final_review.md`.
+
+## Result: **FAIL** (both reviewers independently agreed)
+
+**Root blocker** — in-scope `VirtualAddress::into_raw_value` (virt.rs:253) has no `#[verus_spec]`, and its `impl Address for VirtualAddress` block (virt.rs:167) has **no `#[verus_verify]`** → the method is unspecified *and* unverified. The trait declares the contract (`result as int == self@`), but it's never discharged for `VirtualAddress`. The caller round-trip identity (3 call sites: mmio.rs:67, sync.rs:37/65) is unprovable.
+
+**Clean dimensions (verified):** admit=0, assume=0, external_body=0, assume_specification=0, in-scope cfg-gated exec=0. `new` and inherent `from_raw_value` are correctly specified/verified; `./z build` passes; `make verify-sys` exits 0 (`2 verified, 0 errors`).
+
+**Reconciled discrepancies:**
+- `cfg_gate=1` is the benign out-of-scope `alignment.rs:151` standard ghost guard, not cheating.
+- AST "mismatch" / spec-drift "ensures removed" are false positives (duplicate `from_raw_value` name); `clone_address` is a genuine out-of-scope EXTRA.
+
+**Fix to reach PASS:** add `#[verus_verify]` to the `impl Address` block + `#[verus_spec(... ensures result as int == self@)]` on `into_raw_value` (and Ok/Err arms on trait `from_raw_value`), re-verify, and record `bugs.md` = None.
+
+Files: `final_review.md`, `final_review.claude.md`, `final_review.codex.md`.
+
+
+=== Session End ===
+Session: 3f5eb952-6caa-4ef7-a746-9d8f9092b657
+Duration: 639.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-105731.jsonl
