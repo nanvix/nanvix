@@ -381,3 +381,107 @@ The cfg_gate=1 in alignment.rs is a separate module outside my scope, so I shoul
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys MODULE=mm::address::virt 2>&1 | sed -n '/=== Results/,/Log written/p'
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  Detail: verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  2/255 exec functions have co...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The module-path resolution didn't scope (actual path has a `sys/` prefix), so the cheating scan stays crate-wide. The `cfg_gate=1` comes solely from `alignment.rs`. Let me understand whether alignment is in-scope or a separate module, and how the gate treats it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' verus-ai.toml 2>/dev/null | grep -niA40 "module\|virt\|align" | head -
+
+[THINKING] The module-scoped cheating directory check isn't working as expected — even with MODULE=mm::address::virt, the verification script is still scanning the entire src directory and finding cfg_gate=1 in alignment.rs. I'm wondering if the verify.sh script is actually looking for the right path structure, since for that module it should be checking for mm/address/virt.rs or a mm/address/virt directory.
+
+Actually, I realize the real issue: the cfg_gate in alignment.rs isn't necessarily cheating in the way that matters. The `#[cfg(verus_keep_ghost)]` wrapper means that block of ghost code is completely removed in normal builds, so it doesn't affect the executable behavior at all. The detector flags it as a heuristic, but since it's all spec/ghost code that gets stripped out anyway, it's not actually breaking AST consistency. The question is whether this counts as my responsibility to fix given the task constraints. I should check the verus-ai.toml configuration to see the module processing order and understand whether alignment.rs was already handled in a prior phase or if its cfg_gate state is expected.
+[RESULT ✓] bash: 5:background = """File: `src/libs/sys/src/sys/mm/address/virt.rs`
+6-
+7:Verification-order target functions (the only functions in scope for this module):
+8:`VirtualAddress::into_raw_value`, `VirtualAddress::from_raw_value`, `VirtualAddress::new`, `VirtualAddress`
+9-
+10-
+11-Hard rules:
+12-- Do not to...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -niE "cheat|cfg_gate|gate|fail|threshold|allow" verus-ai.toml | head -40
+[RESULT ✓] bash: 15:- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -10 -- src/libs/sys/src/sys/mm/alignment.rs; echo "=== when was cfg
+
+[THINKING] The gate logic lives in the external verus-ai orchestrator, not in verus-ai.toml, so I don't need to trace through that. My focus is on eliminating all cheating to get verify-sys passing cleanly, and the cfg_gate=1 flag in alignment.rs is the right approach for that.
+
+The key question is whether removing the redundant `#[cfg(verus_keep_ghost)]` attribute from the verus block in alignment.rs counts as "touching unrelated code." It's not modifying any function logic or specs—just removing a conditional-compilation gate that the detector flags. But alignment.rs is in a different module file, which suggests it might be outside my scope for the sys-virt-address task. Each per-module task should handle its own file, so alignment would belong to a separate sys-alignment task if one exists.
+
+I need to check whether alignment.rs was already handled in a previous cheating-elimination pass, and whether other sys address modules follow the same pattern as virt.rs to understand what the standard approach is. I'm torn between the strict constraint against modifying unrelated code and the fact that alignment.rs has the only remaining cfg_gate in the entire crate. Removing it would be a trivial, semantics-preserving change that would make the crate truly clean, but it directly violates the "don't touch unlisted functions" rule. Let me check the git history to see if alignment.rs was ever part of prior cheating-elimination work.
+[RESULT ✓] bash: 64079d8db [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page (2 verified, 0 errors, admit=24 external_body=14 cfg_gate=16)
+de24f6057 [kernel] E: Verify kpool::Inner and frame::Inner
+5b04a186e [sys] E: Make align_up a const fn
+8edb45f46 [libs] B: Checked arithmet...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Clear picture now. The `cfg_gate` in `alignment.rs` was introduced by a *prior* module's verus work (commit `64079d8db`, module `kernel::...page`), not by the virt-address scope. The virt module itself is byte-identical to base and has **zero** cheating items. Per hard rules I must not touch the unrelated `alignment.rs`.
+
+Let me do a final confirmation that the virt module verifies and AST is consistent, then write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== AST: virt files vs base ===" && git diff --stat verus-ai-prove -- src/libs/
+
+[THINKING] The `#[cfg(verus_keep_ghost)]` attribute in alignment.rs was actually introduced by a prior verus module's commit, not the current work, which explains why it's present as a pre-existing artifact from earlier module development.
+
+Since my virt-address module has zero admits, assumes, external bodies, and cfg gates, and the single crate-wide cfg gate comes from alignment.rs (another module's territory), the correct approach is to leave it untouched—the hard rule against modifying unrelated code paths applies here. My module is already fully clean of cheating mechanisms.
+
+The AST consistency check for virt.rs shows zero changes versus the base, and the target functions verify successfully with proper specifications, so everything checks out for my scope. I'm confident the virt-address module is clean of cheating. Now I need to write up the fix_report.md and verification_todo.md files. The verification_todo should note that there are no outstanding proof gaps within my scope, though the cfg_gate issue is out of scope. Let me create both files in the cheating-elimination directory.
+[RESULT ✓] bash: === AST: virt files vs base ===
+(empty above = identical)
+=== cheating in virt files ===
+NONE
+=== cfg gate in virt.rs ===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+virt module is fully clean: AST identical to base, zero admit/assume/external_body/assume_specification, and its two `cfg(verus_keep_ghost)` lines gate only `include!` (excluded by the detector). The crate-wide `cfg_gate=1` is entirely from the out-of-scope `alignment.rs`. Writing the report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/fix_report.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/verification_todo.md
+
+[THINKING] The `include!` statements in virt.rs are correctly excluded from the cfg_gate count, so that file contributes zero. Now I'm putting together the report and verification documentation, noting that there are no proof gaps in the module but being transparent about the out-of-scope cfg_gate instances.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/verification_todo.md with 1031 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/fix_report.md with 3525 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Done. Summary of findings and outcome:
+
+**Result: PASS** — the sys-virt-address module has zero cheating.
+
+- **Cheating in scope:** `virt.rs`, `virt.spec.rs`, `virt.proof.rs` contain **no** `admit`, `assume`, `external_body`, or `assume_specification`. All three files are byte-identical to `verus-ai-prove`, so AST consistency is trivially perfect.
+- **Verification:** `make verify-sys` → exit 0, 0 errors, `assume=0 external_body=0 admit=0`. The `new`/`from_raw_value` contracts verify.
+- **The `cfg_gate=1`** reported crate-wide is **not** in scope: it's `alignment.rs:151` (`#[cfg(verus_keep_ghost)] verus! {`), introduced by an earlier module's pass (commit `64079d8db`, `kernel::...::page`). The two `cfg(verus_keep_ghost)` lines in virt.rs gate only `include!` and are excluded by the detector. Per the hard rule "do not touch unlisted/unrelated code," I left `alignment.rs` untouched and documented it as belonging to the `mm::alignment` module's own scope.
+
+No code changes were needed — the module was already clean. Reports written to `fix_report.md` and `verification_todo.md`.
+
+
+=== Session End ===
+Session: 5fb60fdc-da20-4702-ad58-3fbea5abb72e
+Duration: 286.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/prover-claude-20260615-104419.jsonl
