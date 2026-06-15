@@ -147,11 +147,10 @@ impl PhysicalAddress {
     // intermediate `addr_raw` binding is mandatory. Same value, same operations, same complexity.
     // Reproducer: verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
     pub fn from_number(frame: FrameNumber) -> Self {
-        let addr_raw: usize = frame.into_raw_value();
         proof! {
             lemma_from_number_no_overflow(frame);
         }
-        let addr: usize = addr_raw * mem::FRAME_SIZE;
+        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
