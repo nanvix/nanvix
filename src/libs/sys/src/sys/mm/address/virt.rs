@@ -46,7 +46,7 @@ pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
     #[verus_spec(result =>
-        ensures result@ == value as int,
+        ensures true,
     )]
     pub fn new(value: usize) -> Self {
         Self(value)

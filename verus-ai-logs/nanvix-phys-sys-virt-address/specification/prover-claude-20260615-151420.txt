@@ -804,3 +804,68 @@ f="src/libs/sys/src/sys/mm/address
 Turn 51
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -12
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sys` (lib) due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/setup error (veru...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Still fails. `from_number` in phys.rs is also a no-self associated fn yet works. Let me compare phys.rs structure (includes, impl blocks, verus setup) against virt.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The `ensures result@ == value as int` spec alone still fails, so it's not about `inv()`. The key difference with `into_raw_value` is that it actually succeeded in my first run with all three specs — only `new` and `from_raw_value` threw errors. I need to figure out whether `into_raw_value` was genuinely verifying or if the run just stopped before reaching it.
+
+Now I'm seeing the pattern: `into_raw_value` is a trait method with `self`, while both `new` and `from_raw_value` are inherent associated functions without `self`. But `phys.rs` has inherent associated functions like `from_number` and `from_mmio_address` that work fine without `self`, so that can't be the issue. Let me compare the exact structure and imports between `phys.rs` and `virt.rs` to find what's actually different.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Almost identical to phys.rs. Key diff: virt.rs imports `vstd::prelude::*` twice (line 8 and line 25, both ungated), while phys.rs gates the second. Let me get the macro expansion to see the generated reference to `new`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' scripts/verify.sh 2>/dev/null | grep -nE "rust_verify|cargo|RUSTC|verify|unpre
+
+[THINKING] I'm noticing the import patterns differ between the two files. phys.rs uses a cfg-gated import of the vstd prelude on line 30, while virt.rs has an unconditional import on line 25 and appears to have duplicate glob imports of the vstd prelude. Let me try expanding the macro to see what's actually happening. The `#[verus_spec]` attribute macro on `fn new` should rewrite the function to inject the requires and ensures clauses into the body, but I need to see the actual expansion to understand why it can't find `new` in scope.
+[RESULT ✓] bash: 6:#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+7:#   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+9:# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+12:# Extra environment variables for custom cargo invocations:
+14:#   VERUS_EXTRA_CARGO_ARGS Extra argum...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Let me get the macro expansion directly to see what references `new`. First, fix the library path for the verus driver.
+[TOOL] bash: cd /home/ruize/toolchain/verus; ls *.so rust_verify 2>/dev/null; echo "=== find rustc lib ==="; find / -name "librustc_d
+
+[THINKING] I'm noticing the import statements are inconsistent across the files — virt.rs has both `use vstd::prelude::*;` without the leading `::` and `use ::vstd::prelude::*;` with it, while phys.rs uses the gated version with `::vstd`. Since these are part of the exec code that needs to be preserved, I should focus on testing whether the double ungated import on line 25 is the actual issue causing the problem.
+
+Let me check if phys.rs's `from_number` function actually compiles successfully and whether all its specced functions pass verification, since that would tell me whether the macro expansion works there. If it does, I can use the macro expansion output from phys.rs as a reference to understand what's going wrong in virt.rs. I'll need to invoke the verus rustc with the proper library path to get the expanded code and see what's actually being generated.
+[RESULT ✓] bash: libverus_builtin_macros.so
+libverus_state_machines_macros.so
+rust_verify
+=== find rustc lib ===
+/mnt/toolchain/src/rust/build/x86_64-unknown-linux-gnu/stage2-rustc/x86_64-unknown-linux-gnu/release/deps/librustc_driver-68c2944ddc29906a.so
+/mnt/toolchain/src/rust/build/x86_64-unknown-linux-gnu/stage2/...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Let me test `new` with a trivial `ensures true` to determine if the problem is structural (the macro on `new`) or in the ensures expression.
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=src/libs/sys/src/sys/mm/address/virt.rs
+python3 - <<'PY'
+f="src/libs/sys/src/sys/mm/address
+
+[THINKING] The proc-macro expansion approach is getting unwieldy with toolchain compatibility issues. I'm going to pivot and directly compare the implementations instead, which should be more straightforward than trying to expand the macro with the right rustc version.
+
+Looking at the specs more carefully, I notice `from_number` uses `result@ == spec_from_number(...)` while `into_raw_value` uses `result as int == self@` — the casting direction differs. For `new`, I'm using `result@ == value as int`, which calls the `@` operator on `result` of type `Self`. The question is whether `View` is properly in scope for that `@` resolution. `from_number` also uses `result@` successfully, so it should work, but let me verify the `View` impl is accessible in the macro context. I'm going to test with a trivial spec like `ensures true` to isolate whether the issue is the spec itself or something about how `new` is being resolved.
