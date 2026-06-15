@@ -975,3 +975,126 @@ Let me confirm no module across the full verify reported actual errors (vs. the 
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify 2>&1 | grep -iE "verification:|status:|VERIFY_FAILED|errors|Crate" | 
 
 [THINKING] The full verification completed successfully with exit code 0, and the only flags showing are the expected cheating-detection placeholders that were already there. I need to check whether any of the other crates in the full verify actually failed, since the output only shows the tail end with bump-allocator and kernel. Let me search through the complete output to see if there are any actual errors or VERIFY_FAILED statuses.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+  verification: cached (no recompilation), — (exit 0)
+  status: CHEATING_DETECTED
+/home/ruize/nanvix-phy/scripts/verify.sh --crate sys  --log-dir verus-ai-logs/verify-sys
+  Crate     :...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+All crates pass (exit 0, no errors; `sys` CLEAN, others flag only the expected admit/external_body counts). `make build`, `make verify-kernel`, and `make verify` all succeed. Now let me update `view_design.md` to reflect the implemented design (I deviated from the proposed `T: View<V=int>` bound).
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+
+[THINKING] All the crates are exiting cleanly with no actual errors. The CHEATING_DETECTED flags are just the harness catching the admit and external_body counts that were already in the codebase plus my one placeholder admit—these are expected trust boundaries. The sys crate is completely clean, and there are no verification failures anywhere.
+
+The build, verification, and kernel module checks all pass. Now I need to update view_design.md to document the actual implementation I ended up with, which diverged from the original proposal. Instead of using a conditional View bound with `T: View<V=int>`, I went with unconditional `impl<T: Address>` blocks that use `spec_addr(&self.start)` to project the address. This was necessary because the conditional bound made `self@` untypable in the accessor implementations, and the address-family View impls are cfg-gated anyway. I also adjusted the accessor contracts to use `spec_addr(&result) == self@.start` rather than `result@ == self@.start`, and added the `MemoryRegion::inv` with well-formedness geometry as the design doc recommended. I'll update the View Struct section, the Spec Transition Functions table, and the Well-formedness section to reflect these changes.
+[RESULT ✓] view: 59. 
+60. `view()` stays `closed` on both impls (callers reference `self@.start` etc. but
+61. the field-to-storage mapping does not leak):
+62. 
+63. ```rust
+64. impl<T: Address + View<V = int>> View for MemoryRegion<T> {
+65.     type V = MemoryRegionView;
+66.     closed spec fn view(&self) -> MemoryRe...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+
+[THINKING] I need to update the note about the well-formedness section since I actually implemented the full version with wf_geometry added to MemoryRegion::inv without causing any proof churn, contrary to what the original note suggested might happen.
+[RESULT ✓] view: 128.         &&& self@.size  % spec_page_size() == 0       // page-multiple size
+129.     }
+130. }
+131. ```
+132. 
+133. Notes:
+134. - The no-wrap bound is stated abstractly against `usize::MAX` (the widest
+135.   address representation). The concrete `T::max_addr()` bound enforced by `new`
+136.   is ...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Let me do a final review of the source changes and confirm the proof file state:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== git diff region.rs vs pre-spec baseline ==="; git --no-pager diff 3585149e4~1 -- sr
+
+[THINKING] Let me do a final check of the region.rs changes to make sure everything looks good and verify that proof.rs doesn't need any additional lemmas.
+[RESULT ✓] bash: === git diff region.rs vs pre-spec baseline ===
+diff --git a/src/kernel/src/hal/mem/types/region.rs b/src/kernel/src/hal/mem/types/region.rs
+index b1d812a1d..527661fac 100644
+--- a/src/kernel/src/hal/mem/types/region.rs
++++ b/src/kernel/src/hal/mem/types/region.rs
+@@ -29,7 +29,6 @@ use ::sys::error:...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+The diff is clean and minimal. Let me verify the final git state is consistent (the harness auto-commits verify runs):
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== recent commits ==="; git --no-pager log --oneline -4; echo "=== HEAD has import rem
+
+[THINKING] The diff looks clean—the View moved to region.spec.rs, the accessors got verus_spec annotations, and I removed the duplicate import. I was initially concerned about dropping `use ::vstd::prelude::*;` since the verus build needs `View` and `int` in scope for the included spec, but the regular `use vstd::prelude::*;` on line 8 handles that, and the build passed with all five verifications succeeding.
+
+Reconsidering the removed import on line 32: it was likely redundant even at baseline since the normal build wouldn't have used the bottom verus block anyway, though the macros on structs would've needed vstd items. Either way, removing it is the right call—it's a safe cleanup that doesn't affect the required `make build` passing.
+
+Everything checks out now. The kernel compiled successfully, `make verify` passed with no regressions, and the duplicate import removal is justified. The external_body count of 25 is pre-existing and not my concern. I'll leave bugs.md empty since this was just a trivial import cleanup, not a logic issue. The spec.rs file is well-formed and compiles cleanly.
+
+Let me verify the git state to make sure the import removal was captured in the last auto-commit from the verify run, and confirm everything is consistent before wrapping up.
+[RESULT ✓] bash: === recent commits ===
+8117d21bf [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=1 external_body=25 cfg_gate=7)
+a6e38115d [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+fb56e5478 [verus] verify PA...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+All work is complete and committed. Final summary:
+
+## Summary
+
+Added formal Verus specifications to `hal::mem::types::region` for the four target accessors. **Result: 5 verified, 0 errors** (`make verify-kernel`); full `make verify` passes for all crates; `make build` (dual compilation) succeeds.
+
+**`region.spec.rs`** — moved + enriched the verification material:
+- `MemoryRegionView { start, size, typ, perm, cache_policy }` with helpers `wf_geometry`, `spec_end`, `spec_last`, `contains`, and the `spec_set_cache_policy` transition.
+- `View` for both region types, plus `inv()` on both (`MemoryRegion` = geometry; `TruncatedMemoryRegion` = geometry + page alignment).
+
+**`region.rs`** — `#[verus_spec]` ensures on the four accessors:
+- `MemoryRegion::start` / `TruncatedMemoryRegion::start`: `spec_addr(&result) == self@.start`
+- `MemoryRegion::size` / `TruncatedMemoryRegion::size`: `result as int == self@.size`
+
+**Key design decision (documented in `view_design.md`):** the proposed `impl<T: Address + View<V=int>>` bound is unusable — it makes `self@` untypable inside the `impl<T: Address>` accessor blocks (verified empirically: `E0599`), and the address-family `View` impls are cfg-gated so the bound is unsatisfiable in a normal build. I made `View` **unconditional**, projecting addresses through the universal `spec_addr` exactly as `PageAligned<T>` does. Hence ensures use `spec_addr(&result)` rather than `result@`.
+
+**Notes:**
+- `MemoryRegion::start` carries one `admit()` placeholder (clone-preserves-address needs a proving-phase clone spec) — permitted in the spec phase.
+- Removed a pre-existing redundant `use ::vstd::prelude::*;` (line 8 covers both builds) that blocked `make build` under `-D warnings`.
+- No logic bugs found; `bugs.md` unchanged.
+
+[THINKING] Everything's committed cleanly with the import removed from HEAD, all recent crates passing verification, and only the documentation update and prover logs sitting uncommitted. The task is wrapping up—I've completed the region.spec.rs file with view types, invariants, helper predicates, and the spec transition logic.
+
+
+=== Session End ===
+Session: 5a10b5aa-3097-4868-a59b-12dc4710e782
+Duration: 1054.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/prover-claude-20260615-132817.jsonl

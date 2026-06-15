@@ -58,19 +58,36 @@ pub struct MemoryRegionView {
 ```
 
 `view()` stays `closed` on both impls (callers reference `self@.start` etc. but
-the field-to-storage mapping does not leak):
+the field-to-storage mapping does not leak). The impls are **unconditional**
+over `T: Address` and project the typed `start` through the universal
+`spec_addr<T: Address>` ghost function (defined in `page.spec.rs`), exactly as
+`PageAligned<T>` does — **not** via a `T: View<V = int>` bound and `self.start@`:
 
 ```rust
-impl<T: Address + View<V = int>> View for MemoryRegion<T> {
+impl<T: Address> View for MemoryRegion<T> {
     type V = MemoryRegionView;
-    closed spec fn view(&self) -> MemoryRegionView { /* maps the 5 fields */ }
+    closed spec fn view(&self) -> MemoryRegionView {
+        MemoryRegionView { start: spec_addr(&self.start), size: self.size as int, .. }
+    }
 }
 
-impl<T: Address + View<V = int>> View for TruncatedMemoryRegion<T> {
+impl<T: Address> View for TruncatedMemoryRegion<T> {
     type V = MemoryRegionView;
     closed spec fn view(&self) -> MemoryRegionView { self.0@ }   // forward
 }
 ```
+
+> **Design change (implemented).** The originally-proposed
+> `impl<T: Address + View<V = int>>` bound is **not usable**: the in-scope exec
+> accessors live in `impl<T: Address> ...` blocks (no `View` bound), so a
+> conditional `View` impl makes `self@` untypable inside them
+> (`error[E0599]: MemoryRegion<T>: View not satisfied`). Moreover the
+> address-family `View` impls are all `cfg(verus_keep_ghost)`-gated, so a
+> `T: View<V = int>` bound would be unsatisfiable in a normal `cargo build`.
+> The fix mirrors the established `PageAligned<T>` pattern: make `View`
+> unconditional and project addresses through the universal `spec_addr`. This
+> keeps the `view()` closed and the abstraction `T`-agnostic while letting every
+> accessor contract typecheck for a bare `T: Address`.
 
 ---
 
@@ -118,11 +135,13 @@ Notes:
   address representation). The concrete `T::max_addr()` bound enforced by `new`
   is *stronger*; the View only needs the weaker no-wrap fact because that is all
   caller arithmetic relies on, and it keeps the invariant `T`-agnostic.
-- Adding `wf_geometry` to `MemoryRegion::inv` introduces a new `inv` on the base
-  type. If introducing it risks proof churn in unlisted functions during this
-  phase, the page-alignment-only `TruncatedMemoryRegion::inv` may be kept as-is
-  and `wf_geometry` folded in incrementally — the *design* intent is recorded
-  here regardless.
+- **Implemented as designed.** Both `MemoryRegion::inv` (`wf_geometry()`) and the
+  strengthened `TruncatedMemoryRegion::inv` (`wf_geometry()` + page alignment) are
+  in `region.spec.rs`. Adding `wf_geometry` caused no proof churn: `inv()` is an
+  `open spec fn` referenced by no in-scope contract, so it imposes no obligation
+  on the four accessors (it documents the abstract well-formedness for callers
+  and future phases). `wf_geometry`, `spec_end`, `spec_last`, `contains`, and the
+  `spec_set_cache_policy` transition are all present as View helpers.
 
 ---
 
@@ -187,14 +206,23 @@ a page multiple for the truncated path) rather than via a transition on an
 existing View. No transition function is owed for them here.
 
 The four in-scope accessors are pure reads — no transition, just `ensures`
-linking the return value to the View field:
+linking the return value to the View field. Because the return types (`T`,
+`PageAligned<T>`) are bare `Address` values (no `View` bound in the exec impl),
+the returned address is projected through `spec_addr`, not `result@`:
 
-| Function | Owed ensures (later phase) |
+| Function | Implemented ensures |
 |----------|----------------------------|
-| `MemoryRegion::start`            | `result@ == self@.start` |
-| `MemoryRegion::size`             | `result == self@.size`   |
-| `TruncatedMemoryRegion::start`   | `result@ == self@.start` (and `result@ % spec_page_size() == 0` under `inv`) |
-| `TruncatedMemoryRegion::size`    | `result == self@.size`   |
+| `MemoryRegion::start`            | `spec_addr(&result) == self@.start` |
+| `MemoryRegion::size`             | `result as int == self@.size`   |
+| `TruncatedMemoryRegion::start`   | `spec_addr(&result) == self@.start` (page alignment of `self@.start` follows from `self.inv()`) |
+| `TruncatedMemoryRegion::size`    | `result as int == self@.size`   |
+
+`TruncatedMemoryRegion::start` delegates to `MemoryRegion::start`; the forwarding
+`view()` (`self@ == self.0@`) makes `spec_addr(&result) == self.0@.start ==
+self@.start` discharge by delegation. `MemoryRegion::start` itself carries a
+specification-phase `admit()` placeholder: relating `spec_addr(&self.start.clone())`
+to `spec_addr(&self.start)` needs a value-preserving clone spec on the `Address`
+family, which is supplied in the proving phase.
 
 ---
 
