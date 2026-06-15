@@ -541,7 +541,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
 
     if pde.is_present() {
         let pt_paddr: usize = pde.frame_address();
-        proof {
+        proof! {
             assert(::arch::mem::FRAME_SIZE == ::arch::mem::PAGE_SIZE) by (compute);
             assert(spec_is_page_aligned(pt_paddr as int));
         }

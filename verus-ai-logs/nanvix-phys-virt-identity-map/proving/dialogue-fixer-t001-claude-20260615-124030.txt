@@ -212,3 +212,22 @@ For the alignment proof, I'm checking whether `spec_is_page_aligned` can be sati
 Turn 15
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|i
+[RESULT ✓] bash: error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/virt/identity_map.rs:545:19
+545 |             assert(::arch::mem::FRAME_SIZE == ::arch::mem::PAGE_SIZE) by (compute);
+545 |             assert: assert(::arch::mem::FRAME_SIZE == ::arch::mem::PAGE_SIZE) by (compute);
+error: e...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+I need `proof!` macro syntax in exec code.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I need to switch from the `proof` macro to `proof!` since I'm working with attribute-style exec code, and the `by (compute)` tactic inside should work fine once I make that change.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|i
