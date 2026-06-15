@@ -210,3 +210,137 @@ Turn 3
 
 These three exec functions realize the V==P identity mapping through the page-table hardware
 trust boundary. Each carries its **f...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit ===" && grep -n "admit" verus-ai-logs/verify-kernel/verus-logs/cheati
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && head -80 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] I need to narrow down the cheating violations to just the identity_map module rather than looking at the kernel-wide summary, so I'm checking the detailed breakdown to see which specific violations apply to my scope.
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/phys/frame.rs:1502 alloc: external_body
+    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1...
+[RESULT ✓] bash: === admit ===
+=== all admit ===
+13:    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+14:    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+15:    - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+16:    - mm/phys/manager.proof.rs:210 lemma_user_bulk_err_re...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '80,200p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] Looking at the module breakdown for `mm/virt/identity_map`, I'm seeing that the external_body functions—ensure_pt, ensure_pte, and identity_map_page—are all present in the codebase, and I need to verify which of the 19 cfg_gate instances across the kernel are actually located in this identity_map module.
+[RESULT ✓] bash: 
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -niE "cfg|no_decreases|trusted|assume" verus-ai-logs/verify-kernel/verus-logs/ch
+[RESULT ✓] bash: ---count lines---
+27 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+--- show cfg section ---
+<shellId: 7 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "cfg|admit|assume|trusted|external_body|no_decreases" src/kernel/src/mm/virt
+
+[THINKING] The detail file only contains 27 lines showing the external_body/admit list, but the cfg_gate count of 19 isn't broken down there. I need to check the verify script to see how cfg_gate gets counted, then search through identity_map.rs directly for cfg-gated exec code.
+[RESULT ✓] bash: 24:#[cfg(verus_keep_ghost)]
+26:#[cfg(verus_keep_ghost)]
+509:#[verus_verify(external_body)]
+547:    // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
+555:            .assume_init_mut()
+607:#[verus_verify(external_body)]
+693:#[verus_verify(external_body)]
+739:#[cfg(feature ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm examining the Verus code structure to identify what's allowed and what isn't. The `#[cfg(verus_keep_ghost)]` attributes are gating the includes of spec and proof files, which is permitted. I'm also checking the three TCB-listed functions marked with `#[verus_verify(external_body)]` and noting that `assume_init_mut` is actually a method call on `MaybeUninit`, not an `assume()` statement, despite what the comment suggests.
+
+Now I need to look at the `#[cfg(feature = "test")]` block around line 739 to verify it doesn't contain executable code beyond what's allowed—the checklist only permits imports, derives, debug assertions, and logging in cfg-gated sections. Let me trace through the external_body functions and that test feature block to understand what's actually being gated.
+[RESULT ✓] view: 490. /// allocates a new page table from the BSS pool, installs the PDE, and returns the new page
+491. /// table's physical address.
+492. ///
+493. /// # Parameters
+494. ///
+495. /// - `pd`: The kernel page directory table.
+496. /// - `pde_idx`: The page directory index to check.
+497. ///
+498. /// # ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm checking the test module further down to see what's being tested with the cfg gate.
+[RESULT ✓] view: 739. #[cfg(feature = "test")]
+740. pub(super) mod test {
+741.     use super::{
+742.         sync_kernel_pdes,
+743.         KERNEL_PD_PADDR,
+744.     };
+745.     use crate::{
+746.         hal::mem::PageDirectoryAddress,
+747.         mm::VirtMemoryManager,
+748.     };
+749.     use ::arch::mem::{
+750. ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg_gate\|cfg-gate\|cfg_gated\|feature = \"test\"\|verus_keep_ghost\|debug_
+
+[THINKING] The `#[cfg(feature = "test")]` attribute gates out a test module during normal verification, which runs with `--features microvm,trace` but not `test`. This aligns with the checklist requirement against cfg-gated executable code, since the test module is completely excluded from verification and therefore not a way to hide unverified code.
+
+However, I need to reconcile this with the strict checklist language that only permits imports, derives, debug assertions, and logging. Test modules are standard practice across the codebase—the sibling mm::phys modules also use them—so I should check whether this established convention qualifies as an acceptable exception or if it's flagged as a violation by the cheating-pattern checker.
+[RESULT ✓] bash: scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+scripts/verify.sh:505:        if re.match(r'(debug_assert|info|error|warn|trace|debug|log)!\s*\(',...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -45
+
+[THINKING] The `count_cfg_gates` function specifically targets `#[cfg(verus_keep_ghost)]` and `#[cfg(not(verus_keep_ghost))]` patterns using a regex, so it won't count other cfg attributes like feature flags. This means the gate counter is narrowly focused on just the verus_keep_ghost gates.
+
+In identity_map.rs, lines 24 and 26 have `#[cfg(verus_keep_ghost)]` wrapping `include!()` statements, but the checker skips targets starting with `include!`, so those don't contribute to the count. The test module uses `#[cfg(feature = "test")]`, which the checker doesn't count at all since it's not a verus_keep_ghost gate. So identity_map contributes 0 to the global cfg_gate count of 19, which comes from elsewhere.
+
+For the checklist requirement about zero cfg-gated exec code, the verus_keep_ghost gates here are only on imports (the include! statements), which is allowed, and the test module follows the standard sanctioned pattern. Now I need to run the module-scoped verification to get the per-module cheating counts for a cleaner signal.
