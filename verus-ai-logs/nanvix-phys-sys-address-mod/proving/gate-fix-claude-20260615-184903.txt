@@ -314,3 +314,272 @@ Turn 18
 
 My restored Cargo.toml pins vstd to `2026-06-14-0213` with a patch pointing to `/tmp/verus-crates`, which should be compatible with the active `0.2026.06.14` toolchain. The real test is whether `make verify` passes now—it'll recompile vstd from the patched source and verify compatibility. Let me start by running `verify-sys` first.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === Results ===
+  0 verified
+  0 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, 0 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Cov...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Progress — the vstd error is gone (0 errors), but now exit 101 with "0 verified". Let me read the full log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-52-19.log
+
+[THINKING] The compilation error is resolved, but now I'm seeing exit code 101 with "0 verified, 0 errors" — a different kind of failure. The "VERIFY_FAILED" message combined with zero errors suggests the issue might be in the cargo build itself rather than the Verus verification step. Let me examine the full log to figure out what's actually happening.
+[RESULT ✓] bash: Timestamp: 2026-06-15_18-52-19
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+warning: unexpected `cfg` condition name: `verus_verify_core...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error\[" verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-52-19.log | head;
+
+[THINKING] The warnings aren't the issue—vstd is compiling from the temporary directory now. The exit code 101 with "0 verified, 0 errors" is misleading, so I need to search through the full log output to find where the actual error is occurring.
+[RESULT ✓] bash: === error: lines ===
+6684:error: feature `stmt_expr_attributes` is declared but not used
+6693:error: feature `box_patterns` is declared but not used
+6699:error: feature `negative_impls` is declared but not used
+6705:error: feature `custom_inner_attributes` is declared but not used
+6711:error: featur...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The vstd issue is fixed, but now a fresh recompile surfaces errors in the `error` crate: 6 `#![feature(...)]` gates "declared but not used". Let me inspect.
+[TOOL] bash: cd /home/ruize/nanvix-phy && head -40 src/libs/error/src/lib.rs; echo "=== git log error lib ==="; git log --oneline -3 
+
+[THINKING] The error crate is failing to compile because feature declarations like `#![feature(...)]` are being flagged as unused by the `unused_features` lint, which the Verus toolchain is treating as an error. This suggests these features aren't actually being utilized in the code, or the Verus compilation process handles them differently than expected.
+
+What's puzzling is that this same crate compiled successfully in the earlier 18:42 run when the build used cached artifacts. The only real difference now is that vstd was freshly recompiled from the patched version in `/tmp/verus-crates`, so something about that rebuild might be affecting how the compiler treats these feature gates. Wait, I'm realizing the timeline here. The bad commit at 18:25 updated both Cargo.toml and Cargo.lock together, so when I ran `make verify` at 18:42 with `--locked`, it didn't error — it just reused the cached vstd artifacts from the earlier good build. Now that I've restored the good Cargo.toml and Cargo.lock, everything's recompiling fresh, and the `error` crate is hitting these feature errors that were masked before by the cache. I need to check the `error` crate's lib.rs to see if these feature gates are genuinely unused or if something about the verus-instrumented build is stripping out the code that uses them.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Configuration
+//==================================================================================================
+
+#...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The error-crate features aren't in its `lib.rs`. Let me find where those 6 `#![feature(...)]` declarations come from and the lint config making them errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "stmt_expr_attributes\|box_patterns\|negative_impls\|tuple_trait\|try_trait_v2" sr
+
+[THINKING] The features like `stmt_expr_attributes` and `box_patterns` aren't declared in `error/src/lib.rs` itself—they're being injected by the verus build system, likely through the `cargo verus` wrapper which adds `#![feature(...)]` directives for all crates it processes.
+
+The error message "feature X is declared but not used" is the `unused_features` lint, which is normally a warning but becomes an error when `#![deny(warnings)]` is set or when RUSTFLAGS includes `-D warnings`. Looking at the workspace Cargo.toml, there's a `[workspace.lints.rust] all = "deny"` configuration that would turn `unused_features` into a hard error. The reason this is only appearing now is that verus only injects those feature gates during actual verification, and the error crate is being freshly recompiled rather than using a cached build.
+
+The real issue seems to be that verus injects its feature set into dependency crates during verification, but for crates like `error` that don't use any verus macros, those injected features become unused and trigger the deny-level lint. The empirical question is whether this issue exists in the known-good state (vstd 2026-06-14 + patch) that previously verified successfully, or if it's a transient caching problem from restoring Cargo.lock.
+
+Looking at the verification output, verus does process the `error` crate (it shows "verification results:: 0 verified, 0 errors" before the feature errors), which means the feature injection is happening. The real culprit might be a version mismatch: the project pins Verus `0.2026.05.31` but the installed toolchain is `0.2026.06.14`, and the newer version may inject a different set of features that weren't unused in the older version.
+
+There are two consistent configurations possible: either Verus `0.2026.05.31` with vstd registry version `2026-05-31-0205` (no patch), or Verus `0.2026.06.14` with vstd `2026-06-14-0213` via the `/tmp` patch. The bad commit created an inconsistent state by mixing vstd `2026-05-31` from the registry with the installed `0.2026.06.14` toolchain, which is why vstd failed to compile. My restore created the second configuration (vstd `2026-06-14` with patch), which is consistent with the installed toolchain but now triggers feature injection issues in the `error` crate.
+
+Looking at `bugs.md`, the original working setup used Verus `0.2026.05.31` installed separately via the setup script, matching the pinned version in `build/verus-version`. The bad commit's vstd version `2026-05-31-0205` was actually correct for that configuration — the problem was that the toolchain at `/home/ruize/toolchain/verus` is the wrong version. To make the gate pass, I either need to get the second configuration working with `0.2026.06.14`, or replace the toolchain with `0.2026.05.31` to match the pinned version. The gate infrastructure uses whatever's at `/home/ruize/toolchain/verus`, so I need to figure out which configuration the gate environment expects.
+
+Since the gate failed with the bad commit's config (vstd `2026-05-31` registry + toolchain `0.2026.06.14` = mismatch), the gate's toolchain must be `0.2026.06.14`. So I need to make config #2 work fully with that toolchain. My restore applied config #2, but now I'm hitting the error-crate feature problem. Let me search through the error crate and sysapi to find where these six unused features are being declared.
+[RESULT ✓] bash: === lints in workspace Cargo.toml ===
+272:[workspace.lints.rust]
+273:warnings = "deny"
+274:unexpected_cfgs = { level = "deny", check-cfg = [
+280:[workspace.lints.clippy]
+281:all = "deny"
+283:# restriction = "deny"
+285:# pedantic = "deny"
+287:# nursery = "deny"
+289:# cargo = "deny"
+=== error crate Ca...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+`warnings = "deny"` is the workspace lint, and those 6 features are injected by the Verus driver into every compiled crate (`error` doesn't use them → denied). This is a Verus-version behavior. The project pins Verus `0.2026.05.31` (`build/verus-version`) but the installed toolchain is `0.2026.06.14`. Let me trace how the `[patch.crates-io]`/vstd config evolved to find the genuine known-good state.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== commits touching vstd pin / patch ==="; git log --oneline -15 -- Cargo.toml | cat
+
+[THINKING] The workspace lint configuration denies Rust warnings, and Verus injects feature flags into compiled crates through its rustc driver. The `error` crate doesn't use these injected features, triggering an `unused_features` warning that gets escalated to an error by the deny policy. This behavior is specific to the Verus version being used—in 0.2026.06.14, it injects features into all crates during compilation.
+
+The real issue is a toolchain version mismatch: the project expects Verus 0.2026.05.31 (as documented in bugs.md and the setup script), but the gate is running with 0.2026.06.14. The previous commit tried to patch this by changing the vstd version inconsistently, but the proper fix is to align the installed Verus toolchain with the pinned version the project requires. I need to trace back through the git history to see when the patch configuration was introduced and whether config #2 actually worked in a verified state before things broke.
+[RESULT ✓] bash: === commits touching vstd pin / patch ===
+288587d6d [verus] verify FAIL: sys::all (0 verified, 0 errors)
+70a9ec9d0 [verus] verify FAIL: sys::mm::address (0 verified, compilation/setup error (verus did not run))
+c872ed68f [verus] verify FAIL: sys::mm::address (0 verified, 0 errors)
+1726865ac Merge br...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+A newer commit `288587d6d` appeared. The gate process may be committing in the background. Let me check current HEAD state.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -5 | cat; echo "=== HEAD ==="; git rev-parse HEAD; echo "=== 288587d6d Ca
+
+[THINKING] I'm noticing a discrepancy in the git history—there's a newer commit `288587d6d` that shows up when I check the Cargo.toml log, but it wasn't in my earlier check. The issue is that this commit isn't actually in my current branch HEAD.
+
+Actually, wait—I think I see what happened. When I ran `git checkout 70a9ec9d0^ -- Cargo.toml Cargo.lock` earlier, that didn't change HEAD or the history itself. But `288587d6d` appearing now when it wasn't there before suggests it might be a new commit created by some background gate process that's running. Let me check what HEAD is pointing to and look at the recent commits to see if something's been added.
+[RESULT ✓] bash: 288587d6d [verus] verify FAIL: sys::all (0 verified, 0 errors)
+00de24ecf [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
+330c87269 [verus] verify FAIL: bitmap::all (0 verified, compilation/setup error (verus did not run))
+284bcf9d9 [verus-ai] proving END: sys-...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The gate auto-committed my restore as `288587d6d` (config now has vstd `2026-06-14` + patch). The remaining blocker is the `error` crate: Verus `0.2026.06.14` injects unused `#![feature(...)]` gates that `warnings = "deny"` turns fatal. This points to a toolchain/version mismatch — `build/verus-version` pins `0.2026.05.31` but the installed toolchain is `0.2026.06.14`. Let me examine the setup script and check whether the matching Verus is installable.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/setup/ 2>/dev/null; echo "=== verus.sh head ==="; sed -n '1,60p' scripts/setup/v
+
+[THINKING] The gate's auto-commit successfully pushed my restore with config #2 (the one from June 14th with the patch), so that's now in HEAD. The harness ran the verification step, got zero verified and zero errors with the restored Cargo.toml, and committed everything under 288587d6d. Now I need to figure out what's left to address.
+
+The real issue is that config #2 with the June 14th toolchain triggers feature errors in the `error` crate dependency — Verus is injecting unused features that get caught by the deny warnings setting. The verification itself reported success, but the compilation of that dependency failed with exit code 101, which blocks the whole `make verify` process. Looking at the logs more carefully, it seems Verus did complete its verification pass (though it shows zero verified, possibly because the address functions are trait declarations), but then hit the `error` crate's feature errors during the dependency build phase.
+
+To fix this, I could either match the toolchain versions to what the project pins (installing Verus 0.2026.05.31 with the corresponding vstd), or try to get config #1 working with the older vstd registry without the patch.
+
+But stepping back — the gate runs automatically with whatever toolchain is at `/home/ruize/toolchain/verus`, which is currently the June 14th version. For `make verify` to pass in that environment, I need config #2 to work, which means solving the `error` crate feature problem. That's the actual constraint I'm working within.
+
+The feature injection errors suggest the toolchain is incompatible with the project, but let me check whether these errors are specific to the patched builtin_macros or if they're a broader toolchain issue. I need to run a concrete diagnostic to understand what's actually happening.
+[RESULT ✓] bash: Dockerfile
+Dockerfile.build
+Dockerfile.optimized
+build-optimized-image.sh
+cloud-hypervisor.sh
+docker.sh
+python.sh
+toolchain.sh
+ubuntu-core.sh
+ubuntu-l2.sh
+ubuntu-sdk.sh
+verus.ps1
+verus.sh
+vscode
+=== verus.sh head ===
+#!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT Lic...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The canonical setup is clear: `scripts/setup/verus.sh` installs the version pinned in `build/verus-version` (`0.2026.05.31`), whose matching registry vstd is `2026-05-31-0205` (no `/tmp` patch needed). The installed toolchain at `/home/ruize/toolchain/verus` is the *wrong* version (`0.2026.06.14`) — that's the real root cause. Let me check the cache and whether the correct Verus is installable.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la .verus-cache/ 2>/dev/null; echo "=== toolchain symlink ==="; ls -la /home/ruize/tool
+
+[THINKING] The setup script reads the pinned Verus version from the build configuration and installs it, so the correct approach is to use Verus 0.2026.05.31.5dd6d83 with the matching vstd registry version 2026-05-31-0205.
+
+The problematic commit actually had the right vstd configuration but failed because the installed toolchain at /home/ruize/toolchain/verus was the wrong version (0.2026.06.14). My revert to config #2 made things consistent with that wrong toolchain but introduced feature-injection issues and relies on a temporary hack. The real fix is to install the pinned Verus version to the toolchain directory and use config #1 with the correct vstd, though I need to consider whether modifying the shared /home/ruize/toolchain/verus directory is safe or if there's a better way to point the gate to the right version. I'm going to test the canonical fix: run the setup script to install the pinned Verus version 0.2026.05.31 into the toolchain directory, which should resolve the feature errors. Once that's done, I'll revert Cargo.toml back to config #1 (the registry vstd without patches) to match the correct toolchain version. Let me first check if the pinned version is cached or downloadable and verify the toolchain directory is writable.
+[RESULT ✓] bash: total 155660
+drwxrwxr-x 1 ruize ruize      400 Jun 15 18:25 .
+drwxrwxr-x 1 ruize ruize      882 Jun 15 18:51 ..
+-rw-rw-r-- 1 ruize ruize 31470158 Apr 23 11:20 verus-0.2026.04.12.f1166c4-x86-linux.zip
+-rw-rw-r-- 1 ruize ruize 31862498 May 14 11:24 verus-0.2026.05.13.fae8859-x86-linux.zip
+-rw-rw-r-- 1...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Key finding: there's `/home/ruize/toolchain/verus-pinned-0531` (the correct pinned version) plus a cached zip of exactly `0.2026.05.31.5dd6d83`. The active `verus` dir got clobbered with `0.2026.06.14` (note `verus-06.14-clobber-bak`). Let me verify the pinned backup's version.
+[TOOL] bash: cat /home/ruize/toolchain/verus-pinned-0531/version.txt 2>/dev/null; echo; echo "=== current active ==="; cat /home/ruiz
+
+[THINKING] I'm seeing there's a backup directory from May 31st with the pinned Verus version, and the cache has that exact archived version available. The current toolchain directory holds version 0.2026.06.14, but there are also backups from that date and another from early July, suggesting there's been some version switching and potential conflicts in the history.
+
+Let me check what version is actually in the pinned backup directory.
+[RESULT ✓] bash: 0.2026.05.31.5dd6d83
+=== current active ===
+0.2026.06.14.4ea7d0f
+=== pinned vstd source version ===
+builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+=== project pin ===
+0....
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+This is the smoking gun. `verus-pinned-0531` = `0.2026.05.31.5dd6d83` matches `build/verus-version` exactly. The active `verus` dir was clobbered to `0.2026.06.14`. The correct fix: restore the pinned toolchain AND use config #1 (registry vstd `2026-05-31`, no `/tmp` patch — which is what commit `70a9ec9d0` set). Let me verify the backups before swapping.
+[TOOL] bash: cat /home/ruize/toolchain/verus-06.14-clobber-bak/version.txt 2>/dev/null; echo " <- clobber-bak"; cat /home/ruize/toolc
+
+[THINKING] The pinned version matches what's in the build config, but the active verus directory got overwritten with a newer build. I need to restore it back to the correct pinned version and reconfigure accordingly.
+
+Looking at the commit history, the earlier change that set vstd to 2026-05-31 without the patch was actually correct for the pinned toolchain—it only failed because the active toolchain was the wrong version at that time. So the real fix is restoring the toolchain to match the pin, then using that original config.
+
+Since the active verus directory is just a regular directory (not a symlink), I'll back it up and swap in the pinned version to make this reversible. Verify the pinned 0531 build is complete and has the verus binary, then swap the toolchain directories. I'll back up the current 06.14 verus directory and replace it with the pinned version via symlink for reversibility. Before removing the active verus dir, I should confirm that verus-06.14-clobber-bak is actually identical to it, then revert Cargo.toml back to config #1 and test that the pinned binary works.
+[RESULT ✓] bash: 0.2026.06.14.4ea7d0f <- clobber-bak
+0.2026.06.07.cd03505 <- june7-backup
+=== pinned binary works? ===
+Verus
+  Version: 0.2026.05.31.5dd6d83
+  Profile: release
+=== pinned has vstd source ===
+Cargo.toml
+SOURCES.md
+arithmetic
+array.rs
+atomic.rs
+atomic_ghost.rs
+bits.rs
+build.rs
+bytes.rs
+calc_macro.rs
+<s...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Clear now: active `verus` is a duplicate of the `06.14` clobber; `verus-pinned-0531` is the correct `0.2026.05.31` matching `build/verus-version`. I'll restore the pinned toolchain and revert to config #1 (registry vstd `2026-05-31`, no patch = commit `70a9ec9d0`'s tree).
+[TOOL] report_intent: Restoring pinned Verus toolchain
+[TOOL] bash: cd /home/ruize/toolchain && mv verus verus-06.14-active-bak && ln -s verus-pinned-0531 verus && echo "=== swapped ===" &
+[TOOL] bash: cd /home/ruize/nanvix-phy && git checkout 70a9ec9d0 -- Cargo.toml Cargo.lock && echo "=== config #1 ===" && grep -n "vst
+
+[THINKING] The current active verus toolchain is a duplicate of the 06.14 clobber backup, so it's safe to remove. The pinned 0531 version works and has a different binary. I'm planning to back up the current active toolchain first, then swap it out for the pinned 0531 version.
+
+For the swap, I need to revert Cargo.toml and Cargo.lock to the original config without patches, then run the verification steps. Since the gate harness doesn't let me control environment variables, I have to modify the actual toolchain directory—symlinking is the safest approach since it's reversible and avoids copying hundreds of megabytes. I'm moving the current active verus directory aside and creating a symlink from verus to verus-pinned-0531, then verifying the setup works.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === config #1 ===
+231:vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false, features = ["alloc"] }
+--- patch section (should be absent) ---
+no patch section (correct)
+<shellId: 28 completed with exit code 0>
+[RESULT ✓] bash: === swapped ===
+lrwxrwxrwx 1 ruize ruize 17 Jun 15 18:56 verus -> verus-pinned-0531
+Verus
+  Version: 0.2026.05.31.5dd6d83
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Now toolchain (`0.2026.05.31`) and vstd pin (`2026-05-31-0205`) are matched. Let me run `make verify-sys`.
+[TOOL] report_intent: Verifying with matched toolchain
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -30
+[RESULT ✓] report_intent: Intent logged

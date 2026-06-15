@@ -228,7 +228,7 @@ uuid = { version = "1.23.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
 vfs-bench-common = { path = "src/libs/vfs-bench-common", default-features = false }
-vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = ["alloc"] }
+vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false, features = ["alloc"] }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 windows = { version = "0.62", features = [
         "Win32_Foundation",
@@ -287,9 +287,3 @@ all = "deny"
 # nursery = "deny"
 # TODO (#1149): Enable cargo linting rules, once they are fixed.
 # cargo = "deny"
-
-[patch.crates-io]
-vstd = { path = "/tmp/verus-crates/vstd" }
-verus_builtin = { path = "/tmp/verus-crates/builtin" }
-verus_builtin_macros = { path = "/tmp/verus-crates/builtin_macros" }
-verus_state_machines_macros = { path = "/tmp/verus-crates/state_machines_macros" }
