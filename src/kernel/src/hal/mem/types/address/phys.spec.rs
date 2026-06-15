@@ -23,6 +23,15 @@ verus! {
 
 use crate::hal::mem::spec_page_size;
 
+// `FrameNumber` lives in the `arch` crate, which is not Verus-enabled and has no
+// `View`/datatype registration reachable here. Declare it to Verus as an opaque
+// external datatype so it may appear in spec-fn parameters and the
+// `assume_specification`s below. Its internals are not modeled (`external_body`):
+// its abstract index is projected by `spec_frame_raw_value`.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExFrameNumber(FrameNumber);
+
 // ── Frame-number trust-boundary projections (arch `FrameNumber`) ──────────────
 //
 // `FrameNumber` lives in the `arch` crate, which is not Verus-enabled and has no

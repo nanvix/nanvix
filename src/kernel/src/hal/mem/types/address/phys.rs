@@ -46,7 +46,6 @@ pub struct PhysicalAddress(VirtualAddress);
 // Implementations
 //==================================================================================================
 
-#[verus_verify]
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
         // Delegate to the per-platform validator to support sparse physical memory layouts.
@@ -60,6 +59,41 @@ impl PhysicalAddress {
         Ok(Self(addr))
     }
 
+    pub fn into_virtual_address(self) -> VirtualAddress {
+        self.0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
+    ///
+    /// # Parameters
+    ///
+    /// - `frame_addr`: The frame address.
+    ///
+    /// # Returns
+    ///
+    /// A [`PhysicalAddress`] associated with the given `frame_addr`.
+    ///
+    pub fn from_frame_address(frame_addr: FrameAddress) -> Self {
+        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+        Self(VirtualAddress::new(raw_addr))
+    }
+
+    pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self {
+        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+        Self(VirtualAddress::new(raw_addr))
+    }
+}
+
+// Verification-target methods. They live in a dedicated `#[verus_verify]` impl
+// block so that only the in-scope functions are checked (the self-less
+// associated functions `from_mmio_address` / `from_number` require an enclosing
+// `#[verus_verify]` impl to resolve), while the untouched constructors above are
+// left out of verification scope.
+#[verus_verify]
+impl PhysicalAddress {
     ///
     /// # Description
     ///
@@ -94,10 +128,6 @@ impl PhysicalAddress {
     )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
         Ok(Self(addr))
-    }
-
-    pub fn into_virtual_address(self) -> VirtualAddress {
-        self.0
     }
 
     ///
@@ -141,29 +171,6 @@ impl PhysicalAddress {
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
         // Safety: the following unwrap is safe because a physical address has a valid frame number.
         FrameNumber::from_raw_value(frame_number).unwrap()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
-    ///
-    /// # Parameters
-    ///
-    /// - `frame_addr`: The frame address.
-    ///
-    /// # Returns
-    ///
-    /// A [`PhysicalAddress`] associated with the given `frame_addr`.
-    ///
-    pub fn from_frame_address(frame_addr: FrameAddress) -> Self {
-        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
-        Self(VirtualAddress::new(raw_addr))
-    }
-
-    pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self {
-        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
-        Self(VirtualAddress::new(raw_addr))
     }
 }
 

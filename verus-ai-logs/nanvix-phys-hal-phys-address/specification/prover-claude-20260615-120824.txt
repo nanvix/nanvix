@@ -1036,3 +1036,112 @@ Actually, I realize the module-scoped verification means everything in the modul
 Turn 55
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -40
+[RESULT ✓] bash: === Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::phys:
+    ⚠️  admit: 2
+    ⚠️  c...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,70p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `kernel::hal::platform::microvm::is_valid_physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/kernel/src/hal/...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== external_type_specification usages ==="; grep -rn "external_type_specification" s
+
+[THINKING] I'm hitting real Verus errors now that it's running further into the code. The main issue is that `from_virtual_address` calls `is_valid_physical_address`, which is external and unspecified, so Verus can't verify it. Adding `#[verus_verify]` to the whole impl block pulls `from_virtual_address` into verification and causes it to fail, so I need to be more selective and only verify my three specific functions instead. There's also a problem with `FrameNumber` not being supported by Verus, which I need to address.
+
+For the `FrameNumber` issue, I need to declare an `external_type_specification` so Verus can work with it. The codebase pattern suggests creating a wrapper struct with the `external_type_specification` and `external_body` attributes to represent the external type without modeling its internals. However, I'm noticing that `FrameNumber` is defined in the arch crate (which isn't Verus-enabled), and the current codebase doesn't seem to have an `external_type_specification` for it yet, so I need to figure out how other modules are currently handling this.
+[RESULT ✓] bash: === external_type_specification usages ===
+src/kernel/src/mm/phys/mod.spec.rs:69:#[verifier::external_type_specification]
+src/libs/error/src/lib.rs:532:#[verifier::external_type_specification]
+src/libs/error/src/lib.rs:535:#[verifier::external_type_specification]
+src/libs/raw-array/src/lib.rs:203:#[...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/error/src/lib.rs
+[RESULT ✓] view: 60. // `LinkedList`/`Iter`, which the Rust orphan rule forbids from a downstream crate (E0117), and the
+61. // pinned `vstd` dependency cannot be extended. Consequently the `for region in list.iter()` loops in
+62. // `book_physical_memory_regions` / `book_mmio_regions` cannot be body-verified here; ...
+[RESULT ✓] view: 528. 
+529. #[cfg(verus_keep_ghost)]
+530. verus! {
+531. 
+532. #[verifier::external_type_specification]
+533. pub struct ExError(crate::Error);
+534. 
+535. #[verifier::external_type_specification]
+536. pub struct ExErrorCode(crate::ErrorCode);
+537. 
+538. /// External specification for Error::new.
+539. p...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Adding `#[verus_verify]` to the whole impl pulls untouched methods into verification (e.g. `from_virtual_address` fails). I need to isolate my 3 functions in a separate `#[verus_verify]` impl block, and declare `FrameNumber` to Verus. Let me view the current state:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm learning how to declare external types in Verus using the `external_type_specification` and `external_body` attributes, which lets the verifier treat types like FrameNumber as opaque datatypes that can be used in spec functions and assumptions. Now I'm working through the first issue...
+
+The core problem is that I need to verify only my 3 functions without verifying the entire impl block. The cleanest approach is to split the impl into two blocks — one with `#[verus_verify]` containing just my three functions, and another unannotated block with the rest. I noticed that `into_frame_number` worked without verification since it has `self`, but the self-less functions `from_number` and `from_mmio_address` need the attribute. While splitting the impl is a structural change, it doesn't modify behavior or signatures, so it should be acceptable. I'm reconsidering whether there's a way to avoid splitting the impl entirely, or if there's an alternative invocation that could make the self-less functions work without `#[verus_verify]` on the impl block. I'll move the three self-less functions into their own `#[verus_verify]` impl block placed right after the original impl, keeping the untouched functions in place and minimizing structural changes. This follows the established pattern where functions needing verification go in separate `#[verus_verify]` blocks, and it's cleaner than trying to apply the attribute at the function level since the macro expansion needs impl context.
+[RESULT ✓] view: 49. #[verus_verify]
+50. impl PhysicalAddress {
+51.     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
+52.         // Delegate to the per-platform validator to support sparse physical memory layouts.
+53.         if !crate::hal::platform::is_valid_physical_address(addr) {
+5...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I need to keep the original impl block without the `#[verus_verify]` attribute and move only the methods that can actually verify into a separate impl block, leaving the four untouched functions where they are since I can't modify them anyway. Restructuring the impl block...
+[RESULT ✓] view: 145. 
+146.     ///
+147.     /// # Description
+148.     ///
+149.     /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
+150.     ///
+151.     /// # Parameters
+152.     ///
+153.     /// - `frame_addr`: The frame address.
+154.     ///
+155.     /// # Returns
+156.     ///
+157.     /// A [`Phys...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Let me restructure: split into an unannotated impl (untouched functions) and a `#[verus_verify]` impl (my 3 in-scope functions). I'll replace the whole impl block:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm planning to restructure the code by removing the `#[verus_verify]` attribute from the original impl block and moving three specific functions—from_mmio_address, from_number, and into_frame_number—into a new verified impl block that I'll add after the original implementation. I'll do a single comprehensive replacement of the entire impl block from lines 49-168, reconstructing it cleanly with the original impl containing four functions and the new verified impl containing three functions, making sure to preserve all the doc comments accurately.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Now add the `FrameNumber` external type specification in phys.spec.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -35
