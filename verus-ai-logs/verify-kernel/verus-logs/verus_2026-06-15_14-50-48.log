@@ -1,0 +1,24 @@
+Timestamp: 2026-06-15_14-50-48
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::platform::microvm
+Exit code: 0
+2 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Blocking waiting for file lock on package cache
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module hal::platform::microvm
+
+verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.25s
