@@ -1,0 +1,16 @@
+RESOLVED
+
+All cheating-elimination checklist items PASS with tool-backed evidence:
+
+- admit=0, assume=0, trusted=0, no_decreases=0, external_body=0, cfg_gate=0
+  (make verify-sys: exit 0, status CLEAN).
+- AST consistency: matched=0 mismatched=0 missing=0 extra=0 (trait declarations
+  only; no exec bodies; no signature changes vs base branch).
+- No cfg-gated exec code: only `#[cfg(verus_keep_ghost)] include!` of ghost
+  spec/proof files plus a `use vstd::prelude::*;` import.
+- No exec rewrites; no VERUS REWRITE comments required.
+- No surviving external_body; nothing to list in tcb-allowed.md.
+- Spec drift (baseline 24513885 -> HEAD): 0 contract drift, 0 ensures removed,
+  0 requires added.
+- Cross-module regression: make verify-sys exit 0 (entire sys crate).
+- Build: ./z build -- all exit 0, no source warnings.
