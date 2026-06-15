@@ -102,3 +102,6 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: hal-page-aligned
 ============================================================
+[2026-06-15 08:14:02] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[2026-06-15 08:14:02] [PROVER] Running proving...
+[2026-06-15 08:14:02] [COPILOT] Running: copilot --model claude-opus-4.8 ...
