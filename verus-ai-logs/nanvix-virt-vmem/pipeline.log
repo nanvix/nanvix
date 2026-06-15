@@ -69,3 +69,21 @@ Module: vmem
 [2026-06-15 19:18:25]   ↳ dialogue-reviewer-t4 done in 1m40s (exit=0)
 [2026-06-15 19:18:25] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-15 19:18:25] [DIALOGUE] specification ended after 4 turns: RESOLVED (3204s)
+[2026-06-15 19:18:25] [PHASE] specification: dialogue-RESOLVED (2h02m18s)
+[2026-06-15 19:18:25] [SPEC DRIFT] (within specification) Comparing 509e129d → c79dbbe2
+[2026-06-15 19:18:25] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 19:18:25] [TOPLEVEL DRIFT] No verification-plan.json — skipping
+[2026-06-15 19:18:25] ✅ specification: PASS (0/0)
+[2026-06-15 19:18:25] [GATE] Running build: make build
+[2026-06-15 19:18:25] [GATE] Running verify: make verify
+[2026-06-15 19:18:33] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PIPELINE COMPLETE: vmem
+  ✅ caller-analysis           no-review                 4m22s
+  ✅ view-design               no-review                 5m13s
+  ✅ specification             dialogue-RESOLVED      2h02m18s (4 dialogue turns)
+  ──────────────────────────────────────────────────────────
+  Total: 2h12m02s
+============================================================
+[2026-06-15 19:18:33] [USAGE] Summary: 10 calls, 0 tokens, 2h11m21s total → /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-vmem/usage_summary.json

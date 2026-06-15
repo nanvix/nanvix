@@ -6,7 +6,8 @@
   "current_phase_idx": 2,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -30,15 +31,27 @@
       "review_file": null,
       "duration_s": 313.0,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 7338.2,
+      "review_rounds": 4
     }
   },
   "prover_session_id": "8636516e-8ee2-49fa-a767-65032bbc8659",
-  "completed": false,
+  "completed": true,
   "base_branch": "virt-mm-ai-spec",
   "verus_branch": "virt-mm-ai-spec",
   "phase_boundary_shas": {
     "caller-analysis": "99d7845f8c534ecf1516e3db8c80d2d98976c71d",
-    "view-design": "509e129decb603196481543dfbe9db0986da22b4"
+    "view-design": "509e129decb603196481543dfbe9db0986da22b4",
+    "specification": "c79dbbe20e3affa1c279e25d7fe4776fb3554677"
   },
   "phase_start_shas": {
     "caller-analysis": "fc684771448191782cffe96d94e58be6a33c9d86",
@@ -74,6 +87,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "509e129decb603196481543dfbe9db0986da22b4",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "c79dbbe20e3affa1c279e25d7fe4776fb3554677",
       "rollback_iter": 0
     }
   ],
