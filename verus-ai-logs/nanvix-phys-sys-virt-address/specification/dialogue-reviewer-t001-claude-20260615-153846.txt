@@ -476,3 +476,74 @@ The verus-unsupported.md entry claiming `into_raw_value` "remains an assume_spec
 Turn 15
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -45
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Kernel still verifies (43 verified, 0 errors) **without** the consumer-side `assume_specification` — confirming concrete callers now resolve to the verified inherent method, and that trust boundary on workspace-internal code is genuinely removable. Let me update the now-stale `verus-unsupported.md` entry and the trait method, then run the full build.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verus-unsupported.md
+
+[THINKING] The kernel verification still passes with 43 verified checks and no errors after removing the consumer-side assume_specification, which confirms that concrete VirtualAddress callers properly resolve to the inherent into_raw_value method. This means the assume_specification was redundant—just an unnecessary trust boundary within the workspace. Now I'm looking at the pre-existing kernel external_body and cfg_gate parameters from other modules, which are unrelated to this change.
+
+I need to update the verus-unsupported.md file to remove the now-incorrect entry about into_raw_value, then verify the whole build compiles end-to-end. The Verus verification already type-checks everything under the kernel target with all consumers, which is strong evidence, but running a full build will confirm the concrete callers compile correctly. Let me update the documentation first, then run the build to ensure everything works together.
+[RESULT ✓] view: 71. 
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l verus-ai-logs/verus-unsupported.md
+
+[THINKING] I need to view the full entry spanning lines 9-70 and then replace it with a corrected note, checking what comes after to make sure I understand the complete file structure.
+[RESULT ✓] bash: 70 verus-ai-logs/verus-unsupported.md
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verus-unsupported.md
+
+[THINKING] I'm looking at a file where the `into_raw_value` entry spans most of it (lines 9-70), and I need to decide whether to replace it with a brief resolved note documenting that the limitation no longer applies, or remove it entirely since the file is meant for genuine unsupported constructs.
+[RESULT ✓] view: 1. # Verus Unsupported Constructs
+2. 
+3. Genuine Verus front-end limitations encountered during verification. These are
+4. **not** proof gaps or code bugs: the verifier cannot parse/lower the construct,
+5. so no proof strategy can address them. Per the `verus-constraints` skill they are
+6. recorded ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && head -8 verus-ai-logs/verus-unsupported.md > /tmp/vu.md && cat >> /tmp/vu.md <<'EOF'
+_No ou
+
+[THINKING] I'm going to replace the entire into_raw_value block with a resolved note indicating it's now body-verified, using bash to truncate the file at line 7 and then append the documentation.
+[RESULT ✓] bash: updated
+# Verus Unsupported Constructs
+
+Genuine Verus front-end limitations encountered during verification. These are
+**not** proof gaps or code bugs: the verifier cannot parse/lower the construct,
+so no proof strategy can address them. Per the `verus-constraints` skill they are
+recorded here (exec...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now let me update the stale NOTE comment on the trait `into_raw_value` in virt.rs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I need to update the NOTE comment in the trait method since the inherent method now carries the contract about body verification, so the old comment about it being a trust boundary is no longer accurate. Let me revise that comment block to reflect the current responsibility distribution.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify 2>&1 | grep -E "Checking|verified|errors|Exit code|cheating:|statu
+
+[THINKING] I'm checking whether the trait method calling `VirtualAddress::into_raw_value(self)` resolves to the inherent method rather than creating recursion — and it does, since the explicit type path prioritizes the inherent associated function over the trait method.
+
+Now I need to verify that both the sys and kernel modules still compile and pass with this delegation change, then run the full build.

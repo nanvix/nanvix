@@ -266,17 +266,17 @@ impl Address for VirtualAddress {
         usize::MAX
     }
 
-    // NOTE (Verus): `into_raw_value` carries the caller-relevant contract
-    // `result as int == self@` (pure newtype identity, the inverse of `new` /
-    // `from_raw_value`). It cannot be body-verified in place: Verus requires the
-    // *entire* `impl Address for VirtualAddress` to be verified to check any one
-    // method, which pulls the sibling `as_ptr` / `as_mut_ptr` casts
-    // (`usize as *const u8`, unsupported by the Verus front-end) into scope. The
-    // identity fact is therefore held as an `assume_specification` trust boundary
-    // by consumers (e.g. `kernel`'s `phys.spec.rs`). See
-    // `verus-ai-logs/verus-unsupported.md`.
+    // NOTE (Verus): the caller-relevant contract `result as int == self@` (pure
+    // newtype identity, the inverse of `new` / `from_raw_value`) is body-verified
+    // on the inherent `VirtualAddress::into_raw_value` above, which shadows this
+    // trait method for every concrete `VirtualAddress` caller. This trait method
+    // cannot itself be body-verified in place (Verus requires the *entire*
+    // `impl Address for VirtualAddress` to be verified, which pulls the sibling
+    // `as_ptr` / `as_mut_ptr` casts `usize as *const u8` — unsupported by the
+    // Verus front-end — into scope), so it simply delegates to the verified
+    // inherent method.
     fn into_raw_value(self) -> usize {
-        self.0
+        VirtualAddress::into_raw_value(self)
     }
 
     fn as_ptr(&self) -> *const u8 {
