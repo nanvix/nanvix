@@ -1772,6 +1772,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "config",
+ "libc_stdlib",
  "libc_string",
  "nvx",
  "nvx-crt0",
