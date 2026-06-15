@@ -19,6 +19,7 @@ use crate::hal::mem::types::address::{
 };
 use ::arch::mem::paging::FrameNumber;
 use ::sys::error::Error;
+#[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
 //==================================================================================================

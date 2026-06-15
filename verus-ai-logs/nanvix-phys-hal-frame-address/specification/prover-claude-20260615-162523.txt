@@ -1140,3 +1140,126 @@ Let me explicitly re-verify `mm::phys` (the main consumer of `FrameAddress`) to 
 The key insight is that if all the callers of my modified functions in mm::phys are marked as external_body, then mm::phys verification doesn't actually check those function bodies, so the cache would remain valid even with my changes. The full `make verify` returned exit 0 across all crates with no errors—the CHEATING_DETECTED messages are just the pre-existing external_body trust states, not failures.
 
 To be certain there's no regression, I should explicitly re-verify mm::phys since the cache might have masked whether it actually needed re-checking.
+[RESULT ✓] bash: - kframe.rs:141 clear: external_body
+    - manager.rs:107 init: external_body
+    - manager.rs:198 alloc_many_user_frames: external_body
+    - manager.rs:267 alloc_user_frame: external_body
+    - manager.rs:306 check_user_watermark: external_body
+    - manager.rs:352 alloc_kernel_frame: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+`mm::phys` passes (exit 0). Now verify dual compilation with `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 make build 2>&1 | tail -25
+
+[THINKING] The cache is content-aware and reliable, so the full verification passing gives me confidence. Still, to be absolutely certain the strengthened invariant doesn't break mm::phys, I should clear its cache and force a re-verification, since the cache key includes dependency content hashes.
+
+Actually, thinking about this more carefully — "cached (no recompilation)" likely means cargo didn't rebuild because the compilation inputs didn't change, but Verus verification is a separate concern. The key insight is that the strengthened invariant only adds a conjunct to a public spec function, so consumers that assume the frame invariant get strictly more guarantees, which is safe. The only places that establish the invariant in verified code are my from_frame_number and from_raw_value functions, which prove it; everything else uses external_body and is trusted without checking.
+
+Now I need to run a normal build to confirm the dual compilation still works after moving code between files, since the spec and proof modules aren't included in the standard build without verus_keep_ghost.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+`make build` is a no-op here. Let me find the correct build command.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z_-]+:" Makefile | head -40
+
+[THINKING] I'm getting a "Nothing to be done" error, which means the `build` target doesn't exist or has no recipe in the Makefile. Let me look for the correct build target — the skill mentions using `./z` build, so I should check what make targets are actually available.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls z* 2>/dev/null; echo "---"; ./z 2>&1 | head -20
+
+[THINKING] I need to figure out the right build command to test dual compilation of the kernel. The standard approach would be `./z build`, but I should also consider the make targets like `make all-test-kernel-ramfs` or `make all-nanvix`. The simplest verification would be a straightforward cargo build of the kernel crate itself.
+[RESULT ✓] bash: z
+z.bat
+z.ps1
+z.py
+---
+
+Main Build Targets
+  all          Build everything (default target)
+  clean        Remove build artifacts and intermediate files
+  distclean    Cleans everything
+  help         Show this help message
+  test         Run unit and system tests sequentially
+
+Development Targets
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 ./z build 2>&1 | tail -25
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.21s
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home/ruize/nanvix-phy/build/targets/x86-user.json  -p nvx-crt0 --features "c-...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+Normal build fails on an unused `vstd` import. Let me check how sibling files gate it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && view() { sed -n "$2"p "$1"; }; echo "=== frame.rs 1-30 ==="; sed -n '1,30p' src/kernel/src/
+
+[THINKING] The normal build is failing because the vstd prelude import is marked as unused when not building with Verus. I should check how other files like phys.rs handle this—they probably gate the import behind a `#[cfg(verus_keep_ghost)]` conditional.
+[RESULT ✓] bash: === frame.rs 1-30 ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//=====================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '26,33p' src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm noticing a duplicate import issue in frame.rs where line 22 has `use ::vstd::prelude::*;` flagged as unused, while phys.rs has a similar structure but builds fine—the key difference is that phys.rs also has this second import but it's not causing problems there.
+
+The real issue is that line 8 already imports `vstd::prelude::*` (ungated), so line 22's duplicate import with the `::` prefix is redundant and Rust is correctly flagging it as unused. The simplest fix would be to remove line 22 entirely since line 8 already provides everything needed, though I should verify whether the gated version in phys.rs serves a specific purpose that might apply here too. The error only mentions line 22, so line 8 is fine as-is. Since phys.rs has the same ungated import on line 8 and builds cleanly, the minimal fix is to gate line 22 with `#[cfg(verus_keep_ghost)]` to match phys.rs's pattern exactly. Let me check phys.rs lines 28-32 to replicate that structure.
+[RESULT ✓] bash: ErrorCode,
+    },
+    mm::Alignment,
+};
+#[cfg(verus_keep_ghost)]
+use ::vstd::prelude::*;
+
+//==================================================================================================
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Match the phys.rs pattern — gate the second `vstd` import:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 ./z build 2>&1 | tail -15
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.09s
+cp -f --preserve /home/ruize/nanvix-phy/target/debug/mkimage /home/ruize/nanvix-phy/bin/mkimage.elf
+Standalone images built successfully.
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profil...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Build passes. Re-verify the module to confirm the import gating didn't affect verus build, and update the design doc.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -18
+
+[THINKING] The build completed successfully, so I need to verify that the gating change doesn't break the verus build—the gating line shouldn't affect it since verus is still included under verus_keep_ghost. I'll run the verify command for the module first, then update the view_design documentation.
