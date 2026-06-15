@@ -40,7 +40,7 @@ use crate::hal::mem::spec_addr;
 // trait's method surface. External impls are trusted; verified impls must prove
 // it — discharged when the `Address` family is verified.
 #[verifier::external_trait_specification]
-pub trait ExAddressClone: Sized {
+pub trait ExAddressClone: Address {
     type ExternalTraitSpecificationFor: Address;
 
     fn clone(&self) -> (result: Self)

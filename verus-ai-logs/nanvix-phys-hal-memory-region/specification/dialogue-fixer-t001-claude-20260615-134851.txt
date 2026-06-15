@@ -180,3 +180,117 @@ Let me just try the `ExAddress` approach with clone and see if it works empirica
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|warning|
+[RESULT ✓] bash: error[E0277]: the trait bound `Self: sys::mm::Address` is not satisfied
+   |             --------- ^^^^^^^ the trait `sys::mm::Address` is not implemented for `Self`
+46 |     fn clone(&self) -> (result: Self where Self: sys::mm::Address)
+error[E0277]: the trait bound `Self: sys::mm::Address` is not ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+`Self: Address` isn't in scope in the proxy trait. Let me check how Verus's `external_trait_specification` handles bounds — searching vstd/verus examples for proxies with method `ensures` referencing trait-bound spec fns.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== external_trait_specification examples with ensures in vstd ==="; grep -rn "external
+
+[THINKING] The issue is that `spec_addr` requires `Self: Address`, but within the proxy trait, `Self` refers to the proxy type itself, which isn't constrained to implement `Address`. Even though the associated type `ExternalTraitSpecificationFor` is declared as `Address`, that doesn't satisfy the trait bound on `Self` — so calling `spec_addr(&result)` fails because the proxy doesn't implement `Address`.
+
+I'm considering adding `Address` as a supertrait bound directly on the proxy trait to bring `Self: Address` into scope, though I'm uncertain whether that's compatible with how `external_trait_specification` works.
+
+Let me step back and reconsider whether this approach is even the right direction. The core problem is that `MemoryRegion::start` returns `self.start.clone()`, and I need to prove the cloned result satisfies the spec. Maybe I'm overcomplicating this — if `Address` required `Copy` instead of just `Clone`, Verus might treat clone as identity and the equality would be trivial. But I can't change the trait definition.
+
+I should look at how Verus handles specs on trait methods where the spec references trait-bound functions, or reconsider the entire approach to the View and `start()` method.
+[RESULT ✓] bash: === external_trait_specification examples with ensures in vstd ===
+/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/float.rs:105:#[verifier::external_trait_specification]
+/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/cmp.rs
+
+[THINKING] I'm checking convert.rs and cmp.rs to see how they handle TryFrom and Ord/PartialOrd implementations, specifically looking at how they reference the proxied type's spec functions.
+[RESULT ✓] view: 1. use super::super::prelude::*;
+2. 
+3. use verus as verus_;
+4. 
+5. use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
+6. use core::marker::PointeeSized;
+7. 
+8. verus_! {
+9. 
+10. #[verifier::external_trait_specification]
+11. #[verifier::external_trait_extension(PartialEqSpec via PartialEqSpe...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The `eq`/`partial_cmp` specs work because those methods are *declared* in the proxied trait. `clone` is only inherited into `Address` from the `Clone` supertrait, so I can't list it in an `ExAddress` proxy. Let me re-read the reviewer's exact request to confirm the core demand vs. the suggested mechanism.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue/turn_001_driver.md
+
+[THINKING] The `external_trait_extension` pattern adds new spec methods to a trait that each implementation must define, which isn't quite what I need for clone. I'm looking for a way to attach a value-relating spec to the clone method itself without requiring every impl to define additional spec functions.
+
+The core issue is that `clone` belongs to the `Clone` trait, not to `Address`, so I can't spec it through an `ExAddress` external trait specification — those only work with methods declared directly in the trait being proxied. Since `external_trait_specification` matches a trait's own declared methods, and `clone` is inherited from `Clone` rather than declared in `Address`, I can't use that approach to add the spec I need.
+
+Let me step back and reconsider what the caller actually requires from `start()`. The postcondition `spec_addr(&result) == self@.start` might be stronger than necessary — maybe I should check what the reviewer's actual request was and whether there's a simpler mechanism that avoids the clone problem entirely.
+[RESULT ✓] view: 1. ## Turn 1: No cheating on module's own functions (admit in `MemoryRegion::start`)
+2. 
+3. ### Progress
+4. - Done (PASS this turn):
+5.   - **Every in-scope exec function has requires/ensures** — the 4 verification-order
+6.     targets all carry `ensures`:
+7.     - `MemoryRegion::start` → `spec_addr...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/clone.rs
+
+[THINKING] The key difference is that `PageAligned<T> as Address` works because it's a concrete type constructor, whereas bare `T` in `T as Clone` is just a type variable that Verus won't accept in this context.
+
+The reviewer's suggestion to use concrete clone specs for each address type (VirtualAddress, PhysicalAddress, etc.) won't work either, because `MemoryRegion::start` is verified generically—the obligation exists at the generic `T: Address` level, and concrete specs can't discharge a generic obligation.
+
+This leaves me with the fundamental constraint: I need a generic-T clone law that Verus will accept, and `assume_specification` on a trait method doesn't work for that. The only viable path forward is `external_trait_specification` on the Clone trait itself.
+
+But I'm also reconsidering whether the spec is even correct—maybe the postcondition shouldn't require `spec_addr` equality for a cloned value, or maybe I need to rethink what `spec_addr` represents in the context of a generic address type.
+[RESULT ✓] view: 1. use super::super::prelude::*;
+2. use core::clone::Clone;
+3. 
+4. verus! {
+5. 
+6. #[verifier::external_trait_specification]
+7. pub trait ExClone: Sized {
+8.     type ExternalTraitSpecificationFor: core::clone::Clone;
+9. 
+10.     fn clone(&self) -> Self;
+11. }
+12. 
+13. #[verifier::external_trait_spe...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The cmp.rs proxies use a **supertrait bound** (`ExPartialOrd<Rhs>: PartialEq<Rhs>`) which puts `Self: PartialEq` in scope for the ensures. My earlier attempt failed precisely because `Self: Address` wasn't in scope. Let me add `Address` as a supertrait of the proxy.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+
+[THINKING] I see how vstd leverages `external_trait_extension` to attach spec functions like `obeys_eq_spec` and `eq_spec` to PartialEq through the `(PartialEqSpec via PartialEqSpecImpl)` pattern. The key difference with `ExClone` is that it only declares the basic `clone(&self) -> Self` method without any ensures clause, so I need to use the same external trait extension approach to layer on a value-preserving guarantee for generic traits.
+
+Looking at how `cloned` works — it's a predicate built via `call_ensures(T::clone, ...)` — I realize this doesn't help for a bare generic `T` because there's no ensures clause to reference. I've now confirmed that `assume_specification` can't directly state a value-preserving clone law for `T: Address`, and the alternatives are blocked: I can't redeclare Clone's spec (it already exists), and Address doesn't declare clone so I can't extend it there either.
+
+But there's a clean path forward: I can use `external_trait_extension` directly on the `Address` trait itself to add a spec method that captures the value-preservation guarantee.
+
+The catch is crate layering — `spec_addr` lives in the kernel crate while `Address` is in sys, so I can't reference kernel's spec from sys. The real fix is to define `spec_addr` in terms of something clone-stable, or better yet, give the `Address` trait a View in sys that represents the abstract address value, then express the clone law naturally as `t.clone()@ == t@`. That way the law lives where it belongs, on the trait itself.
+
+But that's a cross-crate change touching a shared trait, which is beyond the current scope. So I'm reconsidering whether I even need a generic clone law — maybe I can restructure how `spec_addr` is used to avoid the problem entirely, though fundamentally any function of a cloned reference faces the same issue of relating the clone back to the original.
+
+Let me try one more approach: requiring `T: Copy` on `MemoryRegion::start` to sidestep the clone tracking problem, though that would require changing the Address trait itself, which isn't feasible. The core issue is that `spec_addr` is uninterpreted, so for any concrete call to `self.start.clone()`, Verus needs the clone's ensures clause — and ExClone provides none, making the result arbitrary. The only generic mechanism to fix this is through the trait itself.
+
+Let me attempt the most direct approach: declaring `clone` via `external_trait_specification` for Address, even though clone is inherited from Clone. My earlier attempt failed with a trait bound error, not a "clone not in Address" error, so maybe the issue was how I structured the where clause. Let me revisit that attempt and see exactly what I wrote.
+
+I tried creating a proxy trait with `type ExternalTraitSpecificationFor: Address` and a clone method with the ensures clause, but Verus complained that `Self: Address` wasn't in scope — the proxy's `Self` only had `: Sized`. The solution is to add Address as a supertrait of the proxy itself, which would put `Self: Address` in scope and make clone available since Address: Clone. But that raises a question: can external_trait_specification allow a supertrait that doesn't match the proxied trait's supertrait? The cmp.rs example has ExPartialOrd: PartialEq proxying PartialOrd, and PartialOrd itself requires PartialEq, so the supertrait aligns. For my case, if I proxy Clone with a supertrait Address, that's misaligned since Clone doesn't require Address.
+
+The alternative is to proxy Address itself with Address as the supertrait, then spec the inherited clone method. Let me test this approach empirically.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|verifica

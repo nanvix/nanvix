@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_13-54-28
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: external_trait_specification trait bound mismatch
+  --> src/kernel/src/hal/mem/types/region.spec.rs:43:1
+   |
+43 | / pub trait ExAddressClone: Address {
+44 | |     type ExternalTraitSpecificationFor: Address;
+45 | |
+46 | |     fn clone(&self) -> (result: Self)
+...  |
+49 | |     ;
+50 | | }
+   | |_^
+   |
+   = help: external_trait_specification requires trait bounds to match exactly but the proxy's trait bounds are:
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::marker::MetaSized
+           the external trait bounds are:
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::marker::MetaSized
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::fmt::Debug
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::clone::Clone
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::cmp::PartialEq
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::cmp::Eq
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::cmp::PartialOrd
+             - <Self as hal::mem::types::region::ExAddressClone>::ExternalTraitSpecificationFor: core::cmp::Ord
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
