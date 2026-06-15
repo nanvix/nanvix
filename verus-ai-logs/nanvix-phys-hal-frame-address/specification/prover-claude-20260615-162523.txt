@@ -1263,3 +1263,102 @@ Build passes. Re-verify the module to confirm the import gating didn't affect ve
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -18
 
 [THINKING] The build completed successfully, so I need to verify that the gating change doesn't break the verus build—the gating line shouldn't affect it since verus is still included under verus_keep_ghost. I'll run the verify command for the module first, then update the view_design documentation.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/9 exec functions have contracts.
+  Unverified functions:
+    - new
+    - into_physical_address
+    - into_page_address
+    - fmt
+    - eq
+
+=== Summary ===
+  verification: 5 verified, 0 errors (exit 0)
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+Module: **5 verified, 0 errors, CLEAN**. Now update `view_design.md` to document the `inv()` strengthening.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "inv\|Refinement\|representab\|frame_number\|alignment" verus-ai-logs/nanvix-phys-h
+
+[THINKING] All 4 in-scope contracts are verified with no errors, while the unverified items fall outside the scope. Now I need to update view_design.md to document the inv() strengthening by checking what's currently in that section.
+[RESULT ✓] bash: 3:> Scope: design/confirm the abstract `View` (+ `inv`) for `FrameAddress` that
+7:> In-scope targets: the type `FrameAddress` (its `View` and `inv`),
+9:> `FrameAddress::from_frame_number`, `FrameAddress::into_frame_number`.
+13:> A `View`/`inv` skeleton already exists inline in the module's `verus!` ...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md
+[RESULT ✓] view: 110. ## Well-formedness Invariant
+111. 
+112. ```rust
+113. impl FrameAddress {
+114.     // Page alignment is the one structural guarantee every constructor
+115.     // establishes and every caller relies on without re-checking. Stated over
+116.     // the abstract address `self@`, independent of the ...
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "inv\|spec_frame_number\|spec_max_frame_number" src/kernel/src/hal/mem/types/addres
+
+[THINKING] I need to update the invariant definition and the Refinement note to match what's actually implemented in the code, which checks that the address is page-aligned and the frame number doesn't exceed the maximum. Let me also verify the spec helper function names are consistent throughout the documentation.
+[RESULT ✓] bash: 15://     index is `address / PAGE_SIZE` (`spec_frame_number`).
+17:// The frame-index helpers (`spec_frame_number`, `spec_from_number`), the frame
+18:// representability bound (`spec_max_frame_number`), the `arch` `FrameNumber`
+28:    spec_frame_number,
+31:    spec_max_frame_number,
+65:// ── Well-fo...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+Now update the design doc to reflect the implemented `inv()`:
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md
+
+[THINKING] I need to locate and update the Final Recommendation section around line 328 that currently shows minimal inv() usage.
+[RESULT ✓] view: 300.    `result as int == self@` identity the existing trusted spec already relies
+301.    on. The address is the more fundamental, lower-friction abstraction; the
+302.    index is recovered by division.
+303. 
+304. 5. **Machine-typed View (`type V = usize`).**
+305.    Rejected: the View lives in spe...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md
+
+[THINKING] I need to clarify item 6 to distinguish between the representability bound that was actually added versus the full address upper bound, and then update the Summary snippet to reflect the final inv() implementation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/view_design.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Design doc updated. Let me run the full `make verify` once more to confirm everything is green after the import-gating fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | grep -iE "status:|verification:|error|Exit code|crate" | hea
+
+[THINKING] I've confirmed the one-line change to frame.rs is properly gated and doesn't affect the verus build, with the module re-verify passing cleanly. Now I'm running a final full `make verify` to ensure there are no regressions across the board.

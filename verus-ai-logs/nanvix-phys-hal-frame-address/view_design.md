@@ -111,11 +111,14 @@ codebase and keeps specs maximally simple.
 
 ```rust
 impl FrameAddress {
-    // Page alignment is the one structural guarantee every constructor
-    // establishes and every caller relies on without re-checking. Stated over
-    // the abstract address `self@`, independent of the inner representation.
+    // Two structural guarantees every constructor establishes and every caller
+    // relies on without re-checking. Stated over the abstract address `self@`,
+    // independent of the inner representation:
+    //   1. page alignment, and
+    //   2. frame-number representability (so `into_frame_number` is total).
     pub open spec fn inv(&self) -> bool {
-        self@ % spec_page_size() == 0
+        &&& self@ % spec_page_size() == 0
+        &&& spec_frame_number(self@) <= spec_max_frame_number()
     }
 }
 ```
@@ -133,13 +136,19 @@ impl FrameAddress {
   (`result == spec_page_size()`). Keeping the modulus abstract (rather than a
   literal like `4096`) lets the same `inv()` hold across architectures.
 
-> Refinement note: `inv()` could additionally bound the address
-> (`0 <= self@ < spec_max_address()`), but no in-scope caller depends on an
-> upper bound through the `int` View — the allocator's bound check is expressed
-> against the *frame number* / refcount-array length, not the address. We
-> therefore keep `inv()` minimal (alignment only) and let any range facts be
-> introduced as constructor postconditions if a later spec genuinely needs
-> them. See Rejected Alternatives.
+> Refinement note (applied): `inv()` carries a second conjunct,
+> `spec_frame_number(self@) <= spec_max_frame_number()` (frame-number
+> representability). This is **load-bearing**: `into_frame_number` internally
+> calls `FrameNumber::from_raw_value(self@ / PAGE_SIZE).unwrap()`, whose spec
+> requires the index be `<= spec_max_frame_number()`; without this conjunct the
+> total `into_frame_number` could not be proven (it mirrors `PhysicalAddress::inv`).
+> It is safe to require because every body-verified establisher of a
+> `FrameAddress` (`from_frame_number`, `from_raw_value`) proves it, and every
+> consumer in `mm::phys` either already `requires frame.inv()` (free/share/
+> refcount) or obtains it from `alloc`'s `ensures` (via `from_frame_number`).
+> A full upper address bound (`0 <= self@ < spec_max_address()`) is still *not*
+> added, since no in-scope caller depends on it through the `int` View — see
+> Rejected Alternatives.
 
 ---
 
@@ -298,13 +307,13 @@ address↔index helpers live in the spec/View domain as free spec fns.
    "prefer mathematical types" rule. The exec/`int` bridge is supplied by the
    `into_raw_value` contract (`result as int == self@`).
 
-6. **Putting a range bound (`0 <= self@ < MAX`) into `inv()` now.**
+6. **Putting a *full address* range bound (`0 <= self@ < MAX_ADDRESS`) into `inv()`.**
    Rejected (deferred): no in-scope caller derives a fact from an address upper
    bound through the `int` View — bounds checks are expressed against the frame
-   number / refcount-array length. Adding it now would be speculative
-   over-specification. If a later constructor contract genuinely needs it, it is
-   added then (as an `inv()` clause or constructor postcondition), without
-   changing the View shape.
+   number / refcount-array length. Note this is distinct from the *frame-number
+   representability* bound (`spec_frame_number(self@) <= spec_max_frame_number()`),
+   which **is** included because `into_frame_number`'s internal `unwrap` requires
+   it. A redundant address-domain bound would be speculative over-specification.
 
 7. **Folding alignment into `view()` (e.g. returning a refined type) instead of
    `inv()`.**
@@ -317,7 +326,8 @@ address↔index helpers live in the spec/View domain as free spec fns.
 
 ## Summary
 
-The pre-existing skeleton is confirmed unchanged:
+The pre-existing skeleton is confirmed, with `inv()` strengthened by one
+load-bearing conjunct (frame-number representability):
 
 ```rust
 impl View for FrameAddress {
@@ -325,7 +335,10 @@ impl View for FrameAddress {
     closed spec fn view(&self) -> int { self.0@ }
 }
 impl FrameAddress {
-    pub open spec fn inv(&self) -> bool { self@ % spec_page_size() == 0 }
+    pub open spec fn inv(&self) -> bool {
+        &&& self@ % spec_page_size() == 0
+        &&& spec_frame_number(self@) <= spec_max_frame_number()
+    }
 }
 ```
 
