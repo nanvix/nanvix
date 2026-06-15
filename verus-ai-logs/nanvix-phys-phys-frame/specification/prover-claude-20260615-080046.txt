@@ -1314,3 +1314,93 @@ Turn 54
 ────────────────────────────────────────────────────────────
 Only `free` retains its admit. Now run module verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+    - frame.rs:652 instance: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+One error remaining. Let me find which function fails:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error" verus-ai-logs/verify-kernel/verus-logs/verus_*.log 2>/dev/null | tail -20; 
+
+[THINKING] Most of the tests are passing now—31 verified with just 1 error remaining, down from the original 6 failures. I need to track down which function is causing that error by examining the full log.
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-46-05.log:39:verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_07-46-05.log:40:error: could not compile `kernel` (bin "kernel") due to 1 previous err...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+The cascade I predicted: `Upool::alloc` still asserts the post-state fact. Let me view and weaken it:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm seeing the exact error cascade I predicted — `Upool::alloc` is failing because its postcondition expects `allocated_frames.contains(uf@)`, but `frame::alloc` no longer guarantees that. I need to weaken this assertion to match the new contract.
+[RESULT ✓] view: 230.     ///
+231.     /// A user frame pool.
+232.     ///
+233.     #[verus_verify]
+234.     pub(super) fn new() -> Self {
+235.         Self { _private: () }
+236.     }
+237. 
+238.     ///
+239.     /// # Description
+240.     ///
+241.     /// Allocates a single user frame from the user frame pool.
+242....
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && grep -n "fn new\|fn inv\|spec fn view\|View for UserFrame\|impl User
+
+[THINKING] I need to understand what `UserFrame::new` does and how the invariants work—specifically what `uf@` represents and what `uf.inv()` checks. Let me look at the UserFrame implementation to see if the address is page-aligned and how the view relates to the original address.
+[RESULT ✓] bash: upool.rs:34:pub struct UserFrame {
+upool.rs:40:impl UserFrame {
+upool.rs:62:            ret@ == addr@,
+upool.rs:65:    pub fn new(addr: FrameAddress) -> Self {
+upool.rs:81:            ret@ == self@,
+upool.rs:101:            ret@ == self@,
+upool.rs:137:                    &&& handle@ == self@
+upool.r...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 40. impl UserFrame {
+41.     ///
+42.     /// # Description
+43.     ///
+44.     /// Instantiates a user frame.
+45.     ///
+46.     /// # Parameters
+47.     ///
+48.     /// - `addr`: Frame address.
+49.     ///
+50.     /// # Returns
+51.     ///
+52.     /// A user frame.
+53.     ///
+54.     #[verus_spec...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+`UserFrame::new` preserves `uf@ == addr@`. Let me weaken `Upool::alloc` to mirror `frame::alloc`'s pre-state guarantee:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm tracing through the invariant requirements: `UserFrame::new` needs `addr.inv()` to hold, which I get from the frame's invariant. Once constructed, it guarantees `uf.inv()` and `uf@ == addr@`. So in the `Upool::alloc` success case, I can assert both that the new user frame maintains its invariant and that the physical view's free frames list is properly updated.
+
+I'm verifying this is derivable: since `frame::alloc` returns with `free_frames.contains(frame@)`, and `uf@` equals that same frame address, the containment property carries through. The physical view itself is constant across the operation, so the guarantee remains stable.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | tail -25

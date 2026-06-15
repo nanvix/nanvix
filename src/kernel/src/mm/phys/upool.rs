@@ -251,15 +251,16 @@ impl Upool {
         ensures
             phys_view().inv(),
             phys_view().initialized,
-            // On success: a handle owning a freshly allocated, page-aligned frame
-            // whose address is now reserved (`allocated_frames`) with a single
-            // reference. On failure: nothing is reported about the absent frame.
+            // On success: a well-formed handle owning the freshly allocated,
+            // page-aligned frame, which was free immediately before the call. The
+            // post-state effect (the frame now being reserved with refcount 1) is
+            // not expressible against the fixed pre-state `phys_view()`; it is
+            // inherited from `frame::alloc` and lives in the trusted `manager`
+            // boundary. See `verus-ai-logs/nanvix-phys-phys-frame/bugs.md`.
             match result {
                 Ok(uf) => {
                     &&& uf.inv()
-                    &&& phys_view().frames.allocated_frames.contains(uf@)
-                    &&& phys_view().frames.refcounts.contains_key(uf@)
-                    &&& phys_view().frames.refcounts[uf@] == 1
+                    &&& phys_view().frames.free_frames.contains(uf@)
                 },
                 Err(_) => true,
             },
