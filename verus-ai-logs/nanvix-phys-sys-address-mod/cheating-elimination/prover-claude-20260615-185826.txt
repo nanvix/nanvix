@@ -512,3 +512,105 @@ Turn 23
 [THINKING] There's a version mismatch between verus (2026-06-14) and vstd (2026-05-31) causing the compilation to fail, even though the older verus version passed the gate earlier. I need to find if there's a compatible vstd version for the newer verus build.
 
 Let me also run the bitmap verification to see if this is a broader environment issue or specific to the sys crate changes.
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "2026-05-31\|0.2026\|verus.*version\|VERUS_VERSION" Makefile *.toml scripts/ doc/ 
+
+[THINKING] The verify-bitmap test is failing with the same vstd compilation error, confirming this is an environment-wide issue unrelated to my changes. The verus toolchain was updated to 2026-06-14 but vstd in Cargo.lock is pinned to 2026-05-31, creating a version mismatch that needs to be resolved by either updating vstd or reverting the toolchain.
+
+Looking at the version timeline more carefully, verus-bin is 2026-05-13, the toolchain is 2026-06-14, and Cargo.lock vstd is 2026-05-31 — none of them align. The real issue might be that cargo-verus is trying to compile the crates.io vstd instead of using the precompiled vstd.vir bundled with the verus toolchain, which suggests the workspace dependency configuration is pulling in the wrong vstd source. I'm realizing the core issue: the verus binary version (2026-06-14) doesn't match the vstd version pinned in Cargo.lock (2026-05-31), and they need to be aligned. Either the verus toolchain should be downgraded to match the older vstd, or the workspace dependencies need updating to the newer vstd version — but that's a systemic change across all crates, not something I should do just to fix the address module verification.
+
+Let me check if there's a version pin or configuration in the repo that specifies which verus version should be used, since the toolchain might have been externally updated without the workspace dependencies being synced.
+[RESULT ✓] bash: scripts/setup/verus.sh:9:# Reads the expected version from build/verus-version, checks whether Verus is
+scripts/setup/verus.sh:46:VERUS_VERSION_FILE="${REPO_ROOT_DIR}/build/verus-version"
+scripts/setup/verus.sh:146:    local zip_name="verus-${version}-x86-linux.zip"
+scripts/setup/verus.sh:194:#   Th...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat build/verus-version; echo "==="; git log -1 --format="%ci" -- build/verus-version; echo
+[RESULT ✓] bash: 0.2026.05.31.5dd6d83
+===
+2026-06-02 22:56:54 -0700
+=== recent changes to verus-version ===
+b2c23d9bc [build] Update Verus to 0.2026.05.31.5dd6d83
+5751bf178 [build] Update Verus to 0.2026.05.24.ecee80a
+0c9058102 [build] Update Verus to 0.2026.05.17.e479cce
+df088166b [verus] E: Update Verus to 0.2026....
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The verus toolchain was swapped to the wrong version. The repo expects `0.2026.05.31` but `/home/ruize/toolchain/verus` now holds `0.2026.06.14`, breaking vstd compilation for **all** crates. Let me reinstall the expected version.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '40,120p' scripts/setup/verus.sh
+
+[THINKING] The repo expects verus version `0.2026.05.31.5dd6d83` based on the build configuration and Cargo.lock, but the installed version at `/home/ruize/toolchain/verus` is `0.2026.06.14.4ea7d0f` — a mismatch from a newer 2026-06-14 build that doesn't align with the repo's 2026-05-31 requirement.
+
+I need to run the verus setup script at `scripts/setup/verus.sh`, which reads the expected version from `build/verus-version` and installs the correct matching verus to fix the vstd compilation failure.
+[RESULT ✓] bash: #===================================================================================================
+
+# Repository root (fallback to relative path when not inside a git worktree).
+REPO_ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "${SCRIPT_DIR}/../.." && pwd)")
+
+# Version file ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '300,420p' scripts/setup/verus.sh
+[RESULT ✓] bash: trap - EXIT
+
+    print_success "Verus ${version} installed to ${install_dir}."
+}
+
+#
+# DESCRIPTION
+#   Ensures the Rust toolchain required by Verus is installed.
+#   Reads the required toolchain from version.json and installs it if missing.
+#
+# ARGUMENTS
+#   $1 - The Verus installation directory.
+#
+e...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la .verus-cache/ 2>/dev/null; echo "=== check setup target dir convention ==="; grep -r
+
+[THINKING] The install script will place version 0.2026.05.31.5dd6d83 into the toolchain directory, but I should first check if it's already cached to avoid a network download. Before proceeding with the reinstall, I'm reconsidering whether updating the global toolchain is necessary—the current version is 2026-06-14 while the repo needs 2026-05-31.
+[RESULT ✓] bash: total 155660
+drwxrwxr-x 1 ruize ruize      400 Jun 15 18:25 .
+drwxrwxr-x 1 ruize ruize      882 Jun 15 18:56 ..
+-rw-rw-r-- 1 ruize ruize 31470158 Apr 23 11:20 verus-0.2026.04.12.f1166c4-x86-linux.zip
+-rw-rw-r-- 1 ruize ruize 31862498 May 14 11:24 verus-0.2026.05.13.fae8859-x86-linux.zip
+-rw-rw-r-- 1...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+The correct verus archive (`0.2026.05.31.5dd6d83`) is already cached locally. Let me reinstall it into the toolchain directory.
+[TOOL] bash: cd /home/ruize/nanvix-phy && bash scripts/setup/verus.sh /home/ruize/toolchain/verus 2>&1 | tail -30
+[RESULT ✓] bash: [INFO] Verus version mismatch (found '0.2026.06.14.4ea7d0f', expected '0.2026.05.31.5dd6d83'). Updating...
+[INFO] Using cached Verus archive from /home/ruize/nanvix-phy/.verus-cache/verus-0.2026.05.31.5dd6d83-x86-linux.zip
+[INFO] Extracting Verus to /home/ruize/toolchain/verus...
+[SUCCESS] Verus 0.2...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The expected version is restored. Now re-run verify-sys.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -35
