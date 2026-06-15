@@ -1,0 +1,34 @@
+
+✅ All exec functions consistent.
+# AST Consistency Report: ast_orig_hen7tm49
+
+**Source:** `/tmp/ast_orig_hen7tm49.rs`
+**Verus:** `src/kernel/src/mm/virt/identity_map.rs`
+
+## Summary
+
+- Functions matched: 14/14
+- Functions mismatched: 0
+- Missing in Verus: 0
+- Extra in Verus: 0
+- **Consistent: YES**
+
+## All Functions
+
+| Function | Status | Hash Match | Verification |
+|----------|--------|------------|--------------|
+| `Cr3Guard::drop` | MATCH | ✅ |  |
+| `ensure_identity_mapped_range` | MATCH | ✅ |  |
+| `ensure_pt` | MATCH | ✅ |  |
+| `ensure_pte` | MATCH | ✅ |  |
+| `identity_map_page` | MATCH | ✅ |  |
+| `init` | MATCH | ✅ |  |
+| `memcpy` | MATCH | ✅ |  |
+| `memset` | MATCH | ✅ |  |
+| `page_aligned_cover` | MATCH | ✅ |  |
+| `sync_kernel_pdes` | MATCH | ✅ |  |
+| `test` | MATCH | ✅ |  |
+| `test_init_preallocates_identity_map_pdes` | MATCH | ✅ |  |
+| `test_sync_kernel_pdes_copies_to_target` | MATCH | ✅ |  |
+| `with_kernel_address_space` | MATCH | ✅ |  |
+
