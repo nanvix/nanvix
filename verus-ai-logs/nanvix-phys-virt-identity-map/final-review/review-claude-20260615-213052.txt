@@ -559,3 +559,16 @@ Turn 19
 ────────────────────────────────────────────────────────────
 Turn 20
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-z][a-zA-Z0-9_-]*:" Makefile | grep -iE "build|all" | head
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+485:install: all-nanvix
+522:release: all install release-generate-ma...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
