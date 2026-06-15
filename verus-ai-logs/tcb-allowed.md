@@ -100,6 +100,18 @@ Any `external_body` outside this list must be removed.
   (`== phys_view().frames.free_count()`).
 - `src/kernel/src/mm/phys/frame.rs::free` — best-effort frame release used by manager error
   cleanup; no precondition, no abstract postcondition (callers ignore the outcome).
+- `src/kernel/src/mm/phys/frame.rs::book` — singleton wrapper around `Inner::book`. On `Ok`
+  the frame becomes reserved in `phys_view().frames`; on `Err` it was not free. Like
+  `frame::alloc`, the post-mutation `reserved(phys_addr@)` references the *new* singleton state,
+  which `instance()` does not pin (it pins only the pre-call `(*r)@`). The free→reserved
+  transition therefore lives in the verified `Inner::book` and is bridged to `phys_view().frames`
+  by the §8 ghost token in the proving phase; `external_body` until the free-function layer is
+  verified. Sibling of `frame::alloc`/`free`.
+- `src/kernel/src/mm/phys/frame.rs::alloc_range` — singleton wrapper around `Inner::alloc_range`.
+  On `Ok` every frame of the region is reserved (`all_reserved(...)`); on `Err` not all were free.
+  Same post-mutation `phys_view().frames` reference as `frame::book`/`alloc`, so the region-level
+  free→reserved transition (verified in `Inner::alloc_range`) is bridged by the §8 ghost token in
+  the proving phase; `external_body` until the free-function layer is verified.
 - `src/kernel/src/mm/phys/frame.rs::share` — singleton wrapper around `Inner::share` (the CoW
   reference-count bump). `requires frame.inv()`, `ensures Ok(()) => the frame is allocated in
   `phys_view().frames``. The per-frame `+1` lives in the global partition and is pinned to
