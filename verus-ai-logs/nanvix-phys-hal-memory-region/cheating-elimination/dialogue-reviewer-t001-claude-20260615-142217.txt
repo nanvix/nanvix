@@ -548,3 +548,47 @@ The answer is the verification cache. When I first ran the verification at the s
 So what actually happened: someone had already fixed the working tree to use `self.start` but never committed it. The HEAD commit still has the broken `clone()`. When I edited the working tree to match HEAD (adding `clone()`), verification failed because that's genuinely broken. Then I reverted back to `self.start`, restoring the working tree to its correct state. The git diff shows a change relative to HEAD because HEAD has the broken version—this is a pre-existing uncommitted fix that was already in place.
 
 Now I understand the real issue: the current code uses `self.start` instead of the original `self.start.clone()` because of a Verus limitation with generic Clone implementations. This is a documented semantic rewrite, but it's missing the VERUS REWRITE comment and reproducer that explains why. I need to add that comment to the `start()` method body, documenting the limitation and the minimal reproducer showing why `clone()` fails the postcondition check. Then I should re-run verification to restore the cache to a passing state.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+verification results:: 41 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.49s
+
+=== Results ===
+  41 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Baseline confirmed: **41 verified, 0 errors**. I have full evidence for every checklist item. Writing the turn-1 review.
+[TOOL] report_intent: Writing turn-1 review driver
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/turn_001_driver.md
+
+[THINKING] All four checklist items are passing with zero violations across admit, assume, trusted functions, and decreases clauses. Now I'm ready to document the full walkthrough in turn_001_driver.md and outline the focused fixes needed for the AST and VERUS REWRITE components.
+
+The checklist reveals two interconnected failures: the `MemoryRegion::start` rewrite lacks documentation, and items 7 and 8 both stem from this same root cause. I need to add a `// VERUS REWRITE:` comment to the method body explaining the semantic equivalence between the original `self.start.clone()` and the rewritten `self.start`, along with the reason tied to Verus's postcondition limitation.
+
+The core issue is that `Clone::clone` for a generic `T: Address` doesn't carry a spec relating the cloned result back to the original value, making the postcondition unprovable through `.clone()`. Since `Address: Copy`, the direct field read is identity and satisfies the postcondition by congruence. I'll include a minimal reproducer showing that restoring `.clone()` triggers a postcondition error, then verify the fix by re-running the kernel verification and AST consistency check to confirm 41 verified with 0 errors and the start mismatch now justified by the inline comment.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/turn_001_driver.md with 6232 characters
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Turn 1 review complete. I walked the **entire** checklist with concrete tool evidence.
+
+**PASS (10/12):** zero admit/assume/trusted/no_decreases; no cfg-gated exec (only `include!` of ghost spec/proof); zero `external_body` in region (all 25 global ones are listed in `tcb-allowed.md`); no spec drift (0 contract drift); cross-module regression green (**41 verified, 0 errors**); build clean.
+
+**FAIL (2/12) — one root cause:** `MemoryRegion::start` has an AST mismatch (`self.start.clone()` → `self.start`) that is **undocumented**. I proved the rewrite is forced by a real Verus limitation — restoring `.clone()` fails with `postcondition not satisfied: spec_addr(&result) == self@.start` (40 verified, 1 error); `self.start` gives 41 verified, 0 errors. The rewrite is semantically equivalent (`Address: Copy`) but lacks the required `VERUS REWRITE` comment + minimal reproducer.
+
+Fix request written to `turn_001_driver.md`: add a `VERUS REWRITE` comment to `start()` documenting the original body, the limitation, and the reproducer, then re-verify. No STOP file created — unresolved FAIL items remain.
+
+
+=== Session End ===
+Session: 5e368ba1-8775-4c24-93ed-eabdb9eb5826
+Duration: 319.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue-reviewer-t001-claude-20260615-142217.jsonl
