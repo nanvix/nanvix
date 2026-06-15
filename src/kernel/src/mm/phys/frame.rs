@@ -371,7 +371,10 @@ impl Inner {
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
         for index in start_frame_number..=end_frame_number {
             if index >= self.bitmap.number_of_bits() {
-                let uncovered_addr: usize = index * mem::FRAME_SIZE;
+                // `index` is out of range here, so `index * FRAME_SIZE` can overflow `usize`
+                // (e.g. on 32-bit targets), panicking in debug builds on the very error path
+                // meant to report the problem. Saturate: the value only feeds a diagnostic.
+                let uncovered_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                 let reason: &str = "frame index not covered by the bitmap";
                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -379,7 +382,7 @@ impl Inner {
             match self.bitmap.test(index) {
                 Ok(false) => {},
                 Ok(true) => {
-                    let conflicting_addr: usize = index * mem::FRAME_SIZE;
+                    let conflicting_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                     let region_start: usize = region.start().into_raw_value();
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
