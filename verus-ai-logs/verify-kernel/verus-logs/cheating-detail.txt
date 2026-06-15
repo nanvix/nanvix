@@ -15,8 +15,6 @@
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
     - mm/phys/upool.rs:221 Upool (struct): external_body
-    - mm/phys/upool.rs:246 new: external_body
-    - mm/phys/upool.rs:279 alloc: external_body
     - mm/virt/identity_map.rs:533 ensure_pt: admit
     - mm/virt/identity_map.rs:627 ensure_pte: admit
     - mm/virt/identity_map.rs:718 identity_map_page: admit
