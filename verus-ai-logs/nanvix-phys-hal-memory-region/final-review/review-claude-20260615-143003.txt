@@ -344,3 +344,138 @@ Let me run the authoritative checks centrally (to avoid parallel build races), s
 ────────────────────────────────────────────────────────────
 Turn 6
 ────────────────────────────────────────────────────────────
+Verification running in background. Now the fast read-only scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy && F=src/kernel/src/hal/mem/types/region.rs && echo "=== AST consistency (base verus-ai/hal-ph
+
+[THINKING] I'm on the `verus-ai/hal-memory-region` branch with `verus-ai/hal-phys-address` as the base, and I need to run the quick validation scripts for AST consistency, function coverage, and spec drift. The spec drift check will compare against HEAD, and for AST consistency I'll need to specify the base reference to properly identify the original file.
+[RESULT ✓] bash: === AST consistency (base verus-ai/hal-phys-address) ===
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+MemoryRegion::cache_policy               MATCH                                
+Memory...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification done. Let me get its result and inspect the AST MISMATCH diff.
+[TOOL] read_bash: {'shellId': 'verifyk', 'delay': 3}
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/ha
+
+[THINKING] I'm noticing a mismatch on `MemoryRegion::start` where the rewrite changed from `self.start.clone()` to `self.start`. This is documented as a Verus rewrite in the code, but it's not listed in the pre-approved deviations table, so the AST checker is flagging it as a discrepancy that needs either pre-approval or documented evidence of a Verus limitation.
+[RESULT ✓] read_bash: Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_14-31-02.log
+EXIT=0
+<shellId: verifyk completed with exit code 0>
+[RESULT ✓] bash: ## MemoryRegion::start (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,15 @@
+     pub fn start(&self) -> T {
+-        self.start.clone()
++        // VERUS REWRITE: original exec body was `self.start.clone()`.
++        // Verus limitation: `Clone::clone` on a generic `T: Address` has no spec
++...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verify-kernel result ==="; grep -iE "verified|error|fail|verification results" /t
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== Address trait Copy bound ==="; find / -path "*sys/src/mm/address/mod.rs" 2>/dev/n
+
+[THINKING] The kernel verification passed, so I'm checking the AST mismatch details in the logs. The issue is the `self.start.clone()` to `self.start` rewrite, which is a documented Verus transformation. Since `Address` implements `Copy`, removing the clone should be semantically equivalent, though whether this counts as a verification blocker depends on how strictly we're interpreting the consistency requirements.
+
+I need to verify that `Address: Copy` is actually defined in the codebase and confirm the verification counts from the kernel log to determine if this passes or fails the review.
+[RESULT ✓] bash: === verify-kernel result ===
+  Unverified functions:
+=== verus log tail ===
+Module: hal::mem::types::region
+<shellId: 9 completed with exit code 0>
+[RESULT ✓] bash: === Address trait Copy bound ===
+=== grep trait Address Copy ===
+src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+verus-ai-logs/nanvix-phys-phys-kframe/specification/prover-claude-20260615-055657.txt:1157:[RESULT ✓] bash: pub trait Address
+verus-ai-logs/nanvix-phys-phys-kframe/specificati...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me directly verify the `Address` trait bounds — the rewrite comment claims `Address: Copy`.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] I found something important in the logs—the `Address` trait actually requires `Clone`, not `Copy`. Let me verify this against the trait bounds shown in the declaration, which lists `Debug + Clone + PartialEq + Eq + PartialOrd + Ord` but notably excludes `Copy`.
+[RESULT ✓] view: 28. //==================================================================================================
+29. 
+30. #[verus_verify]
+31. pub trait Address
+32. where
+33.     Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord,
+34. {
+35.     ///
+36.     /// # Description
+37.     ///...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Confirmed: `Address: Copy` at line 33 — the rewrite comment is accurate, so `self.start.clone()` → `self.start` is semantically equivalent. Now the remaining scripts and cross-module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.p
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py 
+
+[THINKING] So `Address` implements `Copy`, which means the earlier rewrite from `self.start.clone()` to `self.start` is semantically equivalent—both produce the same bitwise copy since `Copy` types are automatically cloned that way.
+
+This is a documented Verus limitation with full evidence, so it satisfies the AST consistency checklist requirement for semantically-equivalent rewrites. Now I need to run the remaining checks: `fn_coverage`, `spec_drift`, and the cross-module regression tests with `make verify` and `make build`.
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 11 comple...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.p
+
+[THINKING] I need to clarify the spec_drift check—it should run against HEAD as specified, even though HEAD is the cheating-elimination commit. Since the in-scope specs were added in this branch rather than the base, comparing against the base would show specs as added rather than removed, so I'll stick with the HEAD comparison. For fn_coverage, I need to make sure I'm passing both the source file and verus_exec arguments.
+[RESULT ✓] bash: === fn_coverage ===
+- **Verus file:** `src/kernel/src/hal/mem/types/region.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src/hal`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 17 |
+| Verus exec fns | 17 |
+| Verus spec fns | 0 |
+| Verus pro...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now the cross-module regression and build, in background.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify > /tmp/verify_all.log 2>&1; echo "EXIT=$?" >> /tmp/verify_all.log; tail -2 /tmp
+[TOOL] bash: cd /home/ruize/nanvix-phy && sleep 1 && make build > /tmp/build.log 2>&1; echo "EXIT=$?" >> /tmp/build.log; tail -2 /tmp
+
+[THINKING] The `fn_coverage` metric tracks whether all executable functions are present in the in/out coverage, but doesn't directly measure requires/ensures coverage—though the four in-scope functions do have ensures clauses, which is good. I'm starting `make verify` and `make build` in the background since they take a while, then I'll launch the sub-agents.
+[RESULT ✓] bash: <command started in background with shellId: verifyall>
+[RESULT ✓] bash: <command started in background with shellId: buildsh>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
