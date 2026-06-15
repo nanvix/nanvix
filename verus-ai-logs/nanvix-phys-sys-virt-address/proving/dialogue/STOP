@@ -1,0 +1,24 @@
+RESOLVED
+
+All 10 proving-phase checklist items PASS with verified evidence:
+
+1. No specs weakened — PASS. spec_drift baseline(819d903)→HEAD = 0 drift; working
+   tree byte-identical to HEAD (clean). Default-mode "2 ensures removed" disproved
+   as a tool artifact from the duplicate `from_raw_value` name.
+2. Zero admit() — PASS (admit=0, fresh verify-sys).
+3. Zero external_body outside TCB — PASS (sys external_body=0).
+4. Zero assume/assume_specification — PASS (sys: 0; only a pre-existing,
+   TCB-listed consumer-side boundary in the kernel crate).
+5. No cfg-gated exec code — PASS (cfg_gate=0; only ghost-include + platform
+   target_pointer_width gates).
+6. Cheating audit — PASS: assume=0 external_body=0 admit=0 trusted=0
+   no_decreases=0 cfg_gate=0. Status CLEAN.
+7. Claimed Verus limitation — PASS. Built isolated reproducers confirming both the
+   `usize as *const u8` cast rejection and the whole-trait-impl verification rule.
+8. Exec rewrites — PASS (no VERUS REWRITE; proving made zero source changes).
+9. Cross-module regression — PASS (make verify: all crates + kernel exit 0).
+10. Verification + build — PASS (verify-sys: 6 verified, 0 errors; ./z build -- all
+    exit 0, no compiler warnings).
+
+The proving phase is a clean no-op over specs already discharged in the
+specification phase. Full evidence in turn_001_driver.md.

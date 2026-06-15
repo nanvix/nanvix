@@ -497,3 +497,259 @@ All modules pass (exit 0). The kernel/bump-allocator `external_body` counts are 
 
 Now I need to verify that the pre-existing cheating in kernel and bump-allocator are actually listed in the tcb-allowed file to confirm they're legitimate exceptions, then decide whether to run a fresh verification or trust the cached result. Since the proving phase only touched logs and didn't modify any source files, the cached verification should be valid, but I should probably force a fresh build to be thorough and confirm there are truly zero warnings.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === touch source to force fresh ===
+=== Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/254 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Fresh verify: **6 verified, 0 errors, CLEAN**. Now the build check.
+[TOOL] report_intent: Running build to check warnings
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '29,70p' .github/skills/build/SKILL.md
+
+[THINKING] The verification passed cleanly with no errors, so now I need to handle the build step. Checklist item 10 requires running the build command with zero errors and warnings, so I'm checking what `./z build` does and whether I can build just the sys crate specifically, since it's a no_std guest library.
+
+Actually, thinking about this more carefully—the task is really about reviewing the proving phase. The build check is just to ensure the rewritten code still compiles, and since no exec code was actually modified (the proving changes don't affect source), the build risk is minimal. That said, I should be rigorous and run it. The verification already compiled the sys crate as part of the kernel target, which is a good sign, but I want to check explicitly for warnings. Let me look at what build commands are available and find the most targeted approach that won't take forever.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ## Building
+
+### Preferred Build Commands (using `z` utility)
+
+```bash
+# Build everything with the local toolchain.
+./z build -- all
+```
+
+### Building Individual Components
+
+```bash
+# Kernel only.
+./z build -- kernel
+# Nanvixd only.
+./z build -- all-nanvixd
+# UserVM only.
+./z build -- all-uservm
+```...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- kernel 2>&1 | tail -40
+
+[THINKING] I should run `./z build -- kernel` since that command will compile the kernel, which depends on the sys crate and will exercise the virt.rs file I'm working with.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^all-test-kernel|^test-kernel|^kernel|kernel:|all-kernel" Makefile | head; echo "
+[RESULT ✓] bash: 420:	all-kernel \
+624:verify-kernel: ensure-verus
+860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+=== z help targets ===
+[INFO]  Build parameters: 
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTFLAGS="-C relocation-model=static -...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The default build compiles `sys` cleanly. Let me run the full build to completion.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all 2>&1 | grep -iE "warning|error|warn:" | head -40; echo "=== EXIT BUILD DON
+
+[THINKING] I'm running the full build command with all targets to verify it compiles cleanly without any warnings or errors.
+[RESULT ✓] bash: Warning: Sysroot directory '/home/ruize/nanvix-phy/sysroot-debug' not found; skipping symlink update.
+=== EXIT BUILD DONE ===
+<shellId: buildall completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all 2>&1 | tail -8; echo "BUILD_EXIT=${PIPESTATUS[0]}"
+
+[THINKING] The build completed successfully with exit code 0, though I want to verify this explicitly by checking the final output to confirm it says "Finished" rather than relying on the grep exit status alone.
+[RESULT ✓] bash: ================================================================================
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+==============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Build complete, exit 0, no compiler warnings. Now let me verify the remaining nuanced items: assume in sys, VERUS REWRITE comments, and the claimed Verus limitation reproducer.
+[TOOL] report_intent: Auditing remaining checklist items
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== assume/external/admit in entire sys crate ==="; grep -rnE "external_body|assume_s
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "into_raw_value\|as_ptr\|as_mut_ptr\|usize as \*\|VirtualAddress" verus-ai-logs/ver
+
+[THINKING] The build completed successfully with no warnings or errors. Now I'm working through the verification checklist: the specs haven't been weakened since the baseline, all admit() calls have been removed, and there are no external_body references outside the trusted code base.
+
+For the assume/assume_specification check, I'm verifying that the sys module has zero instances, though I notice virt.rs references an assume_specification in the kernel's phys.spec.rs file for consumers—but that's outside this module's scope. I need to grep the sys files to confirm there are none here.
+
+On the cfg-gated exec code front, there are some cfg attributes present: ghost includes for spec/proof files which are standard, a compile-time assertion for 32-bit targets, and a cfg-gated impl block for platform-specific code. The checklist specifically flags verification-cheating cfg gates on branches and expressions, but platform conditional compilation for 32-bit targets appears to be legitimate rather than a verification workaround.
+
+The cheating detector reported zero for cfg_gate, assume, external_body, and admit, and since the proving phase made no source changes, this passes. For the claimed Verus limitation about `into_raw_value` not being body-verifiable due to the `usize as *const u8` cast interaction, I need to check whether there's an isolated reproducer to justify skipping verification on that function.
+
+Actually, I'm realizing the comment about `into_raw_value` might be forward-looking guidance for kernel consumers rather than a limitation that blocked verification in this phase—the spec phase only required specs for `new` and `from_raw_value`, so there's no obligation to verify `into_raw_value` here. Still, if the comment claims a limitation, I should verify it's documented with a reproducer in verus-unsupported.md.
+
+I'm also checking for VERUS REWRITE comments to ensure any exec rewrites are minimal and semantically equivalent, and since no source changed during proving, there shouldn't be any new ones. Cross-module regression testing with `make verify` passes, and verification shows 6 verified with zero errors and zero warnings.
+
+Now I need to grep for the specific items: assumes in sys, cfg details, the verus-unsupported reproducer, and any VERUS REWRITE comments.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 9:## `<VirtualAddress as Address>::into_raw_value` — trait-impl whole-impl verification
+12:- **In-scope target**: yes (`into_raw_value`, 102 callers).
+17:`into_raw_value` is a method of the `sys::mm::Address` trait, implemented by
+18:`impl Address for VirtualAddress`. Verus requires that *to verify ...
+[RESULT ✓] bash: === assume/external/admit in entire sys crate ===
+src/libs/sys/src/sys/mm/address/virt.rs:266:    // identity fact is therefore held as an `assume_specification` trust boundary
+=== VERUS REWRITE comments in sys ===
+=== cfg in sys mm address (all) ===
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(v...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Let me read the full verus-unsupported.md entry to evaluate the isolated-reproducer requirement (item 7).
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verus-unsupported.md
+
+[THINKING] I need to check the verus-unsupported.md documentation to see if there's an isolated reproducer demonstrating the limitation mentioned in item 7.
+[RESULT ✓] view: 1. # Verus Unsupported Constructs
+2. 
+3. Genuine Verus front-end limitations encountered during verification. These are
+4. **not** proof gaps or code bugs: the verifier cannot parse/lower the construct,
+5. so no proof strategy can address them. Per the `verus-constraints` skill they are
+6. recorded ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+The limitation is documented with exact errors. Item 7 demands an **isolated** reproducer for the specific construct, not just errors from the full module. Let me verify the claims myself by building isolated reproducers.
+[TOOL] report_intent: Building isolated Verus reproducers
+[TOOL] bash: ls /home/ruize/toolchain/verus/ 2>/dev/null | head; which verus 2>/dev/null; ls /home/ruize/toolchain/verus/verus 2>/dev
+
+[THINKING] I'm checking whether the documentation provides an isolated reproducer for the specific construct mentioned in checklist item 7. The claimed limitation involves a `usize as *const u8` cast, but the doc only shows error messages from the full failing expression rather than isolating that particular construct. I need to verify if there's a standalone reproducer for just that cast operation, since the checklist requires isolated examples for each claimed limitation, not just the complete failing case. I need to actually build and run these isolated reproducers myself to verify whether Verus genuinely rejects the `usize as *const u8` cast and enforces the whole-impl verification rule, rather than just accepting the error messages from the full module at face value. Let me locate the Verus binary and test these claims directly.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+/home/ruize/verus-bin/verus
+/home/ruize/toolchain/verus/verus
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running isolated reproducers
+[TOOL] bash: cd /tmp && cat > repro_cast.rs <<'EOF'
+use vstd::prelude::*;
+verus! {
+fn as_ptr(x: usize) -> *const u8 {
+    x as *const
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u8`
+ --> repro_cast.rs:4:5
+  |
+4 |     x as *const u8
+  |     ^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+EXIT=0
+<shellId: repro1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Cast limitation confirmed in isolation. Now the whole-impl-verification rule.
+[TOOL] bash: cd /tmp && cat > repro_impl.rs <<'EOF'
+use vstd::prelude::*;
+verus! {
+trait Addr {
+    fn into_raw(&self) -> usize;
+    
+
+[THINKING] I've confirmed the cast limitation with an isolated reproducer, now let me work through the whole-impl rule reproducer.
+[RESULT ✓] bash: error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+  --> repro_impl.rs:9:1
+   |
+ 9 | / impl Addr for VA {
+10 | |     #[verus_spec(result =>
+11 | |         ensures result == self.0
+12 | |     )]
+13 | |     fn i...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Both isolated reproducers confirm the claimed limitations are genuine:
+1. `usize as *const u8` cast — rejected by Verus front-end.
+2. Partial trait-impl verification — rejected; entire impl must be verified (which pulls in the unsupported cast).
+
+All checklist items verified as PASS. Let me write the review and STOP file, then clean up.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue && rm -f /tmp/repro_ca
+
+[THINKING] My isolated reproducers confirm that Verus doesn't support the `usize as *const u8` cast in its front-end, and it rejects partial trait-impl verification—the entire implementation must be verified together. When I verify the whole impl, it pulls `as_ptr` into scope, which then fails due to the unsupported cast, validating the documented limitation. Item 7 checks out. Now I'm considering item 4's implications.
+
+For item 4, the sys crate has zero assume and assume_specification statements—only external trust boundaries at the std/external crate edges are allowed. The `into_raw_value` identity is actually held via assume_specification in the kernel crate's phys.spec.rs, which sits at the sys/kernel library boundary. That's outside the sys proving scope and is pre-existing (no source changes in the diff), plus it's already listed in tcb-allowed.md, so it's not a violation here.
+
+Item 5 concerns cfg-gated exec code. The `#[cfg(target_pointer_width = "32")]` gates appear at lines 39 and 308—line 39 gates a compile-time assertion macro (not exec code), and line 308 gates an entire impl block for 32-bit platforms, which is legitimate platform-specific compilation, not Verus cheating. The verus detector confirms it's not flagged, and both are pre-existing changes.
+
+The `verus_keep_ghost` gates at lines 9 and 11 are the standard ghost-include pattern for spec/proof files, not exec code. The target_pointer_width gates are platform-conditional, not Verus-conditional. All five checklist items pass.
+
+Now I need to write the review to turn_001_driver.md and create a STOP with RESOLVED status since every item has been verified.
+[RESULT ✓] bash: ok
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/STOP with 1346 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/turn_001_driver.md with 5457 characters
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Review complete. **All 10 proving-phase checklist items PASS** → wrote `STOP` with `RESOLVED`.
+
+Key findings (verified, not trusted):
+- **Zero source changes** in proving (`git diff 819d903..HEAD` empty; working tree clean). The spec phase already discharged the two in-scope inherent functions, so proving was a clean no-op.
+- **Spec drift**: baseline→HEAD = 0. The default-mode "2 ensures removed on `from_raw_value`" was a **tool artifact** from the duplicate function name (inherent `#[verus_spec]` vs spec-less trait impl) — disproved via committed-ref diff + clean status.
+- **Fresh** `make verify-sys`: 6 verified, 0 errors, `assume=0 external_body=0 admit=0 cfg_gate=0` (CLEAN).
+- **Cross-module** `make verify`: all crates + kernel exit 0.
+- **Build** `./z build -- all`: exit 0, no compiler warnings.
+- **Claimed Verus limitation** (`into_raw_value`): I built two **isolated reproducers** confirming both the `usize as *const u8` cast rejection and the whole-trait-impl verification rule — genuine, handled via a pre-existing TCB-listed consumer-side trust boundary.
+
+One non-blocking note logged: `verus-unsupported.md` could embed the minimal reproducers I created.
+
+Evidence written to `turn_001_driver.md`.
+
+
+=== Session End ===
+Session: 6f966cc3-d85f-4ac7-a5e5-ed8c467dc93f
+Duration: 378.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue-reviewer-t001-claude-20260615-155520.jsonl
