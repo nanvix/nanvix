@@ -406,3 +406,20 @@ usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
 ────────────────────────────────────────────────────────────
 Turn 13
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && PY=/home/ruize/verus-ai-exp/verus-ai/scripts; F=src/libs/sys/src/sys/mm/address/mod.rs; ech
+[RESULT ✓] bash: === fn_coverage ===
+# Function Coverage Report
+
+- **Source file:** `src/libs/sys/src/sys/mm/address/mod.rs`
+- **Verus file:** `src/libs/sys/src/sys/mm/address/mod.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/libs/sys/src/sys`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|--...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
