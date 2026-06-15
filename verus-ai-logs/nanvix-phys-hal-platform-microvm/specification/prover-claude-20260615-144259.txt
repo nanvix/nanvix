@@ -455,3 +455,101 @@ Turn 22
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "error|verified|fail" | grep -v "0 errors" | head -20; echo "==
 
 [THINKING] The verification passed cleanly with no errors, and the CHEATING_DETECTED flag is just the gate responding to my spec-phase lemma placeholder along with the pre-existing external_body and cfg_gate settings. Now I'm checking the full output to make sure there are no regressions in other modules.
+[RESULT ✓] bash: Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unveri...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All exit codes 0, no errors. Now verify the dual build works:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tail -20
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build|^all:|VERUS_CRATES|^\.PHONY.*build" Makefile | head; echo "=== try build t
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+411:all: all-nanvix
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+=== try build target name ===
+Main Bui...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "z |build|cargo|command
+
+[THINKING] The build target is `all`, but the actual build command is `./z build` based on the build skill, not `make build`. Let me compile the kernel directly to verify the non-verus build works properly.
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operation...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The build uses `./z build`. Let me build the kernel to confirm normal (non-Verus) compilation still works:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 ./z build -- kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "all-nanvix:|kernel.*:|nanvix:" Makefile | head; echo "==="; sed -n '405,420p' Mak
+[RESULT ✓] bash: 416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+624:verify-kernel: ensure-verus
+860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+869:...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 ./z build -- all-kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+All checks pass. Summary:
+
+**Done.** Added Verus specs to `gva_to_gpa` (the only in-scope function) in-place.
+
+**Changes:**
+- `mod.spec.rs` — `MicrovmTranslationView` (stateless unit View per `view_design.md`) with `inv()`, `spec_gva_to_gpa` (identity map, `open`), and `injective()` with explicit trigger.
+- `mod.proof.rs` — `lemma_translation_injective` signature, body `admit()` (spec-phase placeholder).
+- `mod.rs` — `#[verus_spec]` on `gva_to_gpa` with two ensures covering every caller expectation: `result == gva` (totality/identity the MMIO walk relies on) and the View-vocabulary form `result as nat == spec_gva_to_gpa(gva as nat)`.
+
+**Verification:**
+- `make verify-kernel MODULE=hal::platform::microvm`: 2 verified, **0 errors**.
+- `make verify` (all modules): exit 0, **no regressions**.
+- `./z build -- all-kernel`: builds cleanly (dual compilation confirmed — Verus constructs erased).
+
+Notes: `external_body=25`/`cfg_gate=7` are pre-existing crate-wide counts from already-verified dependency modules (mod.rs itself has 0 `external_body`); my only addition to the cheating-gate counters is `admit=1`, the legitimate spec-phase lemma placeholder.
+
+[THINKING] The kernel builds successfully in normal mode with Verus constructs properly erased during compilation. Module verification passed with no errors, full verification completed without regressions, and the normal build succeeded—the CHEATING_DETECTED flag during specification is expected given the placeholder lemma and pre-existing configuration gates.
+
+No temporary files were created, and the git auto-commit already happened during verification.
+
+
+=== Session End ===
+Session: fcbe8d30-9e37-4d9f-a30d-07c850fe07c6
+Duration: 240.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/specification/prover-claude-20260615-144259.jsonl
