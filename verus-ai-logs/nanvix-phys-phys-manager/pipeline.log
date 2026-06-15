@@ -265,3 +265,4 @@ See turn_001_driver.md for full evidence.
 [2026-06-15 14:30:52] [CHEATING] external_body: 18 (17 on user fns, 4 on proof fns)
 [2026-06-15 14:30:52] [CHEATING] ❌ Hard cheating detected (attempt 1), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/cheating_report_1.md
 [2026-06-15 14:30:52] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 14:47:05]   ↳ cheating-fix done in 16m12s (exit=0)
