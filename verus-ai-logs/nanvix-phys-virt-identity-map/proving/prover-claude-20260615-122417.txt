@@ -732,3 +732,164 @@ All four mechanisms—admit, assume, external_body, and signature changes—are 
 Actually, I'm reconsidering whether I've truly exhausted all options. The `bump_view(self).inv()` precondition is genuinely unestablishable because `bump_view` is uninterpreted with no type invariant or establishing lemma—this is a legitimate finding worth reporting, since it blocks any in-body verification of callers like `ensure_pt`. But before I give up, let me think about whether "split into smaller functions" from the proving guide could help, or if I can make `identity_map_view()` concrete in a way that's creative but not trivializing. The post-state ensures require the fixed value V to contain every page P that `ensure_pte` might be called with, which is impossible without trivializing. For `accessible(P)` in `identity_map_page`, if V.initialized is always false then accessible is trivially true, but then inv requires mapped to be empty, which contradicts the pre-init state.
 
 I've confirmed no concrete definition works without weakening the contract. Time to run the baseline and write this up.
+[RESULT ✓] bash: verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  9 verified
+  0 errors
+  Exit code : 0
+    ⚠️  admit: 3
+    - identity_map.rs:533 ensure_pt: admit
+    - identity_map.rs:627 ensure_pte: admit
+    - identity_map.rs:718 identity_map_page: admit
+  Global: assume=0 e...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Let me sanity-check my conclusion against the codebase: are there ANY fully-verified (no admit/external_body) in-body functions that reference a parameterless uninterp global view in their contract? This tells me if a realization pattern exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== functions whose ensures reference phys_view(), and their external_body stat
+
+[THINKING] Let me step back and reconsider whether I'm being too hasty in dismissing this approach. There might be a pattern in the harness I've overlooked, particularly around how the ghost token could be realized and whether the spec was intentionally designed so that the identity map view reflects the page table memory through that ghost mechanism.
+
+Looking at the actual write implementation in table.rs, I can confirm it has no ensures clause—only a requires check on the index. The page table memory ghost remains frozen, which means ensure_pte fundamentally cannot prove that any page became mapped. After this level of scrutiny, I need to make a clear decision: I'll document the three unproven functions with their exact blockers in a verification-todo.md file following the proving-guide format, add an entry to bugs.md noting these as infrastructure and spec-gap issues rather than code bugs, and keep the honest admit placeholders without resorting to assume or external_body. The gate is all-or-nothing per function anyway, so partial proofs don't reduce the obligation and only add risk.
+
+But before I finalize this, I should sanity-check whether I'm missing something fundamental—the cost of being wrong is too high. Let me search the codebase for any sibling module that successfully proved a function with zero admits while referencing a parameterless uninterpreted global view in its ensures clause. If such a function exists, then my "impossible" conclusion is wrong and I need to learn the pattern. I'll grep for functions with phys_view in their ensures that aren't marked external_body to see if any were fully verified.
+[RESULT ✓] bash: === functions whose ensures reference phys_view(), and their external_body status ===
+1301:            let hi = start_fn + nfr;
+1399:// pins the abstract state of the singleton to the global subsystem view (`phys_view().frames`)
+1401:#[verus_verify(external_body)]
+1405:        (*r)@ == crate::mm::ph...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+This is conclusive. The codebase evidence confirms my analysis definitively: **every** function referencing the parameterless uninterp global view (`phys_view()`) and mutating global singleton state is `#[verus_verify(external_body)]` and TCB-listed, and the ghost-token "attachment" lemmas (`lemma_manager_attached`, etc.) remain `admit()`-ed even in the completed `mm::phys` modules. The three `identity_map` functions follow this exact architectural pattern.
+
+Let me document this rigorously per the proving-guide.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn ensure_pt\|fn ensure_pte\|fn identity_map_page" src/kernel/src/mm/virt/id
+
+[THINKING] I'm seeing a pattern here—every function that references the parameterless `phys_view()` global and touches global singleton state is marked with `#[verus_verify(external_body)]`, which includes `instance()`, `book_physical_memory_regions`, `book_mmio_regions`, and the `alloc_user_frame` paths that go through the manager method.
+
+The ghost token attachment lemmas like `lemma_manager_attached` and `lemma_kernel_alloc_one` are all `admit()`-ed in the proof—the ghost token is never actually realized, just left as an assumption. This is the exact pattern the codebase uses for handling parameterless uninterpreted globals: `external_body` for the executable functions plus `admit()`-ed attachment lemmas for the ghost side.
+
+The three identity_map functions (`ensure_pt`, `ensure_pte`, `identity_map_page`) reference the parameterless `identity_map_view()` and mutate global singleton state in the same way, making them architecturally identical to `book_physical_memory_regions` and `frame::alloc`—they follow the same pattern and can't be verified in-body. But the task's constraints forbid `external_body`, `admit`, signature changes, and spec weakening, which are mutually exclusive with completing these proofs. The only mechanism this codebase actually uses for this pattern is forbidden here, making this impossible.
+
+I need to document this rigorously and honestly as an architectural reality rather than a code bug, then write the verification-todo.md guide with the three functions, their blockers, and attempted approaches, plus a clarifying note in bugs.md pointing to the real issue. I'll keep honest `admit()` placeholders and prepare a clear final report.
+[RESULT ✓] bash: 533:fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+627:fn ensure_pte(
+718:pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Let me check the spec-phase prover notes for any intended realization approach, then write the documentation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rin "ghost token\|tracked\|realize\|in-body\|external_body\|admit\|cannot\|defe
+
+[THINKING] Let me step back and reconsider whether I'm being too quick to give up. I should check the prover logs from the spec phase for any notes on how to prove these cases, and review the bug-reporting and spec-drift documentation to make sure I'm following the right format. The task explicitly states something important that I should reconsider against my current conclusion.
+
+The core tension is this: the task lists these three functions as "the only functions in scope" and says "complete all proofs." If they were meant to be external_body, why ask for proofs at all? Either the harness made an error, or there's a realization path I'm missing. The phys modules show the pattern is external_body, but maybe identity_map is different — maybe the functions are supposed to realize the token in-body using a new approach. The problem is the connection points are dependency contracts that are deliberately empty, so structurally the connection doesn't exist. I'm confident in this analysis.
+
+Given the strong "must pass" framing but genuine impossibility, the honest approach is to document precisely and report clearly rather than cheat. I'll write verification-todo.md and add a clearly-labeled entry in bugs.md pointing to it, since the task created that path and expects records there.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-virt-identity-map/specification/prover-claude-20260614-090546.txt:926:This is a substantial amount of trust-boundary work — the real challenge of specifying this module. The task expects me to write specs for dependency functions and mark them `external_body`, while types g...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+I now have complete, evidence-backed understanding. The spec phase explicitly made dependency contracts minimal ("with admit() the proof obligations disappear entirely") — `Table::write` has no `ensures`, atomic loads are unspecified, `bump_view().inv()` has no establishing fact, and `as_ptr()` is unspecified. Under the hard rules (no signature changes, no new trust boundaries, no admit/assume/external_body, no spec weakening), these three functions cannot be verified in-body. This matches the codebase's universal pattern: every parameterless-uninterp-global-view mutator in `mm::phys` is `external_body` + TCB-listed, with ghost-token attachment lemmas left `admit()`-ed.
+
+Let me document this rigorously per the proving-guide.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+
+[THINKING] The spec phase deliberately used admit() to defer all proof obligations to the proving phase, and kept the dependency contracts minimal—write has no ensures clause, atomic loads are unspecified, as_ptr is unspecified. The core issue is that these contracts weren't designed to be strong enough to actually discharge the in-scope proof obligations: page table writes can't be observed, the kernel page directory load can't be linked to initialization facts, bump allocator invariants have no establishing preconditions, and pointer addresses can't be proven aligned. The proving phase can't strengthen these contracts without introducing new trust boundaries, can't thread tracked tokens through signatures, and can't use admit or external_body—so the task is genuinely infeasible as specified, matching the pattern in mm::phys where all such functions are externally bodied with admitted lemmas. I've done a thorough investigation and the conclusion is solid, so I'll now write the honest deliverable: verification-todo.md documenting the three functions and the blockers, plus a bugs.md note, rather than attempting partial proofs that would add risk without changing the outcome.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md with 6268 characters
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Now let me add a record to the task-specified `bugs.md` clarifying this is not a code bug, following the bug-reporting skill format.
+[TOOL] bash: sed -n '1,120p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+
+[THINKING] I need to create an entry in bugs.md for this issue, even though it's not a code bug. Let me check the bug-reporting format first, then add a pointer to verification-todo.md so the harness can find it.
+[RESULT ✓] bash: ---
+name: bug-reporting
+description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+---
+
+# Bug Reporting
+
+Finding real code bugs is a high-value outcome ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+This is not a code bug (it's a deferred-ghost-token infrastructure blocker, documented in `verification-todo.md`). Per the bug-reporting skill, I'll record "None" with a clarifying pointer.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md
+
+[THINKING] This isn't actually a code bug—it's a false positive stemming from an infrastructure issue, specifically a missing ghost token needed for verification. The proving guide directs these cases to verification-todo.md rather than bugs.md, so while the skill says to record "None" for false positives, I should add a clarifying note that points to verification-todo.md to keep the record complete and self-explanatory.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md with 839 characters
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Let me confirm I've left the source at its clean baseline (no stray edits) and the only additions are documentation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git status ==="; git status --short; echo "=== diff of source/spec/proof (s
+
+[THINKING] Let me double-check whether I'm truly exhausting all possibilities here. I've determined these approaches won't work under the given constraints, but I want to verify I'm not overlooking a legitimate way to materialize the ghost token through `proof.rs` that the harness would accept. The most thorough remaining path would involve creating a `tracked` ghost within `identity_map_view()` using a concrete definition tied to a module-level `spec`—though that approach seems blocked too.
+
+I'm now questioning my most critical assumption: that `Table::write` has no observable effects, making `ensure_pte` unable to prove the mapped invariant. Could there be an entirely different route to establish `identity_map_view().mapped.contains(P)` that bypasses observing the write? If `mapped` were defined as the intersection of all pages with page-aligned addresses, then `contains(P)` would hold trivially since `P` is page-aligned by construction. But this would constitute spec drift—the invariant `!initialized ==> mapped empty` would force `initialized=true` permanently, collapsing the entire abstraction into meaninglessness. The spec-drift analysis would reject it outright.
+
+Now I need to finalize the deliverable. I've documented the honest admits in verification-todo.md and bugs.md, and I should run a final verification to confirm the module still builds with the expected three admits and no regressions elsewhere. Since I've made no changes to source or spec files, regression is impossible. Let me check the git diff to ensure everything is at baseline.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-virt-identity-map/proving/prover-claude-20260615-122417.jsonl
+ M verus-ai-logs/nanvix-phys-virt-identity-map/proving/prover-claude-20260615-122417.txt
+?? verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md
+?? verus-ai-logs/nanvix-phys-virt-identity-map...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+I've completed a rigorous investigation. Here is my honest assessment.
+
+## Summary
+
+I could **not** soundly complete the proofs for `ensure_pt`, `ensure_pte`, and `identity_map_page` — and after exhaustive analysis I've determined this is **impossible under the task's hard rules**, not a matter of trying harder. I did not cheat (no `assume`/`external_body`/spec-weakening); the module remains at its honest baseline (`make verify-kernel MODULE=mm::virt::identity_map` → **9 verified, 0 errors**, with the 3 in-scope `admit()` placeholders).
+
+## Why these proofs are blocked
+
+All three functions reference the **parameter-free, uninterpreted** global view `identity_map_view()` while mutating global singleton state. The connecting `v → v'` transition is a **deferred ghost/permission token that is never realized** anywhere in this codebase. The dependency contracts were deliberately written contents-free (confirmed in the spec-phase log: *"with admit() the proof obligations disappear entirely"*):
+
+- **`Table::write` has no `ensures`** → page-table writes are unobservable → `ensure_pte` cannot prove `mapped.contains(page)`.
+- **`bump_view(self).inv()`** (required by `alloc_as`) has no establishing lemma or type-invariant → `ensure_pt` cannot call the allocator.
+- **`<[T]>::as_ptr`** is an `assume_specification` with no `ensures` → `pt_paddr` alignment is unprovable on the allocation path.
+- **`KERNEL_PD_PADDR.load()`** is unspecified → the pre-init `accessible` link in `identity_map_page` is underivable.
+
+**Decisive evidence:** every analogous function in the *completed* sibling `mm::phys` module (`frame::alloc`, `frame::book`, `book_*_regions`, `instance`, `manager::init`, `kframe::new`) is `#[verus_verify(external_body)]` and TCB-listed, with the ghost-token attachment lemmas (`lemma_manager_attached`, …) left `admit()`-ed. These three `mm::virt` functions are the exact counterparts.
+
+Completing them would require either threading a `Tracked` token through their **fixed** signatures (forbidden — breaks out-of-scope callers `init`/`KernelFrame::new`) or registering them as TCB `external_body` (forbidden — no new trust boundaries during proving). No concrete redefinition of `identity_map_view()` works without trivializing the postconditions (spec drift).
+
+## What I delivered
+
+- `verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md` — rigorous per-function hand-off (provable vs. irreducible obligations, attempts, recommended resolution), per the `proving-guide`.
+- `verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md` — **"None"**: no code bug; the exec logic is correct. The blocker is infrastructure, not a defect.
+- Source/spec/proof files left at their verified baseline (no regressions; `git diff` of those files is empty).
+
+This is a genuinely-stuck proof set requiring cross-cutting permission-token infrastructure outside the in-body, fixed-signature scope of this task.
+
+[THINKING] The source code and specification remain unchanged from the baseline—my earlier edit to ensure_pt was reverted—leaving only the new documentation files and updated prover logs. I'm wrestling with whether to fully accept this outcome or push forward with attempting a real proof for the one path that's actually provable, even if it means going against the task's emphasis.
+
+I've already empirically confirmed that ensure_pt fails on the bump_view precondition and the read precondition, and while the read precondition is fixable through the type invariant, the bump_view issue is genuinely unprovable. The alloc-path alignment also appears irreducible without specifying as_ptr. Even if I made partial improvements to reduce the surface area, a residual admit would still fail the gate the same way a top-level one does, and the proving guide treats any admit as injecting unprovable facts—the banned pattern. So keeping the top-level admit is the cleaner, more honest representation.
+
+I'm confident in the deliverable as it stands, but I should reconsider how I frame the final report to be clear and direct: the proofs can't be completed because they require realizing a deferred ghost permission token, which is impossible under the hard constraints without changing fixed signatures or introducing trust boundaries. Let me think about whether I could modify the spec to make identity_map_view() concrete and realize the token through some ambient tracked state that Verus supports, like an AtomicInvariant.
+
+Verus does have mechanisms like AtomicInvariant and PointsTo for reasoning about interior-mutable global state, but accessing them requires either passing the token as a parameter or opening an invariant with a known namespace—both of which require the credential upfront. There's no way to access it "ambient" without a parameter. The mm::phys module's instance() function uses external_body to fake the PointsTo from the static mut global, which is the TCB mechanism, but without external_body I can't materialize the token. For identity_map, the global state is the page-table memory behind raw pointers and the atomics, and there's no in-scope external_body function to get the token. So there genuinely is no ambient access path.
+
+I'm confident in this conclusion. I'll write the final report without leaving broken or cheating code—the module stays at its honest baseline with three admit placeholders and rigorous documentation of why the proofs are blocked.
+
+I considered whether to implement partial proof scaffolding for the provable parts and leave only the irreducible token facts behind a placeholder, which would demonstrate the verification work and pinpoint the exact blocker. But that risks introducing subtle proof errors, doesn't change the gate result anyway, and the verification-todo.md already documents which obligations are provable versus blocked. Keeping clean placeholders plus thorough documentation is the right approach.
+
+
+=== Session End ===
+Session: 7ea4f7b0-3359-4cc2-8b96-7a25f874b9da
+Duration: 750.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/prover-claude-20260615-122417.jsonl
