@@ -267,3 +267,42 @@ Turn 10
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -E "Results|verified|errors|Exit code|status:" | head -40
 
 [THINKING] The make verify command is running through multiple verification crates and they're all hitting the cache, so everything exits cleanly. Now I'm pulling together a cleaner summary of the results.
+[RESULT ✓] bash: === Results ===
+  Exit code : 0
+  status: CHEATING_DETECTED
+=== Results ===
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  status: CLEAN
+=== Results ===
+  Exit code : 0
+  status: CHEATING_DETECTED
+=== Results ===
+  Exit code : 0
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All verification passes. Summary of the state:
+
+**Target file `hal/mem/types/address/phys.rs` — fully verified:**
+- Clean re-verification: **31 verified, 0 errors**
+- All 4 in-scope functions proven: `from_mmio_address`, `from_number`, `into_frame_number`, and the `PhysicalAddress` `View`/`inv` material
+- **0 `admit()`, 0 `assume()`, 0 `external_body`** in the target functions
+- Specs are strong and intact (type invariant `inv()`, exact frame projections, no-overflow obligations discharged via `nonlinear_arith` + div/mod/shift lemmas — none weakened)
+
+**Full `make verify`:** exit 0 across all crates (sys, bump-allocator, kernel) — **no regressions**.
+
+The `CHEATING_DETECTED` status is from pre-existing `external_body=25` in the unrelated frame-manager directory `src/kernel/src/mm/phys/` (frame.rs, kframe.rs, manager.rs, mod.rs) — **not** my target `hal/mem/types/address/phys.rs`, and out of scope. Globally `admit=0, assume=0`.
+
+No code bugs were found (overflow is properly bounded via the `spec_max_frame_number()` invariant), so no `bugs.md` entry was needed. The proofs were already complete and committed; I confirmed correctness via forced clean re-verification and a full-suite regression run.
+
+[THINKING] All the target functions are verifying correctly with no errors, admits, or assumes needed. The "CHEATING_DETECTED" flags are from pre-existing code in unrelated files that were already there, so they're outside my scope. The task is done.
+
+
+=== Session End ===
+Session: e3addfce-0cb8-4733-95da-a52151db8a0c
+Duration: 135.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-124839.jsonl
