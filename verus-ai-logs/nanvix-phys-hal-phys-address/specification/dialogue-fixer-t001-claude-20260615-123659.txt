@@ -447,3 +447,19 @@ Turn 27
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "admit:
 
 [THINKING] I'm seeing 4 verified items now instead of 3, which suggests the proof functions or from_mmio are being counted differently. But the cheating detection flag is still showing up, so I need to figure out what's actually being flagged.
+[RESULT ✓] bash: ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=25 admit=0 trusted=0 cfg_gate=10
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=10
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+`admit=0` achieved. The remaining flag is only the pre-existing structural `#[cfg(verus_keep_ghost)]` gating (same pattern as all sibling modules). Now full regression check and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | grep -E "Crate|Exit code|verified,|error:|status:|errors" |
+
+[THINKING] I've set `admit=0`, so the only remaining "CHEATING_DETECTED" flags are the `cfg-gated exec code: 1` marker and the pre-existing `external_body=25` from other modules. The cfg-gate itself is just the legitimate `#[cfg(verus_keep_ghost)]` structural includes, not something I introduced. Let me check what that cfg_gate flag actually refers to in phys.rs to make sure it's not a concern.
+
+The cfg_gate flag has been there since before—the summary showed `cfg_gate=10` globally. The "cfg-gated exec code: 1" for phys is counting the `#[cfg(verus_keep_ghost)]` gated code, which is the include statements and View impl—this is the standard pattern used across all modules like frame.rs, so it's not a cheating issue, just how spec and proof files are conditionally included.
+
+Now I need to verify that from_mmio's verification still works and all 4 functions verify with zero errors, then run the full make verify for regressions and make build for dual compilation. I also changed `spec_max_frame_number` from uninterpreted to interpreted and strengthened `assume_specs`, so I should check if any other module depends on the old uninterpreted form or if there's a conflict with duplicate `assume_specification` declarations across modules.
