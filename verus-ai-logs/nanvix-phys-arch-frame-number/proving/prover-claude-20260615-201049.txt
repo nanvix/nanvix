@@ -209,3 +209,37 @@ Turn 6
 ────────────────────────────────────────────────────────────
 The only "assume"/"contracts" match is a comment word. No real `admit`/`assume`/`external_body`. Now run the full `make verify` to confirm no regressions.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -50
+[RESULT ✓] bash: === Function Coverage ===
+  2/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decrea...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Done. The target module already verifies cleanly.
+
+**Results:**
+- `make verify-arch`: **6 verified, 0 errors** — `FrameNumber`, `into_raw_value`, `from_raw_value` all pass.
+- Cheating check (arch): `assume=0 external_body=0 admit=0` — **CLEAN**.
+- `make verify` (full): arch 6/0, kernel 47/0 errors. The kernel's `external_body=23`/`cfg_gate=6` are pre-existing, allowlisted TCB items (per `tcb-allowed.md`), unrelated to this module.
+
+**What was needed:** Nothing to fill in. The contracts in `number.spec.rs` are already discharged by the inline proofs in `number.rs`:
+- `into_raw_value` uses `use_type_invariant(&self)` to obtain the `inv()` bound, satisfying `result as int == self@` and `0 <= result <= spec_max_frame_number()`.
+- `from_raw_value`'s `value > Self::MAX` guard + struct construction proves the `<==>` failure-signal and the `Some(f) ==> f@ == value && f.inv()` round-trip.
+
+No `admit()`/`assume()`/`external_body` present, no specs weakened, and no bugs discovered (so no `bugs.md` entry needed). Only change made was a `touch` to force a fresh (non-cached) verification.
+
+[THINKING] The verification results show my arch module is completely clean with zero errors, while the kernel has some pre-existing external_body and cfg_gate flags that were already allowed before my changes. The task module itself verifies cleanly with no errors, admits, assumes, or external bodies, and the contracts were already in place.
+
+Since no bugs were found during verification, there's nothing to record in a bugs file — the task only requires documenting bugs if they exist. I've completed the work and just need to summarize the results for the user.
+
+
+=== Session End ===
+Session: 8f6352dc-add6-4864-8515-77f6339f50e3
+Duration: 95.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/proving/prover-claude-20260615-201049.jsonl
