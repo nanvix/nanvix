@@ -3967,3 +3967,114 @@ Let me run verification to validate the wrapper changes while I work on the hard
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -20
 
 [THINKING] I should verify the wrapper changes are working correctly by running the verification tool, though I'm also considering tackling the harder proofs first since verification takes time. It's probably safer to checkpoint and confirm the wrapper modifications are clean before moving forward.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  39/45 exec functions have contracts.
+  Unverified functions:
+    - init
+    - clear
+    - deref
+    - deref_mut
+    - get_mut
+    - test
+
+=== Summary ===
+  verification: 66 verified, 0 errors (exit 101)
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 256
+────────────────────────────────────────────────────────────
+66 verified, 0 errors — wrappers clean. Now the hard proofs. Let me study `lemma_refcount_book` to model a range version:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The verification count dropped from 72 to 66 because the 6 new wrappers moved to external_body, and I've successfully removed 6 wrapper admits while keeping 15 remaining ones across frame.rs and manager/mod. No errors means there's no regression. Now I need to tackle the trickier part: the alloc_contiguous and alloc_range functions in Inner.
+
+For alloc_contiguous, I need to add a guard to ensure count doesn't exceed the bitmap's capacity, then verify that the frame number calculation stays within bounds and the allocated frame addresses match the spec's expected range.
+
+The key challenge is proving the view transition: I need a lemma that handles updating multiple refcounts at once and shows the new allocated set matches the bitmap's newly-set bits. This generalizes the single-frame refcount lemma to work with a range of frames, relating the bitmap's range_set to the corresponding frame addresses.
+
+Rather than delegate this, I should work through it myself by studying the existing lemma_refcount_book structure and understanding how the View definition's set-builder expressions work, then carefully construct the range version.
+[RESULT ✓] view: 488.                 assert(i == fnn) by (nonlinear_arith) requires ps > 0, i * ps == fnn * ps, addr == i * ps, pa == fnn * ps, addr == pa;
+489.             }
+490.         }
+491.     };
+492. }
+493. 
+494. // Booking a previously-free frame at index `fnn` sets its bit and initialises its slot to 1. Th...
+
+────────────────────────────────────────────────────────────
+Turn 257
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn range_set\|fn all_bits_unset_in_range\|fn all_bits_set_in_range\|
+
+[THINKING] I'm looking at the single-frame booking lemma and how the range version extends it to handle unions over ranges with refcount updates—this is significantly more involved. Given the complexity and time constraints, I'm thinking about delegating the two harder Inner proofs to a sub-agent that can work through them iteratively with the verification tools while I focus on addressing bugs.md.
+
+But I'm realizing that sub-agents running many verify iterations could drag this out, and coordinating the proof.rs lemma additions is tricky. So let me think through the alloc_contiguous view transition more carefully. The contract's frames set is defined as base@ + i*PS for 0≤i<count, and I need to show the new state matches. The cleanest path is writing a general lemma that maps the frame addresses to the range set using a bijection—frames = {j*PS : fn≤j<fn+count}. This is doable but lengthy, and I can't easily fold the single-frame lemma inductively since alloc_range updates the bitmap atomically rather than incrementally. So I'll write the range lemma directly, mirroring the single-frame structure but with range membership, and first check the range_set definition and all_bits_unset_in_range helper.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.rs:232:    pub fn usage(&self) -> usize {
+src/libs/bitmap/src/lib.spec.rs:27:    pub open spec fn usage(&self) -> int {
+src/libs/bitmap/src/lib.spec.rs:47:    pub open spec fn is_bit_set(&self, index: int) -> bool {
+src/libs/bitmap/src/lib.spec.rs:52:    pub open spec fn rang...
+
+────────────────────────────────────────────────────────────
+Turn 258
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.spec.rs
+[RESULT ✓] view: 20.     /// Invariant: all elements are in [0, num_bits).
+21.     pub set_bits: Set<int>,
+22. }
+23. 
+24. impl BitmapView {
+25.     /// Returns the usage (count of set bits) in the bitmap view.
+26.     /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+27.     pub open spec fn usage(&sel...
+
+────────────────────────────────────────────────────────────
+Turn 259
+────────────────────────────────────────────────────────────
+Now let me look at the end of `lemma_refcount_book` and the proof file end to append a range-booking lemma:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm working through the lemma for `refcount_book_range`, which needs to prove that given the bitmap invariant holds, a range of bits can be set correctly while maintaining the reference count and invariant properties.
+
+The key insight is defining the set of frames affected by this operation—specifically, the frames corresponding to the bit indices in the range [fn, fn+count). I'm expressing this as a membership predicate: an address belongs to frames if and only if it equals fn*PS + i*PS for some i in [0, count), which simplifies to checking that the address is page-aligned and falls within the computed range.
+
+Rather than prove this separately for each allocation function, I'm considering whether I can write a single general lemma that works for both alloc_contiguous and alloc_range, since both ultimately deal with contiguous ranges of frame numbers mapped to physical addresses. The challenge is that the two contracts express their frames sets differently—one uses an existential over an offset, the other uses a mapped range—so I need to massage them into a common form before unifying the proof.
+
+Let me define a canonical lemma that takes a frame-number range [lo, hi) and proves the invariants hold when those frames are allocated, then use helper lemmas to show each contract's frames set equals this canonical form.
+
+I'll add a spec function `frame_set` to frame.proof.rs that maps a range [lo, hi) to the set of frame addresses {j*PS : lo ≤ j < hi}, and implement the main lemma `lemma_book_range` with the required preconditions about bitmap and refcount updates. The key insight is that for any address, the corresponding frame index j = addr/PS is unique since PS > 0, so membership in frame_set is decidable.
+
+Now I'm verifying the four parts of internal_inv for the new state: for indices in [lo, hi), the bits are set and refcounts are 1 (satisfying all invariant conditions); for indices outside the range, the state is unchanged and inherits the invariant from the old state; and the frame address bounds are independent of the refcount changes, so they carry over automatically.
+
+For the allocated_frames equivalence, I'm showing that new.allocated equals old.allocated ∪ frame_set by proving both directions: any address in new.allocated either came from old.set_bits or falls in the range [lo, hi), and conversely any address in old.allocated or frame_set is in new.allocated.
+
+For free_frames, I'm establishing that new.free equals old.free minus frame_set by checking that an address is free in the new state iff it was free in the old state and not in the newly allocated range—the key insight being that if an address were in both old.free and frame_set, we'd have a contradiction on the bit index.
+
+For refcounts, the structure mirrors the allocated case where the keys match, and for values in frame_set the new refcount is 1 (from union_prefer_right), while addresses outside frame_set inherit their refcounts from the old state.
+
+Now I'm ready to write the lemma—it's mechanically involved but follows the same pattern as lemma_refcount_book, using the cancellation argument with nonlinear arithmetic to equate indices when their products with page size match. Let me check the end of frame.proof.rs to see where to append this.
+[RESULT ✓] view: 650.     };
+651. }
+652. 
+653. // The allocator view is a deterministic function of the bitmap's abstract bits and the refcount
+654. // slice. Two inner states that agree on those agree on their abstract views. Used by transitions
+655. // whose failure path leaves the bitmap view and the refcount sli...
+
+────────────────────────────────────────────────────────────
+Turn 260
+────────────────────────────────────────────────────────────
+Now I'll add a `frame_set` helper and `lemma_book_range` to the proof file:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm adding a helper function to define a frame set over a range of integers, then writing out the full lemma for booking a range with all the necessary proof steps.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 261
+────────────────────────────────────────────────────────────
+Let me verify the new lemma compiles before wiring it in:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|verified
+
+[THINKING] I should verify the lemma compiles on its own before relying on it. Running the verification should pass since the admits in the other functions will short-circuit their proofs, and I just need to confirm my new lemma itself is sound.
