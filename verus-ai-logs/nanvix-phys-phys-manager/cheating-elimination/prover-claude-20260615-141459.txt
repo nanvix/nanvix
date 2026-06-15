@@ -657,3 +657,104 @@ Turn 32
 ────────────────────────────────────────────────────────────
 Now let me verify the module still verifies and check the cfg_gate count dropped to 0.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "manager|cfg
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate kernel --module mm::phys --log-dir verus-ai-logs/verify-kernel
+note: verifying module mm::phys
+note: verifying module mm::phys::frame
+note: verifying module mm::phys::kframe
+note: verifying module mm::phys::manager
+note: verifying modu...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Verification passes (82 verified, 0 errors). The remaining cfg-gates are in other `mm::phys` files (out of scope). Let me confirm the manager files are now clean of cfg-gates.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && TMP=$(mktemp -d) && cp src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/
+
+[THINKING] Verification still passes with 82 verified entries and no errors. The module-level cfg_gate count dropped from 11 to 8 after eliminating the three manager-specific gates, with the remaining gates scattered across frame.rs and other files in the mm::phys directory. I need to double-check that the manager-only cfg_gate count is actually zero now.
+[RESULT ✓] bash: manager cfg_gate TOTAL: 0
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Manager files now have zero cfg-gates. Verification passes. Now let me run the non-verus exec build (ast-consistency: exec code must be unchanged) and the full-crate verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make build 2>&1 | tail -15
+
+[THINKING] The manager module's cfg_gate is now set to 0, and I'm verifying the module-scoped cheating metrics—all the key parameters are at 0 as expected, with external_body references properly documented in tcb-allowed.md and assume_specification entries being legitimate standard specs that don't trigger the gate. I need to check that the non-verus build still compiles correctly to ensure the AST consistency hasn't changed.
+
+Regarding the external_body count of 6—they're all allowed exceptions per the task requirements since they're in the tcb-allowed file. The assume_specification entries are trickier: they're for standard library functions like `Result::and_then` and `Vec::capacity` where vstd provides no specs, making them genuinely irreducible without verifying the standard library itself. These are trusted contracts that fall outside Verus's scope, similar to the tcb-allowed assumptions for architecture and HAL functions, so they should be documented but can't be eliminated.
+
+The gate will flag the broader mm::phys module for cheating due to external_body and cfg_gates in other files, but those are out of scope for this phase since the task defines scope as the manager files only. For the manager module itself, I'm looking at zero admits, zero assumes, zero trusted, zero cfg_gates, and the 6 allowed external_body entries—which should pass. Now I need to run the full build and verify checks to confirm everything compiles correctly.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^build:|^build-kernel:|build.*:" Makefile | grep -iE "build" | he
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+565:	@echo "  RELEASE          Release build mode (default: $(RELEASE)) [impacts build time]"
+===
+411:all: all-nanvix
+485:install: all-nanvix
+820:check: \
+827:check: check-host-binaries check-host-rlibs check-nanvixd ch...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "cargo build.*kernel|nanvix-kernel|build-nanvix|all-nanvix:" Makef
+
+[THINKING] I'm wondering if the `#[verus_spec]` attributes on loop invariants will compile cleanly in non-verus mode, since the crate already handles function-level specs. The proc_macro_hygiene feature is unconditionally enabled, so statement-level specs should work too. Let me try a direct cargo build of the kernel to test this.
+[RESULT ✓] bash: 416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+=== target/features ===
+221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compile...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel && timeout 600 bash -c 'RUSTC_WRAPPER= RUSTFLAGS="$KERNEL_RUST_FLAG
+[RESULT ✓] bash: Checking cfg-if v1.0.4
+    Checking verus_builtin v0.0.0-2026-05-17-0151
+    Checking cmdline v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/cmdline)
+    Checking koptions v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/koptions)
+    Checking no_fail v0.16.17 (/home/ruize/nanvix...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Non-verus kernel build compiles cleanly. Now let me run the ast-consistency check.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+
+[THINKING] The cargo check finished but I'm not entirely sure if it actually compiled the kernel crate itself or just its dependencies due to caching. Let me force a recompile by touching a source file or run with more verbose output to confirm the kernel was actually built.
+
+Actually, looking at the "Finished dev profile" message with zero errors, that means everything including the kernel checked successfully. So the non-verus version of the kernel compiles cleanly with the bare `#[verus_spec(invariant...)]` attribute, which confirms the change is semantics-preserving since the macro just erases to a regular for-loop with identical execution behavior.
+
+Now I need to run the AST consistency check tool to verify everything is working correctly.
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[RESULT ✓] bash: ✅ Consistent: 8 functions, 1 structs match.
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+AST consistency confirms exec code unchanged (8 functions, 1 struct match). Now the full-crate regression check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify 2>&1 | tail -25
+
+[THINKING] The AST structure is consistent between the exec code and base branch—same eight functions and one struct—so the modifications are purely cosmetic annotation changes that erase to identical bytecode. Let me verify the full crate to check for any regressions.
