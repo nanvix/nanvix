@@ -758,3 +758,39 @@ Turn 48
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel MODULE="kernel::hal::
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module kernel::hal::mem::types::address::aligned::page --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+note: verifying module hal::mem::types::address::aligned::page
+verification results:: 11 verified, 0 er...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+11 verified, 0 errors. `into_raw_value` is now verified in-body, and `deref` keeps its `assume_specification` (legitimate — `core::ops::Deref` is a std trait with no Verus contract to inherit). Let me update the stale comment in the spec file to reflect this.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] I've verified the Address implementation completely, so the assume_specification there is gone. Now I'm looking at the deref method—it's unlisted as a verification target, but to stay true to the TCB's intent, I should probably verify it in-body too since the TCB explicitly mentions deref gets removed once that layer is verified.
+
+But here's the issue: deref is a standard library trait method, and Verus doesn't have a spec contract for the core::ops::Deref trait itself. The assume_specification is what provides deref with its contract in the first place—without it, callers lose the guarantee that `(*result)@ == a@`. So unlike the Address case, I can't actually remove deref's assume_specification without losing the contract entirely. This is a legitimate assume_specification for an external std trait, so it has to stay. That also respects the rule about not touching unlisted functions.
+
+So my final changes are: I've added #[verus_verify] to the Address impl block to verify into_raw_value in-body (since Address is a workspace trait with a spec contract), removed the assume_specification for into_raw_value, strengthened the from_address error spec to expose the BadAddress code, and kept deref's assume_specification as a necessary external trust boundary. Now I should update the comment in spec.rs to reflect that into_raw_value is verified in-body rather than assumed.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // `PAGE_ALIGNMENT` is an external (arch-crate) constant. Model it so that verified
+4. // exec code referencing it has a Verus specification. The page alignment's numeric
+5. // value is the page size (both are 4096 on the supported target), which is the link
+6. // that lets `from_...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Now let me re-verify the module and check for warnings, then run the full kernel verification to ensure no regressions in consumers.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel MODULE="kernel::hal::
+
+[THINKING] Let me verify the module changes didn't introduce any warnings, then run the full verification suite to check for regressions in other modules like frame.rs and mm::phys that depend on the contract I modified—they should work fine since they're now using the real verified contract instead of the workaround.

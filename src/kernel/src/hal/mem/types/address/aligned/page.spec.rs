@@ -16,16 +16,19 @@ pub open spec fn spec_aligned(addr_view: int) -> bool {
     addr_view % spec_page_size() == 0
 }
 
-// Dependency contracts for the `PageAligned` `Address`/`Deref` methods.
+// Dependency contract for the `PageAligned` `Deref` method.
 //
-// The `impl<T: Address> Address for PageAligned<T>` and `impl<T: Address> Deref for
-// PageAligned<T>` blocks below are plain (non-`#[verus_verify]`) impls, so Verus treats
-// their methods as *external* and cannot use the trait-level `#[verus_spec]` contract. The
-// HAL frame layer (`FrameAddress::into_raw_value`/`into_frame_number`) and `mm::phys` call
-// these methods from verified code, so they need trusted specifications. These were
-// previously declared in `mm/phys/frame.spec.rs`; they belong here next to the type they
-// describe. Removing them entirely (the contracts equal `result == a@`) breaks the verus
-// build with "cannot use function ... which is ignored because it is ... external".
+// The `impl<T: Address> Address for PageAligned<T>` block is now `#[verus_verify]`, so its
+// `into_raw_value` is verified in-body against the `Address` trait's `#[verus_spec]` contract
+// and no longer needs a trusted specification here.
+//
+// `Deref`, however, is a `core` (std) trait with no Verus contract to inherit, so the
+// `impl<T: Address> Deref for PageAligned<T>` block stays a plain impl and its `deref` is
+// treated as *external*. The HAL frame layer and `mm::phys` call it from verified code, so it
+// needs a trusted specification. This was previously declared in `mm/phys/frame.spec.rs`; it
+// belongs here next to the type it describes. Removing it (the contract equals `result == a@`)
+// breaks the verus build with "cannot use function ... which is ignored because it is ...
+// external".
 pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
     a: &crate::hal::mem::PageAligned<T>,
 ) -> (result: &<crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::Target)
