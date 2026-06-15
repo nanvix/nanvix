@@ -165,3 +165,37 @@ Verification is CLEAN (exit 0). The target `gva_to_gpa` has a contract and verif
 
 Now I'm running the full verification suite to make sure there are no regressions.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 ext...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Done. The target function `gva_to_gpa` verifies cleanly.
+
+**Summary:**
+- `gva_to_gpa(gva) = gva` with ensures `result as int == spec_gva_to_gpa(gva as int)`, where `spec_gva_to_gpa(gva) = gva` (MicroVM identity mapping).
+- The proof is trivial (identity), needs no proof body, lemmas, or assertions. No `admit()`/`assume()`/`external_body` in the target.
+- `make verify-kernel` → exit 0, status CLEAN for the module.
+- `make verify` → exit 0, no regressions.
+
+The reported `admit=12`/`external_body=19` are all in out-of-scope, unlisted, cfg-gated functions (not touched). No specs were weakened. No bugs found.
+
+[THINKING] The verification passed cleanly with no regressions, and the "CHEATING_DETECTED" warnings are coming from out-of-scope functions that use admit and external_body, not from my target function `gva_to_gpa` which has a real contract and no admits. I'm confirming that my target function body contains only `gva` with no admits, so the task scope is satisfied.
+
+
+=== Session End ===
+Session: 505663a6-83b3-4eec-9e0a-df8ea47860e0
+Duration: 42.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/prover-claude-20260615-101708.jsonl
