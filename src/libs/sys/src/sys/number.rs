@@ -111,6 +111,8 @@ pub enum KcallNumber {
     DetachThread = KcallNumber::NR_DETACH_THREAD_SYSCALL,
     /// Duplicates the calling process.
     Duplicate = KcallNumber::NR_DUPLICATE_SYSCALL,
+    /// Replaces the image of the calling process.
+    Execv = KcallNumber::NR_EXECV_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -156,6 +158,7 @@ impl KcallNumber {
     const NR_DETACH_THREAD_SYSCALL: u32 = 36;
     const NR_DUPLICATE_SYSCALL: u32 = 37;
     const NR_GET_PPID_SYSCALL: u32 = 38;
+    const NR_EXECV_SYSCALL: u32 = 39;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -202,6 +205,7 @@ impl From<u32> for KcallNumber {
             Self::NR_SNAPSHOT_SYSCALL => KcallNumber::Snapshot,
             Self::NR_DETACH_THREAD_SYSCALL => KcallNumber::DetachThread,
             Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
+            Self::NR_EXECV_SYSCALL => KcallNumber::Execv,
             _ => KcallNumber::Invalid,
         }
     }
@@ -250,6 +254,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Snapshot => KcallNumber::NR_SNAPSHOT_SYSCALL,
             KcallNumber::DetachThread => KcallNumber::NR_DETACH_THREAD_SYSCALL,
             KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
+            KcallNumber::Execv => KcallNumber::NR_EXECV_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

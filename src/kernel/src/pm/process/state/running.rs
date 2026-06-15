@@ -7,6 +7,7 @@
 
 use crate::{
     hal::arch::ContextInformation,
+    mm::Vmem,
     pm::{
         process::state::{
             interrupted::interrupt,
@@ -34,6 +35,7 @@ use ::sys::{
         Error,
         ErrorCode,
     },
+    mm::VirtualAddress,
     pm::ThreadIdentifier,
     time::SystemTime,
     ExitStatus,
@@ -107,6 +109,81 @@ impl RunningProcess {
     ///
     pub fn running_mut(&mut self) -> &mut RunningThread {
         &mut self.running
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether this process has exactly one thread (the running thread), i.e. no ready,
+    /// interrupted, sleeping, or zombie threads.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the running thread is the only thread in the process, otherwise `false`.
+    ///
+    pub fn is_single_threaded(&self) -> bool {
+        self.ready.is_none()
+            && self.interrupted_threads.is_none()
+            && self.sleeping_threads.is_none()
+            && self.zombie.is_none()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the running image of this process with a freshly built one, as part of `execv()`.
+    /// The process identity and capabilities are preserved; only the address space and the running
+    /// thread are swapped.
+    ///
+    /// The newly built thread is transitioned to the running state, and the outgoing thread is
+    /// retired as a zombie that retains its kernel stack and execution context until the deferred
+    /// reap that runs after the context switch into the new image. The outgoing address space is
+    /// returned to the caller for deferred reclamation, because it is still the active page
+    /// directory until the switch completes.
+    ///
+    /// This must only be called on a single-threaded process (see [`Self::is_single_threaded`]).
+    ///
+    /// # Parameters
+    ///
+    /// - `new_vmem`: Address space of the new image.
+    /// - `new_thread`: Ready main thread of the new image.
+    ///
+    /// # Returns
+    ///
+    /// A tuple of:
+    /// - The outgoing address space, for deferred reclamation.
+    /// - The outgoing thread as a zombie, for deferred kernel-stack reaping.
+    /// - A pointer to the outgoing thread's context (the "from" side of the switch).
+    /// - A pointer to the new thread's context (the "to" side of the switch).
+    /// - The optional thread data area of the new thread.
+    ///
+    pub fn replace_image(
+        &mut self,
+        new_vmem: Vmem,
+        new_thread: ReadyThread,
+    ) -> (
+        Vmem,
+        ZombieThread,
+        *mut ContextInformation,
+        *mut ContextInformation,
+        Option<VirtualAddress>,
+    ) {
+        // Transition the freshly built thread into the running state; its context is the "to"
+        // side of the upcoming switch.
+        let (new_running, _reason, to_ctx, user_tda) = new_thread.run();
+
+        // Install the new running thread and extract the outgoing one.
+        let old_thread: RunningThread = core::mem::replace(&mut self.running, new_running);
+
+        // Retire the outgoing thread. Its kernel stack and context survive inside the returned
+        // zombie until the deferred reap that runs after the switch; its user-stack handle is
+        // dropped so the harvest does not touch the new address space.
+        let (old_zombie, from_ctx) = old_thread.exit_for_exec();
+
+        // Swap in the new address space, returning the old one for deferred reclamation.
+        let old_vmem: Vmem = self.state.replace_vmem(new_vmem);
+
+        (old_vmem, old_zombie, from_ctx, to_ctx, user_tda)
     }
 
     pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation) {

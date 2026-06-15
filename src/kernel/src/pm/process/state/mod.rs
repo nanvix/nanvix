@@ -303,6 +303,28 @@ impl ProcessState {
     ///
     /// # Description
     ///
+    /// Replaces the process's address space with `vmem`, returning the previous one.
+    ///
+    /// This is used by `execv()` to install a freshly built image's address space while keeping
+    /// the rest of the process state (identity, capabilities) intact. The caller is responsible
+    /// for reclaiming the returned address space once it is no longer the active one (i.e. after
+    /// the context switch into the new image has loaded the new page directory).
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: The new address space to install.
+    ///
+    /// # Returns
+    ///
+    /// The address space that was previously installed.
+    ///
+    pub fn replace_vmem(&mut self, vmem: Vmem) -> Vmem {
+        core::mem::replace(&mut self.vmem, vmem)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Checks whether the process owns any "special" resources that prevent it from being
     /// safely duplicated. A process is considered to own special resources when it holds any
     /// of the following:

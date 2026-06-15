@@ -32,9 +32,12 @@ use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
 };
-use ::core::cmp::{
-    max,
-    min,
+use ::core::{
+    cmp::{
+        max,
+        min,
+    },
+    mem::MaybeUninit,
 };
 pub use ::elf::elf32::Elf32Fhdr;
 use ::elf::elf32::{
@@ -112,16 +115,185 @@ fn merge_access(a: AccessPermission, b: AccessPermission) -> AccessPermission {
     )
 }
 
+//==================================================================================================
+// ELF Image Source
+//==================================================================================================
+
 ///
 /// # Description
 ///
-/// Loads an ELF32 binary into a target virtual memory space.
+/// Describes where the loader reads ELF image bytes from.
+///
+/// The boot path loads from a contiguous, kernel-addressable image (the initrd). The `execv()`
+/// path loads directly from the calling process's address space, where the image was placed by
+/// `mmap` and may be physically non-contiguous; reading it byte-for-byte into a contiguous kernel
+/// buffer would impose an artificial size limit, so the loader streams it page-by-page instead.
+///
+#[derive(Clone, Copy)]
+enum ElfSource<'a> {
+    /// Contiguous, kernel-addressable ELF image whose first byte is at kernel address `base`
+    /// (boot/initrd path). Trusted: no length bound is enforced.
+    Blob { base: usize },
+    /// ELF image resident in user address space `vmem`, starting at virtual address `base` and
+    /// spanning `len` bytes (execv path). May be physically non-contiguous. Untrusted: every read
+    /// is bounds-checked against `len`.
+    User {
+        vmem: &'a Vmem,
+        base: VirtualAddress,
+        len: usize,
+    },
+}
+
+impl ElfSource<'_> {
+    /// Returns the byte length of the image, if it is bounded.
+    fn len_limit(&self) -> Option<usize> {
+        match self {
+            ElfSource::Blob { .. } => None,
+            ElfSource::User { len, .. } => Some(*len),
+        }
+    }
+
+    /// Validates that the half-open range `[offset, offset + size)` lies within the image bounds
+    /// (only enforced for bounded sources).
+    fn check_bounds(&self, offset: usize, size: usize) -> Result<(), Error> {
+        if let Some(limit) = self.len_limit() {
+            let end: usize = offset
+                .checked_add(size)
+                .ok_or_else(|| Error::new(ErrorCode::BadFile, "elf offset overflow"))?;
+            if end > limit {
+                let reason: &str = "elf read out of bounds";
+                error!("{reason} (offset={offset}, size={size}, limit={limit})");
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads `size` bytes at file `offset` within the image into the kernel buffer `dst`.
+    ///
+    /// # Safety
+    ///
+    /// `dst` must point to a writable kernel buffer of at least `size` bytes.
+    ///
+    fn read_bytes(&self, offset: usize, dst: *mut u8, size: usize) -> Result<(), Error> {
+        if size == 0 {
+            return Ok(());
+        }
+        self.check_bounds(offset, size)?;
+        match self {
+            ElfSource::Blob { base } => {
+                let src: usize = base
+                    .checked_add(offset)
+                    .ok_or_else(|| Error::new(ErrorCode::BadFile, "elf blob offset overflow"))?;
+                // SAFETY: the boot ELF image is contiguous and identity-mapped in the kernel
+                // address space, and `dst` is a distinct kernel buffer of `size` bytes.
+                unsafe { core::ptr::copy_nonoverlapping(src as *const u8, dst, size) };
+                Ok(())
+            },
+            ElfSource::User { vmem, base, .. } => {
+                let src: usize = base
+                    .into_raw_value()
+                    .checked_add(offset)
+                    .ok_or_else(|| Error::new(ErrorCode::BadFile, "elf user offset overflow"))?;
+                vmem.copy_from_user_unaligned(
+                    VirtualAddress::new(dst as usize),
+                    VirtualAddress::new(src),
+                    size,
+                )
+            },
+        }
+    }
+
+    /// Reads and returns the ELF file header.
+    fn read_header(&self) -> Result<Elf32Fhdr, Error> {
+        let mut hdr: MaybeUninit<Elf32Fhdr> = MaybeUninit::uninit();
+        self.read_bytes(0, hdr.as_mut_ptr() as *mut u8, Elf32Fhdr::SIZE)?;
+        // SAFETY: `Elf32Fhdr` is `repr(C)` and composed solely of integer fields with no invalid
+        // bit patterns; the full `SIZE` bytes were just initialized.
+        Ok(unsafe { hdr.assume_init() })
+    }
+
+    /// Reads and returns the program header at `index`, given the program header table file offset.
+    fn read_phdr(&self, index: usize, e_phoff: usize) -> Result<Elf32Phdr, Error> {
+        let entry_size: usize = core::mem::size_of::<Elf32Phdr>();
+        let offset: usize = index
+            .checked_mul(entry_size)
+            .and_then(|o| o.checked_add(e_phoff))
+            .ok_or_else(|| Error::new(ErrorCode::BadFile, "program header offset overflow"))?;
+        let mut phdr: MaybeUninit<Elf32Phdr> = MaybeUninit::uninit();
+        self.read_bytes(offset, phdr.as_mut_ptr() as *mut u8, entry_size)?;
+        // SAFETY: `Elf32Phdr` is `repr(C)` and composed solely of `u32` fields with no invalid bit
+        // patterns; the full entry was just initialized.
+        Ok(unsafe { phdr.assume_init() })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Copies `size` bytes of segment data at file `offset` into the destination address space at
+    /// `dst`.
+    ///
+    /// On the dry-run validation pass this is a no-op for the [`ElfSource::User`] case, because the
+    /// destination pages are not mapped until the real pass; the boot blob path still validates via
+    /// its existing dry-run handling.
+    ///
+    fn copy_segment(
+        &self,
+        offset: usize,
+        dst_vmem: &mut Vmem,
+        dst: PageAligned<VirtualAddress>,
+        size: usize,
+        dry_run: bool,
+    ) -> Result<(), Error> {
+        self.check_bounds(offset, size)?;
+        match self {
+            ElfSource::Blob { base } => {
+                let src: usize = base.checked_add(offset).ok_or_else(|| {
+                    Error::new(ErrorCode::BadFile, "elf blob segment offset overflow")
+                })?;
+                dst_vmem.copy_to_user_unaligned_unchecked(
+                    dst.into_inner(),
+                    VirtualAddress::from_raw_value(src),
+                    size,
+                    dry_run,
+                )
+            },
+            ElfSource::User { vmem, base, .. } => {
+                // The destination pages are only mapped on the real pass.
+                if dry_run {
+                    return Ok(());
+                }
+                let src: usize = base.into_raw_value().checked_add(offset).ok_or_else(|| {
+                    Error::new(ErrorCode::BadFile, "elf user segment offset overflow")
+                })?;
+                Vmem::copy_user_to_user(
+                    vmem,
+                    VirtualAddress::new(src),
+                    dst_vmem,
+                    dst.into_inner(),
+                    size,
+                )
+            },
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Loads an ELF32 binary into a target virtual memory space, reading the image bytes from the
+/// given [`ElfSource`].
 ///
 /// # Parameters
 ///
 /// - `mm`: Virtual memory manager.
 /// - `vmem`: Target virtual memory space.
-/// - `elf`: ELF32 file header.
+/// - `source`: Where the ELF image bytes are read from.
+/// - `dry_run`: When `true`, validate without allocating or copying (only meaningful for the
+///   contiguous blob source).
 ///
 /// # Returns
 ///
@@ -132,7 +304,7 @@ fn merge_access(a: AccessPermission, b: AccessPermission) -> AccessPermission {
 fn do_elf32_load(
     mm: &mut VirtMemoryManager,
     vmem: &mut Vmem,
-    elf: &Elf32Fhdr,
+    source: ElfSource,
     dry_run: bool,
 ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
     trace!("dry_run={}", dry_run);
@@ -149,38 +321,43 @@ fn do_elf32_load(
     let mut loaded_count: usize = 0;
 
     // Check if the ELF header is valid.
-    if let Err(reason) = elf.validate() {
+    let header: Elf32Fhdr = source.read_header()?;
+    if let Err(reason) = header.validate() {
         error!("{reason}");
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
-    // SAFETY: `e_phoff` is the byte offset from the ELF header to the program header table.
-    // The resulting pointer is within the ELF image, which the caller guarantees is valid.
-    let phdr_base: *const Elf32Phdr = unsafe {
-        (elf as *const Elf32Fhdr as *const u8).offset(elf.e_phoff as isize) as *const Elf32Phdr
-    };
-    // SAFETY: `e_phnum` entries starting at `phdr_base` are guaranteed to reside within the
-    // ELF image. Each entry is a `repr(C)` `Elf32Phdr` with no invalid bit patterns.
-    let phdrs: &[Elf32Phdr] =
-        unsafe { core::slice::from_raw_parts(phdr_base, elf.e_phnum as usize) };
-
+    let e_phoff: usize = header.e_phoff as usize;
+    let e_phnum: usize = header.e_phnum as usize;
+    const MAX_PROGRAM_HEADERS: usize = 256;
+    if e_phnum > MAX_PROGRAM_HEADERS {
+        let reason: &str = "too many program headers";
+        error!("{reason} (e_phnum={e_phnum})");
+        return Err(Error::new(ErrorCode::BadFile, reason));
+    }
     // Only ET_EXEC and ET_DYN binaries are supported.
-    if elf.e_type != ET_EXEC && elf.e_type != ET_DYN {
+    if header.e_type != ET_EXEC && header.e_type != ET_DYN {
         let reason: &str = "unsupported ELF type";
-        error!("{reason} (e_type={:#x})", elf.e_type);
+        error!("{reason} (e_type={:#x})", header.e_type);
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
     // Compute load base for PIE (ET_DYN) binaries. If the lowest PT_LOAD virtual address is
     // below USER_BASE, offset all segment addresses so they land in user space.
-    let load_base: usize = if elf.e_type == ET_DYN {
+    let load_base: usize = if header.e_type == ET_DYN {
         let user_base: usize = USER_BASE_RAW;
-        let lowest_vaddr: usize = phdrs
-            .iter()
-            .filter(|phdr| phdr.p_type == PT_LOAD)
-            .map(|phdr| phdr.p_vaddr as usize)
-            .min()
-            .unwrap_or(0);
+        let mut lowest_vaddr: usize = usize::MAX;
+        for i in 0..e_phnum {
+            let phdr: Elf32Phdr = source.read_phdr(i, e_phoff)?;
+            if phdr.p_type == PT_LOAD {
+                lowest_vaddr = lowest_vaddr.min(phdr.p_vaddr as usize);
+            }
+        }
+        let lowest_vaddr: usize = if lowest_vaddr == usize::MAX {
+            0
+        } else {
+            lowest_vaddr
+        };
         if lowest_vaddr < user_base {
             user_base.saturating_sub(lowest_vaddr)
         } else {
@@ -190,11 +367,11 @@ fn do_elf32_load(
         0
     };
 
-    let entry_raw: usize = (elf.e_entry as usize)
+    let entry_raw: usize = (header.e_entry as usize)
         .checked_add(load_base)
         .ok_or_else(|| {
             let reason: &str = "entry address overflow";
-            error!("{reason} (e_entry={:#x}, load_base={:#x})", elf.e_entry, load_base);
+            error!("{reason} (e_entry={:#x}, load_base={:#x})", header.e_entry, load_base);
             Error::new(ErrorCode::BadFile, reason)
         })?;
     let entry: VirtualAddress = VirtualAddress::new(entry_raw);
@@ -207,7 +384,8 @@ fn do_elf32_load(
     }
 
     // Load segments.
-    for phdr in phdrs {
+    for phdr_index in 0..e_phnum {
+        let phdr: Elf32Phdr = source.read_phdr(phdr_index, e_phoff)?;
         if !phdr.is_loadable() {
             continue;
         }
@@ -232,6 +410,19 @@ fn do_elf32_load(
                 })?;
         let virt_addr_base: usize = ::sys::mm::align_down(adjusted_vaddr, align);
 
+        // The per-page copy below always writes a segment's file bytes starting at the page base
+        // (`virt_addr_base`). This is only correct when the segment's load address coincides with
+        // that base; a PT_LOAD segment that begins partway into a page would have its bytes placed
+        // `adjusted_vaddr - virt_addr_base` bytes too low. Because `execv()` loads untrusted ELF
+        // images, reject such unaligned segments instead of silently misplacing their data.
+        if adjusted_vaddr != virt_addr_base {
+            let reason: &str = "unaligned PT_LOAD segment";
+            error!(
+                "{reason} (adjusted_vaddr={adjusted_vaddr:#x}, virt_addr_base={virt_addr_base:#x})"
+            );
+            return Err(Error::new(ErrorCode::BadFile, reason));
+        }
+
         // Compute access permissions.
         let access: AccessPermission = if phdr.p_flags == (PF_R | PF_X) {
             AccessPermission::EXEC
@@ -255,19 +446,25 @@ fn do_elf32_load(
                 Error::new(ErrorCode::BadFile, reason)
             })?;
 
-        // SAFETY: `p_offset` is the byte offset from the start of the ELF image to the
-        // segment data. The caller guarantees the ELF image spans at least this range.
-        let phys_addr_base: usize = unsafe {
-            (elf as *const Elf32Fhdr as *const u8).offset(phdr.p_offset as isize) as usize
-        };
-
-        let phys_addr_end: usize = phys_addr_base + phdr.p_filesz as usize;
+        // File-offset range of this segment's on-disk data. Segment bytes are read from the image
+        // source relative to these offsets, independently of where (or how contiguously) the
+        // source is stored.
+        let file_off_base: usize = phdr.p_offset as usize;
+        // `p_offset` and `p_filesz` are attacker-controlled in the `execv()` path; a crafted ELF
+        // could overflow this sum, so it is computed with checked arithmetic.
+        let file_off_end: usize = file_off_base
+            .checked_add(phdr.p_filesz as usize)
+            .ok_or_else(|| {
+                let reason: &str = "segment file offset range overflow";
+                error!("{reason} (p_offset={:#x}, p_filesz={:#x})", phdr.p_offset, phdr.p_filesz);
+                Error::new(ErrorCode::BadFile, reason)
+            })?;
 
         // Load segment page by page.
         debug!(
-            "loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, phys_addr_base={:#x}, \
-             phys_addr_end={:#x}, access={:?})",
-            virt_addr_base, virt_addr_end, phys_addr_base, phys_addr_end, access
+            "loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, file_off_base={:#x}, \
+             file_off_end={:#x}, access={:?})",
+            virt_addr_base, virt_addr_end, file_off_base, file_off_end, access
         );
 
         let mut uframe_buf: Vec<UserFrame> = Vec::with_capacity(1);
@@ -307,34 +504,33 @@ fn do_elf32_load(
                     // A page is fully covered when the segment data for this page spans
                     // the entire PAGE_SIZE bytes; in that case clearing is redundant.
 
-                    // Start of the physical/source-backed data for this page.
+                    // File offset of the source-backed data for this page.
                     let page_offset_in_segment: usize = vaddr.into_raw_value() - virt_addr_base;
-                    let page_phys_addr: usize =
-                        match phys_addr_base.checked_add(page_offset_in_segment) {
-                            Some(addr) => addr,
+                    let page_file_off: usize =
+                        match file_off_base.checked_add(page_offset_in_segment) {
+                            Some(off) => off,
                             None => {
-                                let reason: &str = "invalid physical address";
+                                let reason: &str = "invalid segment file offset";
                                 error!("{reason}");
                                 return Err(Error::new(ErrorCode::BadFile, reason));
                             },
                         };
                     // One-past-the-end if the full page were backed by segment data.
-                    let page_phys_addr_end: usize = match page_phys_addr.checked_add(mem::PAGE_SIZE)
-                    {
+                    let page_file_off_end: usize = match page_file_off.checked_add(mem::PAGE_SIZE) {
                         Some(end) => end,
                         None => {
-                            let reason: &str = "invalid physical address range";
+                            let reason: &str = "invalid segment file offset range";
                             error!("{reason}");
                             return Err(Error::new(ErrorCode::BadFile, reason));
                         },
                     };
 
                     // Page is entirely beyond segment data (pure BSS) — must be zeroed.
-                    let page_lies_in_bss: bool = page_phys_addr >= phys_addr_end;
+                    let page_lies_in_bss: bool = page_file_off >= file_off_end;
                     // Page straddles the segment-data/BSS boundary — trailing bytes must
                     // be zeroed.
                     let page_is_partially_covered: bool =
-                        page_phys_addr < phys_addr_end && page_phys_addr_end > phys_addr_end;
+                        page_file_off < file_off_end && page_file_off_end > file_off_end;
                     mm.alloc_upages(
                         vmem,
                         vaddr,
@@ -351,20 +547,24 @@ fn do_elf32_load(
                 last_address = vaddr.into_raw_value() + mem::PAGE_SIZE;
             }
 
-            let phys_addr: usize = phys_addr_base + (vaddr.into_raw_value() - virt_addr_base);
+            // `file_off_base` is attacker-controlled in the `execv()` path; guard the running
+            // offset against overflow. The subtraction is safe because the loop starts at
+            // `virt_addr_base` and never produces a `vaddr` below it.
+            let file_off: usize = file_off_base
+                .checked_add(vaddr.into_raw_value() - virt_addr_base)
+                .ok_or_else(|| {
+                    let reason: &str = "segment file offset overflow";
+                    error!("{reason} (file_off_base={file_off_base:#x})");
+                    Error::new(ErrorCode::BadFile, reason)
+                })?;
 
             // Load segment only if it is within bounds.
-            if phys_addr < phys_addr_end {
-                let size: usize = min(mem::PAGE_SIZE, phys_addr_end - phys_addr);
+            if file_off < file_off_end {
+                let size: usize = min(mem::PAGE_SIZE, file_off_end - file_off);
 
                 // Load segment only if it has a non-zero size.
                 if size > 0 {
-                    vmem.copy_to_user_unaligned_unchecked(
-                        vaddr.into_inner(),
-                        VirtualAddress::from_raw_value(phys_addr),
-                        size,
-                        dry_run,
-                    )?;
+                    source.copy_segment(file_off, vmem, vaddr, size, dry_run)?;
                 }
             }
         }
@@ -396,11 +596,57 @@ pub fn elf32_load(
     vmem: &mut Vmem,
     elf: &Elf32Fhdr,
 ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+    let source: ElfSource = ElfSource::Blob {
+        base: elf as *const Elf32Fhdr as usize,
+    };
     if cfg!(feature = "nightly-performance-optimizations") {
-        do_elf32_load(mm, vmem, elf, false)
+        do_elf32_load(mm, vmem, source, false)
     } else {
-        // Two-pass: first validate with a dry run, then load.
-        do_elf32_load(mm, vmem, elf, true)?;
-        do_elf32_load(mm, vmem, elf, false)
+        // Two-pass: first validate with a dry run, then load. The dry run reads from a contiguous,
+        // kernel-addressable blob, so it can validate the full layout before any mapping.
+        do_elf32_load(mm, vmem, source, true)?;
+        do_elf32_load(mm, vmem, source, false)
     }
+}
+
+///
+/// # Description
+///
+/// Loads an ELF32 binary into `dst_vmem`, reading the image directly from the user address space
+/// `src_vmem` at virtual address `base` (spanning `len` bytes).
+///
+/// This is the `execv()` loader. Unlike [`elf32_load`], the image is not a contiguous kernel blob:
+/// it lives in the calling process's address space (placed there by `mmap`) and may be physically
+/// non-contiguous, so the loader streams each segment page-by-page from the source address space
+/// into freshly allocated pages of the destination. Because the destination pages are only mapped
+/// on the loading pass, a separate validating dry run is not performed; the header and program
+/// headers are still validated before any mapping occurs.
+///
+/// # Parameters
+///
+/// - `mm`: Virtual memory manager.
+/// - `dst_vmem`: Destination address space for the new image.
+/// - `src_vmem`: Source address space that contains the ELF image.
+/// - `base`: Virtual address of the ELF image within `src_vmem`.
+/// - `len`: Length of the ELF image in bytes.
+///
+/// # Returns
+///
+/// Upon successful completion, the entry point of the ELF32 binary and the address past the last
+/// loaded segment are returned. Otherwise, an error is returned and `dst_vmem` may be left in an
+/// inconsistent state.
+///
+pub fn elf32_load_from_user(
+    mm: &mut VirtMemoryManager,
+    dst_vmem: &mut Vmem,
+    src_vmem: &Vmem,
+    base: VirtualAddress,
+    len: usize,
+) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+    let source: ElfSource = ElfSource::User {
+        vmem: src_vmem,
+        base,
+        len,
+    };
+    do_elf32_load(mm, dst_vmem, source, false)
 }

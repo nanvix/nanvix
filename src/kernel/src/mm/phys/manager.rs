@@ -311,4 +311,79 @@ impl PhysMemoryManager {
         }
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Allocates a physically contiguous region of kernel frames and returns the base frame
+    /// address, without any per-frame bookkeeping vector.
+    ///
+    /// This is intended for transient kernel-side staging buffers (for example, the `execv()` path
+    /// stages the argument/environment strings read from user space into such a region). Because the
+    /// microvm platform identity-maps physical memory into the
+    /// kernel, the returned base doubles as a kernel-readable/writable pointer to a
+    /// `count * PAGE_SIZE` byte region. The caller is responsible for releasing the region with
+    /// [`Self::free_kernel_region`].
+    ///
+    /// Kernel allocations bypass the user watermark — no artificial ceiling.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of contiguous frames to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the base [`FrameAddress`] of the contiguous range is returned. Upon failure,
+    /// an error is returned instead.
+    ///
+    pub fn alloc_kernel_region(&mut self, count: usize) -> Result<FrameAddress, Error> {
+        if count == 0 {
+            let reason: &str = "zero-length kernel region";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        frame::alloc_contiguous(count)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a contiguous region of kernel frames previously obtained from
+    /// [`Self::alloc_kernel_region`].
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: Base frame address of the region.
+    /// - `count`: Number of contiguous frames in the region.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead; any frames
+    /// that could be released are released regardless.
+    ///
+    pub fn free_kernel_region(&mut self, base: FrameAddress, count: usize) -> Result<(), Error> {
+        if count == 0 {
+            let reason: &str = "zero-length kernel region";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        let base_raw: usize = base.into_raw_value();
+        let mut result: Result<(), Error> = Ok(());
+        for i in 0..count {
+            let raw_addr: usize = base_raw + i * mem::PAGE_SIZE;
+            match FrameAddress::from_raw_value(raw_addr) {
+                Ok(fa) => {
+                    if let Err(e) = frame::free(fa) {
+                        warn!("free_kernel_region(): failed to free frame {fa:?}: {e:?}");
+                        result = Err(e);
+                    }
+                },
+                Err(e) => {
+                    warn!("free_kernel_region(): invalid frame address {raw_addr:#x}: {e:?}");
+                    result = Err(e);
+                },
+            }
+        }
+        result
+    }
 }

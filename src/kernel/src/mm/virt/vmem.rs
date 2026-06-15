@@ -1814,6 +1814,18 @@ impl Vmem {
 
 impl Drop for Vmem {
     fn drop(&mut self) {
+        // Safety net: by the time a `Vmem` is dropped, every user frame it mapped must already
+        // have been reclaimed (via `clear_user_space()` or explicit unmapping). Dropping the user
+        // page tables below frees only their backing storage, NOT the user frames their entries
+        // reference, so any user page still mapped here is a leaked frame. Catch teardown paths
+        // that forget to reclaim user frames in debug and test builds.
+        debug_assert!(
+            self.user_page_tables
+                .iter()
+                .all(|(_, page_table)| page_table.nmapped() == 0),
+            "Vmem dropped with user pages still mapped: user frames would leak"
+        );
+
         while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
             drop(user_page_table);
         }
