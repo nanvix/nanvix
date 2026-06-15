@@ -758,3 +758,139 @@ AST consistency confirms exec code unchanged (8 functions, 1 struct match). Now 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify 2>&1 | tail -25
 
 [THINKING] The AST structure is consistent between the exec code and base branch—same eight functions and one struct—so the modifications are purely cosmetic annotation changes that erase to identical bytecode. Let me verify the full crate to check for any regressions.
+[RESULT ✓] bash: 1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheati...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Full crate verifies with exit 0, no regressions. Global cfg_gate dropped 12→9 (the 3 manager ones eliminated); remaining cheating is all in out-of-scope modules. Let me confirm the manager diff is minimal and check for any hidden admit/assume.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git diff stat ==="; git --no-pager diff --stat verus-ai-prove-bot
+
+[THINKING] The full crate verification passed with no errors, and I've successfully reduced the cfg_gate violations from 12 down to 9 by eliminating the manager-related ones. The remaining violations are scattered across other modules that are outside the current scope, so I'm checking that no new verification errors were introduced in the process.
+
+Now I'm reconsidering whether those three assume_specification instances in manager.spec.rs for standard library functions should be documented in tcb-allowed.md. They're permanent external trust boundaries since the Rust standard library will never be verified, so they're fundamentally different from kernel callees — they're accepted as external-top boundary contracts rather than something that could eventually be eliminated.
+
+The manager module is now clean: zero admit, assume, cfg_gate, trusted, and no_decreases violations, with all six external_body entries properly documented in tcb-allowed.md. The three assume_specifications for std functions are irreducible and not flagged by the cheating gate, so this counts as a pass for the manager module scope. I should verify there are no other violations hiding elsewhere in the manager files and then prepare the final report.
+[RESULT ✓] bash: === git diff stat ===
+=== diff manager.rs ===
+=== residual admit/assume in manager files ===
+src/kernel/src/mm/phys/manager.proof.rs:17:// they remain `external_body`. (They carry no inline proof body — `admit()` would flag as cheating;
+<shellId: 34 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== current branch & status ==="; git branch --show-current; git --no
+
+[THINKING] Git diff is showing no changes, which is strange—let me verify the edits actually saved and check if the base reference is pointing to the right commit. The grep search only turned up a comment mentioning admit() in proof.rs, not an actual function call, which is good. But I'm concerned the base ref "verus-ai-prove-bottom-up" might not even contain manager.rs based on what the pipeline log indicated earlier.
+[RESULT ✓] bash: === current branch & status ===
+verus-ai-prove-bottom-up
+=== does base have manager.rs? ===
+BASE HAS IT
+=== confirm my edits present ===
+0
+3
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git diff (no ref) full status ==="; git --no-pager status --short
+
+[THINKING] I'm realizing the current branch is actually the base branch itself, so an empty `git diff` means my working tree matches the HEAD — but that doesn't make sense if I've made edits. Let me check the broader git status and see what's actually changed. The grep results show zero instances of the old attribute pattern and three instances of the new `#[verus_spec(` format at line endings, so my edits should be there somewhere.
+[RESULT ✓] bash: === git diff (no ref) full status ===
+ M verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-141459.jsonl
+ M verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-141459.txt
+=== HEAD version of loop line ===
+235:        #[verus_spec(
+473:  ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+The auto-commit hook (on `verus-*` branches) committed my edits during `make verify-kernel`. Let me confirm via git log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager log --oneline -6; echo "=== diff of the auto-commit touching
+
+[THINKING] I'm noticing that HEAD already has the bare `#[verus_spec(` syntax at those line numbers, and my working tree matches it exactly, so git shows no modifications. This is puzzling because when I first looked at the file, it seemed to have a different format with `#[cfg_attr(` instead.
+
+I think what happened is that verify.sh has an auto-commit hook that triggers on branches matching the `verus-*` pattern, and since my branch is `verus-ai-prove-bottom-up`, running `make verify-kernel` automatically committed my changes. That would explain why HEAD now reflects my edits and the working tree is clean. Let me check the git log to confirm this.
+[RESULT ✓] bash: 5e78cd02b [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=3 external_body=18 cfg_gate=9)
+dd606c1af [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3)
+63779e1c4 [verus] verify PASS (cheating detected): bump-allo...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Confirmed: my change was auto-committed (`84a0c3fcc`, cfg_gate 12→9). The manager module is now clean. Let me write the report and verification_todo.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/ 2>/dev/null
+
+[THINKING] The commit with my cfg_attr to verus_spec change is already saved, reducing the cfg_gate count from 12 to 9 globally. The working directory is clean except for some modified log files from the prover, so everything's in order.
+
+Looking at the manager module's remaining trust boundaries: there are 6 external_body declarations (all documented in tcb-allowed.md) and 3 assume_specification entries (irreducible standard library specs), but no actual proof gaps or admits that need fixing. The AST is consistent, the executable is unchanged, and the full crate verifies cleanly with zero errors.
+
+Now I'm writing up the fix report and verification_todo file to document these intentional trust boundaries and confirm there are no stuck proof gaps to resolve.
+[RESULT ✓] bash: prover-claude-20260615-141459.jsonl
+prover-claude-20260615-141459.txt
+NO TODO YET
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md with 2074 characters
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md with 3741 characters
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Cheating elimination for **phys-manager** is complete.
+
+## Summary
+
+**Eliminated:** 3 cfg-gated exec items (loop invariants at `manager.rs:235/473/492`). They were `#[cfg_attr(verus_keep_ghost, verus_spec(invariant …))]`. Since the kernel crate enables `#![feature(proc_macro_hygiene)]` unconditionally (`kmain.rs:20`), the `cfg_attr` wrapper is redundant per the verus-constraints skill — rewrote them as direct `#[verus_spec(invariant …)]`.
+
+**Manager module now has:** `admit=0, assume=0, trusted=0, no_decreases=0, cfg_gate=0`.
+
+**Retained (allowed/irreducible):**
+- 6 `external_body` — all listed in `tcb-allowed.md` (`init`, `kernel_watermark`, + 4 §8 ghost-token lemmas).
+- 3 `assume_specification` — `Result::and_then`/`inspect_err`/`Vec::capacity`; vstd ships no specs (only `Option::and_then`). Standard external-top std-lib boundaries, not flagged by the cheating scan.
+
+**Verification:**
+- `make verify-kernel MODULE=mm::phys` → 82 verified, 0 errors.
+- `make verify` (full crate) → exit 0, no regressions.
+- AST consistency → ✅ exec code byte-identical to base (8 fns, 1 struct).
+- Non-verus kernel `cargo check` → clean.
+
+The change was auto-committed by the verify hook (`84a0c3fcc`, cfg_gate 12→9 globally).
+
+**Reports written:**
+- `verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/fix_report.md`
+- `verus-ai-logs/nanvix-phys-phys-manager/verification_todo.md`
+
+**Result: PASS** — no proof gaps; all residual trust boundaries are tcb-allowed or irreducible std-library specs.
+
+[THINKING] I'm confident everything checks out, so let me write up the final summary for the user.
+
+
+=== Session End ===
+Session: 95c7cb96-2411-4e00-9261-9fd231dcab01
+Duration: 577.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/prover-claude-20260615-141459.jsonl
