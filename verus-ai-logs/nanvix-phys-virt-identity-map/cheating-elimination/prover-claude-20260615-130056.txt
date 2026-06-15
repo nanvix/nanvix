@@ -637,3 +637,23 @@ Turn 32
 ────────────────────────────────────────────────────────────
 Now let me re-verify the module to confirm the comment edits didn't break anything.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | sed -n '/=== Res
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::virt::identity_map:
+    ⚠️  external_body: 3
+  Affected functions:
+    - identity_map.rs:534 ensure_pt: external_body
+    - identity_map.rs:625 ensure_pte: external_body
+    - identity_map.rs:714 ide...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Module clean. Now the task requires `make verify` across the full crate suite to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 3000 make verify 2>&1 | tail -50
+
+[THINKING] The module verification passed with 6 verified and no errors, with only the 3 TCB-allowed external bodies in scope. Now I'm running the full verification suite across all crates to check for any regressions.
