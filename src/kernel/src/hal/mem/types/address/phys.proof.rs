@@ -1,3 +1,10 @@
+use vstd::arithmetic::div_mod::{
+    lemma_fundamental_div_mod,
+    lemma_mod_bound,
+};
+use vstd::arithmetic::mul::lemma_mul_inequality;
+use vstd::bits::lemma_usize_shr_is_div;
+
 verus! {
 
 // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
@@ -7,7 +14,32 @@ pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
     ensures
         spec_frame_raw_value(frame) * spec_page_size() <= usize::MAX as int,
 {
-    admit();
+    // The frame index is bounded by `FrameNumber::spec_max()` (its type invariant).
+    use_type_invariant(&frame);
+
+    let raw: int = frame@;
+    let s: int = spec_page_size();
+    let m: int = usize::MAX as int;
+
+    // `spec_page_size()` is `PAGE_SIZE == FRAME_SIZE` and
+    // `spec_max() == MAX_ADDRESS / FRAME_SIZE - 1`, with `MAX_ADDRESS == usize::MAX`.
+    assert(s == mem::FRAME_SIZE as int);
+    assert(FrameNumber::spec_max() == (m / s - 1) as nat);
+    assert(0 <= raw <= m / s - 1);
+
+    // `(m / s) * s <= m`, since `m == s * (m / s) + (m % s)` with `0 <= m % s`.
+    lemma_mod_bound(m, s);
+    lemma_fundamental_div_mod(m, s);
+    lemma_mul_inequality(raw, m / s - 1, s);
+    assert(raw * s <= m) by (nonlinear_arith)
+        requires
+            s > 0,
+            0 <= raw,
+            raw * s <= (m / s - 1) * s,
+            m == s * (m / s) + (m % s),
+            0 <= m % s,
+    {
+    }
 }
 
 // Under `inv()`, shifting the raw address right by `FRAME_SHIFT` yields the frame index
@@ -29,7 +61,16 @@ pub proof fn lemma_frame_index(
         frame_number as int == spec_frame_number(addr@),
         frame_number as int <= spec_max_frame_number(),
 {
-    admit();
+    // `raw_addr >> shift == raw_addr / 2^shift == raw_addr / spec_page_size()`.
+    lemma_usize_shr_is_div(raw_addr, shift);
+
+    // Bridge the `nat` division from the shift lemma to the `int` division in
+    // `spec_frame_number`.
+    assert(frame_number as nat == raw_addr as nat / pow2(shift as nat));
+    assert(frame_number as int == spec_frame_number(addr@));
+
+    // The frame index bound carries over from `addr.inv()`.
+    assert(frame_number as int <= spec_max_frame_number());
 }
 
 } // verus!

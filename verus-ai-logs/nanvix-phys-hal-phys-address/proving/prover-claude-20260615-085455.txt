@@ -437,3 +437,72 @@ Turn 20
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -40
+[RESULT ✓] bash: note: verifying module hal::mem::types::address::aligned::page
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The module verifies with admit placeholders. Now let me write the actual proofs replacing the two `admit()` lemmas.
+[TOOL] create: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm noticing a discrepancy here—the module shows a clean status with no cheating detected, yet there are actually two `admit()` calls sitting in the phys.proof file. The global admit count is 16, and those two admits in the address module are part of that total. Let me reconcile what the verification is actually reporting versus what's in the code.
+
+Regardless of how the cheating detector is interpreting this, my goal is straightforward: remove those two `admit()` placeholders and write out the actual proofs. Let me rewrite the proof file with the complete lemma implementations.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] The file structure uses `verus!` as a wrapper, so I need to add the necessary imports inside that block rather than at the top of the file. I'm figuring out where to place the `use` statements for vstd within the existing proof.rs structure.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "pub.*fn use_type_invariant" . | head
+
+[THINKING] I'm checking whether `use_type_invariant` is accessible and tracing how `pow2` gets imported through the module structure. Since spec.rs imports `pow2` from vstd and both spec.rs and proof.rs are included into phys.rs as the same module, the use statements from spec.rs should be available to proof.rs through the concatenated module scope.
+
+I also need to verify the path for `FRAME_SIZE` — I used `arch::mem::FRAME_SIZE` but should align it with the existing imports in phys.rs which bring in `mem` directly, so `mem::FRAME_SIZE` would be more consistent.
+[RESULT ✓] bash: 
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rn "use_type_invariant" vstd/ | head; echo "===in repo==="; cd /home/ruize
+[RESULT ✓] bash: vstd/arithmetic/overflow.rs:92:                    proof { use_type_invariant(self); }
+vstd/arithmetic/overflow.rs:152:                    proof { use_type_invariant(self) }
+vstd/arithmetic/overflow.rs:165:                    proof { use_type_invariant(self) }
+vstd/arithmetic/overflow.rs:178:       ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I see that `use_type_invariant` is already available in the vstd prelude and can be called both by value and by reference, so that's good. Now I need to update the reference to `arch::mem::FRAME_SIZE` to use the shorter `mem::FRAME_SIZE` path instead.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -45
