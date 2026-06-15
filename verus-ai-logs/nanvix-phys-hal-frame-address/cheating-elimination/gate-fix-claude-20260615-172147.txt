@@ -428,3 +428,15 @@ Turn 25
 ────────────────────────────────────────────────────────────
 Now run the full kernel verification to confirm the fix resolves both errors without new regressions.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -45
+[RESULT ✓] bash: 103 | atomic_specs_int!(atomic_specs_isize, AtomicIsize, isize);
+    | --------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nigh...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+A vstd compilation error appeared — this is in the toolchain's vstd library (atomic.rs macros), unrelated to my change. Likely a flaky/corrupted build. Let me retry.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -30
+
+[THINKING] This looks like a vstd compilation error unrelated to my changes — likely a toolchain or registry cache issue causing a version mismatch in the atomic macros. Let me try re-running to see if it's a transient build problem.
