@@ -2875,6 +2875,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "setenv-rust"
+version = "0.16.63"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_stdlib",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "sha2"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
