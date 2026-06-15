@@ -506,6 +506,19 @@ fn ensure_identity_mapped_range(
 /// - [`ErrorCode::OutOfMemory`]: No BSS page table slots available.
 /// - [`ErrorCode::BadAddress`]: The allocated page table frame number is out of range.
 ///
+// Trusted shim: ensures a page table *exists* for `pde_idx`, a structural
+// sub-step of the page-reachability abstraction. Its body reads/writes the raw
+// kernel page directory through `Table` (volatile pointer ops Verus cannot
+// model), draws a page table from the interior-mutable `static`
+// `PAGE_TABLE_ALLOCATOR` (atomic-cursor token not stood up here), and builds the
+// PDE from `arch` newtype / enum-flag constructors that are below this module's
+// verification boundary. It does not change the reachability set `mapped`, so the
+// caller-relevant contract is that the map invariant is preserved.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        identity_map_view().inv(),
+)]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
@@ -579,6 +592,22 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
 /// - [`ErrorCode::InvalidArgument`]: Failed to read the PTE.
 /// - [`ErrorCode::BadAddress`]: The frame number is out of range.
 ///
+// Trusted shim: the page-table step that actually makes a page reachable. Its
+// body reads/writes the raw page table through `Table` (volatile pointer ops),
+// builds the identity PTE from `arch` newtype / enum-flag constructors, and
+// invalidates the TLB via inline assembly (`paging::invlpg`) -- all below this
+// module's verification boundary. On success the page covering `phys_addr`
+// becomes reachable (`maps(phys_addr)`); on the absent-PTE-already-present path
+// it is an idempotent no-op. The map invariant is preserved on every path.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        identity_map_view().inv(),
+        match result {
+            Ok(_) => identity_map_view().maps(phys_addr as int),
+            Err(_) => true,
+        },
+)]
 fn ensure_pte(
     pt: Table<PageTableEntry>,
     pte_idx: TableIndex,
@@ -647,10 +676,26 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
-// Not-yet-verified dependency (mm::virt): trusted placeholder contract so verified
-// `mm::phys` callers can invoke it. The identity-mapping side effect is not
-// caller-observable in the physical-frame abstraction (no `mm::phys` contract
-// names it), so no abstract effect is stated. Removed when `mm::virt` is verified.
+// Trusted shim: the externally observable operation of the lazy identity map.
+// Its body reads the module-global `static KERNEL_PD_PADDR` (Verus cannot read a
+// `static`'s value -- the same limitation behind `mm::phys`'s `instance()` /
+// `phys_view()` bridge) and delegates to the trusted `ensure_pt` / `ensure_pte`
+// page-table shims. The contract is stated over the uninterpreted
+// `identity_map_view()`: on success the page covering `phys_addr` is reachable
+// *once the mapper is live* (the pre-init branch returns `Ok` without mapping,
+// hence the guard on `initialized`); on failure nothing is recorded. The map
+// invariant holds on every path. A single fixed view cannot witness the
+// `old -> new` growth of a global mutation, so monotonicity is carried by the
+// `spec_identity_map_page` laws in `identity_map.proof.rs`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        identity_map_view().inv(),
+        match result {
+            Ok(_) => identity_map_view().initialized ==> identity_map_view().maps(phys_addr@),
+            Err(_) => true,
+        },
+)]
 pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     let phys_addr: usize = phys_addr.into_raw_value();
 

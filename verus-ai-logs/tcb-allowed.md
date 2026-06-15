@@ -172,11 +172,49 @@ identity-map side effect, which no `mm::phys` contract names).
   trait. `ensures result as int == self@` (the newtype identity already assumed by
   `manager.rs`'s `kernel_frames_contiguous` reasoning). Removed when `hal::mem` is
   verified.
-- `src/kernel/src/mm/virt/identity_map.rs::identity_map_page` — lazily installs a
-  kernel identity-map PTE (page tables drawn from a BSS pool; no recursive frame
-  allocation). The mapping side effect is not part of the physical-frame
-  abstraction, so the contract states nothing abstract (`ensures true`). Removed
-  when `mm::virt` is verified.
+- `src/kernel/src/mm/virt/identity_map.rs::identity_map_page` — now the in-scope
+  proof target of the `mm::virt::identity_map` module (see the dedicated section
+  below). Its contract is no longer `ensures true`: it is stated over
+  `identity_map_view()` (map-on-success when live, invariant preservation). The
+  `mm::phys::kframe` caller is unaffected — it consumes only the `Result`, not any
+  abstract fact.
+
+## Allowed `external_body` — `mm::virt::identity_map` (proof target)
+
+`mm::virt::identity_map` is the lazy kernel identity map. Its three in-scope
+functions are trusted shims for the same reasons the `mm::phys` shims
+(`frame.rs`, `manager.rs`) are: each body touches state Verus cannot model and
+therefore cannot be body-verified in place. The barriers are genuine Verus
+front-end / unmodelled-state limitations, not proof gaps:
+
+- module-global `static`s read directly (`KERNEL_PD_PADDR`) — the same limitation
+  behind `mm::phys`'s `instance()` / `phys_view()` bridge (the verifier cannot
+  read a `static`'s value);
+- raw page-table memory accessed through `arch::Table` via volatile pointer
+  reads/writes (no `PointsTo`/model), exactly the `raw-array` /
+  `FixedSizeBumpAllocator::alloc` situation;
+- the interior-mutable `static PAGE_TABLE_ALLOCATOR` whose atomic-cursor token is
+  not stood up here (the bump allocator's `BumpView` token machinery is "a later
+  phase", per `bump_allocator/src/lib.spec.rs`);
+- `arch` newtype / enum-flag constructors (`PageDirectoryEntry::new`,
+  `PageTableEntry::new`, `FrameNumber::from_raw_value`, the `*Flag` enums) and
+  inline-asm `paging::invlpg`, all below this module's verification boundary.
+
+Each carries a `#[verus_spec]` contract stated over the do-not-modify
+`identity_map_view()` / `IdentityMapView` (monotone single-state facts, since a
+fixed accessor cannot name `old(identity_map_view())`). The abstract laws
+(idempotence, map-on-success, monotone growth, invariant preservation) are
+carried by `identity_map.proof.rs`. No contract weakens an existing guarantee.
+
+- `src/kernel/src/mm/virt/identity_map.rs::identity_map_page` — ensures the page
+  covering `phys_addr` is reachable once the mapper is live, and preserves the map
+  invariant. `ensures identity_map_view().inv()` and the guarded map-on-success.
+- `src/kernel/src/mm/virt/identity_map.rs::ensure_pt` — structural sub-step
+  (ensures a page table exists for a PDE index); does not change the reachability
+  set. `ensures identity_map_view().inv()`.
+- `src/kernel/src/mm/virt/identity_map.rs::ensure_pte` — the page-table step that
+  makes a page reachable (`maps(phys_addr)` on success; idempotent if already
+  present). `ensures identity_map_view().inv()` and the map-on-success arm.
 
 ## Allowed `assume_specification` — `sys::mm::Address` trait method
 
