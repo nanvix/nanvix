@@ -225,3 +225,23 @@ Still correct. Let me do the final clean confirmation run of both commands, then
 [TOOL] bash: cd /home/ruize/nanvix-phy && echo "ver=$(cat /home/ruize/toolchain/verus/version.txt)"; echo "=== make verify-sys ==="; 
 
 [THINKING] I'll run both commands one more time in sequence to confirm they pass cleanly, then update the fix report.
+[RESULT ✓] bash: ver=0.2026.05.31.5dd6d83
+=== make verify-sys ===
+  ✅ No cheating detected.
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  status: CLEAN
+=== make verify ===
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CLEAN
+  Exit code : 0
+  status: CHEATI...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Both pass with exit code 0. The `CHEATING_DETECTED` statuses for bump-allocator/kernel are pre-existing TCB-allowed `external_body` (unchanged from baseline, outside scope) — verification itself exits 0. Let me confirm the overall `make verify` exit code is 0.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify >/tmp/mv.log 2>&1; echo "make verify exit code = $?"; grep -E "verification res
+
+[THINKING] Both `make verify` commands exit with code 0, meaning verification passes overall. The bitmap, slab, and sys crates show CLEAN status, while bump-allocator and kernel report "CHEATING_DETECTED" due to pre-existing allowed external_body declarations in their TCB—but this is just a guardrail warning about permitted exceptions, not an actual verification failure.
