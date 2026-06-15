@@ -218,7 +218,8 @@ impl PhysMemoryManager {
         // A zero-sized allocation is trivially satisfied.
         if count == 0 {
             proof! {
-                lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
+                lemma_user_addr_set_empty(frames@);
+                lemma_book_all_empty(g_old);
             }
             return Ok(());
         }
@@ -233,10 +234,27 @@ impl PhysMemoryManager {
                 g_old == old(self)@,
                 g_old.wf(),
                 self@.wf(),
+                frames@.len() == i,
+                user_addr_set(frames@).finite(),
+                user_addr_set(frames@).len() == i,
+                g_old.all_free(user_addr_set(frames@)),
+                self@ == g_old.book_all(user_addr_set(frames@)),
         ))]
-        for _ in 0..count {
+        for i in 0..count {
+            proof_decl! {
+                let ghost frames_pre = frames@;
+                let ghost set_pre = user_addr_set(frames@);
+            }
             match self.upool.alloc() {
-                Ok(frame) => frames.push(frame),
+                Ok(frame) => {
+                    frames.push(frame);
+                    proof! {
+                        // `self.upool.alloc()` moved `frame@` (free in `g_old`, not yet booked)
+                        // out of the partition; fold it into the accumulated address set.
+                        lemma_user_addr_set_push(frames_pre, frame);
+                        lemma_book_all_alloc_one(g_old, set_pre, frame@);
+                    }
+                },
                 Err(error) => {
                     frames.clear();
                     proof! {
@@ -245,9 +263,6 @@ impl PhysMemoryManager {
                     return Err(error);
                 },
             }
-        }
-        proof! {
-            lemma_user_bulk_ok(g_old, self@, frames@, count as nat);
         }
         Ok(())
     }

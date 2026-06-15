@@ -109,13 +109,13 @@ pub proof fn lemma_book_all_alloc_one(base: FrameAllocView, s: Set<int>, a: int)
 }
 
 /// The address set of an empty handle sequence is empty.
-pub proof fn lemma_user_addr_set_empty()
+pub proof fn lemma_user_addr_set_empty(frames: Seq<UserFrame>)
+    requires
+        frames.len() == 0,
     ensures
-        crate::mm::phys::manager::user_addr_set(Seq::<UserFrame>::empty())
-            == Set::<int>::empty(),
+        crate::mm::phys::manager::user_addr_set(frames) == Set::<int>::empty(),
 {
-    assert(crate::mm::phys::manager::user_addr_set(Seq::<UserFrame>::empty())
-        =~= Set::<int>::empty());
+    assert(crate::mm::phys::manager::user_addr_set(frames) =~= Set::<int>::empty());
 }
 
 /// Pushing a handle onto a sequence inserts its address into the sequence's address set.
@@ -145,26 +145,6 @@ pub proof fn lemma_user_addr_set_push(frames: Seq<UserFrame>, uf: UserFrame)
         }
     }
     assert(lhs =~= rhs);
-}
-
-/// Effect of a successful bulk user allocation: the `count` handles in `frames` own distinct
-/// frames that were all free and become reserved as a set.
-pub proof fn lemma_user_bulk_ok(
-    pre: FrameAllocView,
-    post: FrameAllocView,
-    frames: Seq<UserFrame>,
-    count: nat,
-)
-    requires
-        pre.wf(),
-    ensures
-        frames.len() == count,
-        crate::mm::phys::manager::user_addr_set(frames).len() == count,
-        post == pre.book_all(crate::mm::phys::manager::user_addr_set(frames)),
-        pre.all_free(crate::mm::phys::manager::user_addr_set(frames)),
-        post.wf(),
-{
-    admit();
 }
 
 /// On a mid-bulk failure the implementation `clear()`s the vector, which drops (and thus frees)

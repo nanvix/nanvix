@@ -434,3 +434,100 @@ Turn 23
 ────────────────────────────────────────────────────────────
 Now let me verify the helper lemmas prove (Stage 1) with a module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: external_body
+    - frame.rs:1479 alloc_range: external_body
+...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Helpers verified (86 verified, 0 errors — up from 82). Let me check the admit count discrepancy (summary says 8, detail lists 5).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "admit()" src/kernel/src/mm/phys/
+
+[THINKING] I'm noticing a discrepancy in the admit count — the detailed breakdown shows 5 admits in manager.proof.rs, but the global summary reports 8, so I need to figure out where the extra 3 are coming from, possibly in another module file.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.proof.rs:16:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:35:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:55:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:167:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:179:    admit();
+<shellId: 11 compl...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Helpers verified. Now a critical check: the manager's `view` is `closed`. Let me see how exec code relates `self@` to `self.upool@`, and how the files compose into the module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "include!\|mod manager\|path =" src/kernel/src/mm/phys/manager.rs 
+
+[THINKING] The admit count discrepancy makes sense now — the global count of 8 includes admits from other kernel modules like mm::virt, but my scope only covers the 5 admits in the mm::phys module that the grader reported. The extra 3 are outside what I need to focus on.
+
+Now I'm restructuring the loop in manager.rs to eliminate the lemma_user_bulk_ok dependency. I'll convert the loop to track the iteration index, strengthen the loop invariants to capture the allocation state, handle the count==0 case with the helper lemmas instead of the bulk proof, and remove the final bulk_ok call since the invariants will establish what we need.
+
+Rewriting the loop structure...
+
+For the count==0 path, I'm calling lemma_user_addr_set_empty and lemma_book_all_empty to establish the postcondition. But I need to verify that frames@ is actually empty at that point — the precondition guarantees old(frames)@.len()==0, and since frames hasn't been modified yet, frames@ should still be empty. The question is whether I need to assert frames@ equals Seq::empty() syntactically, or if the lemma works for any sequence with length 0. The user_addr_set function on a length-0 sequence should yield an empty set since there are no valid indices to iterate over.
+
+I'm refining lemma_user_addr_set_empty to take the sequence as a parameter and require its length to be 0, which makes it more directly applicable. Then I'm checking each postcondition clause: the count implication is vacuous, the final frame length matches count, the user address set length is 0, the all_free condition is vacuous for an empty set, and the book_all condition follows from the lemma. Now I need to set up the loop invariants.
+
+Setting up loop invariants... At loop entry with i=0, frames is empty so the invariant holds. The body pushes one frame, making frames.len() == i+1, which satisfies the invariant for the next iteration. I need to verify that the all_free and book_all invariants also hold after the push.
+
+For all_free, the new frame must be free in the old state, which follows from it being in the free set difference (the available frames). For book_all, after allocating the frame, the new state equals booking all frames in the updated set. The key is showing the frame wasn't already in the set being booked, so the insert properly extends it to i+1 elements.
+
+Now I need to capture the sequence before the push operation so I can reference it in the lemma. I'll grab `frames_pre` at the loop start before any mutations, then after pushing the frame, I can prove that the user address set of the new sequence equals the old set with the frame inserted. Since the frame allocation doesn't mutate the frames sequence, the captured value at loop entry is exactly what I need.
+
+For the error branch, when allocation fails, the frames get cleared and the function returns early. The loop invariant still holds at that point since self remains unchanged, and the bulk error restoration lemma (which I'm admitting for now) ensures self returns to its original state. The precondition for `upool.alloc()` requires the pool to be well-formed, which is guaranteed by the loop invariant maintaining `self@.wf()`.
+
+But there's a critical issue: the `view` function is marked as closed, so outside the spec module Verus can't unfold the equivalence `self@ == self.upool@`. This means when calling `self.upool.alloc()` and trying to relate its postcondition back to `self@`, I can't directly use that equality. I need to figure out how the existing code handles this — either through a proof helper, a bridge lemma, or something I'm missing about how the view is actually exposed.
+
+Let me check the module structure to understand whether `closed` visibility rules apply differently when files are included together.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs:9:include!("manager.spec.rs");
+src/kernel/src/mm/phys/manager.rs:11:include!("manager.proof.rs");
+src/kernel/src/mm/phys/mod.rs:12:mod manager;
+src/kernel/src/mm/phys/mod.rs:41:include!("mod.spec.rs");
+src/kernel/src/mm/phys/mod.rs:43:include!("mod.proof.rs");
+<shel...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Same module via `include!` — so the `closed` view body is visible in manager.rs (that's how the existing loop works). Now let me refine the empty-set helper to accept any length-0 seq, then restructure the loop.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] Since `manager.spec.rs` and `manager.proof.rs` are included directly into `manager.rs`, they're all part of the same module, which means the `closed spec fn view` is accessible within the module and Verus can reason about `self@ == self.upool@`. So my loop restructure can leverage that equivalence, though I'm wondering whether I need to make it explicit in the invariant or if it's already implicit.
+
+When I write the invariant with `self@.book_all(...)` and the loop body calls `self.upool.alloc()`, Verus sees the closed body and connects the facts about `self.upool@` to `self@` through the equality. The existing `alloc_user_frame` already works this way, so my approach is sound.
+
+For the precondition of `upool.alloc`, it requires `old(self.upool)@.wf()`. Since I'm in `manager.rs` where the closed view is visible, `self.upool@ == self@`, and the invariant maintains `self@.wf()`, Verus should connect these automatically. The existing loop already has this pattern and works fine.
+
+Now I'm going to write the actual changes—first updating the helper lemma to handle a sequence with length zero, then restructuring the loop.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Now the loop restructure in manager.rs:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to correct the file path I was targeting—it should be manager.rs, not manager.proof.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Now delete the now-unused `lemma_user_bulk_ok` from the proof file:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
