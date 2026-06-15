@@ -120,15 +120,17 @@ where
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
-    // On success, the boolean is exactly the alignment predicate over the
-    // abstract address (`b == self@ % align == 0`); this is the only payload
-    // callers branch on. Concrete implementors never take the `Err` arm.
+    // The boolean is exactly the alignment predicate over the abstract address
+    // (`b == spec_addr(self) % align == 0`); this is the only payload callers
+    // branch on. `Alignment` is a closed enum of valid powers of two, so there
+    // is no genuine failure condition: concrete implementors never take the
+    // `Err` arm, and the contract pins this as total (`result is Ok`) so that
+    // alignment guards (`mprotect`/`munmap`/`heap`/`PageAligned`) can rely on
+    // the query succeeding.
     #[verus_spec(result =>
         ensures
-            match result {
-                Ok(b) => b == addr_is_aligned(spec_addr(self), align),
-                Err(_) => true,
-            },
+            result is Ok,
+            result->Ok_0 == addr_is_aligned(spec_addr(self), align),
     )]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
 
