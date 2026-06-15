@@ -124,3 +124,31 @@ Module: sys-address-mod
 [2026-06-15 18:42:30] [DIALOGUE] Reviewer turn 1 (remaining: 7200s)...
 [2026-06-15 18:42:30] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 18:48:55]   ↳ dialogue-reviewer-t1 done in 6m24s (exit=0)
+[2026-06-15 18:48:55] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 18:48:55] [DIALOGUE] STOP detail:
+RESOLVED
+
+All proving-scope checklist items PASS with tool evidence:
+1. No spec drift (spec_drift.py: 0 contract drift)
+2. admit=0   3. external_body=0   4. assume=0   5. cfg-gated exec=0
+6. Cheating audit CLEAN (assume/external_body/admit/trusted/no_decreases/cfg_gate all 0)
+7. No unresolved Verus limitation (spec_addr cycle resolved by spec design, no cheat)
+8. No exec rewrites (zero source changes; pure trait declarations)
+10. make verify-sys = exit 0, 6 verified, 0 errors, 0 warnings, CLEAN
+
+Item 9 (cross-module `make verify`) fails at the `bitmap` crate due to a
+PRE-EXISTING ENVIRONMENTAL toolchain/dependency issue: the workspace-pinned
+registry crate `vstd-0.0.0-2026-05-31-0205` fails to recompile under the
+installed verus toolchain nightly (`atomic_specs_*` macro mismatch in
+`std_specs/atomic.rs`). Evidence it is NOT a regression from this phase:
+- `git diff --stat <proving-baseline d82e2042327f> HEAD -- Cargo.toml Cargo.lock src/`
+  is EMPTY (zero source/dependency changes this phase).
+- `bitmap` is an unlisted, out-of-scope crate; its "compilation/setup error"
+  alternates FAIL/PASS across git history (cache/toolchain flakiness).
+- The in-scope crate `sys` verifies cleanly: fresh runs report 6 verified, 0 errors.
+This is not a specification defect (ROLLBACK does not apply) and is not fixable
+within the sys-address-mod proving scope. Remediation = a separate workspace-wide
+vstd-pin/toolchain alignment task.
+
+The proving phase for sys-address-mod is complete and sound.
+[2026-06-15 18:48:55] [DIALOGUE] proving ended after 1 turns: RESOLVED (385s)
