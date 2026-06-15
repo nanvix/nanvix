@@ -580,3 +580,60 @@ HEAD already contains the 3 TCB-allowed `external_body` facades — the strip st
 [THINKING] HEAD contains all three external_body facades, and the strip operation was just a temporary working tree modification to test whether proving was possible without them—it wasn't. Restoring to HEAD state was the right call, and now the module verifies cleanly with 86 verified and no errors.
 
 The proof file is empty since no lemmas are needed, and the spec remains unchanged. The full `make verify` would include other modules like manager that still have unresolved admits, but since my change is just restoring the working tree to match the committed HEAD state, there's no regression risk. The module-level verification already confirms everything is working correctly.
+[RESULT ✓] bash: (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Full kernel verify passes: **exit 0, 0 errors**. The `external_body=15`/`admit=7` counts are all pre-existing in out-of-scope modules (manager/frame/mod) plus the 3 TCB-allowed upool facades. The frame.rs:1186 trigger note is a pre-existing warning outside my scope.
+
+Let me confirm the final upool state and that exec code is unchanged vs HEAD.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== source diff vs HEAD (should be empty) ==="; git diff --stat -- src/
+
+[THINKING] The kernel verification passed with no errors—the warning about triggers in frame.rs is pre-existing and out of scope, and the cheating counts are all from modules outside the TCB or are allowed upool facades, so there's no regression. The upool module is fully proven, including UserFrame::new and address functions.
+
+All the core upool operations—leak, share, refcount, drop—are machine-checked and verified. The Upool::new and Upool::alloc functions are TCB-allowed external_body facades with opaque structs and uninterpreted views as documented. The upool.proof.rs file has no admits or assumes, and the module itself has zero of each.
+
+No bugs were discovered, so no code changes are needed beyond restoring the TCB facade attributes that were temporarily removed. Since nothing was found, I don't need to add an entry to bugs.md. The git diff is clean—my change restored upool.rs to exactly HEAD, confirming no semantic changes to the exec code. Now I'm wrapping up the remaining todos.
+[RESULT ✓] bash: === source diff vs HEAD (should be empty) ===
+(empty = exec/spec/proof identical to committed good state)
+=== upool cheating from detail ===
+    - mm/phys/upool.rs:221 Upool (struct): external_body
+    - mm/phys/upool.rs:246 new: external_body
+    - mm/phys/upool.rs:279 alloc: external_body
+<shellId...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Mark full verify done', 'query': "UPDATE todos SET status='done
+[RESULT ✓] sql: 1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Done. The `mm::phys::upool` module is fully proven.
+
+## Summary
+
+**Verification result:** `make verify-kernel MODULE=mm::phys` → 86 verified, 0 errors. Full `make verify-kernel` → exit 0, 0 errors. No regressions.
+
+**Target functions — all machine-verified (no proof body needed):**
+- `UserFrame::new`, `address`, `leak` (ManuallyDrop via vstd specs), `share`, `refcount`, `drop` — all discharged automatically. The key bridge is that `UserFrame::view` returns `self.addr@`, so `UserFrame::inv()` and `FrameAddress::inv()` both reduce to `self.addr@ % page_size == 0`, satisfying the frame-layer preconditions.
+
+**`Upool::new` / `Upool::alloc`:** restored `#[verus_verify(external_body)]`. The pipeline's automated strip-external-body step had transiently removed these from the working tree, but they are genuine external-bottom trust boundaries (the `Upool` struct is `external_body`/opaque with an uninterpreted `FrameAllocView` view — the constructor `Self{..}` is disallowed and the view can't be connected to `frame::alloc`'s effect on `phys_view()`). Both are explicitly listed in `tcb-allowed.md`. This restores the exact spec-phase end state (`external_body=3 facade`).
+
+**Source integrity:** `upool.rs`/`.spec.rs`/`.proof.rs` are byte-identical to the committed good state (empty git diff). No exec logic changed.
+
+**Bugs:** none found — no code defects, so no `bugs.md` entry. `upool` has 0 `admit()`, 0 `assume()`. The remaining `admit=7`/other `external_body` counts are all in out-of-scope modules (manager/frame/mod) and pre-existing.
+
+
+=== Session End ===
+Session: 570085fc-0247-4354-8137-951063ed3082
+Duration: 367.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/proving/prover-claude-20260615-125739.jsonl
