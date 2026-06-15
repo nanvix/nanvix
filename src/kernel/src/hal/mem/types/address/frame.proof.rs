@@ -1,11 +1,15 @@
+use vstd::arithmetic::div_mod::{
+    lemma_fundamental_div_mod,
+    lemma_mod_multiples_basic,
+};
+
 verus! {
 
 // =================================================================================================
 // Proof obligations for `FrameAddress`'s frame-number conversions.
 //
-// Bodies are `admit()` placeholders during the specification phase; the proving phase discharges
-// them (the facts below are elementary divisibility properties of `spec_page_size()`, which is a
-// power of two and therefore strictly positive).
+// The facts below are elementary divisibility properties of `spec_page_size()`, which is the
+// `#[verus_verify]` constant `arch::mem::PAGE_SIZE == 4096` and therefore strictly positive.
 // =================================================================================================
 
 // `frame_index * PAGE_SIZE` is a multiple of `PAGE_SIZE`, hence page-aligned. Used by
@@ -14,7 +18,11 @@ pub proof fn lemma_frame_base_aligned(frame: FrameNumber)
     ensures
         spec_from_number(spec_frame_raw_value(frame)) % spec_page_size() == 0,
 {
-    admit();
+    // `spec_page_size()` is the transparent constant `PAGE_SIZE == 4096 > 0`.
+    assert(spec_page_size() == 4096);
+    // `spec_from_number(spec_frame_raw_value(frame)) == frame@ * spec_page_size()`, a multiple of
+    // `spec_page_size()`, so its remainder mod `spec_page_size()` is zero.
+    lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
 }
 
 // For a page-aligned address, dividing by `PAGE_SIZE` then multiplying recovers the address
@@ -25,7 +33,10 @@ pub proof fn lemma_aligned_div_mul(addr: int)
     ensures
         spec_from_number(spec_frame_number(addr)) == addr,
 {
-    admit();
+    // `spec_page_size()` is the transparent constant `PAGE_SIZE == 4096 > 0`.
+    assert(spec_page_size() == 4096);
+    // `addr == s * (addr / s) + (addr % s)` with `addr % s == 0`, so `(addr / s) * s == addr`.
+    lemma_fundamental_div_mod(addr, spec_page_size());
 }
 
 } // verus!
