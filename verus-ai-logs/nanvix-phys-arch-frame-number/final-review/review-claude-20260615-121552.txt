@@ -791,3 +791,193 @@ EXIT=0
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Coverage 4/4, drift 0. Now let me run the AST consistency check. Let me find the script and the appropriate baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -i ast; echo "=== branches ===";
+[RESULT ✓] bash: ast_consistency.py
+scan_ast_limitations.py
+=== branches ===
+  dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+=== pipeline_state base...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] rg: FrameNumber::from_raw_value|into_raw_value\(
+[RESULT ✓] view: 280. #[verus_verify]
+281. #[derive(Debug, Clone, Copy)]
+282. pub struct PageTableEntry {
+283.     /// Flags.
+284.     flags: PageTableEntryFlags,
+285.     /// Physical address of the page frame.
+286.     frame: FrameNumber,
+287. }
+288. 
+289. impl PageTableEntry {
+290.     /// Size in bytes of the ha...
+[RESULT ✓] view: 285.     /// Physical address of the page table (or large page).
+286.     frame: FrameNumber,
+287. }
+288. 
+289. impl PageDirectoryEntry {
+290.     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
+291.     pub const SIZE: usize = ::core::mem::size_of::<Pte...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs:154:    fn into_raw_value(self) -> PteWord {
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs:157:        value |= self.present.into_raw_value();
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] view: 408.     ///
+409.     #[verus_spec(result =>
+410.         ensures
+411.             result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
+412.             result as int % (crate::mem::FRAME_SIZE as int) == 0,
+413.     )]
+414.     pub fn frame_address(&self) -> usize {
+415.         let raw: ...
+[RESULT ✓] view: 388.     /// # Returns
+389.     ///
+390.     /// The physical address.
+391.     ///
+392.     pub fn frame_address(&self) -> usize {
+393.         self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+394.     }
+395. 
+396.     ///
+397.     /// # Description
+398.     ///
+399.     /// Checks if the tar...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import json
+d=json.load(open('verus-ai-logs/nanvix-phys-arch-frame-numbe
+[RESULT ✓] bash: phase_boundary_shas: {
+  "proving": "18b887e051a92ebf0aacdc5e992b0632649b50a1",
+  "cheating-elimination": "af3935424fa8e15e4a908608d7f59d99cb6e1617"
+}
+phase_start_shas: {
+  "proving": "41cda1b2854e8e6f19d504631e883fbde62ab4d0",
+  "cheating-elimination": "c410af898d4b73b06328bf363260e0927b0e769c"
+}
+<...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] rg: #\[cfg|#\[cfg_attr
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git log for number.rs ===" && git --no-pager log --oneline -10 -- src/libs/
+[RESULT ✓] bash: === git log for number.rs ===
+6f4d7629e [verus] verify PASS (cheating detected): arch::all (48 verified, 0 errors, admit=1 external_body=3 cfg_gate=4)
+271ca6922 [verus] verify FAIL: arch::all (47 verified, 1 errors)
+151308013 [verus] verify PASS: arch::all (8 verified, 0 errors)
+74b4a1322 [verus] ve...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] rg: error\[|error:
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_12-18-53.log
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] view: 1.     - x86/mem/paging/mod.rs:80 invlpg: external_body
+2.     - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+3.     - x86/mem/paging/table.rs:209 read: external_body
+4.     - x86/mem/paging/table.rs:246 write: external_body
+5. 
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_12-18-53
+2. Mode: cargo
+3. Crate: arch
+4. Directory: N/A
+5. Module: <all>
+6. Exit code: 0
+7. cached (no recompilation)
+8. —
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=3
+13.   admit=1
+14.   trusted=0
+15.   no_decreases=0
+16.   cfg_gate=4
+17. 
+18. --- Full o...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now let me run the AST consistency check against the `dev` baseline (original pre-verus source).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== AST COUNT (base dev) ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[RESULT ✓] bash: === AST COUNT (base dev) ===
+✅ Consistent: 4 functions, 1 structs match.
+=== AST SUMMARY ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+FrameNumber::from_raw_value        ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in src/libs/arch/src/x86/mem/paging/frame/number.rs src/libs/arch/src/x86/mem/p
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs: NO_DIFF
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs: NO_DIFF
+src/libs/arch/src/x86/mem/paging/frame/number.proof.rs: NO_DIFF
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+AST consistency PASS. Now let me start the verification build. Let me check the make target first.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verify-arch\|verify:" Makefile 2>/dev/null | head; echo "---"; ls Makefile 2
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+---
+Makefile
+--- check for running builds ---
+ruize     925596  0.0  0.0  27624 15672 pts/52   Sl+  Jun08   0:00 vim /home/ruize/insights/verus-ai-assume-analysis.md
+ruize    2074309  0.0  0.0 110184 23504 ?        Ssl  00:39   0:00 /usr...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me run the verification. This may take several minutes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_CRATES\|verify-%\|verify-arch" Makefile | head
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-arch 2>&1 | tail -50; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 29 completed with exit code 0>
