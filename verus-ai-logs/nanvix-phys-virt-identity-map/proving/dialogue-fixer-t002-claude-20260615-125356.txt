@@ -195,3 +195,56 @@ Turn 14
 ────────────────────────────────────────────────────────────
 Now run verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -30
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::virt::identity_map:
+    ⚠️  external_body: 3
+  Affected functions:
+    - identity_map.rs:534 ensure_pt: external_body
+    - identity_map.rs:626 ensure_pte: external_body
+    - identity_map.rs:715 identity_map_page: external_body
+  Global: assume=0 external...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+In-scope `admit`=0 now (the trio is `external_body`). Let me check the detail file for in-scope cfg_gate count and confirm the trigger note is gone.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== in-scope admit lines (should be none) ==="; grep -iE "identity_map.*admit" 
+
+[THINKING] I'm noticing the in-scope admit count dropped to 0 since those three functions are external, but the global cfg_gate count remains at 19 even though I removed five `#[cfg(not(verus_keep_ghost))]` gates from this file. Let me verify whether those gates were actually being counted or if there are other gates I'm missing.
+
+The admit count shifted from 7 to 4 globally (3 removed) and external_body went from 20 to 23 (3 added), which tracks correctly. I should double-check that the trigger note is gone and confirm the in-scope cfg_gate count for this module.
+[RESULT ✓] bash: === in-scope admit lines (should be none) ===
+=== identity_map external_body/cfg lines ===
+    - mm/virt/identity_map.rs:534 ensure_pt: external_body
+    - mm/virt/identity_map.rs:626 ensure_pte: external_body
+    - mm/virt/identity_map.rs:715 identity_map_page: external_body
+    - mm/virt/identity_...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+One cfg gate remains at line 563 — let me check it (outside the trio's edited spans).
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I've confirmed the external bodies and type specs are all TCB-listed now, and the trigger note is gone. There's still one `#[cfg(not(verus_keep_ghost))]` remaining at line 563 that I didn't modify, but I need to recount — I removed 4 gates from ensure_pt and ensure_pte combined, though the reviewer asked for 5 total across the file.
+[RESULT ✓] view: 558. 
+559.     // Install the PDE with type-safe flag constructors.
+560.     let pt_frame: FrameNumber =
+561.         FrameNumber::from_raw_value(pt_paddr / mem::PAGE_SIZE).ok_or_else(|| {
+562.             let reason: &str = "BSS page table frame number out of range";
+563.             #[cfg(not(veru...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+This is the 5th gate inside `ensure_pt` (now `external_body`). Removing it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I found another gate condition in ensure_pt that I need to remove now that it's been converted to external_body.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now re-verify and run the erased build. The `error!` macro must still compile when the cfg gates are removed (the trio is now `external_body`, but the erased build compiles the real bodies).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -12

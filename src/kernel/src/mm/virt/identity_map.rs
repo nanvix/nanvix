@@ -560,7 +560,6 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
     let pt_frame: FrameNumber =
         FrameNumber::from_raw_value(pt_paddr / mem::PAGE_SIZE).ok_or_else(|| {
             let reason: &str = "BSS page table frame number out of range";
-            #[cfg(not(verus_keep_ghost))]
             error!("ensure_pt(): {reason}");
             Error::new(ErrorCode::BadAddress, reason)
         })?;
