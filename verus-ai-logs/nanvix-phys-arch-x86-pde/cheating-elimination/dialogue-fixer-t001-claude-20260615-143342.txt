@@ -223,3 +223,106 @@ Turn 15
 ────────────────────────────────────────────────────────────
 Now run `make verify-arch` and `make build` to confirm nothing broke.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "VERUS REWRITE" src/libs/arch/src/x86/mem/paging/pde.rs; echo "=== verify-ar
+[RESULT ✓] bash: 420:    // VERUS REWRITE: the original `self.frame.into_raw_value() << crate::mem::FRAME_SHIFT`
+=== verify-arch ===
+verification results:: 48 verified, 0 errors
+  48 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Unverified func...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+verify-arch: 48 verified, 0 errors, cheating counts unchanged. Now `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^build:" Makefile | head
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^build\b|^build:|^all:|\.PHONY.*build" Makefile | head
+[RESULT ✓] bash: 411:all: all-nanvix
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The build command is `./z build -- all`. Let me run it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build -- all 2>&1 | tail -25; echo "EXIT: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/bin/vfs-bench-nostd.elf\;vfs-bench-nostd
+mkimage: adding '/home/ruize/nanvix-phy-specs/bin/procd.elf' (4030016 bytes, cmdline='procd')
+mkimage: adding '/home/ruize/nanvix-phy-specs/bin/memd.elf' (4011448 bytes, cmdline='memd')
+mkimage: adding '/home/ruize/nanvix-phy-spec...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Build complete (exit 0). Let me do final confirmation checks and write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== AST consistency vs true original 1b6d97508 ==="; git show 1b6d97508:src/lib
+[RESULT ✓] bash: === AST consistency vs true original 1b6d97508 ===
+⚠️  1 mismatched, 2 extra (20 functions match)
+=== grep VERUS REWRITE ===
+1
+=== repro file present ===
+-rw-rw-r-- 1 ruize ruize 4436 Jun 15 14:35 verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/repro/frame_address.rs
+<shellId: 12 complet...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The 1 mismatch vs the true pre-verus original is exactly the documented `frame_address` rewrite. Let me confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show 1b6d97508:src/libs/arch/src/x86/mem/paging/pde.rs > /tmp/po.rs && python3 /h
+
+[THINKING] The AST comparison against the original commit shows just one mismatch—the `frame_address` function rewrite with the `let raw` split, which I've already documented with a VERUS REWRITE comment and a reproducer. The two additional items are the new `impl TableEntry` and the split impl block, which are expected additions. Let me confirm which function contains the mismatch to verify it's indeed `frame_address`.
+[RESULT ✓] bash: PageDirectoryEntry::frame_address        MISMATCH                             
+PageDirectoryEntry::from_raw             EXTRA_IN_VERUS                       
+PageDirectoryEntry::raw                  EXTRA_IN_VERUS                       
+Consistent: ❌ NO (matched=20 mismatched=1 missing=0 extra=2)
+<s...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Confirmed: the sole MISMATCH vs the pre-verus original is `frame_address` — now documented with the VERUS REWRITE comment + verified reproducer. (`from_raw`/`raw` EXTRAs are the pre-existing `impl TableEntry` delegation from the base, not changes from this turn; vs the task base `verus-ai-prove` the AST is fully consistent.) Writing the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/turn_001_fixer.md
+
+[THINKING] The only mismatch I found is `frame_address`, which was rewritten in the documentation. The two extra functions `from_raw` and `raw` come from the `impl TableEntry` delegation that was already in the base verus-ai-prove branch, so they're additive rather than changes to the original implementation. Comparing against the actual task base, the AST is fully consistent with 23 functions and 2 structs matching.
+
+Now I'll write up the fixer response.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/turn_001_fixer.md with 3726 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Fixed the reviewer's issue.
+
+## Summary
+
+The reviewer (item 8) required the `frame_address` exec rewrite to carry a `// VERUS REWRITE:` comment and a runnable minimal reproducer, mirroring the established `phys.rs`/`from_number.rs` convention. I confirmed the true pre-verus original (`1b6d97508`) was the single expression `self.frame.into_raw_value() << crate::mem::FRAME_SHIFT`, which the verus phase split into a `let raw` binding + lemma call.
+
+**Changes (documentation only, no exec semantics touched):**
+1. Added the `// VERUS REWRITE:` comment above `frame_address` (`pde.rs:420`).
+2. Created `repro/frame_address.rs` with a `bad` (single-expr, FAILS) and `good` (rewrite, PASSES) function.
+
+**Verification:**
+- Reproducer `bad` → FAILS with `postcondition not satisfied` on both `ensures`; `good` → `1 verified, 0 errors`.
+- `make verify-arch` → 48 verified, 0 errors; cheating counts unchanged (`assume=0 external_body=3 admit=0 cfg_gate=2`).
+- `./z build -- all` → `[OK] Build complete`.
+
+**Result: FIXED.**
+
+
+=== Session End ===
+Session: 0c8a16e2-e672-45e9-b8b3-210bb17b43da
+Duration: 246.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue-fixer-t001-claude-20260615-143342.jsonl
