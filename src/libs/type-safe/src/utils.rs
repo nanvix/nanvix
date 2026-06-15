@@ -5,6 +5,9 @@
 // Standalone Functions
 //==================================================================================================
 
+#[allow(unused_imports)]
+use ::vstd::prelude::*;
+
 ///
 /// # Description
 ///
@@ -22,6 +25,11 @@
 ///
 /// A mutable raw pointer to a byte at the given address.
 ///
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        result as usize == addr,
+)]
 #[inline]
 pub fn usize_to_mut_ptr(addr: usize) -> *mut u8 {
     addr as *mut u8

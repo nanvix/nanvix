@@ -93,6 +93,9 @@ impl SlabView {
             &&& i % self.block_size == 0
         }
         &&& self.allocated_addrs.disjoint(self.free_addrs)
+        // Completeness: every block-aligned address in range is either allocated or free.
+        &&& forall|a: usize| a % self.block_size == 0 && self.start_addr <= a < self.end_addr
+                ==> #[trigger] self.allocated_addrs.contains(a) || self.free_addrs.contains(a)
     }
 }
 

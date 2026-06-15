@@ -87,6 +87,7 @@ dependencies = [
  "rustc-std-workspace-core",
  "static_assert",
  "sys",
+ "vstd",
 ]
 
 [[package]]
@@ -1524,6 +1525,7 @@ dependencies = [
  "cmdline",
  "config",
  "elf",
+ "error",
  "koptions",
  "mmio-tag",
  "multibin",
@@ -1534,6 +1536,7 @@ dependencies = [
  "static_assert",
  "sys",
  "type-safe",
+ "vstd",
 ]
 
 [[package]]
@@ -3611,6 +3614,7 @@ dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
+ "vstd",
 ]
 
 [[package]]

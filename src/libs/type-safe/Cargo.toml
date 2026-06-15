@@ -10,10 +10,14 @@ authors.workspace = true
 description = "Type Safe Data Structures"
 homepage.workspace = true
 
+[package.metadata.verus]
+verify = true
+
 [lib]
 crate-type = ["lib"]
 
 [dependencies]
+vstd = { workspace = true }
 alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-alloc" }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
