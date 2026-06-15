@@ -582,3 +582,40 @@ At loop entry I need to establish the empty-set facts. Let me add them to the pr
 Turn 34
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+[RESULT ✓] bash: - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mmio_regions: external_body
+    - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:221 Upool (struct): external_body
+    - upool.rs:246 new: external_body
+    - upool.rs:279 alloc: external_body
+  Gl...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Eliminated `lemma_user_bulk_ok` with a real proof — module admits now 4 (down from 5), 85 verified, 0 errors. Now check AST consistency for the `for _` → `for i` change.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git show verus-ai-prove-bottom-up:src/kernel/src/mm/phys/manager.rs > /tmp/
+
+[THINKING] The verification passed with 85 checks and no errors—bulk_ok is eliminated with proper proof, and the module admit count dropped from 5 to 4. The loop restructure is working as intended. Now I'm checking AST consistency after changing the loop variable from `_` to `i` in manager.rs by running the consistency tool.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MATCH                                
+PhysMemoryManager::alloc_many_kernel_frames MATCH...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+AST consistency clean (0 mismatches). The `for _`→`for i` change is invisible to the exec AST. Now run full kernel verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel 2>&1 | tail -20
+
+[THINKING] The AST consistency checks are passing cleanly—even the loop variable rename and proof block modifications don't affect the executable semantics. Now I need to verify those four remaining admits are truly irreducible, then run the full verification suite and update the reports accordingly. The first one involves the manager attachment lemma...
+
+For the kernel allocation lemmas, I'm realizing the core issue: the kernel path uses a global frame allocator that doesn't touch self.upool, so the actual final state can't match the spec's demand for alloc_one or book_all transitions. These specs are fundamentally false for the implementation, and since I can't modify out-of-scope manager specifications, they're genuinely unprovable. The user path worked because it actually mutates self.upool to match the spec, but the kernel path has no such mutation—it's a real semantic mismatch, not something I can eliminate through proof refinement.
+
+For the error-path lemma, I'm hitting the same wall: frames.clear() only drops handles and triggers global frame::free, which doesn't roll back self.upool. So after K successful allocations, self.upool is advanced by K entries, and the spec claiming final(self)@ == old(self)@ is false. My new loop invariant tracking self@ == g_old.book_all(user_addr_set(frames@)) actually highlights this contradiction—on the error branch, the invariant would require self@ to revert to g_old, but the implementation leaves it advanced.
+
+This is a genuine soundness gap in the manager spec that can't be fixed without either changing the spec (out of scope) or modeling Drop behavior (unavailable). The admit is masking a real spec/impl mismatch, and my invariant proves it. All four remaining admits are irreducibly blocked by scope constraints.
+
+I've made progress reducing from ten admits to four, but the phase still fails the cheating gate. Let me run the full kernel and workspace verification to check for regressions, then update the reports.
