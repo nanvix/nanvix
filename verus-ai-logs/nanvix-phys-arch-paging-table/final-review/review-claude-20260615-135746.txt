@@ -381,3 +381,172 @@ description: "Mandatory rules for writing Verus code. Covers attribute-based syn
 # Verus Constraints
 
 ## A...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-arch/verus-logs/cheati
+
+[THINKING] The verification passes but reports cheating detected with external_body=3 and cfg_gate=4, yet assume=0 even though the proof file contains an assume statement. I need to check the detailed cheating report to understand why the assume isn't being counted. The checker reports assume=0, but the proof.rs file actually contains an `assume(...)` call, which means there's a gap in how the checker scans files—it might be skipping .proof.rs files or the regex isn't catching it. Regardless, the task explicitly flags assume > 0 as a blocker, and the assume is definitely there in the code, so I need to verify how guardrails.py actually counts these violations.
+[RESULT ✓] bash: === cheating-detail.txt ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+
+=== how does verify.sh/guardrails count ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -iE 'fn_cov|coverage|spec_drift|
+
+[THINKING] Ah, so the checker actually found the assume statement but categorized it as an approved limitation with an L1 id, which is why it didn't get counted in the assume_count metric—the summary showing assume=0 only reflects unapproved assumes, while the approved limitation assume gets reported separately.
+
+This creates a real conflict: the guardrails.py framework treats approved limitation assumes as acceptable and the verification passes with a CHEATING_DETECTED flag, but the task's explicit guardrail states that any assume > 0 is a blocker, and the proof file literally contains an assume statement. The verus-ai methodology has carved out an exception for approved limitation assumes, yet the task demands strict compliance and says to pass only if all checklist items are met—and "any assume > 0" is listed as a blocker. I need to be fair about this tension between the project's own tooling (which permits the approved assume) and the task's literal wording, so I should check exactly what the guardrails section says about how to count cheating dimensions. There's a documentation mismatch here — both bugs.md and tcb-allowed.md describe the lemma as using `external_body`, but the actual code uses `assume()` instead, likely because `external_body` isn't valid on proof functions. The three `uninterp spec fn` declarations paired with this assume form the exact "uninterp + assume" cheating pattern the verus-constraints skill explicitly bans, making this a structural concern beyond just the blocker status of the single assume call.
+
+Now I need to determine whether this assume is actually acceptable under the project's real standards by checking if other merged modules use the same pattern, running the remaining verification checks in parallel (fn_coverage, spec_drift, make build, make verify), reviewing the relevant skills (spec-design, ast-consistency, bug-reporting, review-methodology), and then having sub-agents independently weigh in on whether the approved limitation classification holds up under strict review.
+[RESULT ✓] bash: ast_consistency.py
+fn_coverage.py
+refinement_coverage.py
+scan_ast_limitations.py
+spec_drift.py
+=== ast-consistency skill head ===
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchan...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && F=src/libs/arch/src/x86/mem/paging/table.rs && echo "=== AST count ===" && python3 /h
+
+[THINKING] I'm running a series of checks against the verus-ai-prove base reference: the AST consistency check, function coverage analysis, spec drift detection, and a build verification.
+[RESULT ✓] bash: === AST count ===
+✅ Consistent: 7 functions, 2 structs match.
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== VERUS REWRITE comments ===" && grep -rn "VERUS REWRITE" src/libs/arch/src/x
+
+[THINKING] Now I need to check for any `// VERUS REWRITE` comments to verify semantic equivalence, run the coverage and drift analysis tools, and make sure the build completes successfully.
+[RESULT ✓] bash: === VERUS REWRITE comments ===
+(none)
+=== fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --base-ref verus-ai-
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: unrecognized arguments: --base-ref src/libs/arch/src/x86/mem/paging/table.rs
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/libs/arch/src/x8
+[RESULT ✓] bash: - **Verus file:** `src/libs/arch/src/x86/mem/paging/table.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns | 7 |
+| Verus exec fns | 7 |
+| Verus spec fns | 0 |
+| Verus proof fns | 0...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/libs/arc
+
+[THINKING] Looking at the function coverage, all the in-scope functions have specs—write, into_raw, raw, read, from_raw, pt_index, pd_index, from_address, and the TableIndex type. Even though `new` isn't in the verification-order list, it's a public function with a spec, so that's covered. Now I'm running spec_drift and then building to check for any issues before running the cross-module verification.
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 16 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short && echo "=== recent log touching table.rs ===" && git --no-pager l
+
+[THINKING] I'm realizing that spec_drift is showing zero function changes because we're already on the verus-ai-prove branch, so comparing against itself yields no differences. The work might already be committed, or I need to check what the actual base branch is to see the real diff.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-arch-paging-table/final-review/review-claude-20260615-135746.jsonl
+ M verus-ai-logs/nanvix-phys-arch-paging-table/final-review/review-claude-20260615-135746.txt
+=== recent log touching table.rs ===
+ff5af3692 [verus] verify PASS (cheating detected): arch::all (47 verified,...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show 8c820ae7f --stat && echo "=== diff of proof.rs in that commit ===
+
+[THINKING] I found the commit that stripped the external_body from lemma_entry_roundtrip and replaced it with an assume statement. Let me check the actual diff to see exactly what changed.
+[RESULT ✓] bash: commit 8c820ae7f8dd35e50e8248cd204309d00e791485
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 13:22:02 2026 +0800
+
+    [verus-ai] proving strip-external-body: arch-paging-table (2)
+
+ src/libs/arch/src/x86/mem/paging/table.rs                | 2 --
+ verus-ai-logs/nanvix-phys-arch-paging-ta...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show 8c820ae7f -- src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] bash: commit 8c820ae7f8dd35e50e8248cd204309d00e791485
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 13:22:02 2026 +0800
+
+    [verus-ai] proving strip-external-body: arch-paging-table (2)
+
+diff --git a/src/libs/arch/src/x86/mem/paging/table.rs b/src/libs/arch/src/x86/mem/paging/table.rs
+index 8...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make build 2>&1 | tail -15
+[TOOL] bash: sed -n '1,60p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md; echo "=== BUG-REPORTING (severity/cla
+
+[THINKING] I'm noticing a discrepancy in the git history—commit 8c820ae7f appears to have removed `external_body` from read and write operations, but the current code at lines 202 and 241 still has it, which means there must be a later commit that re-added it. Let me trace through the actual git diff to see what's currently in the working tree versus HEAD. The current counts from my fresh verification run are authoritative: three instances of external_body (read, write, invlpg) and one assume statement for the lemma as an approved limitation. The commit message counts may reflect an earlier state, but what matters is the actual current state of the files. Now I'll start the build and verification processes in the background while I review the spec-design, bug-reporting, and review-methodology documentation to prepare context for the sub-agents.
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -50
+
+[THINKING] The build is cached and ready. I'll start the cross-module verification in the background since it takes time, then launch the two sub-agents to work in parallel. Each sub-agent will save their results to separate files with their model name appended. Now I need to write a comprehensive prompt for them.
