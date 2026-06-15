@@ -21,14 +21,13 @@
     },
     "cheating-elimination": {
       "phase": "cheating-elimination",
-      "passed": true,
+      "passed": false,
       "scores": {},
       "total_score": 0,
       "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
+      "verdict": "FAIL-cheating",
       "review_file": null,
-      "duration_s": 325.1,
-      "review_rounds": 1
+      "duration_s": 325.1
     }
   },
   "prover_session_id": "da2421e6-9dca-40e7-8c30-1c7026a28ddc",
