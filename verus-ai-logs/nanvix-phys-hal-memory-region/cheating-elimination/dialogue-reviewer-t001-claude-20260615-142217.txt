@@ -476,3 +476,75 @@ I'm tempted to verify this myself to give a definitive answer, but modifying the
 Turn 23
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -40
+[RESULT ✓] bash: Timestamp : 2026-06-15_14-25-41
+
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: postcondition not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:218:13
+    |
+218 |             crate::hal::mem::spec_addr(&result) == self@.start,
+    |             ^^^^^^^^^^^^^^^^^^^^...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Confirmed: `self.start.clone()` **fails** verification (postcondition `spec_addr(&result) == self@.start` not satisfied). The rewrite to `self.start` is a genuine verified Verus limitation. Reverting to the verifying version:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] The issue is confirmed: cloning `self.start` fails Verus verification because the `Clone` trait lacks a specification connecting the cloned result's address to the original's address. Verus can only verify the direct move `self.start` since it knows the result equals the original definitionally—this is a genuine limitation of how generic trait implementations work in the verified setting.
+
+Since `Address: Copy` makes the rewrite semantically equivalent, I need to revert to `self.start` to restore verification, but the real problem is that this change lacks the required documentation: no `VERUS REWRITE` comment and no minimal reproducer cited inline. This violates both the documentation requirement (item 8) and the AST consistency check (item 7)—the mismatch is acceptable as a semantically-equivalent rewrite for a verified limitation, but only if properly documented.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff --stat; echo "=== confirm body reverted ==="; sed -n '220,222p' src/kernel/src/hal
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/region.rs             |  2 +-
+ ...ogue-reviewer-t001-claude-20260615-142217.jsonl | 36 ++++++++++++++++++++++
+ ...alogue-reviewer-t001-claude-20260615-142217.txt | 24 +++++++++++++++
+ 3 files changed, 61 insertions(+), 1 deletion(-)
+=== confirm body reverted ===
+    pub ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] I'm checking the git diff output for region.rs and noticing it still shows a 2-line change, which is puzzling since I reverted the file. The committed version at HEAD has `self.start`, and my revert should have restored that same state, so the diff should be clean.
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/mem/types/region.rs b/src/kernel/src/hal/mem/types/region.rs
+index 4292773cf..e5ab7666b 100644
+--- a/src/kernel/src/hal/mem/types/region.rs
++++ b/src/kernel/src/hal/mem/types/region.rs
+@@ -218,7 +218,7 @@ impl<T: Address> MemoryRegion<T> {
+             crate::hal::mem...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== HEAD version line 221 ==="; git show HEAD:src/kernel/src/hal/mem/types/region.rs 
+
+[THINKING] So the git diff shows that HEAD has `self.start.clone()` but my working tree changed it to just `self.start`, yet the verify passed at that commit. Let me think through what's actually in the repository versus what I'm looking at now. I need to check what HEAD actually contains for that line in region.rs to resolve this contradiction about whether the committed version has `clone()` or not.
+[RESULT ✓] bash: === HEAD version line 221 ===
+    pub fn start(&self) -> T {
+        self.start.clone()
+    }
+=== git status region ===
+ M src/kernel/src/hal/mem/types/region.rs
+=== reflog / stash check ===
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+The picture is now clear: HEAD committed the broken `self.start.clone()`, but the working tree had the fix `self.start` (uncommitted) at session start. My probe **proved** `.clone()` fails verification. I've restored `self.start`. Let me re-run to restore the green cache and confirm the baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -25
+
+[THINKING] There's something contradictory here—the commit message claims verification passed, but the actual code uses `clone()` which I just showed fails verification with 40 passing and 1 error. Let me think through this: if the HEAD commit contains `clone()` and that fails verification, how could the commit message say "PASS"?
+
+The answer is the verification cache. When I first ran the verification at the start of the session, it reported "cached (no recompilation)" and exited successfully—meaning it wasn't actually recompiling the kernel, it was using a cached result from an earlier state. At that earlier point, the working tree had `self.start` (the correct fix), which is why the cache showed a pass. But HEAD itself still contains the broken `clone()` code.
+
+So what actually happened: someone had already fixed the working tree to use `self.start` but never committed it. The HEAD commit still has the broken `clone()`. When I edited the working tree to match HEAD (adding `clone()`), verification failed because that's genuinely broken. Then I reverted back to `self.start`, restoring the working tree to its correct state. The git diff shows a change relative to HEAD because HEAD has the broken version—this is a pre-existing uncommitted fix that was already in place.
+
+Now I understand the real issue: the current code uses `self.start` instead of the original `self.start.clone()` because of a Verus limitation with generic Clone implementations. This is a documented semantic rewrite, but it's missing the VERUS REWRITE comment and reproducer that explains why. I need to add that comment to the `start()` method body, documenting the limitation and the minimal reproducer showing why `clone()` fails the postcondition check. Then I should re-run verification to restore the cache to a passing state.

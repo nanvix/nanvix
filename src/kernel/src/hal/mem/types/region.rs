@@ -218,7 +218,7 @@ impl<T: Address> MemoryRegion<T> {
             crate::hal::mem::spec_addr(&result) == self@.start,
     )]
     pub fn start(&self) -> T {
-        self.start.clone()
+        self.start
     }
 
     /// Returns the size of the target memory region.
