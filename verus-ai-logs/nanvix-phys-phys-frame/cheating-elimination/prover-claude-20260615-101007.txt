@@ -1236,3 +1236,14 @@ frame.rs/frame.proof.rs are already committed in the verified state (7 external_
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|ext
 
 [THINKING] The frame.rs and frame.proof.rs changes are already committed and verified, with the working tree clean. I just need to run a final module verification to confirm everything is in the correct state with zero errors.
+[RESULT ✓] bash: - frame.rs:1325 alloc: external_body
+    - frame.rs:1355 alloc_contiguous: external_body
+    - manager.proof.rs:21 lemma_free_count_bounded: admit
+  Global: assume=0 external_body=16 admit=13 trusted=0 cfg_gate=13
+  cheating: assume=0 external_body=16 admit=13 trusted=0 no_decreases=0 cfg_gate=13
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "frame.rs.*exte
