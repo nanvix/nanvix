@@ -326,3 +326,58 @@ Turn 17
 [TOOL] bash: cd /home/ruize/nanvix-phy && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify 2>&1 | grep -iE "verified|erro
 
 [THINKING] The "CHEATING_DETECTED" status stems from 25 pre-existing external_body references scattered across other modules like frame.rs and manager.rs—these were already there before my changes. The full verification run on the kernel crate completed successfully with exit code 0 and no errors, so I'm checking the output headers for other crates to confirm the overall status is clean.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+  Exit code : 0
+  status: CHEATING_DETECTED
+/home/ruize/nanvix-phy/scripts/verify.sh --crate sys  --log-dir verus-ai-logs/verify-sys
+=== Verus V...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All crates exit 0 (0 errors). The `CHEATING_DETECTED` status reflects **pre-existing** `external_body` annotations in unrelated modules (bitmap, nanvix-slab, bump-allocator, frame.rs/manager.rs) — none in my scope. My target module `hal::mem::types::region` is **CLEAN**.
+
+Let me confirm I introduced no source changes and the bugs log dir state.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short; echo "=== bugs.md ==="; cat verus-ai-logs/nanvix-phys-hal-memory-region
+
+[THINKING] All the target functions are verifying cleanly with zero errors, and the "CHEATING_DETECTED" flags I'm seeing are from pre-existing annotations in other modules that were already in the baseline—not something I introduced. My focus on the `hal::mem::types::region` module is complete and verified as clean.
+
+Since I haven't made any changes to the source files (the proof file was already empty and the functions already had their contracts), everything remains in its verified state. Let me check git status to confirm there are no modifications.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-memory-region/proving/prover-claude-20260615-141236.jsonl
+ M verus-ai-logs/nanvix-phys-hal-memory-region/proving/prover-claude-20260615-141236.txt
+=== bugs.md ===
+(no bugs.md - none needed)
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Task complete. Summary:
+
+**Verification target** (`region.rs`, module `hal::mem::types::region`): all 4 in-scope functions verify cleanly.
+
+| Function | Spec proven |
+|---|---|
+| `MemoryRegion::start` | `spec_addr(&result) == self@.start` |
+| `MemoryRegion::size` | `result as int == self@.size` |
+| `TruncatedMemoryRegion::start` | `spec_addr(&result) == self@.start` |
+| `TruncatedMemoryRegion::size` | `result as int == self@.size` |
+
+**Result:** `make verify-kernel MODULE=hal::mem::types::region` → **5 verified, 0 errors, status CLEAN**. `make verify` → all crates **exit 0** (no regressions).
+
+**Findings:**
+- No proof bodies, lemmas, or invariants were required. The `closed` `View` impl is visible within the module, so the accessor postconditions discharge by congruence of `spec_addr` (the return is an identity field read) and the `size as int` cast — Verus proves them automatically.
+- **Zero** `admit()`/`assume()`/`external_body` in the target module. The 25 `external_body` in the crate-wide `CHEATING_DETECTED` count are all pre-existing in out-of-scope modules (`frame.rs`, `manager.rs`, `page.rs`, etc.).
+- No specs weakened; no code bugs found (no `bugs.md` entry needed).
+- No source files modified (only auto-generated proving logs changed).
+
+[THINKING] The verification is complete—only log files were modified during the proving session, and all target functions check out without any issues found.
+
+
+=== Session End ===
+Session: 1b0bfc2e-7dbd-4438-9938-ba18dbcf53e4
+Duration: 148.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/proving/prover-claude-20260615-141236.jsonl
