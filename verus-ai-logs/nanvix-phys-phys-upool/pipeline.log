@@ -184,3 +184,25 @@ Module: phys-upool
 [2026-06-15 13:15:41] [DIALOGUE] Reviewer turn 1 (remaining: 3600s)...
 [2026-06-15 13:15:41] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 13:19:01]   ↳ dialogue-reviewer-t1 done in 3m20s (exit=0)
+[2026-06-15 13:19:01] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 13:19:01] [DIALOGUE] STOP detail:
+RESOLVED
+
+All 12 cheating-elimination checklist items for phys-upool are PASS with concrete
+tool evidence (see turn_001_driver.md):
+
+1. admit            = 0 (module scope)
+2. assume           = 0
+3. trusted          = 0
+4. no_decreases     = 0
+5. cfg-gated exec    = only L203 logging guard (allowed); no exec logic gated
+6. external_body    = 3, ALL listed in verus-ai-logs/tcb-allowed.md (Upool struct, new, alloc)
+7. AST consistency  = zero mismatches (git diff dev HEAD is purely additive; zero deletion lines; every exec body byte-identical)
+8. VERUS REWRITE    = vacuous (no exec rewrites exist)
+9. external_body justified = all 3 enumerated with rationale in tcb-allowed.md L91-118
+10. spec-drift      = no specs weakened (spec/proof newly added; no prior guarantee loosened)
+11. cross-module    = make verify-kernel exit 0, no regression
+12. verify + build  = exit 0, 0 errors, 0 warnings
+
+No fix required.
+[2026-06-15 13:19:01] [DIALOGUE] cheating-elimination ended after 1 turns: RESOLVED (200s)
