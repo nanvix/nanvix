@@ -1,0 +1,494 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T19:37:56.251398
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`FrameNumber::into_raw_value`, `FrameNumber::from_raw_value`, `FrameNumber`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md
+Source file: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+Spec file:  /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+Verus command: make verify-arch
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-arch` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and context files in parallel.
+[TOOL] skill: spec-design
+[TOOL] report_intent: Reading skills and context
+
+[THINKING] I need to start by reviewing the key documentation files to understand the context and requirements.
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The skills aren't in the registry. Let me find them in the verus-ai directory.
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null; echo "---SKILLS---"; find /home/ruize/verus-ai-exp -iname "*.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] I need to track down those skill definitions since they're not showing up in the standard skills list—they might be defined in the scripts or verus-ai directory instead.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. # View Design: `FrameNumber` (`arch/src/x86/mem/paging/frame/number.rs`)
+2. 
+3. > Scope: design the abstract `View` (+ `inv`) for `FrameNumber` that the
+4. > in-scope verification-order targets will reference in later spec/proof phases.
+5. >
+6. > In-scope targets: the type `FrameNumber` (its `Vie...
+[RESULT ✓] view: 1. # Caller Analysis: `arch::mem::paging::frame::number` (`FrameNumber`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-arch-frame-number/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP backend).
+6. 
+7. ### Summary (from script)
+8. - Crate: `arch...
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me read the key skills and the spec/proof files plus a sibling reference module.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+
+[THINKING] I'm reviewing the key evaluation criteria—spec-design, verus-constraints, verification-order, spec-completeness, bug-reporting, and view-design—and examining the spec and proof files alongside a reference implementation in FrameAddress to understand the expected patterns.
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: ls /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/
+
+[THINKING] I need to examine the spec-design skill and look at how a similar verified module like FrameAddress implements its patterns, particularly around spec_max_frame_number and spec_frame_size, to understand the conventions used in this codebase.
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] bash: mod.rs
+number.proof.rs
+number.rs
+number.spec.rs
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me find existing spec definitions referenced by the design and check the exec constants.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "spec_max_frame_number\|spec_frame_size\|spec_max_address\|spec_frame_shift" --inclu
+
+[THINKING] I notice the FrameAddress module isn't available in this directory, but the view_design is referencing it. I need to check how other verified modules define `spec_max_frame_number`, `spec_frame_size`, and `spec_max_address` by searching the codebase and looking at tcb-allowed.md and phys.spec.rs.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs
+src/kernel/src/hal/mem/types/address/phys.spec.rs
+src/kernel/src/hal/mem/types/address/frame.spec.rs
+src/kernel/src/mm/phys/upool.spec.rs
+===DEFS===
+src/kernel/src/hal/mem/types/address/phys.spec.rs:47:// prescribes. `spec_max_frame_number()` denotes `Fra...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "MAX_ADDRESS\|FRAME_SIZE\|FRAME_SHIFT" src/libs/arch/src/ | grep -i "const\|pub" | h
+
+[THINKING] I see that `spec_max_frame_number()` is already defined in the kernel crate's `phys.spec.rs`, but I need to create my own version for the `FrameNumber` type in the arch crate. I'm checking how the kernel implements it and comparing it against the arch crate's MAX constant definition based on `mem::MAX_ADDRESS / mem::FRAME_SIZE - 1`.
+[RESULT ✓] view: 40. pub struct ExFrameNumber(FrameNumber);
+41. 
+42. // ── Frame-number trust-boundary projections (arch `FrameNumber`) ──────────────
+43. //
+44. // `FrameNumber` lives in the `arch` crate, which is not Verus-enabled and has no
+45. // `View` impl reachable here (orphan rule). Its abstract index is th...
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/cpuid.rs:36:    pub const MAX_ADDRESSABLE_IDS_SHIFT: u32 = 16;
+src/libs/arch/src/x86/cpu/cpuid.rs:38:    pub const MAX_ADDRESSABLE_IDS_MASK: u32 = 0xFF << Self::MAX_ADDRESSABLE_IDS_SHIFT;
+src/libs/arch/src/x86/mem/paging/frame/number.rs:35:    pub const MAX: usize = mem::MA...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===verus_spec usage in arch==="; grep -rln "verus_spec\|verus! {" src/libs/arch/src/ | 
+
+[THINKING] I'm examining the constants in constants.rs to understand how they relate to each other. The maximum frame number is calculated as the maximum address divided by frame size minus one, which aligns with what's defined in the spec file.
+
+Since the arch crate is separate from the kernel crate, I can define the same function names without conflicts—the view design wants consistent naming across the specs. Now I need to check whether the arch crate is set up for Verus and what constants are available there, particularly for page size and frame size.
+[RESULT ✓] view: 70. 
+71. ///
+72. /// # Description
+73. ///
+74. /// Number of entries in a page table.
+75. ///
+76. pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+77. 
+78. ///
+79. /// # Description
+80. ///
+81. /// Mask for page table offset.
+82. ///
+83. pub const PGTAB_MASK: usize = !(PGTAB_SIZE - 1);
+8...
+[RESULT ✓] bash: ===verus_spec usage in arch===
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+===any .spec.rs in arch===
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+===tcb-allowed===
+16:  `lemma_book_region_reserves_region_frames` in `mod.proof...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+This is the first Verus module in the `arch` crate. Let me check for type_invariant precedent and how the build/verify is set up.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===type_invariant usage==="; grep -rln "type_invariant" src/ | head; echo "===examples=
+
+[THINKING] This is the first module in the arch crate that needs Verus verification, so I'm setting up the spec for `spec_max_frame_number()` using the architecture constants. The core challenge is defining it correctly—it should equal `FrameNumber::MAX as int`, which works out to `MAX_ADDRESS / FRAME_SIZE - 1`. I'm weighing two approaches for how to express this in terms of the exec constants `mem::MAX_ADDRESS` and `mem::FRAME_SIZE`.
+
+The key insight is that for the proof to work later, `spec_max_frame_number()` must equal `Self::MAX as int`. The cleanest approach is to define it directly using the actual constants—`mem::MAX_ADDRESS as int / mem::FRAME_SIZE as int - 1`—which mirrors how the exec constant is computed and lets Verus reason about the relationship between the spec and exec versions. I'm realizing that `into_raw_value` needs to ensure the result stays within the valid range, but that requires either a precondition that `self` satisfies its invariant, or a type-level invariant on FrameNumber itself. The design doc's assume_specification doesn't require anything, but a real verified function can't unconditionally guarantee the range unless the type itself enforces it. So I'm weighing whether to add `requires self.inv()` to the function signature or rely on a type invariant to make the proof work. value work unconditionally, I need to mark `inv()` with `#[verifier::type_invariant]` so Verus automatically enforces it at construction and assumes it everywhere. The type invariant approach matches the caller expectations perfectly — `into_raw_value` guarantees the range without requiring preconditions, and `from_raw_value` establishes the invariant by checking the bound before constructing.
+
+Let me check if this codebase already uses type invariants elsewhere.
+[RESULT ✓] bash: ===type_invariant usage===
+===examples===
+===spec_page_size def===
+src/kernel/src/hal/mem/types/address/frame.spec.rs:42:pub uninterp spec fn spec_page_size() -> int;
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+[THINKING] I'm not finding any type_invariant usage in the codebase, so I need to look at how similar newtypes handle this. Let me check the FrameAddress pattern in frame.spec.rs and see how it manages range constraints with preconditions versus type invariants.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // FrameAddress — Specifications
+5. //
+6. // A `FrameAddress` is an opaque, page-aligned physical frame address: a `Copy`
+7. // value object that names one physical frame. Its abstract value is exactly the
+8. ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me see the FrameAddress exec annotations to learn the established pattern for `inv()` usage on projection methods.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_spec\|fn into_raw_value\|fn from_raw_value\|fn into_frame_number\|requires\|en
+
+[THINKING] I need to check how FrameAddress's exec functions are annotated, especially `into_frame_number` and whether the inv() range requirement applies to functions like `into_raw_value`. Let me look at the frame.rs file to understand the actual #[verus_spec] annotations being used.
+[RESULT ✓] bash: 64:    #[verus_spec(result =>
+65:        requires
+66:            self.inv(),
+67:        ensures
+70:    pub fn into_frame_number(self) -> FrameNumber {
+95:    #[verus_spec(result =>
+96:        ensures
+99:    pub fn into_raw_value(self) -> usize {
+106:// (a self-less associated function requires an en...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 60. 
+61.     // Total projection: yields the frame index this address belongs to
+62.     // (`self@ / PAGE_SIZE`). The receiver's invariant guarantees the index is
+63.     // representable, so the internal `unwrap()` never panics.
+64.     #[verus_spec(result =>
+65.         requires
+66.             s...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me examine how the kernel's `phys.rs` actually consumes `into_raw_value`'s range guarantee.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "into_raw_value\|from_raw_value\|spec_frame_raw_value\|from_number\|inv()" src/kernel
+
+[THINKING] I'm seeing the pattern now—`FrameAddress::into_raw_value` doesn't enforce range bounds in its postcondition, just the equality check, whereas `into_frame_number` explicitly requires `self.inv()` to prevent panics. The codebase treats `inv()` as an explicit specification function rather than a type invariant, passing it through requires and ensures clauses instead of relying on automatic invariant checking.
+
+For our `FrameNumber::into_raw_value`, the upstream `assume_specification` in phys.spec.rs already guarantees the range bound `0 <= result <= spec_max_frame_number()` unconditionally—without a requires clause—because callers in phys.rs depend on that contract. When this module gets verified, that assumption will be replaced by the real specification, which must preserve at least those guarantees to avoid breaking caller dependencies. So the range bound needs to be ensured unconditionally, not gated behind a requires on `frame.inv()`. I'm realizing that phys.spec.rs is in a separate kernel crate with its own assume_specification for FrameNumber, so verifying the arch module won't affect it. The kernel's assume will remain in place for now, and `make verify` should still pass since the kernel keeps its local specs. So the real question is: what's the correct verified spec for `into_raw_value` that could eventually replace the kernel's assume without weakening it? A type invariant on FrameNumber would let me provide an unconditional range guarantee, matching the assume's strength. Verus does support `#[verifier::type_invariant]`, even though the codebase hasn't used it yet, and the view_design's `inv()` semantics suggest this is the right approach—though there are constraints around how type invariants work in Verus that I need to consider.
+[RESULT ✓] bash: 81:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+86:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+93:// associated functions `from_mmio_address` / `from_number` require an enclosing
+126:            result matches Ok(r) ==> r@ == addr@...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] view: 155.     pub fn from_number(frame: FrameNumber) -> Self {
+156.         // VERUS DEVIATION (pre-approved: `f(complex_expr)` -> `let x = complex_expr; f(x)`):
+157.         // the `frame * FRAME_SIZE` product is bound to intermediate locals so the
+158.         // proof block below can discharge the no-...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me check how `type_invariant` and exec consts in specs are used in vstd and verus examples.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -rln "type_invariant" vstd/ | head; echo "===examples==="; grep -rn "type_inv
+
+[THINKING] The `from_number` function in `phys.rs` depends on `frame.into_raw_value()` returning a value within the guaranteed range specified by `spec_frame_raw_value`, which must be between 0 and the maximum frame number. Since this contract comes unconditionally from the specification's ensures clause with no preconditions, the actual `into_raw_value` implementation must always satisfy this range requirement to avoid breaking the calling code.
+
+The cleanest way to enforce this in Verus is through a type invariant using `#[verifier::type_invariant]`, which defines an `inv()` spec function that must hold at every construction of `FrameNumber`. When I need to use the invariant in a proof, I call `use_type_invariant(self)` to access the guarantee that `0 <= self@ <= spec_max_frame_number()`. For the `into_raw_value` method, the ensures clause states the result equals `self@` and falls within the valid range, which I can prove by invoking the type invariant in a proof block to establish that the raw value satisfies the required bounds. So I can't add a `requires self.inv()` without weakening the caller contract, which violates the task constraints. That means I need the type invariant to be available within the function body to prove the range ensures unconditionally. Let me check whether `#[verifier::type_invariant]` is actually forbidden or if it's a valid approach here.
+
+The key question is whether `inv()` can simultaneously be both the type invariant decorator and a `pub open spec fn` that's referenced in other ensures clauses like `from_raw_value`. I should test whether Verus allows this dual role, since the design requires callers to be able to invoke `inv()` directly while also having it serve as the automatic invariant for verification.
+
+For `from_raw_value`, I'm matching the upstream spec structure with a match expression that covers both the `Some` and `None` cases, ensuring the value is bounded by `MAX` when successful and the frame's view equals the input value while satisfying the invariant.
+
+The key challenge is defining `spec_max_frame_number()` so that the type invariant proof works—I need the spec version to align with the exec constant `Self::MAX`. I'm considering whether to define it as a computation based on frame size or directly reference the exec const, since Verus can evaluate public const values in spec contexts. I'm realizing the cleanest approach is to define `spec_max_frame_number()` directly in terms of the exec constants—Verus can evaluate const expressions in spec context, so I can reference `mem::MAX_ADDRESS` and `mem::FRAME_SIZE` directly and compute the spec value concretely rather than leaving it uninterpreted.
+
+The key insight is that the usize division in exec (`(MAX_ADDRESS / FRAME_SIZE) - 1`) will match the int division in spec once cast, since both are computing the same arithmetic on non-negative values.
+
+But proving this equivalence might require help from Verus lemmas. Actually, rereading the instructions more carefully — the spec phase allows proof bodies to use `admit()`, which means I can route non-trivial proof obligations through lemmas declared in proof.rs with `admit()` bodies. So for the exec function, I'd call a lemma that asserts the needed fact, and the lemma's body stays as `admit()` for now.
+
+For `into_raw_value`, I'm realizing that using a type invariant is the cleanest approach — it directly encodes that every FrameNumber is in range. The construction obligation in `from_raw_value` is real and provable, but for this phase I can defer the linking proof to a lemma with `admit()`. This way the exec functions verify cleanly without needing to prove the invariant establishment right now.
+
+I'm setting up the spec module with helper functions for frame size and max frame number, then defining the View instance and type invariant for FrameNumber. The invariant captures that the value is between 0 and the max frame number. Now I need to check whether a `#[verifier::type_invariant]` can be declared as `pub open` — I should look at how Verus handles this in its standard library.
+[RESULT ✓] bash: vstd/arithmetic/overflow.rs
+vstd/cell.rs
+vstd/cell/invcell.rs
+vstd/rwlock.rs
+vstd/simple_pptr.rs
+vstd/tokens.rs
+vstd/tokens/frac.rs
+vstd/tokens/map.rs
+vstd/tokens/seq.rs
+===examples===
+vstd/arithmetic/overflow.rs:92:                    proof { use_type_invariant(self); }
+vstd/arithmetic/overflow.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/arithmetic/overflow.rs
+
+[THINKING] I'm looking at the `CheckedU64` pattern in vstd/arithmetic/overflow.rs as a reference — it's a newtype wrapper with a type invariant that enforces bounded values, which seems like the closest analog to what I need here.
+[RESULT ✓] view: 80.                 {
+81.                     self.i@
+82.                 }
+83.             }
+84. 
+85.             impl Clone for $cty {
+86.                 /// Clones the `$cty` instance.
+87.                 /// Ensures the cloned instance has the same value as the original.
+88.                 exe...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The type-invariant pattern is clear. Let me check the build/verify setup before writing.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verify-arch\|verify-kernel\|verify:\|MODULE\|verify-" Makefile 2>/dev/null | head -3
+
+[THINKING] I'm seeing that `use_type_invariant(self)` retrieves the type invariant within proof blocks, and the invariant itself is defined as a private `spec fn well_formed(self) -> bool` — not public or open. But the view_design approach wants `pub open spec fn inv`, which raises the question of whether a type invariant can actually be marked as public and open, since vstd keeps theirs private.
+
+Rather than get stuck on this, I'll write it as the design intends and let Verus tell me if it's invalid. The real issue is that when constructing `Some(Self(value))` in `from_raw_value`, Verus needs to verify the type invariant holds — meaning `value as int <= spec_max_frame_number()`. I can route this through a proof lemma that asserts `FrameNumber::MAX as int == spec_max_frame_number()` using `admit()`, then call that lemma in a proof block before the construction to satisfy the invariant check. I need to figure out whether `spec_max_frame_number()` can reference the exec constants from another module, or if I should define it using `usize::MAX` instead and create a separate spec frame size. The safer approach might be to use `usize::MAX` directly in the spec function and relate it to a spec version of the frame size, though that still requires connecting back to the exec constant somehow. I'm realizing that since we're in the arch crate itself, I can reference the const directly in a spec function rather than using assume_specification like phys did. Let me check the Makefile to understand how the verify-arch target is set up and whether the arch crate is properly configured for Verus verification.
+[RESULT ✓] bash: 328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+621:	$(VERUS_...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '300,340p;580,635p' Makefile; echo "===VERUS_CRATES==="; grep -n "VERUS_CRATES" Makefi
+[RESULT ✓] bash: # List of crates to verify with Verus.
+VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+
+# Platform-specific Verus binary name.
+ifeq ($(IS_WINDOWS),yes)
+  VERUS_BINARY := verus.exe
+else
+  VERUS_BINARY := verus
+endif
+
+# Verus verification command.
+# Uses RUSTC_BOOTSTRAP=1 because the Verus rustc...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+`arch` is not in `VERUS_CRATES`. The `make verify-arch` target doesn't exist yet. Let me check the verify script and environment.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "VERUS_EXECUTABLE_DIR=$VERUS_EXECUTABLE_DIR"; echo "VERUS_AI_DIR=$VERUS_AI_DIR"; which v
+
+[THINKING] I'm realizing the `arch` crate isn't included in the VERUS_CRATES list, which means the `verify-arch` target that the task requires doesn't actually exist yet. I need to add `arch` to VERUS_CRATES so the Makefile will generate that target properly.
+
+Now I should check if VERUS_EXECUTABLE_DIR is configured and look at the verify.sh script to understand how it determines which crate to verify and whether there's any per-crate configuration I need to account for.
+[RESULT ✓] bash: VERUS_EXECUTABLE_DIR=
+VERUS_AI_DIR=
+/home/ruize/verus-bin/verus
+/home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+===verify.sh head===
+#!/bin/bash
+
+# Generic Verus verification script with cheating detection and git tracking.
+#
+# Two modes:
+#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTION...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`VERUS_EXECUTABLE_DIR` is unset and `arch` isn't in `VERUS_CRATES`. Let me establish a baseline by running an existing verify target with the verus binary.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls /home/ruize/verus-bin/ | head; echo "===cargo verus?==="; cargo verus --help 2>&1 | head -
+
+[THINKING] I see that `VERUS_EXECUTABLE_DIR` is empty, which means the verification would be skipped, but there's actually a verus binary available at `/home/ruize/verus-bin/verus`. I need to figure out how to properly invoke verification—whether `cargo verus` is the right command and how `VERUS_EXECUTABLE_DIR` should be configured in the first place.
+
+Since `arch` isn't currently in `VERUS_CRATES`, I'll need to add it there to create the verify-arch target. But before making changes, let me test the existing setup by running a baseline verification on a known-working crate like bitmap to confirm the toolchain is functional and understand how the verification pipeline actually works.
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+===cargo verus?===
+A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow.
+
+Usage:...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Let me verify the toolchain works on an existing crate as a baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-bitmap VERUS_EXECUTABLE_DIR=/home/ruize/verus-bin 2>&1 | tail -30
+
+[THINKING] I should run a baseline verification on an existing crate like bitmap to confirm the toolchain is working properly by setting the VERUS_EXECUTABLE_DIR environment variable, which will also give me a sense of how long verification takes. Then I'll add arch to VERUS_CRATES and test that approach.
