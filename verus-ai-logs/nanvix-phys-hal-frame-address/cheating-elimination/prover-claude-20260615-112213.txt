@@ -240,3 +240,94 @@ Turn 5
 
 [THINKING] I need to verify the module path for frame.rs, which should be `hal::mem::types::address` based on the pattern shown in the task example.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - fmt
+    - eq
+    - test
+    - new
+    - into_virtual_address
+    - into_raw_value
+    - get_pte_index
+    - eq
+    - partial_cmp
+    - new
+    - into_raw_value
+    - get_pde_index
+    - eq
+    - partial_cmp
+    - cmp
+    - from_raw_value
+    - into_raw_value
+    - from
+    - from_virtual_address
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The cheating counts shown are crate-wide aggregates. Let me confirm what frame.rs specifically contributes by inspecting the log and the verify script's accounting.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn -E "frame\.rs|FrameAddress" verus-ai-logs/verify-kernel/verus-logs/verus_202
+
+[THINKING] The verification used cache and the cheating counts are crate-wide aggregates, but I need to focus specifically on what the frame module contributes. The diff shows my target file is unchanged, so I'm checking the frame.rs file to determine its actual cheating impact.
+
+Looking at the frame files, only `from_raw_value` has external_body which is TCB-allowed, and there's no admit or assume in the frame code. The crate-wide cheating counts (admit=12, cfg_gate=19) are from other modules outside my scope. The verification exited cleanly with exit 0, so the question is whether the MODULE argument actually scoped the verification or if it checked the whole crate but reported crate-wide summaries. Let me examine the verify script and logs to understand how module filtering and cheating detection work, and whether I need to find frame-specific cheating breakdowns in the logs.
+[RESULT ✓] bash: 164:   --> src/kernel/src/mm/phys/frame.rs:160:37
+172:   --> src/kernel/src/mm/phys/frame.rs:161:80
+178:   --> src/kernel/src/mm/phys/frame.rs:431:25
+184:   --> src/kernel/src/mm/phys/frame.rs:431:50
+190:   --> src/kernel/src/mm/phys/frame.rs:440:25
+196:   --> src/kernel/src/mm/phys/frame.rs:442:29
+...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_AI_VERIFY_SCRIPT" Makefile | head; echo "---"; sed -n '300,340p' Makef
+
+[THINKING] I'm noticing the warnings are from a different file in the phys frame allocator, not my address frame types file. Let me check the verify script to see how it counts cheating and whether MODULE scoping affects it.
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+---
+# List of crates to verify with...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n -E "module|MODULE|external_body|admit|cheat|CHEAT|count" scripts/verify.sh | 
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+24:MODULE=""
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+66:        --module)
+67:            MODULE="$2"
+103:# Determine verification mode and source directory for cheating detection.
+1...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && VERUS_AI_DIR="${VERUS_AI_DIR:-/home/ruize/verus-ai-exp/verus-ai}" CHEATING_DIR="src/k
+
+[THINKING] I see now that the cheating scan operates across the entire crate source directory, so those counts for external_body and admit are crate-wide rather than module-specific—my MODULE argument only constrains the Verus verification, not the cheating detection. Let me run the cheating scan directly on the frame.rs file to verify that only the TCB-allowed external_body calls are present there, and I'll check how the script provides per-function details.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs assume=0 ext=1 admit=0 trusted=0 no_dec=0
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Confirmed: frame.rs has exactly 1 cheating item — the TCB-allowed `external_body` on `from_raw_value`. Zero admit/assume. Let me capture evidence for why it cannot be verified in-body (its callee `PhysicalAddress::from_raw_value` is unlisted and has no spec).
+[TOOL] report_intent: Testing external_body removal feasibility
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/hal/mem/types/address/frame.rs /tmp/frame.rs.bak && sed -i 's/^    
+
+[THINKING] I've confirmed that frame.rs is the only file with that single external_body declaration (the TCB-allowed `from_raw_value`), while the other files in the address directory use assume_specification which gets counted separately and wasn't flagged by the scan. Now I'm wondering whether I can actually eliminate this one external_body entirely.
+
+The body calls `PhysicalAddress::from_raw_value` and `PageAligned::from_address`, but to verify it in-body I'd need a spec on `PhysicalAddress::from_raw_value`, which isn't in scope and would require touching unlisted functions. The tcb-allowed.md explicitly documents this as the sanctioned external_body, so there's nothing to eliminate here—the module already verifies correctly. Let me test what happens if I try removing the external_body anyway to see what error surfaces, which would give me concrete evidence for the report.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 32:#[verus_verify(external_derive)]
+87:#[verus_verify]
+94:    #[verus_verify]
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address VERUS_EXECUTABLE_DIR=~/toolchain/v
