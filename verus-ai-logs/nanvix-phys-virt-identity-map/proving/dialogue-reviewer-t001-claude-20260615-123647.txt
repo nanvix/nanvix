@@ -174,3 +174,197 @@ Now let me run verification and search for cheating markers across the source fi
 [RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs:6:// Signatures only during the specification phase; bodies are `admit()` placeholders that the
 /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs:18:    admit();
 /home/ruize/nanvix-phy-specs/src/kernel/...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i 
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I need to dig into the cheating detail file and examine the main source around those specific lines to understand what's happening with the admit() function and cfg blocks, particularly focusing on what's actually in the identity_map module rather than looking at kernel-wide counts.
+[RESULT ✓] view: 490. /// allocates a new page table from the BSS pool, installs the PDE, and returns the new page
+491. /// table's physical address.
+492. ///
+493. /// # Parameters
+494. ///
+495. /// - `pd`: The kernel page directory table.
+496. /// - `pde_idx`: The page directory index to check.
+497. ///
+498. /// # ...
+[RESULT ✓] bash: - mm/virt/identity_map.proof.rs:14 lemma_install_page_maps: admit
+    - mm/virt/identity_map.proof.rs:23 lemma_install_page_monotone: admit
+    - mm/virt/identity_map.proof.rs:32 lemma_install_page_preserves_inv: admit
+    - mm/virt/identity_map.proof.rs:45 lemma_map_page_accessible: admit
+    - mm/...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] grep: #\[cfg
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_drift\|spec-drift" scripts/ Makefile* 2>/dev/null | head; echo "===ski
+
+[THINKING] Looking at the identity_map module, I can see there are 8 admits total across the three files—5 in proof.rs covering lemmas about page installation and mapping, and 3 in identity_map.rs scattered through the ensure_pt, ensure_pte, and identity_map_page functions.
+
+For external_body usage, the only relevant item in scope is the ExPageTableBss external type specification in identity_map.spec.rs, which wraps the PageTableBss type marker. This is technically an external_type_specification rather than a function with external_body, but I need to verify whether it's listed in the tcb-allowed file—it appears ExLinkedList is explicitly allowed, but ExPageTableBss might not be formally registered there despite being a standard pattern for unverified kernel types.
+
+The critical failure is the 8 admit() calls scattered throughout the module, which directly violates the "Zero remaining admit()" requirement.
+
+For assume_specification, there are two instances: one on the std slice method as_ptr (which is an acceptable external-bottom trust boundary for std), and another on FixedSizeBumpAllocator::new from the bump_allocator crate, which I need to evaluate as an external crate trust boundary. The kernel's spec.rs uses `assume_specification` for the external bump_allocator crate's constructor, which I'm treating as an acceptable trust boundary even though it's not ideal. The main checklist failure is the eight remaining `admit()` calls blocking the proving phase. Beyond that, there are cfg-gated exec statements scattered through identity_map.rs—specifically error macro calls at lines 537, 553, 565, 635, 648—that violate the no-cfg-gated-exec-code rule, and the cheating tool reports 19 cfg gates across the whole crate that I need to account for.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs:24:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs:26:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs:537:        #[cfg(not(verus_keep_ghost))...
+[RESULT ✓] bash: ===skill===
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+---
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -8 -- src/kernel/src/mm/virt/identity_map.spec.rs; echo "===STATUS=
+
+[THINKING] I notice the checklist has placeholder variables that weren't fully substituted—`{spec_drift_cmd}`, `{tcb_allowed_file}`, and others reference skills like `spec-drift-check` and `verus-constraints` that I need to find in the verus-ai directory. Looking at what did get substituted, `tcb_allowed_file` maps to `verus-ai-log`, so I should check what the other placeholders should resolve to.
+
+The verus command appears to be `make verify-kernel`, and the build command is likely just `make` or part of the verification process. But more importantly, I'm realizing the spec-drift check is secondary—the real blocker is that the proving phase has 8 `admit()` calls still in scope, which is a hard failure. Let me use git to do a proper spec-drift check by comparing the current spec against what was originally committed to see if the specifications were weakened.
+[RESULT ✓] bash: 96ee5f7b9 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+cb0de4d5e [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+80b6c2614 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && cat docs/skills/spec-drift-check/* 2>/dev/null | head -120
+
+[THINKING] I need to look up the spec-drift-check skill to figure out what command to run.
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running spec-drift check
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && ls scripts/ | grep -i drift; find . -name 'pipeline_state.json' 2>/dev/null | he
+
+[THINKING] I'm checking for spec drift in the nanvix-phys-virt-identity-map module by running the validation against its pipeline state.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: spec_drift.py
+./target-systems/nanvix/verus-ai-logs/kernel-src-mm-kheap/pipeline_state.json
+./target-systems/nanvix-refine/verus-ai-logs/kernel-src-mm-kheap/pipeline_state.json
+===try check===
+Error: pipeline_state.json not found for module 'nanvix-phys-virt-identity-map'
+<shellId: 7 completed with ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name 'pipeline_state.json' 2>/dev/null | grep -i identity; echo "==="; cat ve
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-virt-identity-map/pipeline_state.json
+===
+{
+  "module_name": "virt-identity-map",
+  "log_name": "nanvix-phys-virt-identity-map",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in src/kernel/src/mm/virt/identity_map.rs src/kernel/src/mm/virt/identity_map.s
+
+[THINKING] I'm setting up a spec drift comparison starting from the proving phase commit, checking how the specification has diverged from the current state. The source file I need to examine is the identity map module in the kernel's virtual memory code, though I should also check for any corresponding spec files. Let me run the diff tool against that baseline, though the auto-detect for the module name seems to be having trouble matching the log pattern.
+[RESULT ✓] bash: === src/kernel/src/mm/virt/identity_map.rs ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift det...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Spec-drift passes. I have all the evidence. Let me write the comprehensive turn-1 review.
+[TOOL] report_intent: Writing turn 1 review
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue
+
+[THINKING] The spec drift checks are passing as expected since nothing's changed yet at this point in the proving phase. Now I need to verify the build warnings by checking both the verus and build commands — the make verify-kernel already handled the verus side, so I'm looking at whether there's a separate build step to validate.
+
+For the cross-module regression check, make verify-kernel covers the whole kernel crate and passed with exit 0, though cheating was detected. Let me compile the full review status: spec drift is passing, but there are 8 remaining admit() calls across proof.rs and identity_map.rs that need to be addressed, and I need to assess the external_body usage — specifically the ExPageTableBss type specification in spec.rs, which registers an opaque external type and sits at a trust boundary that isn't explicitly listed in tcb-allowed.md.
+
+For the external_body rule, there are no exec functions with external_body in scope — ensure_pt, ensure_pte, and identity_map_page all have real proof bodies with admit() calls, so that passes. The ExPageTableBss is a type-level external_type_specification, which is standard methodology, so I'll mark it as passing with a note that it should be documented in tcb-allowed.md.
+
+On assume/assume_specification, there are two in spec.rs: one for the std slice method as_ptr (external-bottom, allowed) and one for the bump_allocator constructor (external crate boundary, allowed per exception). Both are justified, so that passes.
+
+For cfg-gated exec code, I'm finding a real issue: there are five cfg(not(verus_keep_ghost)) gates on error! calls in identity_map.rs at lines 537, 553, 565, 635, and 648 — these are exec logging statements hidden from verification, which violates the no-cfg-gated-exec-code rule. The spec/proof module includes at lines 24 and 26 are acceptable (standard practice), and the test module gate at line 744 is borderline but typically allowed, but those five error! calls are a clear failure.
+
+For the cheating audit, I'm tallying the counts in scope: 8 admits (5 proof lemmas, 3 exec), 0 exec external_body functions but 1 external_type_specification, 2 assume_specification calls (both external-bottom trust boundaries), and those 5 cfg-gated exec statements. The crate-wide tool reports higher counts, so I'll document what's in scope and note the discrepancy. No Verus-limitation claims have been made yet — the admits are just placeholders for now, but they'll eventually need either proofs or documented limitations with isolated reproducers.
+
+No exec rewrites have been done; there are no `// VERUS REWRITE` comments anywhere. The exec bodies are original code plus proof!{admit();} prologues, which are placeholders to remove, not actual rewrites. The cross-module regression check passes — all modules verify with no breakage, though that's only because of the cheating. The verification itself shows green exit 0, but that's entirely due to the admits masking the real work; for the proving phase to be complete, this has to pass with zero admits. The dominant failures are the admits themselves, the cfg-gated exec code, and the fact that verification is only passing through cheating.
+
+The first actionable item in checklist order is eliminating the admits. I'll write a comprehensive turn 1 review document that walks the entire checklist with PASS/FAIL for each item, then focus the fix request on the 8 admit functions individually per the per-function rule.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_driver.md with 7552 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Turn 1 review complete. Wrote `turn_001_driver.md`.
+
+**Verdict: proving phase NOT done.**
+
+PASS (verified with tools): spec-drift (exit 0, all 3 files), no exec `external_body`, `assume_specification` only at allowed std/external boundaries, cross-module `<all>` verify exit 0.
+
+FAIL:
+- **Zero admit() — 8 in scope**: `proof.rs` lines 18/27/40/49/60 (5 lemmas) + `identity_map.rs` 534/632/719 (`ensure_pt`/`ensure_pte`/`identity_map_page`). `make verify-kernel` is green only because of these (`status: CHEATING_DETECTED`, `admit=12` crate-wide).
+- **cfg-gated exec — 5**: `#[cfg(not(verus_keep_ghost))] error!(...)` at 537/553/565/635/648.
+- Verification 0/0 and limitation-reproducer items blocked by the admits.
+
+Fix request this turn targets all 8 admits individually (real proofs, not justifications), with the verify gate: `admit=0` in `cheating-detail.txt` for the module. No `STOP` written — items remain.
+
+[THINKING] I've finished the turn 1 review and won't create the STOP file since there are still items that need verification or are failing. The reviewer's task is complete.
+
+
+=== Session End ===
+Session: 7cf89740-a886-4ecb-b45f-dcada16aea8a
+Duration: 222.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue-reviewer-t001-claude-20260615-123647.jsonl
