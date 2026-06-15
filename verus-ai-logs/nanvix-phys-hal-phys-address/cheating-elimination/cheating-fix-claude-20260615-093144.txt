@@ -283,3 +283,142 @@ Zero cheating in the entire address directory. Now confirm the phys module still
 [TOOL] report_intent: Final full verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== phys module ==="; timeout 600 make verify-kernel MODULE=hal::mem::types::ad
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === phys module ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+=== Summary ===
+  status: CLEAN
+=== full verify-kernel ===
+  cheating: assume=0 external_body=19 admit=12 trusted=0 no_decreases=0 cfg_gate=19
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== check for other cheating forms in address dir ==="; grep -rn "exec_allows_n
+
+[THINKING] The physics module is clean and the full kernel verification passes. I've reduced the crate-wide admits from 14 down to 12 by eliminating 2, and the remaining 12 admits along with the 19 external_body and 19 cfg_gate entries are all from out-of-scope modules outside the address directory. The reviewer also flagged some items to address around trusted annotations, external_body on proof functions, multi-line limitation_assume blocks, and verifier exec_allows_no_decre settings.
+
+I've already confirmed that trusted, external_body, and no_decreases are all zero in the address directory, and the scan showed cfg_gate would catch any no_decreases violations. Let me verify there are no exec_allows_no_decreases_clause or assume statements in the address files and make sure the build still passes.
+[RESULT ✓] bash: === check for other cheating forms in address dir ===
+exit grep: done
+=== make build ===
+make: Nothing to be done for 'build'.
+build exit: 0
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All checks pass. Let me confirm the change set is proof-only and update the dialogue/report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff verus-ai-prove -- src/kernel/src/hal/mem/types/address/frame.proo
+
+[THINKING] I've confirmed there are no other cheating forms in the address directory and the build exits cleanly. Now I'm reviewing the diff to make sure only the proof changes appear in frame.proof.rs without any execution-related modifications, and verifying nothing else was altered.
+[RESULT ✓] bash: === git log head ===
+bbc94e14f [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=12 external_body=19 cfg_gate=19)
+e8c826633 [verus] verify PASS: kernel::hal::mem::types::address::phys (cached (no recompilation), —)
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show HEAD:src/kernel/src/hal/mem/types/address/frame.proof.rs > /tmp/n
+[RESULT ✓] bash: 
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== working tree status ==="; git status --short | head; echo "=== working file
+
+[THINKING] The verify pipeline auto-commits, so I need to check if my changes actually made it into HEAD. Let me look at what's currently committed versus the base to figure out why the diff is showing nothing.
+[RESULT ✓] bash: === working tree status ===
+ M verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/cheating-fix-claude-20260615-093144.jsonl
+ M verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/cheating-fix-claude-20260615-093144.txt
+=== working file has admit? ===
+0
+=== working file has l...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && wc -l /tmp/base.rs /tmp/now.rs; echo "=== base admit ==="; grep -c admit /tmp/base.rs
+
+[THINKING] The working file shows zero `admit()` calls and two `lemma_mod_multiples_basic` references, matching HEAD, which confirms my changes were committed by the pipeline. But the diff between the base and current versions came back empty, which shouldn't be the case if the base had `admit()` and the current doesn't — it looks like the `git show` command for the base version might have failed.
+[RESULT ✓] bash: 42 /tmp/base.rs
+  42 /tmp/now.rs
+  84 total
+=== base admit ===
+0
+=== retry base from verus-ai-prove ===
+0
+<shellId: 19 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== frame.proof.rs: turn-start (ce24fb5d1) had admits? ==="; git show ce24fb5d1
+
+[THINKING] I'm noticing something odd with the `frame.proof.rs` file — it shows 0 `admit()` calls now, but when I checked it earlier with git it had some. The file is 42 lines, which matches my new version, so it seems like the verify pipeline may have committed my changes, though I need to verify whether the branch reference actually moved or if I'm looking at the base version.
+
+Actually, wait — the pipeline commits to the current branch, which is `verus-ai-prove`, so HEAD should be pointing at my latest commit. That means the "base" version of `verus-ai-prove` now reflects my most recent changes, which is why the diff appears empty. Everything is consistent and committed. Let me check what my actual net changes are by comparing against the original base commit from the start of this turn.
+[RESULT ✓] bash: === frame.proof.rs: turn-start (ce24fb5d1) had admits? ===
+3
+=== net diff ce24fb5d1 -> HEAD ===
+diff --git a/src/kernel/src/hal/mem/types/address/frame.proof.rs b/src/kernel/src/hal/mem/types/address/frame.proof.rs
+index 4f5c62167..8e477583d 100644
+--- a/src/kernel/src/hal/mem/types/address/frame.pr...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Both admits eliminated with real proofs. Let me update the fix report to reflect the corrected counts.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/fix_report.md
+
+[THINKING] Looking at the grep results, there were actually 2 admit() calls in the function bodies that got replaced with real proofs, but the grep count showed 3 matches because it was also picking up the comment line mentioning the placeholder pattern.
+
+Now everything's verified clean — the frame and phys modules pass, the address directory has no gate issues, and the full kernel verification exits successfully with no build errors. Both proofs are legitimate implementations with no admit, assume, external_body, or trusted markers remaining. The reviewer's other concerns about those patterns don't apply to the address directory at all; the only problem was those two admit calls, which are now gone.
+
+I should update the fix report to reflect the eliminated admits and note that verification is complete, though the task didn't specify a particular output file this time.
+[RESULT ✓] view: 1. # Cheating Elimination Report: hal-phys-address
+2. 
+3. Module: `kernel::hal::mem::types::address::phys`
+4. Files: `phys.rs`, `phys.spec.rs`, `phys.proof.rs`
+5. Command: `make verify-kernel MODULE=hal::mem::types::address::phys` → exit 0, `status: CLEAN`,
+6. "✅ No cheating detected in module hal::...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Done. Both `admit()`s are eliminated with real proofs.
+
+**What I fixed** — the cheating scan flagged 2 `admit()` placeholders in the sibling `FrameAddress` proof file `src/kernel/src/hal/mem/types/address/frame.proof.rs`:
+
+1. **`lemma_frame_base_aligned`** — goal `(frame@ * PAGE_SIZE) % PAGE_SIZE == 0`. Proved with `vstd::arithmetic::div_mod::lemma_mod_multiples_basic` (after establishing `spec_page_size() == 4096 > 0` via the transparent `#[verus_verify]` constant `arch::mem::PAGE_SIZE`).
+
+2. **`lemma_aligned_div_mul`** — goal (given `addr % PAGE_SIZE == 0`) `(addr / PAGE_SIZE) * PAGE_SIZE == addr`. Proved with `lemma_fundamental_div_mod`.
+
+Both are proof-only changes (no exec code touched), following the verus-constraints ladder (searched vstd, used existing verified lemmas).
+
+**Verification:**
+- `frame` module: **6 verified, 0 errors**
+- `phys` module: **CLEAN** ("No cheating detected")
+- Whole `address/` directory: **0 gate items** (admit/assume/external_body/trusted all 0)
+- `make verify-kernel`: **exit 0** (crate-wide admit dropped 14 → 12; remaining are out-of-scope modules)
+- `make build`: **exit 0**
+
+No `trusted`, `external_body` on proof fns, multi-line `limitation_assume`, or `exec_allows_no_decreases_clause` exist in scope — the only issue was admit:2, now zero.
+
+
+=== Session End ===
+Session: bbaba15f-cd3c-42c1-b585-9ba8078a5752
+Duration: 296.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/cheating-fix-claude-20260615-093144.jsonl
