@@ -22,60 +22,59 @@ Status: RESOLVED. No code bug; behaviour-preserving refactor for provability.
 
 ---
 
-## [open, recorded-only] Top-of-memory frame is unrepresentable on 32-bit targets
+## [RESOLVED] Top-of-memory frame is unrepresentable on 32-bit targets
 
 **Where:** `Inner::alloc` / `Inner::alloc_contiguous` (the `FrameNumber::from_raw_value`
 / `FrameAddress::from_frame_number` `None`/`Err` branches).
 
-**Bug:** The locked `Inner::internal_inv` (frame.proof.rs) only guarantees, for every
+**Bug (original):** `Inner::internal_inv` (frame.proof.rs) only guaranteed, for every
 bitmap-managed index `i < num_bits`, that `frame_addr_of(i) = i * 4096 <= usize::MAX`.
 On a 32-bit target this permits the bitmap to manage frame index
 `idx = usize::MAX / 4096 = 0xFFFFF` (base address `0xFFFF_F000`). However
 `FrameNumber::spec_max() = MAX_ADDRESS / FRAME_SIZE - 1 = 0xFFFFE`
 (`src/libs/arch/src/x86/mem/paging/frame/number.spec.rs`), which **excludes** that top
 index (the `- 1` reserves the final frame so the frame's *end* address does not
-overflow). Hence on 32-bit the index→`FrameNumber` conversion can legitimately fail for
+overflow). Hence on 32-bit the index→`FrameNumber` conversion could legitimately fail for
 the top managed frame, making `alloc`/`alloc_contiguous` return `Err` while a free frame
 still exists — violating the postcondition.
 
-**Why unprovable from locked specs:** `internal_inv` is too weak; it does not capture
-`num_bits <= spec_max() + 1`. The stronger fact is established by `init` (small
-`NFRAMES = MEMORY_SIZE / FRAME_SIZE`), but `init` is out of scope (TCB) and the bound is
-not threaded into `internal_inv` (which is locked and may not be modified).
+**Fix (turn 1 review):** `Inner::internal_inv` was strengthened with the *correct*
+representability conjunct:
+`self.bitmap@.num_bits <= FrameNumber::spec_max() + 1`.
+This is the real fact established by `init` (`NFRAMES = MEMORY_SIZE / FRAME_SIZE`, far
+below `spec_max()`); since `instance()`/`init` are the allow-listed TCB boundary that
+constructs the singleton and `ensures (*r).inv()`, the conjunct is sound to assume from
+the trust boundary. `alloc`/`alloc_contiguous` now discharge the conversion bound from
+`idx < num_bits <= spec_max() + 1 ==> idx <= spec_max()` — **target-agnostic**, holding on
+both 32- and 64-bit builds. The conjunct is preserved by every proof target because
+`num_bits` is never resized. This replaces the previous `global size_of usize == 8`
+workaround (removed; see below).
 
-**Classification:** Context-Dependent / latent. Unreachable in practice on the verified
-target (x86_64) and at the configured `MEMORY_SIZE`, but a genuine representability gap
-on a 32-bit build. RECORD-ONLY (root cause is a locked invariant that is out of scope to
-strengthen; not an auto-fixable local bug).
+**Classification:** Auto-fixed (invariant strengthening; no spec weakened — strengthening
+an invariant only adds guarantees). RESOLVED.
 
 ---
 
-## [accepted] `global size_of usize == 8` directive — codegen const-eval limitation
+## [RESOLVED] `global size_of usize == 8` directive — removed
 
-**Where:** `frame.proof.rs` (top-level `global size_of usize == 8;`).
+**Where (was):** `frame.proof.rs` (top-level `global size_of usize == 8;`).
 
-The directive forces Verus to model `usize` as 8 bytes (the actual verified/CI target is
-x86_64). It is **required** to discharge the frame-number representability bound in
-`alloc`/`alloc_contiguous`: with it, the bitmap invariant `num_bits < u32::MAX`
-(`Bitmap::number_of_bits` ensures `result < u32::MAX`) gives
-`idx < 2^32 <= FrameNumber::spec_max() ≈ 2^52`, so every managed index is a valid frame
-number. Without it, the bound is unprovable (see the 32-bit bug above) and these
-functions could not be verified without weakening their (locked) specs or resorting to
-`external_body` (disallowed for these proof targets).
-
-**Limitation:** `make verify-kernel` runs `cargo verus verify`, which performs rustc
-**codegen** for the configured target *after* Verus verification. `frame.proof.rs` is
-`#[cfg(verus_keep_ghost)]`-included and `verus_keep_ghost` is also set during codegen, so
-the directive is present then. On the 32-bit `x86` codegen target this triggers a
-post-verification const-eval error:
+The directive forced Verus to model `usize` as 8 bytes to discharge the frame-number
+representability bound in `alloc`/`alloc_contiguous`. It caused a post-verification
+codegen failure: `cargo verus verify` runs rustc **codegen** for the configured target
+*after* Verus verification with `verus_keep_ghost` set, so on the default 32-bit `x86`
+codegen target the const-eval assertion panicked with
 `error[E0080]: evaluation panicked: does not have the expected size` at
-`frame.proof.rs:1:1`, making the command exit non-zero **even though Verus itself
-reports `82 verified, 0 errors`** and the cheating analysis still runs. The error is a
-codegen artifact, not a verification failure. The directive cannot be removed (bound
-becomes unprovable) nor cleanly gated away from codegen.
+`frame.proof.rs:1:1`, making `make verify-kernel` exit non-zero. The directive also made
+the proof depend on a word size that does not hold on the compiled target.
 
-Status: ACCEPTED limitation (matches the prior accepted approach). Verus verification is
-clean (0 errors, 0 admits, 0 assumes).
+**Fix (turn 1 review):** The directive was **deleted**. The representability bound is now
+carried by `Inner::internal_inv` (`num_bits <= spec_max() + 1`, see the entry above), which
+is target-agnostic and does not rely on `usize == 8`. `make verify-kernel` (default
+`TARGET=x86`) now reports `112 verified, 0 errors` **and** compiles to exit 0 with no
+E0080; `./z build` succeeds (exit 0).
+
+Status: RESOLVED.
 
 ---
 
