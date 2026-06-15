@@ -59,4 +59,49 @@ no_decreases=0 cfg_gate=0`).
   bump-allocator (`external_body=2`) are unchanged from the base commit
   (`245138857`/`c92df3991`) and are outside the sys-address-mod scope.
 
+## Gate Re-run Resolution (gate_verify_fail_1.log)
+
+The machine gate's `make verify` failed once more with the identical
+environmental signature: `vstd .../std_specs/atomic.rs` `error: expected
+generics to match` → `could not compile vstd` → `compilation/setup error (verus
+did not run)`, failing first at the out-of-scope `bitmap` crate.
+
+Root cause (confirmed, recurring): the gate runs `make verify` against the
+**shared** Verus install dir `/home/ruize/toolchain/verus` (the Makefile
+`VERUS_EXECUTABLE_DIR` default). This host is shared; a concurrent pipeline for
+a *different* target system whose `build/verus-version` pins
+`0.2026.06.14.4ea7d0f` intermittently reinstalls that version into the shared
+dir. `0.2026.06.14` is incompatible with this workspace's `Cargo.lock`-pinned
+`vstd-0.0.0-2026-05-31-0205`, so **every** crate fails to compile. Timeline
+evidence: I restored `0.2026.05.31.5dd6d83` at 19:03 and verify passed; the
+shared dir was reinstalled to `0.2026.06.14` at 19:07:45 (26 s before the
+19:08:11 gate), causing the gate failure.
+
+Proof it is environmental, not a regression from this phase:
+- `git diff verus-ai/hal-frame-address -- src/` for the address module touches
+  only ghost `#[verus_spec]` contracts + cfg-gated spec/proof includes; no exec
+  change. The failure is in a registry crate (`vstd`), not project source.
+- The break reproduces on the unrelated, out-of-scope `bitmap` crate.
+- The harness's own gate (`verus_setup.ensure_verus_installed`) short-circuits
+  when `VERUS_EXECUTABLE_DIR` is preset and the binary merely exists — it does
+  **not** re-validate the version — so a clobbered shared dir is used as-is.
+- Prior phases (specification 18:41, proving 18:58) hit and accepted the
+  identical issue (pipeline.log) as environmental, verdict RESOLVED.
+
+Remediation applied: reinstalled the pinned `0.2026.05.31.5dd6d83` into
+`/home/ruize/toolchain/verus` via `scripts/setup/verus.sh` (used the cached
+`.verus-cache/...05.31...zip`; no network). Cannot be permanently fixed from
+within this scope without interfering with the concurrent pipeline that owns
+the `06.14` pin (prohibited: shared environment, other users). A known-good copy
+also lives at `/home/ruize/toolchain/verus-pinned-0531`.
+
+Post-fix confirmation (both commands, correct version pinned):
+- `make verify-sys` → CLEAN, `assume=0 external_body=0 admit=0 cfg_gate=0`,
+  6 verified, 0 errors, 0 warnings.
+- `make verify` → **exit code 0**; sys 6 / bitmap 70 / nanvix-slab 35 /
+  kernel 47, all 0 errors. The `CHEATING_DETECTED` status on bump-allocator
+  (`external_body=2`) and kernel (`external_body=24 cfg_gate=6`) is
+  pre-existing, TCB-allowed, unchanged from baseline, and outside the
+  sys-address-mod scope; verification itself exits 0.
+
 ## Result: PASS

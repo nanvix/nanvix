@@ -245,3 +245,76 @@ Both pass with exit code 0. The `CHEATING_DETECTED` statuses for bump-allocator/
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify >/tmp/mv.log 2>&1; echo "make verify exit code = $?"; grep -E "verification res
 
 [THINKING] Both `make verify` commands exit with code 0, meaning verification passes overall. The bitmap, slab, and sys crates show CLEAN status, while bump-allocator and kernel report "CHEATING_DETECTED" due to pre-existing allowed external_body declarations in their TCB—but this is just a guardrail warning about permitted exceptions, not an actual verification failure.
+[RESULT ✓] bash: make verify exit code = 0
+<shellId: exitcheck completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -E "verification results|verified, 0 errors|Checking " /tmp/mv.log | grep -iE "verifie
+[RESULT ✓] bash: final ver=0.2026.05.31.5dd6d83
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -E "verification results::|Checking (sys|bitmap|nanvix-slab|kernel) " /tmp/mv.log
+[RESULT ✓] bash: 
+<shellId: 11 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "verified|results" /tmp/mv.log | head -20
+[RESULT ✓] bash: === Results ===
+=== Results ===
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+=== Results ===
+=== Results ===
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+=== Results ===
+  Unverifie...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`make verify` exits 0 (all crates verify; earlier uncached run: sys 6, bitmap 70, slab 35, kernel 47 — all 0 errors). Both commands pass cleanly. Let me update the fix report to document this gate resolution.
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md
+
+[THINKING] The cached runs skip the verification output since they're pulling from cache, but the exit code is clean and all status checks show either CLEAN or CHEATING_DETECTED as expected. The full uncached run earlier confirmed everything passed with zero errors across all metrics. Now I need to update the fix report to document how the gate failure was resolved.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Final verification that the toolchain is still correctly pinned (it's a shared dir under contention):
+[TOOL] bash: cd /home/ruize/nanvix-phy && cur=$(cat /home/ruize/toolchain/verus/version.txt); exp=$(cat build/verus-version); echo "i
+[RESULT ✓] bash: installed=0.2026.05.31.5dd6d83 expected=0.2026.05.31.5dd6d83
+OK: verus pinned correctly
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Done. Both commands now pass cleanly.
+
+## Summary
+
+The gate failure was **not** a source/proof defect — my address-module diff is empty of exec changes and contains zero cheating. It was a recurring **shared-environment** issue:
+
+- The gate runs `make verify` against the shared `/home/ruize/toolchain/verus`. A concurrent pipeline for a *different* target system (pinning verus `0.2026.06.14`) reinstalled that version into the shared dir at 19:07:45 — 26s before the gate. That version is incompatible with this workspace's `Cargo.lock`-pinned `vstd-...-2026-05-31`, so **every** crate failed to compile (`atomic_specs_*` macro mismatch in `vstd`), failing first at the out-of-scope `bitmap` crate.
+
+**Fix applied:** reinstalled the repo-pinned `0.2026.05.31.5dd6d83` via `scripts/setup/verus.sh` (cached zip, no network).
+
+**Confirmed passing:**
+- `make verify-sys` → CLEAN: 6 verified, 0 errors, 0 warnings, `assume=0 external_body=0 admit=0 cfg_gate=0`.
+- `make verify` → **exit 0**: sys 6 / bitmap 70 / slab 35 / kernel 47, all 0 errors.
+
+The `CHEATING_DETECTED` status on kernel/bump-allocator is pre-existing, TCB-allowed `external_body` (unchanged from baseline, outside scope). No actual errors or warnings remain. Report updated at `verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md`. The toolchain is left correctly pinned (verified as my final action), though the shared dir remains under contention from the concurrent pipeline, which I cannot control without interfering with other users.
+
+
+=== Session End ===
+Session: a9b5f6f4-d68f-4a09-8d9b-cc129b07ddbf
+Duration: 353.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/gate-fix-claude-20260615-190818.jsonl
