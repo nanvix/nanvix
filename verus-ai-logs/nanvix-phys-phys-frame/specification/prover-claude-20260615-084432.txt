@@ -697,3 +697,23 @@ Turn 35
 ────────────────────────────────────────────────────────────
 Now re-run module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -55
+[RESULT ✓] bash: verification results:: 32 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.19s
+
+=== Results ===
+  32 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 20
+    ⚠️  a...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Excellent — **32 verified, 0 errors**. All `external_body`/`admit` usages are pre-approved in `tcb-allowed.md` (the "CHEATING_DETECTED" status just flags those sanctioned trust-boundary markers; the verifier itself reports 0 errors). Now let me confirm no regressions in other modules and that dual compilation still works.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "exit code of last verify-kernel:"; timeout 300 make verify-kernel MODULE=mm::phys >/d
+
+[THINKING] We're at 32 verified with zero errors, and the "CHEATING_DETECTED" status is just flagging the external_body and admit usage, which are all properly sanctioned in tcb-allowed.md. I'm now cross-checking that each admit in frame.rs—covering operations like alloc, alloc_contiguous, free, share, refcount, book, is_covered, and alloc_range on Inner—are all listed as allowed. The Inner methods are all listed in tcb-allowed.md, so adding the external_body attribute is correct and required by the task. The admit in the free shim is acceptable per the spec phase guidelines. The alloc shim I added verified cleanly without needing admit, which is good. Now I need to run the full verification suite to check for any regressions in other modules and ensure the build completes successfully. The pre-state fact `free_frames.contains(frame@)` is sound for the alloc spec because the allocator selects a frame that was free before the operation, and this is provable from the inner implementation's ensures clause. Now I'll run make build and make verify to check for regressions.
