@@ -259,3 +259,58 @@ Turn 5
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | tail -60
 
 [THINKING] I'm going to run the `make verify-kernel` command to check the kernel verification, though it might take some time. I notice the spec-drift-check skill references aren't resolving properly—those placeholders suggest they might be external AI pipeline skills rather than something in the repo. Let me focus on what I can actually verify and start with the kernel verification.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] I'm seeing a mismatch between what the verification cached shows and what the actual proof target is. The cached results mention external_body and cfg_gate metrics across the kernel, but they're for mm::phys modules, not the hal::mem::types::address::phys module that's supposed to be the target. The pipeline state indicates hal-phys is the current proof target, so there's some confusion about which modules were actually verified.
+[RESULT ✓] bash: - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "external_body\|admit\|assume_specification\|assume(" src/kernel/src/hal/mem/types
+
+[THINKING] I'm counting through the listed entries to verify the total—there's a discrepancy between what's reported (25) and what I'm seeing in the list, plus there are additional deref and deref_mut implementations in kframe.rs I need to account for.
+
+What's striking is that none of these entries appear in phys.rs or phys.spec.rs, even though phys.spec.rs has an external_type_specification struct. The cheating detail might not flag those the same way, or it could be from a cached run that doesn't include the phys module verification.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.spec.rs:15:// the existing `sys`/`arch` `assume_specification` boundaries the codebase
+src/kernel/src/hal/mem/types/address/phys.spec.rs:37:// `assume_specification`s below. Its internals are not modeled (`external_body`):
+src/kernel/src/hal/mem/types/addres...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verifying module\|phys::address\|types::address\|verification results\|errors" ver
+
+[THINKING] Looking at the phys.spec.rs file, I see it contains one external body definition and six assume specifications, but the cheating-detail.txt scan didn't pick up any entries from it—likely because phys.rs isn't currently part of the verification process, even though other spec files like page.spec.rs are showing up in the compiled output.
+
+The cheating detail might be stale from a previous run targeting frame.rs, while the current verification target is hal-phys-address with source phys.rs. I'm realizing that assume_specification entries might not be counted as "assume" in the cheating check—the assume= count probably refers to actual `assume(` calls rather than the assume_specification declarations themselves, which would explain why ExFrameNumber and the six assume specifications from phys.spec.rs aren't appearing in the scan.
+[RESULT ✓] bash: 19:note: verifying module mm::phys
+21:note: verifying module mm::phys::frame
+23:note: verifying module mm::phys::kframe
+25:note: verifying module mm::phys::manager
+27:note: verifying module mm::phys::upool
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The cached run only re-verified `mm::phys` modules. I need a fresh verification of the actual proof target (`phys.rs`). Let me force recompilation.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/hal/mem/types/address/phys.rs && make verify-kernel 2>&1 | tail -45
+
+[THINKING] The verification run was cached and only checked the mm::phys modules instead of the actual target phys.rs file I need to verify. Since `make verify-kernel` processes the entire kernel crate, Verus must be skipping recompilation for modules it's already seen, which is why I'm getting stale output from the previous proof target.
+
+I need to force a fresh verification run to actually check the `#[verus_verify]` impl in phys.rs and get accurate cheating counts. The cleanest approach would be to touch phys.rs to trigger recompilation, or check if the verify script has module-specific options. But first I should understand why only mm::phys modules are showing up in the verification notes—either the hal::phys module path isn't included in the build target, or the cached artifacts are masking what actually needs verification.
