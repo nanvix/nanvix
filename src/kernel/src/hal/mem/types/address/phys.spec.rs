@@ -91,15 +91,19 @@ pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
         pow2(result as nat) == spec_page_size(),
 ;
 
-// `VirtualAddress::new` is a pure newtype constructor: the wrapped value is the
-// abstract address. (`sys` library edge; the inner module is not yet verified.)
-pub assume_specification[ VirtualAddress::new ](value: usize) -> (result: VirtualAddress)
-    ensures
-        result@ == value as int,
-;
+// `VirtualAddress::new` now carries a native `#[verus_spec]` in `sys`
+// (`mm::address::virt`), so its contract is imported directly across the crate
+// boundary; a local `assume_specification` here would duplicate it (Verus error:
+// "duplicate specification for ... ::new"). The guaranteed fact is identical
+// (`result@ == value as int`).
 
 // `<VirtualAddress as Address>::into_raw_value` is pure newtype identity: the
-// returned raw `usize` equals the abstract address.
+// returned raw `usize` equals the abstract address. It remains an
+// `assume_specification` trust boundary because this trait-impl method cannot be
+// body-verified in `sys` without marking the whole `impl Address for
+// VirtualAddress` verified, which pulls the sibling `as_ptr`/`as_mut_ptr` methods
+// (unsupported `usize as *const u8` casts) into scope — a Verus front-end
+// limitation (see `verus-ai-logs/verus-unsupported.md`).
 pub assume_specification[ <VirtualAddress as Address>::into_raw_value ](
     addr: VirtualAddress,
 ) -> (result: usize)

@@ -1369,3 +1369,128 @@ sys verifies (6 verified, 0 errors). Now let me check if `new`'s real spec confl
 [THINKING] I've verified 6 functions with no errors using the new spec and from_raw_value, but now I need to check if the kernel's assume_specification conflicts with my changes. Coverage shows only 2 out of 254 functions have contracts so far, so I should also handle into_raw_value next, though I'm first checking the kernel regression risk with what I have.
 
 Let me run the kernel verification to see if there's a conflict with the new spec.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+verification results:: 35 verified, 0 errors
+error: duplicate specification for `sys::sys::mm::address::virt::impl&%18::new`
+96 | pub assume_specification[ VirtualAddr...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Confirmed: kernel's `assume_specification[VirtualAddress::new]` now duplicates my real spec. I must remove the redundant assume_specifications from phys.spec.rs once sys provides real specs. First, let me solve `into_raw_value`. Let me find all `Address` implementors to assess a trait-declaration spec approach.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== all 'impl Address for' ==="; grep -rn "impl Address for" src/; echo "=== their View
+
+[THINKING] I see that adding the real spec to `VirtualAddress::new` in sys creates a duplicate specification error because `phys.spec.rs` already has an `assume_specification` for it. I need to remove those redundant assumptions from `phys.spec.rs` for both `VirtualAddress::new` and `into_raw_value` once I spec that too — this isn't weakening the spec, it's replacing the assumed version with the actual one from sys.
+
+The key question is whether I can modify `phys.spec.rs` in the kernel module. The task says not to touch unlisted functions, but these are trust declarations, not functions themselves. Since the goal is to make `make verify` pass and the instructions say to reference existing specs directly when available, removing redundant assumptions that are now backed by real verified specs in sys is the right cleanup.
+
+For `into_raw_value`, the challenge is that the trait implementation approach gets blocked by `as_ptr` verification. The kernel's `assume_specification` for `<VirtualAddress as Address>::into_raw_value` is an external spec from kernel's perspective, so I need to figure out how sys can provide this natively without hitting that verification wall.
+
+I'm reconsidering whether I can add the spec to the trait declaration itself in `mod.rs` rather than the implementation. If the spec lives on the trait method and the impl has no verus annotation, Verus might treat the impl as external/trusted. The trait method would need a `View` bound since `into_raw_value` returns `usize` and needs to ensure the result equals `self@`. I should check that all `Address` implementors satisfy `View<V=int>`.
+[RESULT ✓] bash: === all 'impl Address for' ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:35:// without marking the whole `impl Address for PageAligned<T>` verified, which
+src/kernel/src/hal/mem/types/address/phys.rs:215:impl Address for PhysicalAddress {
+src/libs/sys/src/sys/mm/address/virt.rs:175:i...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+There's a comment in page.spec.rs about this exact problem. Let me read it.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] Looking at the Address trait implementations, I see that only PhysicalAddress and VirtualAddress truly implement it, both as View<V=int>. There's also a potential PageAligned<T> implementation mentioned in the specs, which would mean adding the View<V=int> bound to the trait would require PageAligned<T> to satisfy that constraint as well.
+
+The page.spec.rs comment is actually highlighting the exact issue I'm facing — it notes that the whole impl can't be marked as verified, which is precisely my problem with adding trait bounds.
+[RESULT ✓] view: 20. //     would break `region.rs`, which uses `PageAligned<T>: Address` for a bare
+21. //     `T: Address`).
+22. // It is left uninterpreted here; the exec contracts pin it operationally
+23. // (`into_raw_value` returns exactly `self@`), exactly as the sibling
+24. // `FrameAddress::into_raw_value` ...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+This is the key finding: the codebase explicitly documents (page.spec.rs:20-21) that adding a `View` bound to `Address` "would break region.rs", and that trait-impl `into_raw_value` "cannot be body-verified in place" due to a Verus front-end limitation — so it uses `assume_specification`. Let me find all `assume_specification` references to VirtualAddress across the repo to plan correctly.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "assume_specification" src/ | grep -i "VirtualAddress\|virt" 
+
+[THINKING] So the codebase already recognizes that verifying a trait-impl method in isolation would require marking the entire impl block as verified, which causes issues with Verus's front-end. The workaround they've settled on is using `assume_specification` as a trust boundary, where the actual proof obligation gets deferred to the inner trait method implementation.
+
+The key insight from the comment is that this deferred obligation gets discharged when the `Address` trait itself is verified. So the intended approach is to add the spec directly to the `Address::into_raw_value` method declaration in mod.rs, with an appropriate View bound like `Self: View<V = int>`. The codebase already has the View relationship set up through `PageAligned<T>: View` for all `T: Address`.
+
+But here's the catch: adding a spec to the trait declaration means every implementor must satisfy it, including `PhysicalAddress` and `PageAligned<T>`. Those implementations are in the kernel and face the same body-verification limitations, so they'd still need `assume_specification` to work around the Verus front-end constraint.
+
+The resolution might be that trait declaration specs define what callers can assume, while impl verification is deferred for external crates. When verifying only sys, the kernel impls aren't checked yet. But since both the trait and the `VirtualAddress` impl are in sys, that impl would need to prove the spec immediately, which triggers the same sibling-method limitation I'm trying to work around.
+
+Looking at the codebase precedent with `page.spec.rs`, the accepted pattern is using `assume_specification` at the consumer side to handle these trait-impl methods where the underlying cast isn't supported by Verus. The task wants sys to own the spec, but I'm hitting a genuine front-end limitation with the `as_ptr` cast that I can't work around without rewriting exec code. So either `into_raw_value` stays unspecced in sys with callers using `assume_specification`, or I document this as a Verus limitation and leave it out of scope. So the pattern in frame.rs shows that `#[verus_verify(external_body)]` with a spec annotation is used on current-module trait methods as a temporary workaround for genuine Verus limitations, with a comment explaining when it can be removed. I could try the same approach here — marking `into_raw_value` with external_body and a spec to tell Verus to trust it without verifying the whole impl, since the as_ptr cast itself is a known limitation. The question is whether external_body is actually forbidden for this case or if the genuine-limitation exception applies.
+
+But the hard constraint is clear: external_body is only allowed for functions listed in tcb-allowed.md, and `into_raw_value` isn't there. So I can't use it. That leaves me stuck — I can't verify the trait impl due to Verus's limitation, and I can't use external_body to bypass it. The honest path is to document this as an unsupported construct and leave the method unspecced, which means the 102 callers won't get coverage. Unless I add an inherent `into_raw_value` method to VirtualAddress that shadows the trait method, which would give callers the spec without touching the trait impl — but that's modifying the API, which is forbidden. I'm checking whether removing the redundant `assume_specification` for `new` from the kernel's phys.spec.rs would break its proofs — since phys relies on that assumption in its own verification steps like the `from_number` proof, I need to confirm the kernel's specs would still hold with my new sys-level spec backing it instead.
+
+For `into_raw_value`, I'm exploring an alternative approach: what if I add the spec to the trait declaration in mod.rs with a View bound constraint, but leave the impl unverified? That way the spec becomes caller-visible without needing to touch the impl or hit the `as_ptr` issue. Let me test whether this works empirically in the verification system.
+
+But wait — I'm realizing this approach has a known blocker. Adding `View<V=int>` as a supertrait bound to `Address` would break the codebase, specifically region.rs, which relies on `PageAligned<T>: Address` for bare `T: Address`. The page.spec.rs comments explicitly document this constraint was rejected for exactly this reason. So that path is ruled out.
+
+That means `into_raw_value` genuinely can't be specced within the current constraints. I'll keep the specs for `new` and `from_raw_value` (which are verified), document the `into_raw_value` limitation, and clean up the redundant `assume_specification` for `new` in phys.spec.rs since sys now owns that spec. This aligns with the intended design where sys gets verified and the kernel's temporary assumptions get eliminated. The kernel already has an assume_specification for into_raw_value that works fine, so leaving it unspecced in sys isn't a regression—it's just accepting a documented limitation that depends on future Verus front-end improvements for trait casts. I should verify there are no duplicate assume_specifications for VirtualAddress across the codebase, clean up any redundant ones, and properly document the into_raw_value limitation.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.spec.rs:96:pub assume_specification[ VirtualAddress::new ](value: usize) -> (result: VirtualAddress)
+src/kernel/src/hal/mem/types/address/phys.spec.rs:103:pub assume_specification[ <VirtualAddress as Address>::into_raw_value ](
+<shellId: 65 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+Decisive finding: the codebase authoritatively documents that trait-impl `into_raw_value` can't be body-verified (whole-impl verification pulls in `as_ptr`'s unsupported pointer cast), and a `View` bound on `Address` would break `region.rs`. My empirical test confirmed the `as_ptr` cast error. This is a genuine Verus front-end limitation. 
+
+Let me record it and check the existing `verus-unsupported.md`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/verus-unsupported.md 2>/dev/null && echo "EXISTS" || echo "MISSING"; echo "=
+
+[THINKING] Looking at the assume_specifications for VirtualAddress, there are only two in phys.spec.rs: the `new` constructor which duplicates my real spec and needs to be removed, and the `into_raw_value` trait method which I'm not speccing in sys due to limitations, so that one stays. Before I abandon the idea of speccing `into_raw_value`, I should explore whether I can attach the spec to the trait declaration itself without requiring a View bound, possibly using an uninterpreted function.
+
+The core issue is that the contract `result as int == self@` requires the View to access `self@`, but without View on the trait declaration, I can't write that. The page.spec.rs approach used an uninterpreted generic helper, but that's banned by my constraints. For the concrete VirtualAddress implementation, `self@` is available since VirtualAddress implements View, so I could spec the impl method directly—but that triggers whole-impl verification which pulls in as_ptr and creates a verification wall I can't cross.
+
+The fundamental blocker is whole-impl verification, which is unavoidable. So I need to accept that `into_raw_value` is a deferred trust boundary: I'll remove the redundant assume_specification for `new` from phys.spec.rs, keep the assume_specification for `into_raw_value` as the trust boundary, and document this limitation in verus-unsupported.md. But before I commit to this, let me step back and think about what the best overall outcome looks like for the ultimate goal—making the verification pass with maximum coverage.
+
+Option X is to spec `new` and `from_raw_value` in sys, remove the redundant assume_spec from phys.spec.rs, and let the real spec flow cross-crate when Verus verifies kernel. Option Y is to avoid speccing anything that conflicts, but `new` is in-scope and not speccing it fails the task. Option X is the right call. I should also check whether removing the assume_spec from phys.spec.rs will break anything—phys's functions like `from_number` use `VirtualAddress::new` and rely on its spec, but with the assume removed, they'll get the spec from sys's real `#[verus_spec]` declaration instead. Cross-crate spec import should handle this. And for `from_raw_value`, there's no kernel assume for it currently, so adding a real spec in sys just gives kernel more information without breaking anything.
+
+Let me proceed: remove the redundant assume_specification block for `new` from phys.spec.rs (lines 94-99), re-run make verify-kernel to confirm it passes and the spec flows cross-crate, and document the `into_raw_value` limitation.
+
+Before editing kernel, I should also verify that only phys.spec.rs assumes `new`—no other consumers depend on that assume. And I need to check whether other crates in the verify suite (bitmap, sys, nanvix-slab, bump-allocator, kernel) reference VirtualAddress at all.
+
+For `into_raw_value`, I'm tempted to keep trying, but the page.spec.rs comment is clear: trait-impl methods can't be body-verified without pulling the entire impl into scope, which triggers a Verus limitation. My empirical test confirmed this. Per the codebase's own guidance on Verus constraints, I should document this limitation in verus-unsupported.md rather than work around it with external_body or assume_specification. So the kernel's assume_spec for `into_raw_value` stays, and I only remove the redundant one for `new`.
+
+Now I need to update the documentation files and check if verus-unsupported.md exists.
+[RESULT ✓] bash: MISSING
+=== tail ===
+<shellId: 66 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Before finalizing, let me reconsider: removing the redundant `assume_specification[new]` from the kernel is the correct direction (sys now owns the spec). Let me update `phys.spec.rs` to drop the now-duplicate `new` assumption (keeping `into_raw_value`, which sys can't verify due to the limitation).
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I'm reconsidering whether the kernel's assume_specification remains valid if sys doesn't spec into_raw_value—it does, so that's not the issue. Let me step back and think through this whole problem again from scratch, since abandoning the most critical function feels wrong and the task really emphasizes getting it right. The blocker is hitting an impl Address constraint...
+
+The real problem is that the impl for VirtualAddress contains as_ptr and as_mut_ptr methods with usize-to-pointer casts that Verus can't handle. To spec into_raw_value, Verus needs the entire impl to verify. I'm wondering if I could mark just those two methods with external_body to skip their bodies while verifying the rest of the impl—but the hard rule is clear: no external_body unless the function is listed in tcb-allowed.md, and these aren't listed. Even though as_ptr and as_mut_ptr are exactly the kind of pointer materialization that would naturally belong in the TCB (like the raw-array and bump_allocator examples), they're not in this task's tcb-allowed.md, so I can't use external_body. That means into_raw_value is genuinely blocked.
+
+Now I'm reconsidering the bigger picture. The task says to spec dependency functions that aren't yet verified, but as_ptr and as_mut_ptr are in the current module, not dependencies, so that exception doesn't apply. And the spec-design rule explicitly forbids external_body on current module functions. So into_raw_value stays unspecced, which is fine—the kernel's assume_specification for it won't cause issues since sys won't duplicate it. But this makes me reconsider whether I should even spec new, given it requires editing kernel's phys.spec.rs. I could leave new as a kernel assume_specification too to avoid touching the kernel at all, but that contradicts the task's intent to spec new in sys.
+
+The right approach is to have sys own the new and from_raw_value specs while the kernel drops its assume for new, leaving into_raw_value as a documented trust boundary until Verus can handle trait-impl verification. So I'll edit phys.spec.rs to remove the assume_specification for VirtualAddress::new and then verify the kernel still builds.
+[RESULT ✓] view: 93. 
+94. // `VirtualAddress::new` is a pure newtype constructor: the wrapped value is the
+95. // abstract address. (`sys` library edge; the inner module is not yet verified.)
+96. pub assume_specification[ VirtualAddress::new ](value: usize) -> (result: VirtualAddress)
+97.     ensures
+98.         res...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Now let me run `make verify-kernel` to confirm the cross-crate spec flow works and no regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel 2>&1 | grep -iE "error|duplicate|verified|status:|verification:" | tail -2
