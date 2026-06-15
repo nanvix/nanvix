@@ -280,3 +280,95 @@ nanvix-phys-hal-phys-address
 nanvix-phys-hal-platform-microvm
 nanvix-phys-phys-frame
 nanvix-phys-phys-kfra...
+[RESULT ✓] bash: error: expected generics to match: 
+        expected 
+        found bool
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+105 | atomic_...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && /home/ruize/verus-bin/verus --version 2>&1 | head; echo "---toolchain dirs---"; for d in ~/
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus" Makefile | head -30; echo "---verify.sh head---"; head -60 scripts/verify.s
+
+[THINKING] The verification failed due to a toolchain mismatch in vstd's atomic.rs — the wrong version of Verus is being used. The system is pointing to `/home/ruize/verus-bin/verus`, but the pinned version should be `0.2026.05.31.5dd6d83` with matching vstd `0.0.0-2026-05-31-0205`.
+
+I need to check which Verus version is actually running and use the setup script to install the correct pinned release with the `VERUS_EXECUTABLE_DIR` environment variable.
+[RESULT ✓] bash: 219:# Note: use '-Z flag' (with a space) instead of '-Zflag' so that cargo-verus can parse and forward
+259:# unstable flags (-Z ...) and --target, so that cargo-verus can reuse the same argument order.
+298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+305:  VERUS_BINARY := verus.exe
+307...
+[RESULT ✓] bash: Verus
+  Version: 0.2026.05.13.fae8859
+  Profile: release
+  Platform: linux_x86_64
+  Toolchain: 1.95.0-x86_64-unknown-linux-gnu
+
+---toolchain dirs---
+== /home/ruize/toolchain/verus ==
+Verus
+  Version: 0.2026.06.14.4ea7d0f
+== /home/ruize/toolchain/verus-june7-backup ==
+Verus
+  Version: 0.2026.06.07.cd...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/setup/; echo "---verus.sh setup head---"; sed -n '1,80p' scripts/setup/verus.sh 
+
+[THINKING] The Makefile is using a Verus version from June 14, 2026, but the project needs vstd from May 31, 2026, and there's a mismatch causing the verification to fail.
+
+Looking at the available installations and the pinned version in bugs.md (0.2026.05.31.5dd6d83), none of the current directories have an exact match—the closest is May 13, which is still off. The setup script should install the correct pinned version, and I need to verify what vstd version the May 31 Verus actually requires versus what's specified in Cargo.toml.
+[RESULT ✓] bash: Dockerfile
+Dockerfile.build
+Dockerfile.optimized
+build-optimized-image.sh
+cloud-hypervisor.sh
+docker.sh
+python.sh
+toolchain.sh
+ubuntu-core.sh
+ubuntu-l2.sh
+ubuntu-sdk.sh
+verus.ps1
+verus.sh
+vscode
+---verus.sh setup head---
+#!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The verification failed due to a Verus toolchain mismatch (Makefile default is 0.2026.06.14, but the pinned vstd needs 0.2026.05.31). Let me install the correct pinned Verus.
+[TOOL] report_intent: Installing pinned Verus toolchain
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls .verus-cache 2>/dev/null; echo "---try install---"; timeout 600 ./scripts/setup/verus.sh
+
+[THINKING] The pinned vstd version requires a specific verus build that isn't currently installed, and the Makefile is pointing to the wrong version which is causing the compile error. I'll need to run the setup script to install the correct verus version and then configure the build to use it via the VERUS_EXECUTABLE_DIR environment variable.
+
+Let me first check if there's a cached version available and verify network connectivity, then proceed with running the setup script.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-0.2026.04.12.f1166c4-x86-linux.zip
+verus-0.2026.05.13.fae8859-x86-linux.zip
+verus-0.2026.05.17.e479cce-x86-linux.zip
+verus-0.2026.05.24.ecee80a-x86-linux.zip
+verus-0.2026.05.31.5dd6d83-x86-linux.zip
+---try install---
+[INFO] Verus not found in /home/ruize/toolchain/verus-pinned-0531. Installing...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The pinned Verus is installed from cache. Now let me run verification with the correct version.
+[TOOL] report_intent: Running verify-sys with pinned Verus
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 timeout 1800 make verify-sys 2
+[RESULT ✓] report_intent: Intent logged
