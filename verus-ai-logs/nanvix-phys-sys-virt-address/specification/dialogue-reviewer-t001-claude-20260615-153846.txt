@@ -406,3 +406,38 @@ Turn 11
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-sys 2>&1 | tail -40
 
 [THINKING] I'm considering whether the trait method should delegate to the inherent `into_raw_value` to avoid duplication, but I'll hold off on that refactor for now and just run verify-sys to check if the inherent method works as expected.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The inherent `into_raw_value` verifies cleanly (7 verified, 0 errors, no cheating). The documented "cannot be body-verified" limitation only applied to the *trait* method — the inherent-shadowing pattern (already used for `from_raw_value`) works. This means the in-scope `into_raw_value` can be specced in-module, removing the need for the workspace-internal `assume_specification` in the kernel consumer.
+
+Let me verify the build isn't broken and check the consumer side and build/verify-all commands.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "verify-sys|verify-kernel|^build:|^verify:|verify-all|^all:" Makefile | head -30; 
+
+[THINKING] The inherent `into_raw_value` method passes verification cleanly with 7 successful checks and no errors, bringing coverage to 3/255. This confirms that the inherent-method-shadowing pattern works for in-place verification, just as it does for `from_raw_value` — the trait method itself can't be body-verified, but an inherent method shadows it perfectly for all concrete callers. Now I need to...
+
+I'm checking whether the build still compiles with concrete callers resolving to the inherent method, and considering whether to remove the now-redundant `assume_specification` from the kernel's consumer-side code. Since concrete `VirtualAddress` callers now use the verified inherent method, that assume_specification becomes unnecessary, though removing it would touch another module's phase. The checklist explicitly calls out eliminating assume_specification for workspace-internal code, so the question is whether this cleanup falls within scope or constitutes scope creep. Now I need to check what the actual build command is — the checklist mentions a placeholder for it, so let me look at the Makefile to see what command I should run to verify everything compiles without issues.
+[RESULT ✓] bash: 411:all: all-nanvix
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+=== build skill ===
+---
+name: build
+description: Guide for building, formatting, ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The build skill uses `./z`. Adding an inherent method shadows for concrete callers without ambiguity. Now let me run the full cross-module verification (`make verify`, all crates + kernel) to confirm no regression — this also type-checks all consumers against the new inherent method.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify 2>&1 | tail -70
+
+[THINKING] I should run a build to verify that adding the inherent `into_raw_value` method doesn't create conflicts with existing callers. A full build is expensive, so I could do a cargo check on the sys crate instead, but I need to think through what would actually break—the main risk is ambiguity if code is already calling this method, though an inherent method should take precedence over a trait method anyway.
+
+Let me run `make verify` to check for cross-module regressions across all crates and the kernel. This will also reveal whether the kernel's existing `assume_specification` for the trait method becomes redundant now that the inherent method has its own verified spec, which would let me clean it up per the checklist requirement about removing assume_specification for workspace-internal code.
