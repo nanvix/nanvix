@@ -119,3 +119,85 @@ The auto-commit captured my experimental (broken) version. My restore brings bac
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
 
 [THINKING] The auto-commit picked up the broken version, so I'm restoring the four admits that were lost and need to verify the fix works before committing it back to get the tree into a passing state.
+[RESULT ✓] bash: verification results:: 18 verified, 0 errors (partial verification with `--verify-*`)
+  18 verified
+  0 errors
+  Unverified functions:
+  verification: 18 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff --stat src/ 2>/dev/null; git log --oneline -2
+[RESULT ✓] bash: d4d54f011 [verus] verify PASS (cheating detected): kernel::mm::phys::manager (18 verified, 0 errors, admit=7 external_body=15 cfg_gate=12)
+c9415c326 [verus] verify FAIL: kernel::mm::phys::manager (14 verified, 4 errors)
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Source tree is back to verifying state (18 verified, 0 errors), with fresh pass-3 evidence that all 4 lemmas fail simultaneously when `admit()` is removed. Let me update the canonical TODO and write the response report.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+
+[THINKING] The restore completed successfully and the tree is back in a verifiable state with all 4 admits intact. I've now confirmed with fresh evidence that all 4 admits are mathematically unsound—they treat post-state as free parameters rather than deriving it, so removing them causes 4 postcondition failures. The only valid path forward is either human-approved axioms or eliminating the problematic sections entirely.
+
+I've hit this same dead end three times now, which the task anticipated: remaining admits will always trigger the cheating gate and fail the phase. This is genuinely stuck work, not a workaround. Let me update the verification_todo.md with this pass-3 evidence and write the cheating_fix_report_3.md to document the findings.
+[RESULT ✓] view: 1. # Verification TODOs — `mm::phys` cheating-gate blockers
+2. 
+3. ## Gate blockers: 4 `admit()` in `manager.proof.rs`
+4. 
+5. These are the only cheating-gate blockers. Root cause: `phys_view()` is `uninterp`
+6. (a single fixed ghost constant) yet models the **mutable, shared** global frame partitio...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+
+[THINKING] I'm checking if the verification_todo.md file already has a fresh-reproduction section from a previous pass, and I'll add a new entry for this pass.
+[RESULT ✓] view: 30. - **`lemma_kernel_alloc_one`** — `post == pre.alloc_one(addr)` where `pre=old(self)@`,
+31.   `post=final(self)@`. `alloc_kernel_frame` allocates via the **global** `frame::alloc()` and
+32.   never mutates `self.upool`, so the implementation has `final(self)@ == old(self)@`. The lemma
+33.   asser...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The TODO is already thorough. Let me append a concise pass-3 confirmation and write the response report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "Fresh reproduction" verus-ai-logs/nanvix-phys-phys-frame/verificat
+
+[THINKING] I'm going to add a concise note to the verification document confirming that all four failures occur simultaneously, then move on to writing the response report.
+[RESULT ✓] bash: 146:## Fresh reproduction (cheating-fix pass, 2026-06-15) — `lemma_kernel_alloc_one`
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+[RESULT ✓] view: 146. ## Fresh reproduction (cheating-fix pass, 2026-06-15) — `lemma_kernel_alloc_one`
+147. 
+148. Re-validated the "false for the implementation" claim with a live Verus run. Removing the
+149. lemma call from `alloc_kernel_frame` (manager.rs:398) and re-verifying yields:
+150. 
+151. ```
+152. error: po...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_fix_report_3.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_fix_report_3.md with 6221 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Now confirm kframe is still CLEAN and commit the docs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke

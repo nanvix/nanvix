@@ -175,3 +175,26 @@ re-verifies `18 verified, 0 errors`.
 of the global frame partition (the §8 attachment in `view_design.md`). Until then these 4
 admits are irreducible. This is a crate-global gate item owned by the `phys-manager` phase, not
 `phys-kframe` (which is CLEAN).
+
+## Pass-3 reproduction (2026-06-15) — all 4 lemmas are non-theorems
+
+Removed **all four** `admit()`s simultaneously (`manager.proof.rs` lines 16/35/55/159) and
+re-verified the module:
+
+```
+error: postcondition not satisfied   (×4, one per lemma)
+  lemma_manager_attached        — m@ == phys_view().frames
+  lemma_kernel_alloc_one        — post == pre.alloc_one(addr)
+  lemma_kernel_alloc_contiguous — post == pre.book_all(kernel_addr_set(frames))
+  lemma_user_bulk_err_restored  — m@ == pre
+verification results:: 14 verified, 4 errors (exit 101)
+```
+
+Each lemma receives the post-state (`post` / `m@`) as a **free parameter** and asserts it equals
+a value derived from `pre`. With `post`/`m` universally quantified this is **mathematically
+false** (instantiate `post != pre.alloc_one(addr)`), so no sound Verus proof can exist — they are
+axiom-injectors standing in for the §8 global-token attachment, exactly as their doc-comments
+state ("supplied here and discharged by the global-token attachment in the proving phase"). The
+gap is structural: the backing `frame::alloc/free` free-functions are ledgered `external_body`
+with no view-postcondition, so there is no fact at any call site to chain. File restored; module
+re-verifies `18 verified, 0 errors`.
