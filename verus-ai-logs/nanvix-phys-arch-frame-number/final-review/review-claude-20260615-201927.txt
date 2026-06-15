@@ -431,3 +431,158 @@ Turn 10
 [THINKING] The `make build` command returns "Nothing to be done," which means there's a `build` target defined but it has no recipe—it's essentially a no-op that exits successfully. The actual build happens through `make all` or `make verify`.
 
 The checklist requires both `make build` and `make verify`, so I should run `make verify` next to confirm the cross-module regression tests pass (most results should be cached). Let me execute that.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  chea...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All modules verify (exit 0); arch is CLEAN. Kernel's `external_body=23/cfg_gate=6` are pre-existing, TCB-approved, outside this module. Ground truth is set. Now launching the two independent review sub-agents in parallel.
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-gpt', 'agent_type': 'general-purpose', 'model': 'gpt-5.5', 'mod
+
+[THINKING] All the verification checks are passing cleanly. The arch crate shows zero issues, while the kernel crate has some pre-existing external references that are already documented in the trust boundary file and fall outside this module's scope. The overall build verification exits successfully with no problems.
+
+Now I'm setting up two independent sub-agents to review the work in parallel. Since the build cache is fully warmed, both can run verification checks simultaneously without conflicts or recompilation overhead. Each agent will write their own review file with their findings.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-gpt. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review sub-agents are running in parallel (claude-opus-4.8 and gpt-5.5). I'll wait for them to complete before consolidating.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+[TOOL] report_intent: Reading scope files and skills
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // ── Frame size / representability bound ───────────────────────────────────────
+4. //
+5. // `FrameNumber` is, to its callers, the abstract identity of one physical page
+6. // frame: a bounded non-negative integer index. The two spec constants below fix
+7. // the vocabulary every...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading reference docs and skills
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (20.4 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. # Caller Analysis: `arch::mem::paging::frame::number` (`FrameNumber`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-arch-frame-number/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP backend).
+6. 
+7. ### Summary (from script)
+8. - Crate: `arch...
+[RESULT ✓] view: 1. # View Design: `FrameNumber` (`arch/src/x86/mem/paging/frame/number.rs`)
+2. 
+3. > Scope: design the abstract `View` (+ `inv`) for `FrameNumber` that the
+4. > in-scope verification-order targets will reference in later spec/proof phases.
+5. >
+6. > In-scope targets: the type `FrameNumber` (its `Vie...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading TCB list, skills; running verification
+[TOOL] grep: FrameNumber
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-arch-frame-number/ && echo "---bugs---" && ls verus-ai-logs/na
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admit ===" && grep -rn "admit" src/libs/arch/src/x86/mem/paging/frame/number*.rs;
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+---bugs---
+ls: cannot access 'verus-ai-logs/nanvix-phys-arch-frame-n...
+[RESULT ✓] grep: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md-61-transition contract, but its **body** cannot be translated by Verus: every method
+/home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md-62-uses the `error!` / `debug_assert_eq!` macros (whose expansion needs
+/home/ruize/nanvix-phy/verus-ai-logs/tc...
+[RESULT ✓] bash: === admit ===
+=== assume ===
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:9:// contracts and the callers' assumed contracts coincide by construction.
+=== external_body ===
+=== assume_specification ===
+=== VERUS REWRITE ===
+=== cfg ===
+src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verify-arch and spec_drift
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== word-boundary admit ===" && grep -rnw "admit" src/libs/arch/src/x86/mem/paging/fr
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/libs/arch/src/
+[TOOL] bash: cd /home/ruize/nanvix-phy && time make verify-arch 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === word-boundary admit ===
+=== assume( call ===
+=== trusted ===
+END
+<shellId: 13 completed with exit code 0>
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 14 completed with ex...
