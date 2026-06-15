@@ -446,3 +446,106 @@ The hal `.as_ptr()` callers aren't in verified scope, and `as_ptr` is only used 
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -35
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::virt::identity_map:
+    ⚠️  external_body: 3
+  Affected functions:
+    - identity_map.rs:534 ensure_pt: external_body
+    - identity_map.rs:625 ensure_pte: external_body
+    - identity_map.rs:714 ide...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Module still verifies (6 verified, 0 errors) — the `as_ptr` assume_specification was dead. Now let me check AST consistency of the exec source against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== source diff vs base ==="; git diff verus-ai-prove -- src/kernel/src/mm/virt
+
+[THINKING] The module still verifies cleanly after removing that dead code path. There are three remaining TCB-allowed external_body calls left in the module, plus the `FixedSizeBumpAllocator::new` assume_specification that's needed by the verified static. The "CHEATING_DETECTED" status is expected since the gate flags those external_body calls, though they're sanctioned by the TCB.
+
+Now I'm checking AST consistency by comparing the current source code against the base branch to make sure there haven't been any unintended semantic changes.
+[RESULT ✓] bash: === source diff vs base ===
+=== END SOURCE DIFF ===
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Exec source is byte-identical to the base — zero AST mismatches. Let me check the spec/proof diffs and confirm no cfg-gated exec, then run full verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== spec diff ==="; git diff verus-ai-prove -- src/kernel/src/mm/virt/identity_
+
+[THINKING] The source exec file matches the base branch perfectly with no AST inconsistencies, so the code is unchanged. Now I'm checking how the spec and proof files differ from the base to get a fuller picture.
+[RESULT ✓] bash: === spec diff ===
+=== proof diff ===
+=== cfg gates in module ===
+src/kernel/src/mm/virt/identity_map.rs:24:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/virt/identity_map.rs:26:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/virt/identity_map.rs:739:#[cfg(feature = "test")]
+<shellId: 18 completed with exit ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short; echo "=== diff HEAD spec ==="; git diff -- src/kernel/src/mm/virt
+
+[THINKING] I'm noticing the git diff for the spec file came back empty, which is strange since I just made edits. Let me check if my changes actually match what's already in the base branch — it's possible the as_ptr assume_specification wasn't there to begin with, or my edit somehow reverted to match the original state.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/prover-claude-20260615-130056.jsonl
+ M verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/prover-claude-20260615-130056.txt
+=== diff HEAD spec ===
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '175,190p' src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] The spec file shows no changes in git status, which is odd since I edited it. Either the edit didn't persist or something reverted it. Let me check what's actually in the file right now to see if my changes are there.
+[RESULT ✓] bash: // specifications supersede them.
+
+// `<[T]>::as_ptr` no longer needs a placeholder `assume_specification` here: its only
+// caller in this module is `ensure_pt`, whose body is `#[verus_verify(external_body)]`
+// (TCB-listed) and therefore not translated by Verus. The former declaration was removed
+...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git ls-files src/kernel/src/mm/virt/ | head; echo "=== check ignore ==="; git check-i
+
+[THINKING] The edits are actually in the file, but git isn't tracking them as changes—which suggests the spec and proof files might be gitignored or not tracked at all. Let me check what git is actually tracking with ls-files to confirm.
+[RESULT ✓] bash: src/kernel/src/mm/virt/boot_init.rs
+src/kernel/src/mm/virt/identity_map.proof.rs
+src/kernel/src/mm/virt/identity_map.rs
+src/kernel/src/mm/virt/identity_map.spec.rs
+src/kernel/src/mm/virt/kpage.rs
+src/kernel/src/mm/virt/manager.rs
+src/kernel/src/mm/virt/mod.rs
+src/kernel/src/mm/virt/page_table_alloca...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff --stat; echo "=== explicit ==="; git --no-pager diff HEAD -- src/kernel/src/
+
+[THINKING] I'm seeing a contradiction here — the spec file shows as tracked but git diff isn't displaying any changes, even though I just made an edit. Let me run git diff again with the full path and check git status to see what's actually happening with this file. There's a possibility the change I'm looking at was already present in the HEAD commit, which would explain why it's not showing as a diff.
+[RESULT ✓] bash: .../prover-claude-20260615-130056.jsonl            | 117 +++++++++++++++++++++
+ .../prover-claude-20260615-130056.txt              |  86 +++++++++++++++
+ 2 files changed, 203 insertions(+)
+=== explicit ===
+0
+=== grep base for as_ptr ===
+177:// `<[T]>::as_ptr` no longer needs a placeholder `assume_sp...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+My spec edit persisted (the pipeline tooling committed it); exec source is unchanged. Now let me run full-kernel verification to ensure removing `as_ptr` caused no regressions elsewhere.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 2400 make verify-kernel 2>&1 | tail -40
+
+[THINKING] The pipeline tooling must have auto-committed my spec file changes during the verification run, which explains why the comment now appears in HEAD even though I didn't explicitly commit it myself. The git status showing only log files as modified confirms the edit persisted through that process.
+
+I should stop worrying about the git mechanics and just verify that the executable source matches the original baseline from the START commit, which it does. Now I need to run the full crate verification to make sure removing that assumption didn't introduce any regressions.
