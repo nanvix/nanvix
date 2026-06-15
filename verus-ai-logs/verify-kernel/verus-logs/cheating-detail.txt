@@ -9,7 +9,7 @@
     - mm/phys/frame.rs:565 alloc_range: external_body
     - mm/phys/frame.rs:652 instance: external_body
     - mm/phys/frame.rs:689 init: external_body
-    - mm/phys/frame.rs:853 free: admit
+    - mm/phys/frame.rs:846 free: admit
     - mm/phys/kframe.rs:141 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body

@@ -384,3 +384,168 @@ Turn 21
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "^error\|-->\|verified,\|sta
+[RESULT ✓] bash: 27:   --> src/kernel/src/mm/phys/upool.rs:268:5
+32:error: postcondition not satisfied
+33:   --> src/kernel/src/mm/phys/upool.rs:261:17
+45:error: precondition not satisfied
+46:   --> src/kernel/src/mm/phys/upool.rs:269:34
+56:error: precondition not satisfied
+57:   --> src/kernel/src/mm/phys/upool.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+**Major finding:** the frame.rs `alloc` shim with the strong `PhysAuth` contract now **verifies** (31 verified). The only remaining errors are the *caller cascade* into `upool.rs::Upool::alloc` (a verified function outside frame.rs). Let me determine how far the cascade reaches before deciding — check `test.rs` and whether callers are verified.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus_verify\|verus_spec\|fn test\|fn run\|frame::alloc\|external_body\|#\[test" s
+
+[THINKING] The frame.rs verification is now working with the PhysAuth approach, but this has created a cascade of precondition failures in the upool.rs caller—specifically in the unverified `frame::alloc` call that Upool::alloc depends on. The proof chain works at the frame level through ghost re-sync, but I need to resolve how this impacts the verified caller contract.
+
+I'm weighing two paths forward: either revert the experiment and document why the cascade makes this infeasible within scope, or push the token threading through all the downstream files (upool, manager, mod, test). The second option is problematic because manager's functions use error! macros and static mut that Verus can't translate—they'd have to stay external_body anyway, so threading the token everywhere would just relocate the problem rather than solve it.
+
+The reviewer's request to eliminate manager's external_body functions and derive them instead is actually impossible regardless of PhysAuth, since those functions contain constructs Verus fundamentally can't handle. And those functions are legitimately listed in tcb-allowed.md, so the reviewer's premise that they shouldn't be there is factually incorrect.
+
+Given my constraints—don't touch unlisted functions, only frame.rs is in scope—fully adopting PhysAuth cascades into do-not-touch territory and hits an infeasibility wall with the error! macros. But since the instruction is to fix it, I'm considering a hybrid approach: generate two versions of the frame.rs shims using the `with` clause, one verified with the token and one unverified with `requires false`, so existing callers don't break while the verified path is available.
+
+The problem is that any verified caller of the tokenless version will fail verification because of the `requires false`. I can't work around this without either renaming the function (breaking callers) or modifying upool.rs (outside my scope). So this genuinely can't be completed within the stated constraints—unless the reviewer's explicit mention of manager.rs changes means I'm actually supposed to expand scope and touch those files.
+
+Let me think through whether threading the token through upool and stopping at the external_body boundary would work: if Upool::alloc gets a `with` clause and threads the token to frame::alloc, then manager (which is external_body) can call the tokenless version harmlessly since external bodies don't verify. The verified Upool::alloc with the token would just need to verify in isolation, even if no real caller exercises it. That could actually work—the cascade stops at the first external_body boundary.
+
+But now I'm realizing the deeper problem: test.rs calls frame::alloc directly in multiple places, and if those test functions are verified, they'd also break when I strengthen the contract. Plus, removing phys_view() would break the do-not-modify specs in upool, manager, mod, and kframe. The directive says to make actual code changes, not justifications, but I've already tried this and hit real constraints—manager's external_body status is both tcb-allowed and infeasible to remove, and the error! macros can't be translated by Verus anyway.
+
+So I'm at a decision point: either keep the strengthened frame.rs alloc and thread the token through upool.rs to contain the cascade, or revert and report NEEDS_GUIDANCE with evidence. Since the reviewer explicitly lists upool and manager as in-scope, I should attempt the cascade empirically and see if it stops at external_body boundaries. Let me check whether test.rs functions are verified and trace what else would break.
+[RESULT ✓] bash: 51:fn test_user_frame_drop_reclaims_frames() -> bool {
+58:            match frame::alloc() {
+86:fn test_user_frame_leak_prevents_drop() -> bool {
+88:    let addr = match frame::alloc() {
+114:fn test_user_frame_drop_frees_frame() -> bool {
+115:    let addr = match frame::alloc() {
+143:fn test_user_fr...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+The cascade from `frame::alloc` reaches only the verified `Upool::alloc` (test.rs is unverified; manager is external_body). Let me attempt to thread the token through `Upool::alloc` to see if an end-to-end 0-error state is reachable. First, inspect `UserFrame::new` and the manager caller.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "fn new\|UserFrame::new\|phys_view\|verus_spec\|verus_verify" src/kernel/src/mm/phy
+
+[THINKING] Test functions in test.rs aren't verified, so they call the tokenless version of `frame::alloc()` without issue—they're just unverified exec code running normally. The token threading only needs to propagate through the verified `Upool::alloc()` in upool.rs, so test.rs won't be affected.
+
+Now I'm realizing that if I thread the token through `Upool::alloc`, I'd be modifying a do-not-touch file outside my original scope, even though the reviewer authorized upool/manager changes. The trickier problem is that `Upool::alloc` already has an existing spec over `phys_view()` that I'd need to rewrite—and that spec isn't actually consumed by verified code (since `manager::alloc_user_frame` is external_body), so it's only self-checked. I need to decide whether expanding changes into upool.rs is the right call here, or if there's a better approach.
+
+Stepping back, I'm weighing the reviewer's request against my hard constraints: I can't modify verified specs in upool.rs, I can't de-external_body the manager functions (the error! macros make that infeasible), and removing `phys_view()` breaks four modules I'm not supposed to touch. I've already demonstrated concrete errors for the first issue. The cleanest path forward is probably to show that the design as requested isn't feasible within these constraints, provide hard evidence, and either revert to the passing baseline or keep only the clean partial improvements. But before I do that, let me think about whether there's a way to strengthen the frame.rs shims without needing the full `with` clause cascade. I'm weighing whether to attempt threading the token through Upool::alloc to reach a fully verified state, versus reverting to the clean baseline and documenting the cross-module constraint. The risk is that modifying Upool (a file I'm supposed to avoid) might violate my scope, but if it works, I'd have a concrete demonstration that the strengthening is feasible end-to-end for the allocation path. Let me check whether UserFrame::new is verified and whether the token threading actually resolves the errors before committing to either approach. I'll scope this down to just threading the alloc path end-to-end through frame::alloc and Upool::alloc to see if I can reach a clean 0-error state for the whole module, then decide whether to extend to the other shims. Let me trace through UserFrame::new and manager::alloc_user_frame to understand the call chain.
+[RESULT ✓] bash: 33:#[verus_verify]
+39:#[verus_verify]
+54:    #[verus_spec(ret =>
+61:            // so `new` says nothing about `phys_view()`.
+65:    pub fn new(addr: FrameAddress) -> Self {
+78:    #[verus_spec(ret =>
+96:    #[verus_spec(ret =>
+100:            // stays allocated and `phys_view()` is unchanged.
+124: ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 54.     #[verus_spec(ret =>
+55.         requires
+56.             addr.inv(),
+57.         ensures
+58.             // `new` merely names an existing frame: the handle's address is `addr`
+59.             // and it inherits `addr`'s page-alignment. No allocation and no
+60.             // refcount change...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The frame.rs `alloc` shim verifies with the strong contract. Let me attempt to complete the `alloc` path end-to-end by threading the token through `Upool::alloc`, to test whether a contained 0-error fix is reachable. Let me check for existing call-site `with` patterns in the codebase/vstd.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "with Tracked\|with Ghost\|borrow_mut()\|Tracked(&mut" src/ 2>/dev/null | grep -v 
+
+[THINKING] I see that `UserFrame::new` takes an address with the invariant already established, so once `frame::alloc()` provides that invariant, creating the frame is straightforward. Now I'm threading the token through `Upool::alloc` to strengthen its postcondition from just ensuring the frame is valid and in the free list to incorporating the token-based state.
+
+The tricky part is that `Upool::alloc` is an inherent method (not a trait method), so the `with` clause should work fine. But I need to handle the `?` operator carefully when passing the token to `frame::alloc()` — I'll likely need to split the call and error handling so I can attach the `with` clause to the frame allocation itself, then propagate the result. The challenge is that `Upool::alloc` receives `auth` as a mutable reference to `PhysAuth`, but `frame::alloc` expects a `Tracked` wrapper around that same reference.
+
+However, I'm now realizing this change cascades across multiple files I shouldn't be modifying. The strong contract at `frame.rs` verifies cleanly, but pushing it through all five mutating shims in `upool.rs` and `manager.rs` violates my constraints — I'm touching functions outside the allowed list and crossing into do-not-touch territory. The empirical evidence shows the design works at the frame level, but the full cascade is too risky and too large in scope. I need to revert this experiment back to the clean baseline and document exactly where and why the cascade breaks, then mark this as needing guidance.
+
+Actually, wait — reverting leaves me with no code changes, which the instructions discourage. But leaving the repo broken is worse. Let me try a middle path: keep the harmless `PhysAuth` definitions and attempt to thread just `Upool::alloc` cleanly with a minimal, bounded change. If I can fix that one path without cascading errors, I can demonstrate the pattern works for at least the flagship allocation path and document the remaining work for the other four shims. Let me look for how to properly use the `with Tracked(...)` syntax at the call site.
+[RESULT ✓] bash: src/daemons/linuxd/src/profiler/mod.rs:114:                current.borrow_mut().add_succ(succ.clone());
+src/daemons/linuxd/src/profiler/mod.rs:126:        let guard = scope.borrow_mut().enter();
+src/daemons/linuxd/src/profiler/mod.rs:139:                    current.borrow_mut().leave(d.unwrap_or(dur...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Let me gather concrete evidence on the two infeasibility claims (phys_view removal scope; manager untranslatability) before deciding.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== phys_view() usages per file (specs that would break if removed) ==="; grep -rc "p
+
+[THINKING] There's no existing pattern for this approach in the codebase, and while it's documented, it's untested here—threading through `Upool::alloc` with the `?` operator and reborrows feels risky. I'm reconsidering what the safest, highest-impact path forward is, especially since the reviewer's core request really comes down to removing `phys_view()` and propagating `PhysAuth` throughout the entire subsystem.
+
+But here's the hard constraint: my scope is limited to `frame.rs` alone, and I can't touch unlisted functions. The reviewer wants changes that would require modifying `upool.rs`, `manager`, and other modules—which directly violates my restrictions. The reviewer's claim that manager functions aren't tcb-allowed is also factually incorrect; they're explicitly listed. The real issue is that those functions use `error!` macros that expand to `core::fmt::Arguments`, which can't be body-verified—the same wall I hit everywhere else.
+
+The most honest move is to revert to the clean baseline, then write a response with concrete evidence: the `PhysAuth` contract in `frame.rs` verifies cleanly, but adopting it breaks verified callers in `upool.rs` with specific errors, and removing `phys_view()` breaks four modules' specs. This gives the reviewer the actual constraints so they can either expand scope formally or accept the documented limitation. The PhysAuth specs I added are unused, which violates the floating specs rule, so I need to strip them out along with the frame.proof.rs changes and revert everything back to the committed baseline. Once I've cleaned that up and re-verified the baseline works, I'll gather the phys_view usage evidence to support my response.
+[RESULT ✓] bash: === phys_view() usages per file (specs that would break if removed) ===
+src/kernel/src/mm/phys/frame.proof.rs:1
+src/kernel/src/mm/phys/frame.rs:58
+src/kernel/src/mm/phys/kframe.rs:3
+src/kernel/src/mm/phys/kframe.spec.rs:6
+src/kernel/src/mm/phys/manager.proof.rs:1
+src/kernel/src/mm/phys/manager.rs:35...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+I now have conclusive evidence. Let me revert the experiment to restore the clean baseline, since a complete scope-respecting fix isn't reachable. Let me check git to revert precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short src/kernel/src/mm/phys/ ; echo "=== is alloc shim committed in HEAD? ===
+
+[THINKING] I'm finding that `phys_view()` is used across 9 files in the subsystem—all of them spec files marked as do-not-modify—so removing it would break everything. Looking at manager.rs, there are 13 instances of error handling patterns that can't be translated cleanly, which explains why external_body was necessary. This gives me the evidence I need: this is definitely a NEEDS_G situation.
+
+The reviewer's design would require removing `phys_view()`, threading `PhysAuth` through verified callers in multiple files, and de-externalizing manager functions that are both in the allowed list and untranslatable—all of which exceed the frame.rs scope and violate the hard constraints. Since I can't complete a full, scope-respecting fix without breaking the repo, the cleanest path is to revert the experiment back to the 32-verified baseline. I'm reverting the three modified files to restore the original state, then I'll verify the baseline is intact.
+
+Wait—let me think about whether there's any strengthening I can keep that stays within frame.rs bounds and doesn't break anything downstream.
+
+The `with` clause always generates a tokenless `requires false` version that breaks verified callers like `Upool::alloc` and `UserFrame::share`, so threading a token through the shims is off the table. And without a token, the constant `phys_view()` can't express the post-state needed to fix the reproducer. So there's no way to strengthen the mutating shims while staying in scope—the current pre-state specs are already the maximum I can achieve. That settles it: reverting is the right call.
+[RESULT ✓] bash: === is alloc shim committed in HEAD? ===
+754:pub(super) fn alloc() -> Result<FrameAddress, Error> {
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -3; echo "=== current working-tree alloc shim ==="; sed -n '73
+
+[THINKING] I'm checking whether my changes to the phys module were actually committed by the verify pipeline or if they're just not showing up in git status.
+[RESULT ✓] bash: 1b3e202f5 [verus] verify FAIL: kernel::mm::phys (31 verified, 1 errors)
+866f79faf [verus] verify FAIL: kernel::mm::phys (30 verified, 2 errors)
+a5045b86a [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+=== current working-tree alloc shim ===
+/// Alloca...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+I have conclusive evidence. The strengthened `alloc` shim verifies at the frame.rs level, but the change cannot be contained to frame.rs. Pushing the full cascade is both out of scope and provably cannot satisfy the reviewer's success criteria (manager functions can't be body-verified). Let me restore the clean 32-verified baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git checkout 3a1e556cf -- src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.proo
+
+[THINKING] The verify pipeline auto-commits after each run regardless of outcome, so my experiment spans across commits 866f through 1b3e, with the clean baseline at commit 3a1e556cf showing 32 verified cases. I've now demonstrated that the alloc shim works with the stronger contract, verifying 31 cases with only the upool cascade failing. Given that the reviewer has explicitly approved the strengthening and authorized changes to upool and manager, I'm ready to move forward with this approach.
+
+The core blocker to reaching zero errors for the alloc path is Upool::alloc itself. I'm going to attempt threading the auth token through Upool::alloc to eliminate that remaining failure. If successful, I'll have a fully verified, strengthened alloc path as a concrete fix, and I can document that the other four shims follow the same pattern. The challenge is that threading tokens through some shims while keeping phys_view() for external_body contracts creates an inconsistency—the manager's external_body functions assert facts based on phys_view(), while the strengthened shims assert auth-based facts. However, since manager is external_body, this inconsistency doesn't affect verification. My strategy is to thread Upool::alloc and see if I can reach zero errors for the whole module. If that works cleanly, I'll have a strong foundation to decide whether to extend the pattern to the other shims.
+
+To thread Upool::alloc, I need to add the auth token parameter, strengthen its ensures clauses with token-based assertions (or keep the phys_view ensures and add token ensures alongside them), and thread the token into the frame::alloc() call. The tricky part is handling the macro syntax for passing a mutable reference as a tracked argument—I'll need to use a reborrow to avoid moving the auth token.
+
+I've hit a point where the full cascade of changes (rewriting upool.rs, manager.rs, mod.rs, kframe.rs, removing phys_view from 9 files) would require violating my constraints and still wouldn't meet the reviewer's criteria, since manager functions can't be body-verified due to error! macros and must remain external_body. The honest outcome here is NEEDS_GUIDANCE, backed by concrete evidence that the strengthening cannot be contained to frame.rs alone.
+
+Since the experiment leaves the module in a broken state with 1 verification error, I'm reverting all three modified files back to the clean baseline commit where everything verified successfully.
+[RESULT ✓] bash: reverted
+src/kernel/src/mm/phys/mod.spec.rs:0
+src/kernel/src/mm/phys/frame.rs:0
+=== alloc shim restored? ===
+/// Allocate a frame.
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "verified,\|verified$\|^erro
