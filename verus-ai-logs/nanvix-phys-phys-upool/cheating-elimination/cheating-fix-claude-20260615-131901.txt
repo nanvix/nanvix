@@ -656,3 +656,71 @@ The core issue is whether the view can be shared between new and alloc without i
 Turn 45
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 200 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "^  verificati
+[RESULT ✓] bash: Exit code : 0
+    - upool.rs:255 new: external_body
+    - upool.rs:288 alloc: external_body
+  verification: cached (no recompilation), — (exit 0)
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Final state confirmed. Let me verify the git state and that all deliverables are in place.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== source tree clean? ==="; git status --short | grep -E "\.rs$|tcb-al
+
+[THINKING] Verus verification passed and the changes are committed—the external_body struct has been successfully removed from the pool, reducing the count from 3 to 2 entries, and I'm now checking that the git working tree is clean for the source files.
+[RESULT ✓] bash: === source tree clean? ===
+(no uncommitted source/tcb changes — auto-committed)
+=== deliverables ===
+-rw-rw-r-- 1 ruize ruize 5683 Jun 15 13:34 verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+-rw-rw-r-- 1 ruize ruize 5647 Jun 15 13:33 verus-ai-logs/nanvix-phys-phys-upool/veri...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status --short; echo "=== HEAD ==="; git --no-pager log --oneline -2
+
+[THINKING] I'm realizing the tcb-allowed.md changes might not have been auto-committed since I edited it after running make verify, so I need to check the actual git status to see what's uncommitted versus what's already in the diff.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-131901.jsonl
+ M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-131901.txt
+=== HEAD ===
+d60d86a2a [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no reco...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+All changes are committed (HEAD `d60d86a2a`); only harness log files remain dirty. 
+
+## Summary
+
+I re-examined the cheating report and worked the **upool** module per the escalation ladder.
+
+**Eliminated (sound, verified):**
+- **`Upool` struct `external_body`** → removed. It was unnecessary: the type is never constructed in verified code, so exposing its `()` field is harmless. Verified cleanly. This drops upool `external_body` **3 → 2** and the whole-crate count **15 → 14**.
+
+**Proven irreducible within scope (kept as `tcb-allowed` §8 boundaries):**
+- **`Upool::new`** and **`Upool::alloc`**. I ran the actual experiment (removed the attributes) and captured the real Verus errors (`postcondition not satisfied` at upool.rs:245 and :269). I then tried every equivalent rewrite:
+  - Interpreted view (`phys_view().frames`) → verifies `new` but makes `alloc`'s `alloc_one` transition **assume `false`** (a 0-arg `uninterp` is a logic constant ⇒ `old(self)@ == final(self)@`). Unsound.
+  - Ghost field → impossible: `FrameAllocView`/`Ghost` don't exist in non-`verus` builds; a cfg-gated field diverges the exec struct (ast-consistency violation).
+  - The genuine fix is a `Tracked` token from `frame::alloc`/`frame::init` — the **unlisted, `external_body`, raw-memory frame layer**, which the hard rule forbids touching.
+
+**Not present in upool:** `admit`, `assume`, `assume_specification`, `exec_allows_no_decreases` — all 0.
+
+**Verification:** `make verify-kernel` and `make verify` both pass (Verus **exit 0**; module 86 verified / 0 errors, crate 116 verified / 0 errors). No regressions. `verify.sh` treats cheating as a warning (exit = Verus exit), so the build passes.
+
+**Honest note:** the remaining crate-wide `external_body=14`/`admit=7`/`cfg_gate=12` are all in **out-of-scope unlisted modules** (`frame.rs`, `manager.rs`, `mod.rs`, `manager.proof.rs`), every one enumerated in `tcb-allowed.md`. The hard rule ("do not touch unlisted functions") forbids me from eliminating those from the upool task.
+
+**Deliverables updated:** `fix_report.md`, `verification_todo.md` (full error evidence + irreducibility proof), and `tcb-allowed.md` (struct entry marked eliminated).
+
+[THINKING] All my changes have been auto-committed during the verification runs, with only the log files remaining as untracked artifacts. Everything's consistent and ready. I've successfully removed the `Upool` struct's `external_body` field, which was a legitimate and verified change.
+
+The two remaining references in `Upool::new` and `Upool::alloc` are irreducible ghost-token boundaries that can't be eliminated without breaking the module's soundness—I've confirmed this through concrete Verus errors and tested every alternative approach. There are no admits, assumes, or unsound patterns anywhere in the upool module, and the full crate verification passes with zero errors and no regressions.
+
+I've documented everything in the updated tcb-allowed.md, verification_todo.md, and fix_report.md. The global cheating gate still shows external_body=14 and admit=7 because those are in other modules outside my scope, but the upool module itself is at its sound minimum.
+
+
+=== Session End ===
+Session: da2421e6-9dca-40e7-8c30-1c7026a28ddc
+Duration: 982.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-131901.jsonl
