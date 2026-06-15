@@ -823,17 +823,22 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 /// The number of free frames in the system.
 ///
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&PhysAuth>
     requires
         phys_view().initialized,
         phys_view().inv(),
+        auth@ == phys_view(),
+        auth@.initialized,
+        auth@.inv(),
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // Pure query: returns the size of the free pool. The free set is finite
-        // (it is carved from the finite bitmap), which the watermark caller
-        // (`check_user_watermark`) relies on to reason with `spec_watermark_ok`.
-        phys_view().frames.free_frames.finite(),
-        result as int == phys_view().frames.free_frames.len(),
+        auth@.inv(),
+        auth@.initialized,
+        // Pure query over the shared `PhysAuth` carrier: returns the size of the
+        // free pool. The free set is finite (it is carved from the finite bitmap),
+        // which the watermark caller (`check_user_watermark`) relies on to reason
+        // with `spec_watermark_ok`.
+        auth@.frames.free_frames.finite(),
+        result as int == auth@.frames.free_frames.len(),
 )]
 pub(super) fn free_count() -> usize {
     let inner = instance();
@@ -894,14 +899,20 @@ pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
 /// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
 ///
 #[verus_spec(ret =>
+    with Tracked(auth): Tracked<&PhysAuth>
     requires
         phys_view().initialized,
+        phys_view().inv(),
+        auth@ == phys_view(),
+        auth@.initialized,
+        auth@.inv(),
         phys_addr.inv(),
     ensures
-        phys_view().inv(),
-        // `is_covered` reports exactly the frames the allocator tracks: the union
-        // of reserved and free frames (`PhysMemView::covered`).
-        ret <==> phys_view().covered().contains(phys_addr@),
+        auth@.inv(),
+        // Pure query over the shared `PhysAuth` carrier: `is_covered` reports
+        // exactly the frames the allocator tracks: the union of reserved and free
+        // frames (`PhysMemView::covered`).
+        ret <==> auth@.covered().contains(phys_addr@),
 )]
 pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
     instance().is_covered(phys_addr)
@@ -1027,22 +1038,27 @@ pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
 
 /// Returns the current reference count of an already-allocated frame.
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&PhysAuth>
     requires
         phys_view().initialized,
         phys_view().inv(),
+        auth@ == phys_view(),
+        auth@.initialized,
+        auth@.inv(),
         frame.inv(),
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // A pure query: on success it returns the frame's current refcount (and
-        // the frame is allocated); on failure the frame is not allocated.
+        auth@.inv(),
+        auth@.initialized,
+        // A pure query over the shared `PhysAuth` carrier: on success it returns
+        // the frame's current refcount (and the frame is allocated); on failure the
+        // frame is not allocated.
         match result {
             Ok(count) => {
-                &&& phys_view().frames.allocated_frames.contains(frame@)
-                &&& phys_view().frames.refcounts.contains_key(frame@)
-                &&& count as int == phys_view().frames.refcounts[frame@]
+                &&& auth@.frames.allocated_frames.contains(frame@)
+                &&& auth@.frames.refcounts.contains_key(frame@)
+                &&& count as int == auth@.frames.refcounts[frame@]
             },
-            Err(_) => !phys_view().frames.allocated_frames.contains(frame@),
+            Err(_) => !auth@.frames.allocated_frames.contains(frame@),
         },
 )]
 pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {

@@ -168,28 +168,34 @@ impl UserFrame {
     /// Upon failure, an error is returned instead.
     ///
     #[verus_spec(result =>
+        with Tracked(auth): Tracked<&PhysAuth>
         requires
             self.inv(),
             phys_view().initialized,
             phys_view().inv(),
+            auth@ == phys_view(),
+            auth@.initialized,
+            auth@.inv(),
         ensures
-            phys_view().inv(),
-            phys_view().initialized,
-            // Pure query of the underlying frame's reference count: neither
-            // consumes `self` nor changes the count. On success the frame is
-            // allocated and the returned count equals its refcount; on failure the
-            // frame is not allocated.
+            auth@.inv(),
+            auth@.initialized,
+            // Pure query over the shared `PhysAuth` carrier: neither consumes
+            // `self` nor changes the count. On success the frame is allocated and
+            // the returned count equals its refcount; on failure the frame is not
+            // allocated.
             match result {
                 Ok(count) => {
-                    &&& phys_view().frames.allocated_frames.contains(self@)
-                    &&& phys_view().frames.refcounts.contains_key(self@)
-                    &&& count as int == phys_view().frames.refcounts[self@]
+                    &&& auth@.frames.allocated_frames.contains(self@)
+                    &&& auth@.frames.refcounts.contains_key(self@)
+                    &&& count as int == auth@.frames.refcounts[self@]
                 },
-                Err(_) => !phys_view().frames.allocated_frames.contains(self@),
+                Err(_) => !auth@.frames.allocated_frames.contains(self@),
             },
     )]
     pub fn refcount(&self) -> Result<u8, Error> {
-        frame::refcount(self.addr)
+        #[verus_spec(with Tracked(auth))]
+        let r = frame::refcount(self.addr);
+        r
     }
 }
 
