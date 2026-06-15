@@ -981,3 +981,253 @@ Let me run the verification. This may take several minutes.
 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
 613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 <shellId: 29 completed with exit code 0>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Verification passed (exit 0, cached). The crate-wide cheating counts (external_body=3, admit=1, cfg_gate=4) must be attributed. Let me confirm none are in the in-scope files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-arch/verus-logs/cheati
+[RESULT ✓] bash: === cheating-detail.txt ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== verus log tail: errors/verified ===
+<sh...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== full verus log ==="; cat verus-ai-logs/verify-arch/verus-logs/verus_2026-06
+[RESULT ✓] bash: === full verus log ===
+Timestamp: 2026-06-15_12-19-38
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+    Finished `dev` profile [op...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cat > /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.codex.md <<'EOF
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Independent Review — `arch-frame-number`
+2. 
+3. ## Scope and inputs verified
+4. - Reviewed only:
+5.   - `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+6.   - `src/libs/arch/src/x86/mem/paging/frame/number.spec.rs`
+7.   - `src/libs/arch/src/x86/mem/paging/frame/number.proof.rs`
+8. - Re...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Review completed and saved to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.codex.md`
+
+Summary:
+- In-scope spec/proof quality: OK
+- Caller expectation coverage: 7/7 covered
+- In-scope guardrails: admit/assume/external_body/assume_specification/cfg-gated-exec all 0
+- AST consistency: PASS (no mismatches, no `VERUS REWRITE`)
+- Spec drift: PASS (no weakening)
+- `bugs.md`: confirmed absent; no true in-scope defect found
+- `make verify-arch`: exit 0, error count 0, but overall status `CHEATING_DETECTED` (out-of-scope modules)
+
+Final verdict: **FAIL**.
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 196s, total_turns: 0, model: claude-opus-4.8, current_intent: "Reading in-scope files and docs", tool_calls_completed: 30, (timed...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'wait': False}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 198s, total_turns: 0, model: gpt-5.3-codex, duration: 180s
+
+Review completed and saved to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-fr...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.codex.md
+
+[THINKING] I see that Codex flagged this as a failure due to out-of-scope cheating detected at the crate level, specifically in table.proof.rs where there's an admit=1. Since that file is outside the scope of review, I should focus on evaluating the in-scope module instead and check Codex's reasoning directly.
+[RESULT ✓] bash: # Final Independent Review — `arch-frame-number`
+
+## Scope and inputs verified
+- Reviewed only:
+  - `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+  - `src/libs/arch/src/x86/mem/paging/frame/number.spec.rs`
+  - `src/libs/arch/src/x86/mem/paging/frame/number.proof.rs`
+- Reference docs read: `call...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Codex review complete (saved). Its only FAIL is the crate-level `CHEATING_DETECTED` from out-of-scope modules; all in-scope checks pass. Waiting for the claude sub-agent to finish.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+
+[THINKING] Codex's review is comprehensive, and task 6 is the only failure because the crate-level wrapper detects cheating from out-of-scope modules in the paging implementation, while the in-scope code itself is completely clean. The verification requirement asks for zero errors from `make verify-arch`, which it delivers—the CHEATING_DETECTED flag originates entirely from modules outside the scope of what's being evaluated.
+
+The distinction matters: this review focuses on the arch-frame-number module specifically, and by that standard, all guardrails pass with zero cheating introduced. The crate-level detection is picking up pre-existing issues from table read/write operations and the paging-table module's separate tracking, which aren't part of this module's scope. So the module-scoped review actually passes—verification confirms zero errors and the in-scope code has no cheating. I'm waiting for the claude sub-agent's assessment before making the final call.
+All cheating instances are in out-of-scope modules (invlpg, table read/write/lemma). In-scope files are clean. Let me do final confirmation checks before writing the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== bugs.md anywhere for module? ==="; find verus-ai-logs/nanvix-phys-arch-fram
+[RESULT ✓] bash: === bugs.md anywhere for module? ===
+(none above = confirmed absent)
+=== final-review dir ===
+total 1440
+drwxrwxr-x 1 ruize ruize     178 Jun 15 12:20 .
+drwxrwxr-x 1 ruize ruize     392 Jun 15 12:15 ..
+-rw-rw-r-- 1 ruize ruize    6479 Jun 15 12:20 final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 13936...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+All checks complete. Now I'll write the comprehensive review file.
+[TOOL] report_intent: Writing final review file
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.claude.md with 14191 characters
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Review complete and written to `final-review/final_review.claude.md`. Summary of findings:
+
+**All 9 tasks pass — zero blockers.**
+
+- **Spec quality (1):** `from_raw_value` has a complete, bidirectional contract (in-range ⇒ `Some` + value preserved; out-of-range ⇒ `None`). `into_raw_value` is total, value-preserving, and surfaces the `0 ≤ self@ ≤ spec_max()` bound (necessary for caller overflow safety, not redundant). Declarative, no tautologies/code-as-spec.
+- **Caller coverage (2):** 7/7 expectations covered, none missing.
+- **Proof completeness (3):** in-scope `admit()`=0, `external_body`=0.
+- **TCB (4):** 0 in-scope `external_body` → vacuously compliant.
+- **AST consistency (5):** PASS — 4 fns + struct MATCH; the only addition is the ghost `use_type_invariant`; no `// VERUS REWRITE` comments.
+- **Verification (6):** `make verify-arch` exit 0, 0 errors (crate-wide cheating counts all attributed to out-of-scope `paging/table` + `invlpg`).
+- **Guardrails (7):** admit/assume/external_body/assume_specification/uninterp/cfg-gated-exec all **0** in-scope (the 2 cfg lines are allowed ghost `include!` guards).
+- **Bugs (8):** `bugs.md` confirmed absent; no real defect exists, so nothing should have been recorded.
+- **Spec drift (9):** 0 drift; specs were only added (strengthening), never weakened.
+
+**Design note:** the shipped `pub open spec fn spec_max()` (concrete) is sound and *stronger* than `view_design.md`'s stale `uninterp` + `assume_specification` design — it discharges the `MAX` binding by proof instead of trust, and notably the doc's `uninterp` would have *violated* guardrails. Two non-blocking hygiene items: add `"None"` to a `bugs.md`, and update the stale `view_design.md`.
+
+**RESULT: PASS**
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 303s, total_turns: 0, model: claude-opus-4.8, duration: 303s
+
+Review complete and written to `final-review/final_review.claude.md`. Summary of findings:
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Both reviews complete. Both agree the in-scope module is 100% clean with 0 errors; codex's only FAIL is the crate-level `CHEATING_DETECTED` from out-of-scope modules. Let me read claude's file and run `make build` to complete the checklist.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make build 2>&1 | tail -20
+
+[THINKING] Both reviews came back—Claude passed it, Codex flagged a crate-level cheating detection from out-of-scope modules, but both agree the in-scope module itself is completely clean. Now I'm consolidating everything into the final review and need to decide whether the arch-frame-number module verification is a pass or fail. The task requires running make verify-arch to confirm zero errors, which it does with exit code 0, so the module-scoped review should pass despite the crate-level issues originating from other modules.
+[RESULT ✓] bash: <command started in background with shellId: build>
+[RESULT ✓] bash: # Final Review — `arch-frame-number` (independent, strict)
+
+- **Module:** `arch::x86::mem::paging::frame::number`
+- **Reviewer:** Independent final review (Claude)
+- **Date:** 2026-06-15
+- **Branch:** `verus-ai-prove` (base == verus branch)
+- **Review type:** Read-only. No source/spec/proof code was...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Both review files are thorough and consistent. Let me wait for the build to finish, then write the consolidated review.
+[TOOL] read_bash: {'delay': 60, 'shellId': 'build'}
+
+[THINKING] I'm consolidating the review files into the final_review.md while the build completes. The in-scope module passes all checklist items, and the CHEATING_DETECTED flags are coming from out-of-scope modules that are already listed in tcb-allowed.md, so I have what I need to finalize this.
+[RESULT ✓] read_bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^[a-z-]+:" Makefile 2>/dev/null | head -30; echo "---try all/build-arch---"
+
+[THINKING] The `make build` command isn't actually building anything—it's saying the target exists but has no recipe or is already up to date. I should check what the actual build targets are in the Makefile to see what's available.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+`make build` has no recipe (build happens via verify); `make verify-arch` already compiles the crate at exit 0. I have everything needed. Writing the consolidated review.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.md
+
+[THINKING] The `make build` target doesn't actually exist in this repo—it's a no-op. The real build happens through `make all` or `make all-nanvix`, and verification is handled by `make verify-arch`, which compiles everything via cargo and verus. Since `verify-arch` exits with 0, that confirms the compilation succeeded. I have what I need to write the response.
+
+All the in-scope checklist items pass. The crate-level CHEATING_DETECTED flag comes from modules outside the scope of this review, so for the module-scoped assessment, this is a PASS. Now I'll write the consolidated final_review.md.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.md with 9717 characters
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-arch-frame-number/final-review/*.md
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 14317 Jun 15 12:22 verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  6479 Jun 15 12:20 verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.codex.md
+-rw-rw-r-- 1 ruize ruize  9834 Jun 15 12:24 verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Final review complete. Two independent sub-agents reviewed (`claude-opus-4.8`, `gpt-5.3-codex`); raw reviews and the consolidated report are saved.
+
+**Result: PASS** for the in-scope `arch-frame-number` module.
+
+Key findings:
+- **Caller coverage:** 7/7 expectations mapped to requires/ensures.
+- **Cheating (in-scope):** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0.
+- **AST consistency:** PASS (4 matched, 0 mismatch). **Spec drift:** none. **Bugs:** none (bugs.md correctly absent).
+- **Verification:** `make verify-arch` exit 0, 0 errors.
+- **Spec quality:** `from_raw_value` bidirectional/exhaustive; `into_raw_value` total + surfaces the overflow-safety bound (required, not subsumed). Shipped `open spec_max()` is sounder than the stale view_design.md plan.
+
+The codex sub-agent's lone `FAIL` stems solely from a **crate-level** `CHEATING_DETECTED` aggregate (`admit=1, external_body=3`) located entirely in **out-of-scope** modules (`paging/table.*`, `invlpg`) — not attributable to this module. Two non-blocking notes recorded: update stale `view_design.md`, and the out-of-scope `table.proof.rs` admit / `invlpg` external_body should be resolved by their owning module efforts.
+
+
+=== Session End ===
+Session: 7da268f8-eb7a-40db-a85d-7d2ed504f31e
+Duration: 504.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/review-claude-20260615-121552.jsonl
