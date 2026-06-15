@@ -773,3 +773,175 @@ For the clone problem, I have a couple of options. I could add a `proof! { admit
 Turn 43
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|warning|
+[RESULT ✓] bash: verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 1
+    - region.rs:219 start: admit
+  Global: assume=0 external_body=25 admit=1 trusted=0 cfg_gate=7
+=== Function Coverage ===
+=== Summary ===
+  verification: 5 verified, 0 errors (exit 0)
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+0 errors, 5 verified. The `admit` is the expected spec-phase placeholder (task permits it), and `external_body=25` matches baseline (pre-existing `external_derive`, no new ones). Now let me verify dual compilation and check for regressions in other modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make build 2>&1 | tail -20
+
+[THINKING] The verification shows 5 successful checks with no errors—the CHEATING_DETECTED status is expected since admit=1 is a spec-phase placeholder and external_body=25 is pre-existing from the baseline, so neither represents a regression.
+
+I'm confirming the scope is correct: 4 of 28 exec functions have contracts (exactly what the task requires), and the other 24 are out of scope. Before running the full verification suite, I should test the build first to ensure the dual compilation works properly with the spec_addr path only active under verus_keep_ghost and the verus_spec attributes erasing correctly.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+
+[THINKING] The `make build` command isn't finding anything to build, so I need to look at the Makefile or build configuration to find the correct target name.
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+The build uses `./z build -- kernel`. Let me run the kernel build to confirm normal compilation works:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 ./z build -- all 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: all
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Normal build flags a duplicate `vstd` import. Let me check whether this is pre-existing and how the baseline handled it.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff --stat; echo "=== lines 6-33 of region.rs ==="; sed -n '6,33p' src/kernel
+
+[THINKING] There's a duplicate import issue where line 8 has `use vstd::prelude::*;` and line 32 has `use ::vstd::prelude::*;` — the compiler is flagging the second one as unused. The code previously relied on vstd items like View within a verus_keep_ghost block, but something's changed with how those imports are being handled. So line 8's `use vstd::prelude::*` is actually needed because the `#[verus_spec]` and `#[verus_verify]` macros come from that prelude, and they need to resolve even when the macro expands to nothing in a normal build. Line 32 is the redundant duplicate that should be removed. The question is whether line 32 existed in the original file and if the baseline build passed — I should check git history to confirm, but the simplest fix is just to remove the duplicate import at line 32.
+[RESULT ✓] bash: .../prover-claude-20260615-132817.jsonl            | 92 ++++++++++++++++++++++
+ .../prover-claude-20260615-132817.txt              | 57 ++++++++++++++
+ 2 files changed, 149 insertions(+)
+=== lines 6-33 of region.rs ===
+//===============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short | head; echo "=== is region tracked? ==="; git ls-files src/kernel/src/hal
+
+[THINKING] I'm noticing that `git diff` isn't showing region.rs as modified, even though I edited it—only the prover log files appear in the diff. Let me check the git status to figure out what's happening, since either the file isn't being tracked or my changes are already in the HEAD somehow.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-memory-region/specification/prover-claude-20260615-132817.jsonl
+ M verus-ai-logs/nanvix-phys-hal-memory-region/specification/prover-claude-20260615-132817.txt
+=== is region tracked? ===
+src/kernel/src/hal/mem/types/region.rs
+src/kernel/src/hal/mem/types/region.spec.rs...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== verus_spec present on disk? ==="; grep -n "verus_spec\|admit" src/kernel/src/hal/me
+
+[THINKING] Something's off with the git state — region.rs shows as unmodified in git status even though I edited it, and the HEAD content matches what I'm seeing. Either my changes didn't actually persist to the file, or the repository was already committed with those changes. Let me think through what could have happened here.
+
+Actually, the build error on region.rs:32 about the duplicate vstd import is revealing — that duplicate import (both `use vstd::prelude::*` on line 8 and `use ::vstd::prelude::*` on line 32) already exists in HEAD. So this isn't something I introduced. The question is why git status isn't showing region.rs as modified if I actually changed it, and whether that duplicate import was even being used in the baseline build since the verus block that referenced those imports is cfg-gated out during normal compilation.
+[RESULT ✓] bash: === verus_spec present on disk? ===
+211:    #[verus_spec(result =>
+223:        // the `Address` family); `admit()` is the specification-phase placeholder.
+224:        proof! { admit(); }
+229:    #[verus_spec(result =>
+380:    #[verus_spec(result =>
+393:    #[verus_spec(result =>
+=== git status porce...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== HEAD region.rs has verus_spec? ==="; git --no-pager show HEAD:src/kernel/src/hal/me
+
+[THINKING] The file has my changes on disk but git isn't detecting them as modifications—`git status` shows nothing and `git ls-files` indicates it's normally tracked. This shouldn't be possible unless the disk content somehow matches HEAD, but that doesn't make sense since HEAD doesn't have verus_spec. I'm trying to figure out what `git show HEAD:` would reveal about the actual file state.
+
+There's also a prover log file from an earlier run, which suggests a previous session may have already done this work and committed it. If HEAD already contains a version of the spec work from before, my edits might have just reproduced the same content by coincidence—though that seems unlikely to be identical. Let me check whether HEAD's version of region.rs actually contains verus_spec.
+[RESULT ✓] bash: === HEAD region.rs has verus_spec? ===
+211:    #[verus_spec(result =>
+214:            // as the stored `start` (`spec_addr(&result) == self@.start`). `T` is
+216:            // through the universal `spec_addr`, not `result@`.
+217:            crate::hal::mem::spec_addr(&result) == self@.start,
+221:  ...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+The verify harness auto-commits each run (HEAD = my work). The `make build` failure is a duplicate `vstd` import. Let me determine if it's pre-existing:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== region.rs imports at pre-spec baseline (parent of START commit) ==="; git --no-page
+
+[THINKING] Ah, so the verify harness automatically commits after each run—that's why my changes are already committed and git status is clean. Looking at the commit history, I can see the progression: starting with just 1 verified, then hitting a compilation error, moving to 4 verified with 1 error, and finally reaching 5 verified with 0 errors.
+
+Now the real issue: `make build` fails because of duplicate `use` statements for `vstd::prelude` at lines 8 and 32. The second one at line 32 is inside the verus block that gets stripped out during a normal build, so it shouldn't even be present in the compiled code. But the proc-macro attributes like `#[verus_verify]` and `#[verus_spec]` still need to resolve at parse time, and they come from `vstd::prelude`, so one import is enough—the second is genuinely redundant and Rust is correctly flagging it.
+
+The question is whether this was already broken at baseline. Since the verus block with line 32 was already gated behind `#[cfg(verus_keep_ghost)]`, it would've been stripped out in normal builds even before my changes, meaning the duplicate would've existed then too. The simplest fix is to remove the redundant `use ::vstd::prelude::*;` at line 32 and keep the one at line 8, which will let `make build` succeed. I should just check the git history to see if that duplicate import existed before my changes, rather than trying to reason through all the possibilities.
+[RESULT ✓] bash: === region.rs imports at pre-spec baseline (parent of START commit) ===
+8:use vstd::prelude::*;
+32:use ::vstd::prelude::*;
+=== current disk ===
+8:use vstd::prelude::*;
+32:use ::vstd::prelude::*;
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Pre-existing latent duplicate import (`vstd::prelude::*` at both line 8 and line 32), only surfaced now via `-D warnings`. The redundant line 32 is safe to remove since line 8 covers both builds. This is tightly coupled to my change (I touched this file's verus material).
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] The duplicate import existed before any verus changes, so the baseline build would fail too unless the verus block at the bottom was doing something to exclude it. Let me check what was actually in the pre-spec baseline to see if that verus block was already there.
+
+Both `vstd::prelude::*` and `::vstd::prelude::*` resolve to the same external crate in Rust 2018+, making them identical glob imports. The compiler would flag the second as unused since the first already provides all the same names. But this redundancy existed at baseline, so either the normal build was already broken (unlikely if CI passes) or I'm missing something about how these imports are actually used.
+
+Since the task requires `make build` to work, removing the redundant line 32 import is the right fix. But I should verify whether my changes to the verus block actually triggered this error or if it was pre-existing. The compiler flagged line 32 as the unused import, so I'll remove that one and keep line 8 since it's unconditional at the module top and covers both the verus_spec macro for normal builds and the View/int types for verus builds. Let me make that change and rebuild.
+[RESULT ✓] view: 28. use ::sys::error::{
+29.     Error,
+30.     ErrorCode,
+31. };
+32. use ::vstd::prelude::*;
+33. 
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] I'm second-guessing whether removing that import line is actually the right fix here. The constraint is to preserve the executable code with minimal changes, and while removing an unused import seems legitimate, I need to verify whether this import was actually unused in the original file before my changes. If the original build passed, then the import must have been needed, so I should reconsider what's really causing the issue.
+
+Let me think through this differently — I removed the bottom `verus! {}` block that was marked with `cfg(verus_keep_ghost)`, which shouldn't affect the normal build at all. So the normal build's import usage should be unchanged. The safest approach is to just test whether removing that duplicate import actually fixes the build, since line 8 already provides everything needed. I'll remove line 32 and verify both builds still work.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 ./z build -- all 2>&1 | tail -15
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.08s
+cp -f --preserve /home/ruize/nanvix-phy/target/debug/mkimage /home/ruize/nanvix-phy/bin/mkimage.elf
+Standalone images built successfully.
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profil...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Normal build passes. Now re-run module verification to confirm the verus build still passes after removing the import, then run full verify for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|warning|
+
+[THINKING] The build is passing now, but I'm second-guessing whether removing that line was correct since it was already there. Let me think through this: the build failed because line 32 was unused, yet it existed in the original code—so how was the project building before my changes? It seems my modifications must have made that import actually unused, whereas it was being referenced in the baseline version.
+
+I'm overthinking this. The reality is that both imports were duplicates, and my restructuring shifted which one the compiler actually needs. Since the build passes with just line 8, removing line 32 is safe. But I should re-run the verify harness to make sure the verus build still passes and there are no regressions.
