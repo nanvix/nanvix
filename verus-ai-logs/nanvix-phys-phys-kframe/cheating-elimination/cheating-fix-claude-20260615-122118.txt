@@ -511,3 +511,139 @@ Working tree is clean and phys-kframe remains CLEAN. Let me run the full `make v
 The reviewer explicitly asked me to eliminate these admits, which creates tension with the original constraints. Even if I were authorized to touch them, the sound fix would require ghost-token architecture changes that violate the ast-consistency rules I'm supposed to follow strictly. I've considered the standard Verus mechanisms—broadcast proof functions with external_body (forbidden by the reviewer), assume_specification (only for exec functions, not proof lemmas), and coherent spec changes (impossible without violating scope)—and there's genuinely no sanctioned path forward. This is a true architectural deadlock that requires a human decision.
 
 Now I need to document this blocker clearly in the verification_todo and fix_report, then run the full verification suite to get the definitive global status.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+--
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=15 admit=7 trusted=0 no_decreases=0 cfg_gate=12
+  coverage: 56/1027 exec functions have contracts
+  status: CHEATING_DETECTED
+<...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== all admits in kernel ==="; grep -rn "admit()" src/kernel/src --in
+
+[THINKING] The kernel verification passed, but there's a cheating detection flag with specific counts across different components. I need to track down all seven admit instances—four are in the manager proof file, and I'm looking for the remaining three scattered elsewhere.
+[RESULT ✓] bash: === all admits in kernel ===
+src/kernel/src/mm/phys/manager.proof.rs:16:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:35:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:55:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:159:    admit();
+src/kernel/src/mm/virt/identity_map.spec.rs:10...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+7 admits total: 4 in `manager.proof.rs` (phys-manager) and 3 in `mm/virt/identity_map.rs` (mm::virt) — **all outside the phys-kframe module, which is CLEAN**. These are unlisted modules with their own phases, and the admits are documented architectural blockers. Let me check the dialogue state to write the proper response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue/ 2>/
+
+[THINKING] I'm seeing that the unsafe admits are spread across two different subsystems: the physical memory manager in manager.proof.rs has 4 admits, while the virtual memory identity_map module has 3 admits, and there's also an external body reference in the frame manager pool.
+
+The key insight is that phys-kframe itself is completely clean—all the reported cheating is in sibling modules outside my scope. The prior cheating report only documented the 4 manager admits and the external body since it was scoped to the physical subsystem, not the virtual layer.
+
+Given that I can't modify these unlisted functions and the admits represent genuine architectural blockers that would require ghost-token changes to resolve soundly, the right move is to document this as a blocker report with clear evidence and hand it off rather than attempt an unsound workaround.
+
+I'll update the verification_todo.md in the phys-kframe directory to reflect this global gate status and add my fresh reproduction findings to the existing documentation.
+[RESULT ✓] bash: STOP
+turn_001_driver.md
+turn_001_fixer.md
+turn_002_driver.md
+=== any cheating_report or driver for this turn ===
+cheating-fix-claude-20260615-122118.jsonl
+cheating-fix-claude-20260615-122118.txt
+cheating_report_1.md
+dialogue-reviewer-t002-claude-20260615-121541.txt
+dialogue-reviewer-t002-claude-2026...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== turn_002_driver ==="; cat verus-ai-logs/nanvix-phys-phys-kframe/c
+[RESULT ✓] bash: === turn_002_driver ===
+## Turn 2: Verify fixer t1 + walk remaining checklist
+
+### Progress
+- FIXED: **Zero trusted functions** (the t1 FAIL) — verified below.
+- PASS (re-confirmed): admit, assume, exec_allows_no_decreases, external_body-in-kframe,
+  cfg-gated-exec, external_body-listing.
+- PASS (ne...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now I have the complete picture. Critical context: **the phys-kframe phase is already RESOLVED** (turn_002 driver wrote `STOP = RESOLVED`). The phys-kframe module is CLEAN with zero cheating. The reported global cheating (15 `external_body` + 7 `admit`) is entirely in **other unlisted modules**: phys-frame, phys-manager, phys-mod, phys-upool, and mm::virt.
+
+Let me verify the 3 identity_map admits are genuinely out-of-scope/blocked, then write an honest, evidenced report.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The phys-kframe phase was already resolved in the previous turn, so this current message about detected cheating is a separate invocation. The cheating_report_1.md file documents global cheating patterns that the gate has identified, and I'm looking at the newest files related to this report.
+
+Since phys-kframe is already clean and complete, the remaining 15 external_body violations and 7 admits are all in other modules like phys-frame, phys-manager, and mm::virt. The 7 admits represent genuine architectural blockers around global-partition token attachment and identity mapping, while the 15 external_body issues are ledgered global-singleton boundaries. However, I can't soundly fix these without either modifying unlisted functions, adding ghost-token infrastructure that would break consistency, or getting human-reviewed architectural decisions—all of which fall outside the original task scope.
+
+The honest path forward is to document this as a blocker requiring human decision with concrete evidence, rather than fabricating unsound fixes. The phys-kframe module itself is fully resolved; the global cheating the gate is reporting belongs to other bottom-up modules that are out of scope for this phase and have their own tracked blockers.
+
+But I'm reconsidering whether there's a legitimate way to make progress. The prior phase's verification_todo mentioned that lemma_manager_attached needs human-approved axiom/assume_specification realizing the attachment. What if I could express the manager's view as an assume_specification tied to the existing EXEC accessor, or even redefine PhysMemoryManager::view directly as phys_view().frames? That would make the lemma provable by definition, but it requires modifying an unlisted spec file, which violates the scope constraints.
+
+The deeper issue is that phys_view() is stateless, so defining the manager's view as a constant function of it creates a contradiction with the alloc_one transitions. The real architectural fix would be making phys_view() stateful through ghost token state, but that's a forbidden exec change.
+
+I'm confident now in the diagnosis. I need to write the honest report documenting that phys-kframe itself is clean and resolved, while the global gate cheating stems from 15 external_body calls and 7 admits across unlisted sibling modules. The 4 manager admits represent a genuine architectural blocker that can't be resolved within the current constraints. I'll produce a clear final response with fresh reproduction evidence and update the verification_todo accordingly.
+[RESULT ✓] view: 700.         identity_map_view().inv(),
+701.     ensures
+702.         identity_map_view().inv(),
+703.         match result {
+704.             // The page containing `phys_addr` is reachable at its own physical address. After init
+705.             // this means it is present (writable, supervisor) in...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+I now have complete, verified findings. Let me write the honest, evidence-backed report and update the verification TODO.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_fix_report_1.md
+
+[THINKING] The identity_map admits belong to mm::virt, which is outside my scope here—that subsystem's responsibility. The kframe verification notes confirm mm::virt hasn't been verified yet. I've completed my analysis and can now finalize my findings: the phys-kframe module is clean with no issues identified.
+
+The global gate has 15 external_body references and 7 admits scattered across unlisted, out-of-scope modules—4 in phys-manager and 3 in mm::virt. The core problem is that phys_view() is a stateless constant modeling a mutable global partition, and fixing this coherently would require threading ghost tokens through execution signatures, which violates the ast-consistency constraint I'm not allowed to change. The functions are unlisted, so I can't touch them anyway. I've confirmed the issue by removing a postcondition and watching the proof fail, proving the implementation doesn't satisfy the spec. This is an architectural blocker that requires human design decisions outside my authorized scope.
+
+Now I'll write the report with concrete evidence and update the verification_todo.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_fix_report_1.md with 7381 characters
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me append the fresh reproduction evidence to the canonical TODO that documents these manager admits (phys-frame's verification_todo).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && tail -15 verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+
+[THINKING] I'm deciding whether to add the fresh reproduction evidence to the phys-frame verification_todo since that's where the manager admits documentation lives, or if I should update the phys-kframe verification_todo with a pointer to the global blocker status instead. Let me add a dated note to the canonical location with the new findings.
+[RESULT ✓] bash: (`panic!("frame allocator used before init()")`) when the singleton is uninitialized — it
+  may both open invariants and unwind. Unblocked when the singleton-access boundary exposes a
+  `no_unwind` / `opens_invariants none` accessor (proving-phase ghost-token layer).
+
+## Not in scope (kept `external...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat >> verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md <<'EOF'
+
+-
+[RESULT ✓] bash: appended
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Now let me commit the documentation and run a final confirmation that nothing is broken.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating
+[RESULT ✓] bash: 904f92e82 [verus-ai] cheating-fix pass: document phys global admit/external_body blockers
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== source working tree clean? ==="; git status --porcelain | grep -v
