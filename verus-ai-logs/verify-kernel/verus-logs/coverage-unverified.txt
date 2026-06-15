@@ -1,4 +1,4 @@
-# Unverified exec functions: 975/1022
+# Unverified exec functions: 974/1022
   do_debug
   debug
   do_evctrl
@@ -389,7 +389,6 @@
   signal_startup_complete
   get_kstack_top
   get_kstack_guard_base
-  gva_to_gpa
   virt_to_phys
   is_valid_physical_address
   is_valid_physical_region
