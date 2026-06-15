@@ -238,3 +238,42 @@ Turn 5
 ────────────────────────────────────────────────────────────
 The source changes are committed in `0d6650056` ("verify PASS: 5 verified, 0 errors"). Now I independently verify: run `make verify-kernel`, confirm `admit=0` for the module, and run a build to ensure the `Copy` supertrait change doesn't break the normal compilation.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | tail -30
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+`admit=0` now (was 1), exit 0. The remaining cheating status is from external_body in other modules. Confirm region module is clean and verify the build still works (the `Copy` supertrait change affects the whole `sys` crate / all Address impls).
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== region own-module cheats ==="; grep -nE "region\.(rs|spec\.rs|proof\.rs)" verus-a
+[RESULT ✓] bash: === region own-module cheats ===
+NONE (clean)
+
+=== admit anywhere in tree (non-comment) in region files ===
+NONE
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Region module is clean of all cheats. Now verify the build — adding `Copy` to the `Address` supertrait is a workspace-wide change that must not break compilation or any Address impl.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-ke...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Build succeeds with the `Copy` supertrait change. Since the change is in the shared `sys` crate, I must verify cross-module regression there too — not just the kernel.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^verify-sys|VERUS_CRATES" Makefile | head
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -25
+
+[THINKING] The build completed successfully with the Copy supertrait change, and since the kernel build ran with build-std and depends on sys, the successful exit confirms that sys compiles correctly with the new bound.
+
+But I'm noticing something important — the Copy change was added in commit 0d6650056, yet looking at the commit history, the most recent "verify PASS: sys::all" is from 3e07b8075, which comes *before* the Copy change. So sys hasn't actually been re-verified after the modification. I need to check whether the sys crate was properly re-verified post-change to confirm the fix is sound across the entire module, not just the kernel build.
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 7 completed with exit code 0>
