@@ -463,3 +463,139 @@ Looking at each one: `PAGE_SIZE` is a foreign function from the `arch` crate tha
 
 Let me run the verification to establish the baseline, though the module path in the verify script might need adjustment.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Module is **CLEAN** — 0 cheating in scope. The global `external_body=24 cfg_gate=6` are out-of-scope modules. Now checking AST consistency vs base branch.
+[TOOL] report_intent: Checking AST consistency
+[TOOL] bash: cd /home/ruize/nanvix-phy && git show verus-ai/sys-virt-address:src/kernel/src/hal/mem/types/address/frame.rs 2>&1 | hea
+
+[THINKING] The module verification shows no cheating detected—the external references are from other modules outside the scope. The five unverified functions aren't in the target list, so I'm leaving them as-is per the task requirements. Now I'm checking the global cheating status.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use cra...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Base branch had `into_raw_value` as `external_body` — now body-verified (eliminated). Let me check the AST-consistency tooling and approved deviations.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && ls *.py *.json 2>/dev/null | head -40; echo "---ast scripts---"; ls | grep -i "a
+
+[THINKING] I'm comparing the verification approach between the base and current versions—the base branch had `into_raw_value` marked as external_body, but now it's been switched to a body-verified implementation. Looking at the exec function signatures, the base version's `from_frame_number` constructs a result by wrapping a physical address conversion.
+
+The current version refactors this into a let-binding that extracts the complex expression, adds a proof block to verify the address semantics, then passes it to the constructor—this is a pre-approved deviation that preserves the runtime behavior while making the proof obligations explicit. Similarly, `into_frame_number` in the base just auto-derefs through PageAligned, but the current version explicitly binds the dereferenced PhysicalAddress to a local variable, inserts the proof block, then calls the conversion method.
+
+Both approaches are semantically identical since PhysicalAddress is Copy, so dereferencing and copying doesn't change the value or complexity. The `from_raw_value` method follows the same pattern. Notably, `into_raw_value` had its `external_body` annotation removed during proving—the cheating was eliminated and the body remains unchanged.
+
+The spec also strengthened the `inv()` condition by adding a frame number bound check, and the codebase was restructured to split spec and proof into separate files included via cfg gates, which is purely an organizational change to verification materials. The exec code changes are all consistent: the pre-approved deviations with intermediate variables, ghost proof blocks, and the removal of external_body from `into_raw_value` all preserve semantics and complexity. The deviations are explicitly labeled in the source comments, and the ast-consistency skill likely recognizes these as pre-approved patterns.
+[RESULT ✓] bash: __init__.py
+config.py
+copilot.py
+guardrails.py
+prompts.py
+report.py
+run.py
+tree_sitter_compat.py
+utils.py
+workflow.py
+---ast scripts---
+<shellId: 27 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rln "ast-consistency\|ast_consistency\|preserve.*semantics\|complex_expr\|
+[RESULT ✓] bash: prompts.py
+prompts.py
+---
+prompts.py:95:- [ ] AST consistency: zero mismatches (run **ast-consistency** skill; only semantically-equivalent rewrites for verified Verus limitations)
+prompts.py:634:- **ast-consistency** — reference: no exec code changes via cfg gates; workarounds must preserve semanti...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -iname "*ast-consistency*" -o -iname "*ast_consistency*" 2>/dev/null | grep -v proc | head; echo "---skill dirs--
+
+[THINKING] I'm looking for where the ast-consistency skill is actually defined—it's referenced but I don't see an automated script for it, so I need to search for the skill content, which might be bundled as a markdown file or stored elsewhere.
+[RESULT ✓] bash: /mnt/shared/nanvix/verus-ai-history/ast-consistency
+/mnt/shared/nanvix/verus-ai-history/ast-consistency2
+/mnt/shared/nanvix/verus-ai-history/ast-consistency3
+/mnt/shared/nanvix/verus-ai-history/ast-consistency4
+/mnt/shared/verus-ai-improve4/docs/skills/ast-consistency
+/mnt/shared/verus-ai-improve4/s...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/ ; echo "---"; find /home/ruize/verus-ai-exp -iname "*ast_consist*" -o -iname "*ast-consist*
+
+[THINKING] I need to locate the ast_consistency.py tool for the active verus-ai directory at `/home/ruize/verus-ai-exp/verus-ai`, so I'm checking for the script nearby or looking at the skill documentation to understand how to run the consistency check.
+[RESULT ✓] bash: EXPLORATION_INDEX.md
+EXPLORATION_REPORT.md
+HARNESS-MECHANISMS.md
+HARNESS-QUICK-REFERENCE.txt
+HARNESS-SUMMARY.txt
+README-HARNESS.md
+backup
+materials
+setup-verus-crate.sh
+sync_progress_0601.sh
+verus-ai
+verus-ai-hfs
+verus-ai-hfs-runner
+verus-ai-lru-0422
+verus-ai-phy-mm-0423
+verus-ai-sparse-bitmap-big-c...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The `f(complex_expr)` → `let x = complex_expr; f(x)` deviation is pre-approved. Let me run the AST consistency checker.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/sy
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+FrameAddress::eq                         MATCH                                
+FrameAddress::fmt                        MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && for fn in "FrameAddress::from_frame_number" "FrameAddress::from_raw_value" "FrameAddress::i
+
+[THINKING] I'm noticing that three functions have mismatches—from_frame_number, from_raw_value, and into_frame_number—and these are exactly the ones with the pre-approved deviation where complex expressions get extracted into variables before being passed to the function. Let me check the diffs to verify they only contain that approved pattern.
+[RESULT ✓] bash: ===== FrameAddress::from_frame_number =====
+## FrameAddress::from_frame_number (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,9 @@
+     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+-        Ok(Self(PageAligned::from_address(PhysicalAddress::from_number(frame_n...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+All three mismatches are the documented pre-approved `f(complex_expr)` deviation (proof! blocks are ghost-stripped). AST consistency satisfied. Now confirming no regressions across the full crate.
+[TOOL] report_intent: Running full-crate verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -40
+
+[THINKING] All three mismatches follow the same pre-approved pattern where a complex expression gets extracted into a variable before being passed to a function, each marked with the appropriate deviation comment. The `proof!` blocks are ghost code that the exec-only checker strips out, so they don't show up in the execution diff. Now I'm checking whether `into_frame_number` preserves semantics — the original calls it on `self.0`, which is a `PageAligned<PhysicalAddress>`.
+
+Since `PageAligned` dereferences to `PhysicalAddress` and `PhysicalAddress` is `Copy`, the method call auto-derefs and copies the value before calling `into_frame_number` by value. The rewritten version explicitly binds that dereferenced copy to a local variable, then calls the method — same semantics, same evaluation order. The other two methods follow the same pattern with identical results. All three deviations are documented and pre-approved, so AST consistency is satisfied with zero unexplained mismatches.
+
+The module is already in its final clean state from the proving phase — no code changes were made, so there's nothing to regress. I should run `make verify` to confirm the kernel still verifies cleanly and the module remains free of cheating.
+[RESULT ✓] report_intent: Intent logged
