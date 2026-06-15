@@ -1211,3 +1211,46 @@ Now add the spec to `into_raw_value` in the `Address` trait impl.
 Turn 79
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|coverage:|status:" | head -20
+[RESULT ✓] bash: error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+error: could not compile `sys` (lib) due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilatio...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+`new`/`from_raw_value` resolved now. The trait-impl error requires the **entire** `impl Address for VirtualAddress` to be verified to spec one method. Let me add `#[verus_verify]` to that impl block and see what the other methods need.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] Good news—`new` and `from_raw_value` are resolving now, but `into_raw_value` is hitting a verification constraint: I can't verify just one method of a trait impl in isolation. The entire `impl Address for VirtualAddress` block needs to be verifiable all at once, which means all eight methods have to work together without errors.
+
+The real blockers are the pointer casts in `as_ptr` and `as_mut_ptr`, plus the error handling in `align_up`—these aren't even on the task list, so speccing them would be scope creep. The phys.rs file avoided this exact problem by leaving its `impl Address for PhysicalAddress` completely unverified. I'm weighing whether to verify the whole impl despite the risky methods, move the spec to the trait declaration itself (which would affect all implementors), add an inherent `into_raw_value` method (changing the API), or rethink the approach entirely.
+
+The error message suggests wrapping the impl in `verus!{}`, but that conflicts with the constraint against wrapping exec functions. Using `#[verus_verify]` on the impl block instead might work—the trivial methods would pass, but the pointer casts and error construction could fail or require specs I shouldn't be adding.
+
+The alternative of adding `View` to the `Address` trait itself is too invasive and risky for the codebase. So the cleanest approach is to just try `#[verus_verify]` on the entire `impl Address for VirtualAddress` block and see which methods actually fail verification.
+[RESULT ✓] view: 174. 
+175. impl Address for VirtualAddress {
+176.     ///
+177.     /// # Description
+178.     ///
+179.     /// Instantiates a new [`VirtualAddress`] from a raw value.
+180.     ///
+181.     /// # Parameters
+182.     ///
+183.     /// - `raw_addr`: The raw value.
+184.     ///
+185.     /// # Returns
+186...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -iE "error|warning|verified|cannot|entire impl|coverage:|status:"

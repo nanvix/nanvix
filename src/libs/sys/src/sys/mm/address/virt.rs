@@ -172,6 +172,7 @@ impl VirtualAddress {
     }
 }
 
+#[verus_verify]
 impl Address for VirtualAddress {
     ///
     /// # Description
