@@ -24,7 +24,7 @@ pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
     // `spec_max() == MAX_ADDRESS / FRAME_SIZE - 1`, with `MAX_ADDRESS == usize::MAX`.
     assert(s == mem::FRAME_SIZE as int);
     assert(FrameNumber::spec_max() == (m / s - 1) as nat);
-    assert(0 <= raw <= m / s - 1);
+    assert(raw <= m / s - 1);
 
     // `(m / s) * s <= m`, since `m == s * (m / s) + (m % s)` with `0 <= m % s`.
     lemma_mod_bound(m, s);
@@ -33,7 +33,6 @@ pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
     assert(raw * s <= m) by (nonlinear_arith)
         requires
             s > 0,
-            0 <= raw,
             raw * s <= (m / s - 1) * s,
             m == s * (m / s) + (m % s),
             0 <= m % s,
@@ -61,6 +60,9 @@ pub proof fn lemma_frame_index(
         frame_number as int <= spec_max_frame_number(),
 {
     // `raw_addr >> shift == raw_addr / 2^shift == raw_addr / spec_page_size()`.
+    assert(shift < usize::BITS) by {
+        assert(usize::BITS == 64);
+    }
     lemma_usize_shr_is_div(raw_addr, shift);
 
     // Bridge the `nat` division from the shift lemma to the `int` division in

@@ -730,3 +730,74 @@ Turn 46
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B3
 
 [THINKING] Verus is running now with 4 passing checks, but I'm seeing 2 failures—one from a failed assertion and another from an unsatisfied precondition. Let me dig into what's causing these.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module hal::mem::types::address::phys
+
+error: assertion failed
+  --> src/kernel/src/hal/mem/types/address/phys.proof.rs:27:12
+   |
+27 |     assert(0 <= raw <= m / s - 1);
+   |            ^^^^^^^^^^^^^^^^^^^^^ assertio...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n -A8 "pub.*proof fn lemma_mul_inequality" vstd/arithmetic/mul.rs
+
+[THINKING] I'm hitting an assertion failure where the raw frame value exceeds the maximum allowed range. The issue is that the spec requires `frame@ <= (m/s - 1)` and `0 <= raw`, but the frame value is being cast from a usize through int, which could introduce negative values in spec mode even though the underlying usize is always non-negative.
+
+The real problem is that the view function is closed, so Verus can't see that `frame@` must be >= 0 from the usize cast. I need either an explicit lower bound requirement on `spec_frame_raw_value(frame)` or to derive it from a type invariant, but cross-crate type invariants don't work here. I'm wondering if the lower bound is even necessary for the no-overflow proof.
+
+Looking at the lemma structure, I only need `raw <= m/s - 1` and `0 <= s` to prove `raw * s <= (m/s-1) * s`. The nonlinear arithmetic can show `(m/s-1) * s <= m` using the division identity `m = s*(m/s) + m%s`, which means `(m/s-1)*s = m - m%s - s <= m`. So I can restructure the proof to avoid requiring `0 <= raw` entirely.
+[RESULT ✓] bash: 164:pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+165-    requires
+166-        x <= y,
+167-        z >= 0,
+168-    ensures
+169-        #[trigger] (x * z) <= #[trigger] (y * z),
+170-{
+171-    lemma_mul_induction_auto(z, |u: int| u >= 0 ==> x * u <= y * u);
+172-}
+--
+248:pub broad...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I can drop the `0 <= raw` constraint since `lemma_mul_inequality` only needs `x <= y` and `z >= 0`. For `lemma_from_number_no_overflow`, I'm updating the assertion to just `raw <= m/s - 1` and running nonlinear arithmetic without that lower bound. The `raw <= m/s - 1` constraint comes from the frame requirement where `frame@ <= spec_max_frame_number()`.
+
+Now I need to handle the casting: `spec_max()` returns a nat, and when cast to int it should equal `m/s - 1`. Since `m = usize::MAX` and `s = 4096`, the division gives a concrete value around 4503599627370495, which is definitely positive, so Verus can compute this. I'll assert that `spec_max() as int == m/s - 1` to bridge the gap.
+
+For the second issue with `lemma_usize_shr_is_div`, the precondition needs `0 <= shift < usize::BITS`, but I only have `shift < 64`. Since `shift` is already a usize (so `0 <= shift` is automatic) and `usize::BITS == 64` on x86-64, this should satisfy the requirement—though Verus might not be automatically connecting these facts without explicit help.
+
+Let me try adding an assertion to confirm `shift < usize::BITS` holds, or if that doesn't work, I'll assert `usize::BITS == 64` directly since Verus should know this for the target architecture. Then I'll rewrite the proof carefully.
+[RESULT ✓] view: 1. use vstd::arithmetic::div_mod::{
+2.     lemma_fundamental_div_mod,
+3.     lemma_mod_bound,
+4. };
+5. use vstd::arithmetic::mul::lemma_mul_inequality;
+6. use vstd::bits::lemma_usize_shr_is_div;
+7. 
+8. verus! {
+9. 
+10. // A frame index scaled by the frame size stays within `usize`, so `from_number`'...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Now fix the shift precondition by establishing `usize::BITS == 64`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B2
