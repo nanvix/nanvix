@@ -1,4 +1,4 @@
-# Unverified exec functions: 974/1022
+# Unverified exec functions: 971/1022
   do_debug
   debug
   do_evctrl
@@ -298,9 +298,6 @@
   new
   into_physical_address
   into_page_address
-  from_frame_number
-  into_frame_number
-  from_raw_value
   fmt
   eq
   test
