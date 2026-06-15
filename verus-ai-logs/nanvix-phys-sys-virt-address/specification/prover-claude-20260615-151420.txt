@@ -1597,3 +1597,145 @@ All crates verify with 0 errors (bitmap 70, slab 35, sys 6, kernel 43). The CHEA
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify >/tmp/verify_full.log 2>&1; echo "make verify exit: $?"; echo "=== errors? ==="; 
 
 [THINKING] All the crates are verifying cleanly with zero errors across the board, and the CHEATING_DETECTED statuses I'm seeing are pre-existing baseline issues from external_body TCB items, not regressions introduced by my changes.
+[RESULT ✓] bash: make verify exit: 0
+=== errors? ===
+=== per-crate results ===
+<shellId: 71 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+`make verify` exits 0 with no errors. Now let me confirm `make build` (normal dual compilation) still works.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make build >/tmp/build.log 2>&1; echo "make build exit: $?"; tail -15 /tmp/build.log | grep -
+
+[THINKING] The verify command exited successfully with no errors, and the grep for verification results returned nothing because the second run was cached without recompilation—that's the expected behavior. Now I'm moving on to run make build to check that the dual compilation works correctly with normal cargo build.
+[RESULT ✓] bash: make build exit: 0
+--- any errors ---
+<shellId: 72 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+`make build` and `make verify` both pass (exit 0). Let me do a final review of the exec-code integrity via git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff f23a530ae -- src/libs/sys/src/sys/mm/address/virt.rs | sed -n '1,120p'
+
+[THINKING] The build is passing without errors and the dual compilation is working. I'm doing a final check of the changes across the files: added the inv() function to the spec, left the proof file empty since no proof functions are needed, added new and from_raw_value in the verified impl block while keeping the explanatory comment on into_raw_value, and in the physical spec I removed the redundant assume for new but kept the into_raw_value assume with the update.
+
+Now I'm reviewing the documentation updates and verifying AST consistency, then checking the full diff of the virtual module to ensure the executable code hasn't changed logically. I'm also confirming that having no proof functions is fine since there are no lemmas needed for these straightforward specs, and the invariant I implemented matches the design exactly.
+[RESULT ✓] bash: diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index eebbec608..624813982 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -44,7 +44,18 @@ pub struct VirtualAddress(usize);
+ // Implementations
+ //===...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+Clean diff — only annotations, an impl-block split (exec-equivalent), and comments. Let me run the AST consistency check per the verus-constraints skill.
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help 2>&1 | head -15
+
+[THINKING] The diff looks clean—I've only added the Verus annotations and split the impl block without changing any actual logic. The function bodies for `new` and `from_raw_value` remain identical, and I need to verify that splitting the impl block doesn't affect execution equivalence.
+
+Since the build and verify passes both succeeded, that's strong confirmation the cfg-gated attributes erase correctly and the exec code is intact. Let me run the ast_consistency script to be thorough.
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref f23a530ae src
+[RESULT ✓] bash: usage: ast_consistency.py [source] verus report [-h] -o OUTPUT [--json]
+ast_consistency.py [source] verus report: error: the following arguments are required: -o/--output
+<shellId: 75 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref f23a530ae src
+[RESULT ✓] bash: ERROR: Verus file not found: verus
+<shellId: 76 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref f23a530ae src
+
+[THINKING] I'm realizing the script interface expects the verus-verified file as a positional argument, with the original file specified via `--base-ref` for in-place comparisons. So I'll run it with the base git ref and pass the file path to the summary subcommand.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+Three MISMATCH flags including `align_up`/`align_down` which I never touched — likely the tool is confused by the impl-block split. Let me inspect the actual diffs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref f23a530ae src
+
+[THINKING] I'm seeing mismatches flagged for `align_down`, `align_up`, and `from_raw_value` — these could be false positives from the tool getting confused by the impl-block reorganization, or they might indicate actual changes. For `from_raw_value` specifically, I added a `#[verus_spec]` attribute while keeping the exec body identical, yet the tool still reports a mismatch, possibly because it's comparing the exec AST and getting thrown off by the attribute or the block structure change.
+
+What's strange is that `align_up` and `align_down` are completely untouched — they weren't in scope for my changes — yet they're also flagged as mismatches. Since they were originally in a single impl block and are now in the second one, the tool might be misattributing functions or comparing by position rather than content. I should run the diff subcommand to see the actual mismatch details.
+[RESULT ✓] bash: usage: ast_consistency.py [source] verus diff [-h] --name NAME [--full]
+ast_consistency.py [source] verus diff: error: the following arguments are required: --name
+<shellId: 78 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; for n in "VirtualAddress::align_up" "VirtualAddress::from_raw_value"; do echo "===== $n =====
+[RESULT ✓] bash: ===== VirtualAddress::align_up =====
+## VirtualAddress::align_up (full): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,4 @@
+-    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+-        mm::align_up(self.0, align).map(VirtualAddress::new)
++    fn align_up(&self, align: Alignment) -> Result<Se...
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+The MISMATCH is a tool artifact: the AST checker pairs functions by name, and `align_up`/`align_down`/`from_raw_value` each exist twice (inherent + trait `Address` impl). The impl-block split reordered them, so the tool mis-paired inherent-vs-trait versions. The `diff --name` check confirms `from_raw_value: MATCH`. Let me confirm the full git diff touches no exec logic.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== full git diff, only +/- lines that are NOT comments/attrs/braces ==="; git --no-pag
+
+[THINKING] The AST tool is matching functions by name, which creates false mismatches when there are multiple definitions like `align_up` (inherent and trait versions). The pairing got confused because reorganizing the impl blocks changed the order, so it's comparing the inherent version against the trait version and flagging it as a change when it's really just a matching artifact. The same issue affects `align_down` and `from_raw_value`.
+
+I need to verify that the actual function bodies haven't changed — the git diff showed only attribute additions, comments, and the structural split, with no modifications to the executable code itself. Let me check the full diff to confirm that `align_up`, `align_down`, and `from_raw_value` are byte-identical between the versions, ignoring the added attributes.
+[RESULT ✓] bash: === full git diff, only +/- lines that are NOT comments/attrs/braces ===
+<shellId: 80 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+The filtered git diff is empty — confirming **no exec logic changed**, only additive annotations/comments. The AST MISMATCH is purely a name-pairing artifact (duplicate `align_up`/`from_raw_value` across inherent + trait impls), and `make build` passing proves exec integrity. Let me do a final confirmation of the spec/proof file contents.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== virt.spec.rs ==="; cat src/libs/sys/src/sys/mm/address/virt.spec.rs; echo; echo "==
+
+[THINKING] The git diff confirms the exec logic is completely unchanged—only comments, attributes, and structural elements were added. The AST tool's mismatch is just an artifact from how the implementation was split across trait and inherent blocks, not an actual code change. Build and verification both pass, so I'm satisfied with the refactoring.
+
+Now I'm thinking through whether I should try to eliminate the AST false-positive, but honestly it's not worth the effort—the git diff is the authoritative proof that nothing functional changed, and the real compilation passing is what matters. Let me do a final check of the file states and make sure everything is consistent and committed. Let me do one final verification run to confirm everything's in a clean state, then review the proof and spec files one more time.
+[RESULT ✓] bash: === virt.spec.rs ===
+verus! {
+
+// Well-formedness invariant for `VirtualAddress`.
+//
+// `VirtualAddress` is a thin, infallible newtype over a pointer-sized integer.
+// Its abstract state (`self@ : int`) is exactly the numeric virtual address.
+// The single universal property every constructible valu...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+Let me run a final `make verify-sys` to confirm the clean state.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | tail -20
+
+[THINKING] Running a final verification to ensure everything is clean after the optional comment addition to the function.
