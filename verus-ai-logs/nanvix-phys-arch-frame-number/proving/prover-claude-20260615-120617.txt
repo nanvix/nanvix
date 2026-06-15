@@ -254,3 +254,44 @@ Restored cleanly, 48 verified / 0 errors. The `CHEATING_DETECTED` is solely from
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | grep -E "verified, .* errors|errors|status:|Summary|=== " | tail -
 
 [THINKING] The verification passed with 48 out of 0 issues, and the CHEATING_DETECTED warning is coming from pre-existing code in the proof module that's outside my scope. Now I'm running the full verification suite to make sure I haven't introduced any regressions.
+[RESULT ✓] bash: === Function Coverage ===
+=== Summary ===
+  verification: 35 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+=== Verus Verification (cargo mode) ===
+=== Results ===
+=== Cheating Pattern Check ===
+=== Function Coverage ===
+=== Summary ===
+  status: CHEATING_DETECTED
+=== Verus Verification (ca...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All modules pass with **0 errors**. 
+
+## Summary
+
+The target module `src/libs/arch/src/x86/mem/paging/frame/number.rs` was already fully proven and required no changes:
+
+- **`into_raw_value`** — proof body `proof! { use_type_invariant(self); }` discharges the `0 <= self@ <= spec_max()` postcondition; `result as int == self@` follows from the `view` definition. I verified this proof is genuinely active via a perturbation test (removing the line → `postcondition not satisfied`).
+- **`from_raw_value`** — the `value > Self::MAX` guard establishes the type invariant for `Self(value)` (since `MAX == spec_max()`), satisfying both `ensures` branches. No proof body needed.
+- **`FrameNumber` (type invariant)** — `inv` enforces `0 <= self@ <= spec_max()`, discharged at construction.
+
+Verification status:
+- `make verify-arch`: **48 verified, 0 errors**
+- `make verify`: **0 errors** across all crates
+- **0 `admit()`, 0 `assume()`, 0 `external_body`** in the frame module
+- No specs weakened; no bugs found (nothing to record in `bugs.md`)
+
+The remaining `CHEATING_DETECTED` flag comes only from out-of-scope files (`table.proof.rs` admit, `table.rs`/`mod.rs` external_body), which are pre-existing and outside this task's scope.
+
+[THINKING] All modules are verifying cleanly with no errors, and the CHEATING_DETECTED flags are just from pre-existing out-of-scope code that's not my concern. The frame/number module was already fully proven with complete proofs and no unverified assumptions in scope. Since the bugs log is empty, there's nothing to record, and the task is done—no code changes were actually needed.
+
+
+=== Session End ===
+Session: 7d03f9c2-260f-4fba-858c-c0b4b21b113c
+Duration: 132.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/proving/prover-claude-20260615-120617.jsonl
