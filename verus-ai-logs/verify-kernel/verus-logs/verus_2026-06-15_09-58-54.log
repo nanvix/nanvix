@@ -1,0 +1,64 @@
+Timestamp: 2026-06-15_09-58-54
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+35 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=13
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/config)
+   Compiling vstd v0.0.0-2026-05-31-0205
+   Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+    Checking mmio-tag v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/mmio-tag)
+    Checking static_assert v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/static_assert)
+    Checking cfg-if v1.0.4
+    Checking verus_builtin v0.0.0-2026-05-17-0151
+    Checking cmdline v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/cmdline)
+    Checking no_fail v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/no_fail)
+    Checking koptions v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/koptions)
+    Checking sorted-vec v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sorted-vec)
+    Checking type-safe v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/type-safe)
+    Checking sysapi v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sysapi)
+verification results:: 1533 verified, 0 errors
+    Checking error v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/error)
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bump_allocator)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/sys)
+    Checking multibin v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/multibin)
+verification results:: 12 verified, 0 errors
+verification results:: 6 verified, 0 errors
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/raw-array)
+    Checking elf v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/elf)
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap)
+verification results:: 48 verified, 0 errors
+verification results:: 70 verified, 0 errors
+    Checking nanvix-slab v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/libs/slab)
+verification results:: 35 verified, 0 errors
+error[E0433]: cannot find `Idt` in `idt`
+   --> src/kernel/src/hal/platform/microvm/mod.rs:971:14
+    |
+971 |         idt::Idt::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
+    |              ^^^ could not find `Idt` in `idt`
+    |
+help: a struct with a similar name exists
+    |
+971 |         idt::Idte::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
+    |                 +
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

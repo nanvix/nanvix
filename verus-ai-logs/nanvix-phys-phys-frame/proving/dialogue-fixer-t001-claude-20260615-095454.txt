@@ -334,3 +334,22 @@ Verification passes with exit 0 and no E0080. Now the full `make verify-kernel` 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== TARGET=x86 (default) ==="; make verify-kernel 2>&1 | tail -8; echo 
 
 [THINKING] The verification passed with 82 verified entries and no errors, and crucially the E0080 error is gone now that I removed the directive. The "CHEATING_DETECTED" warnings are from other modules outside my scope, so within the frame I'm working on, there are zero admits. Now I'm running the full kernel verification to make sure everything still works.
+[RESULT ✓] bash: === TARGET=x86 (default) ===
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=17 admit=13 trusted=0 no_decreases=0 cfg_gate=13
+  coverage: 55/1026 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Exit 0 on default x86 with no E0080. Now confirm cross-target on x86_64:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls build/targets/ 2>/dev/null; echo "=== TARGET=x86_64 ==="; make verify-kern
+
+[THINKING] The x86 build exited cleanly, though the cached result is showing up in the summary. Let me run a fresh build to verify the actual exit code, and I'm seeing that CHEATING_DETECTED warnings are coming from out-of-scope admits. Now I need to test with TARGET=x86_64 by checking how the Makefile handles the TARGET variable, which defaults to x86.
+
+I'll run the verify-kernel command with the x86_64 target, but first I should confirm whether a kernel target JSON file actually exists for x86_64, since the reviewer specifically asked for it.
