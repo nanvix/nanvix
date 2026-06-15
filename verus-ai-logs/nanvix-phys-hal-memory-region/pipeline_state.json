@@ -66,10 +66,17 @@
       "review_file": null,
       "duration_s": 610.6,
       "review_rounds": 2
+    },
+    "final-review": {
+      "verdict": "PASS",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": true,
+      "duration_s": 497.0
     }
   },
   "prover_session_id": "5b4b904a-ac43-4627-b4fb-c8a17f3d1eef",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai/hal-phys-address",
   "verus_branch": "verus-ai/hal-memory-region",
   "phase_boundary_shas": {
