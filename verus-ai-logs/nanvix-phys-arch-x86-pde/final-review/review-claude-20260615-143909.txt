@@ -936,3 +936,204 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Turn 6
 ────────────────────────────────────────────────────────────
+While verification runs, let me run the AST consistency, spec drift, and cheating-detail checks in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/libs/arch/sr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/libs/arch/sr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/libs/arc
+[RESULT ✓] bash: ## PageDirectoryEntry::frame_address (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,5 @@
+     pub fn frame_address(&self) -> usize {
+-        self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
++        let raw: usize = self.frame.into_raw_value();
++        
++        raw << crate::mem::FR...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PageDirectoryEntry::flags                MATCH                                
+PageDirectoryEntry::frame_address        MISMATCH...
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `x86/mem/paging/pde.rs` (Page Directory Entry)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-arch-x86-pde/find_callers_output.md`
+5. 
+6. > **Note on script results:** the LSP script reported **0 external callers** for
+7. > every public function. This is a false neg...
+[RESULT ✓] view: 1. # View Design: `arch::x86::mem::paging::pde` (Page Directory Entry)
+2. 
+3. In-scope (verification-order) targets — the **only** functions this View must
+4. serve, and the only ones any later phase may annotate:
+5. 
+6. - `PageDirectoryEntryFlags::new`
+7. - `PageDirectoryEntry::new`
+8. - `PageDirec...
+[RESULT ✓] view: 1. # Bug Report — `src/libs/arch/src/x86/mem/paging/pde.rs`
+2. 
+3. ## Summary
+4. 
+5. No bugs found during verification of the in-scope functions:
+6. 
+7. - `PageDirectoryEntryFlags::new`
+8. - `PageDirectoryEntryFlags::is_present`
+9. - `PageDirectoryEntry::new`
+10. - `PageDirectoryEntry::is_present`
+1...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 28 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running compliance checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '== pde cheating pattern lines ==' && rg -n "admit\(|assume\(|assume_specificati
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '== cheating detail ==' && cat verus-ai-logs/verify-arch/verus-logs/cheating-det
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: bash: -c: line 1: unexpected EOF while looking for matching `"'
+<shellId: 29 completed with exit code 2>
+[RESULT ✓] bash: == cheating detail ==
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+== external_body under arch crate ==
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+AST shows exactly one MISMATCH (frame_address), spec drift exit 0. Now let me check cheating details and grep for guardrails.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>&1
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit in pde files ==="; grep -rn "admit" src/libs/arch/src/x86/mem/paging/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== external_body across arch tree ==="; grep -rn "external_body" src/libs/arch
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 31 completed with exit code 0>
+[RESULT ✓] bash: === admit in pde files ===
+=== assume( ===
+=== external_body in pde ===
+=== assume_specification in pde ===
+=== uninterp in pde ===
+=== cfg in pde ===
+src/libs/arch/src/x86/mem/paging/pde.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pde.rs:11:#[cfg(verus_keep_ghost)]
+<shellId: 32 c...
+[RESULT ✓] bash: === external_body across arch tree ===
+src/libs/arch/src/x86/mem/paging/mod.rs:79:#[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:202:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table.rs:231:    // value per slot). Pinning that pure cell to the caller...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me check on the verification run.
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 60}
+[RESULT ✓] read_bash: === Verus Verification (cargo mode) ===
+  Crate     : arch
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/libs/arch/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --targ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '== pde cheating pattern lines ==' && rg -n 'admit\(|assume\(|assume_specificati
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '== external_body in arch tree ==' && rg -n 'external_body' src/libs/arch && ech
+[RESULT ✓] bash: == external_body in arch tree ==
+src/libs/arch/src/x86/mem/paging/table.proof.rs:13:// approved limitation assume (replacing the former `external_body`, which is illegal on a proof
+src/libs/arch/src/x86/mem/paging/table.rs:202:    #[verus_verify(external_body)]
+src/libs/arch/src/x86/mem/paging/table...
+[RESULT ✓] bash: == pde cheating pattern lines ==
+src/libs/arch/src/x86/mem/paging/pde.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pde.rs:11:#[cfg(verus_keep_ghost)]
+== pde cheating counts ==
+admit:0
+assume:0
+external_body:0
+assume_specification:0
+cfg_not_verus_keep_ghost:0
+cfg_verus_keep_ghost:2
+...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/libs/arch/sr
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PageDirectoryEntry::flags                MATCH                                
+PageDirectoryEntry::frame_address        MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/libs/arch/sr
+[RESULT ✓] bash: ## PageDirectoryEntry::frame_address (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,5 @@
+     pub fn frame_address(&self) -> usize {
+-        self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
++        let raw: usize = self.frame.into_raw_value();
++        
++        raw << crate::mem::FR...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verification exits 0. Let me confirm the verified/errors count from the log and check the reproducer file exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== verus verified line ==="; grep -iE "verifi|error" verus-ai-logs/verify-arch
+[RESULT ✓] bash: === verus verified line ===
+=== reproducer exists? ===
+-rw-rw-r-- 1 ruize ruize 4436 Jun 15 14:35 verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/repro/frame_address.rs
+=== cheating detail current ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.r...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Verifying arch module
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && set -o pipefail && make verify-arch VERUS_EXECUTABLE_DIR=$HOME/toolchain/verus 2>&1 |
+[RESULT ✓] report_intent: Intent logged
