@@ -365,3 +365,39 @@ Turn 17
 ────────────────────────────────────────────────────────────
 Now re-run `make verify-sys` to confirm the cfg_gate is cleared and verification still passes.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-sys 2>&1 | tail -30
+[RESULT ✓] bash: Crate     : sys
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/libs/sys/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/target...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Status is now **CLEAN** (cfg_gate=0, all cheating=0, 6 verified, 0 errors). Now let me run the full-crate `make verify` to check for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^verify:|^verify-sys:|^verify-kernel:" Makefile | head
+
+[THINKING] The build status is clean with all tests passing. I'm verifying the AST consistency after refactoring—I moved a spec-only function from an inline cfg-gated block into a separate spec file, which doesn't change the executable code since the function is only compiled under ghost mode in both cases, and the exec build excludes the same code either way.
+
+Now I need to run the full regression test to make sure nothing broke across the entire crate.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_CRATES" Makefile | head
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+My change only relocates a spec fn within the sys crate (same module path, exec build unaffected). Let me run full `make verify` to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | grep -E "Crate|verified|errors|status|cheating:|Exit 
+
+[THINKING] I'm checking whether my change to move the alignment function in the sys crate breaks anything, since other crates might depend on it. The function is still publicly exported at the same path (`crate::mm::spec_align_value`), so the public API hasn't changed even though I relocated the file.
