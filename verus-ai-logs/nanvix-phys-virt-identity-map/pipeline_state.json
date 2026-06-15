@@ -2,11 +2,12 @@
   "module_name": "virt-identity-map",
   "log_name": "nanvix-phys-virt-identity-map",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "1bba3cac8cda956d38a03962cdaef5855b9b79e0",
     "view-design": "8f1546365061f583442835da3f9dd06ee667d46c",
-    "specification": "4a5a2f93e90906b8ce2276e63bbc7bd7666e7165"
+    "specification": "4a5a2f93e90906b8ce2276e63bbc7bd7666e7165",
+    "proving": "e7dd098d160f1553efedef49040c5bff5af94e40"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "c71cb371424ba4f4549d50713c1b8a148c74ab5d",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "e7dd098d160f1553efedef49040c5bff5af94e40",
       "rollback_iter": 0
     }
   ],
