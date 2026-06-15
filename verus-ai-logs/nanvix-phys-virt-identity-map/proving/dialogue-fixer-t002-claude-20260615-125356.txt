@@ -248,3 +248,45 @@ Turn 18
 ────────────────────────────────────────────────────────────
 Now re-verify and run the erased build. The `error!` macro must still compile when the cfg gates are removed (the trio is now `external_body`, but the erased build compiles the real bodies).
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -12
+[RESULT ✓] bash: - drop
+    - with_kernel_address_space
+    - page_aligned_cover
+    - ensure_identity_mapped_range
+
+=== Summary ===
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 3/11 exec functions have contracts
+  status...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== remaining cfg gates in identity_map.rs ==="; grep -nE "cfg\(not\(verus_keep
+
+[THINKING] The cfg_gate count hasn't changed despite removing 5 gates, which suggests those statements might not be counted at the global level, or the counter only tracks function and module-level gates rather than individual statements. I need to check the identity_map details to understand what's actually being counted.
+[RESULT ✓] bash: === remaining cfg gates in identity_map.rs ===
+exit=1
+=== cfg_gate detail for identity_map ===
+=== how cfg_gate is counted ===
+/home/ruize/verus-ai-exp/verus-ai/scripts/add_verification.py:145:            out.append('#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]')
+/home/ruize/verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+All cfg gates removed from this module (grep exit 1 = none). In-scope: admit=0, 3 external_body (all TCB-listed). Now the erased build with warnings check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 cargo build --locked -p kernel --target build/targets/x86-kernel.json -Zb
+
+[THINKING] All the cfg gates have been removed from identity_map.rs—a grep search confirms none remain—and the global count of 19 is from other kernel files, not this module. The reviewer's requirement for no cfg-gated exec code in this file is now satisfied. Let me run the erased build to verify there are no errors.
+[RESULT ✓] bash: Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 9.23s
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Build clean (0 errors/0 warnings). Now run full `make verify-kernel` to confirm no cross-module regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel 2>&1 | tail -20
+
+[THINKING] The build completed without errors or warnings, so I'm verifying the output was clean. Now I need to run the full module verification to check for any cross-module regressions as the reviewer requested.
