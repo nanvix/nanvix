@@ -152,9 +152,8 @@ impl Inner {
         // Newly allocated frames have a single owner.
         #[cfg(not(verus_keep_ghost))]
         debug_assert_eq!(self.refcount[frame_number], 0);
-        // Bound the index well below the largest representable frame number, so the conversions
-        // below cannot fail. `num_bits < u32::MAX` (a bitmap invariant) and the index is in range.
-        let nbits: usize = self.bitmap.number_of_bits();
+        // The allocated index is in range and representable as a frame number; the proof below
+        // discharges the conversions that follow.
         proof_decl! { let ghost pa: int = frame_number as int * spec_page_size(); }
         proof! {
             let idx = frame_number as int;
@@ -173,8 +172,7 @@ impl Inner {
             assert(old_self@.free_frames.contains(pa));
             // The index is a representable frame number: `internal_inv` carries
             // `num_bits <= spec_max() + 1`, and `idx < num_bits`, hence `idx <= spec_max()`.
-            assert(nbits as int == self.bitmap@.num_bits);
-            assert(idx < nbits as int);
+            assert(idx < self.bitmap@.num_bits);
             assert(self.bitmap@.num_bits <= FrameNumber::spec_max() + 1);
             assert(idx <= FrameNumber::spec_max());
         }
