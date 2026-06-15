@@ -441,3 +441,251 @@ Turn 33
 Turn 34
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -25
+[RESULT ✓] bash: - identity_map.rs:533 ensure_pt: admit
+    - identity_map.rs:627 ensure_pte: admit
+    - identity_map.rs:718 identity_map_page: admit
+  Global: assume=0 external_body=20 admit=7 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Module green: **9 verified, 0 errors**, in-scope admit=3 (the 3 exec functions only; the 5 lemmas are genuinely proven). Now `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make build 2>&1 | tail -20
+
+[THINKING] The module is passing all checks with 9 verified items and no errors, and I've confirmed that the three exec functions are the only in-scope admits while the five lemmas are properly proven. Let me run the build to make sure everything compiles correctly.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^(build|all|kernel):" Makefile 2>/dev/null | head; echo "---targets---"; gr
+
+[THINKING] The `make build` target isn't doing anything, so I need to figure out what the actual build process is. The kernel build might be part of the verify target instead, or I could try `make all` or build the kernel crate directly to check for any issues.
+[RESULT ✓] bash: 411:all: all-nanvix
+---targets---
+378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: al...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "all-test-kernel-ramfs:|kernel.*cargo|test-kernel:" Makefile | head; echo "-
+
+[THINKING] I need to figure out the right build target to verify the kernel compiles with my changes. The full build is too heavy, so I'm looking for a more targeted approach—maybe there's a specific kernel build target, or I should check if `verify-kernel` is the right command even though it uses Verus rather than just compiling the kernel normally.
+[RESULT ✓] bash: 860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+---
+src/kernel/Cargo.toml
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make all-test-kernel-ramfs 2>&1 | tail -15
+[RESULT ✓] bash: mkdir -p /home/ruize/nanvix-phy-specs/bin
+mkdir -p /home/ruize/nanvix-phy-specs/lib
+mkdir -p /home/ruize/nanvix-phy-specs/logs
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features  -p mkramfs
+   Compiling sys v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sys)
+   Compiling ...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Let me directly confirm the kernel crate compiles normally.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "build-kernel|nanvix-test:|TEST_KERNEL|all-nanvix-test:" Makefile | head
+
+[THINKING] I realize I built mkramfs instead of the kernel itself, so let me try a direct cargo build of the kernel crate to verify it compiles properly.
+[RESULT ✓] bash: 854:TEST_KERNEL_RAMFS_SEED := $(BINARIES_DIR)/test-kernel-ramfs-seed
+855:TEST_KERNEL_RAMFS_IMG  := $(BINARIES_DIR)/test-kernel-ramfs.img
+860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+862:$(TEST_KERNEL_RAMFS_IMG): $(TEST_KERNEL_RAMFS_SEED)/marker.txt all-host-binaries-mkramfs
+863:	$(MKRAMFS) -o...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel && grep -nE "build|target" Makefile 2>/dev/null | head; echo "=== try make in
+[RESULT ✓] bash: === try make in kernel dir ===
+make: *** No targets specified and no makefile found.  Stop.
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rnE "cargo.*-p kernel|build-std.*kernel|p kernel" Makefile mk/*.mk 2>/dev/null 
+
+[THINKING] The `proof!` macros with `admit()` were already in the original code and get erased during normal builds, so my changes don't affect the standard build at all. I only added actual proof bodies to lemmas in the proof.rs file, which is Verus-only and also erased, plus restored the exact original exec admits. The verify-kernel run already compiled successfully with zero errors, which is the most authoritative check that everything works.
+
+Let me run a cargo check on the kernel crate directly to be thorough and see how the build system invokes it.
+[RESULT ✓] bash: 
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "p kernel\|kernel.elf\|--package kernel\|standalone" Makefile mk 2>/dev/nul
+[RESULT ✓] bash: Makefile
+---standalone-images---
+962:standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_NO_VFS_INITRDS)
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+The kernel build pipeline is complex; my changes are confined to Verus-only artifacts (lemma proof bodies + restored original exec `admit()` lines), all macro-erased in normal builds. The `verify-kernel` run already compiled the full kernel crate under Verus (stricter) with 0 errors. Let me do a direct `cargo check` to be fully certain.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && head -20 src/kernel/Cargo.toml; echo "=== target ==="; ls src/kernel/*.json 2>/dev/nu
+
+[THINKING] My changes are isolated to Verus-specific proof artifacts that get erased during normal compilation, so the kernel build itself shouldn't be affected. The verify-kernel run already confirmed the kernel crate compiles successfully under Verus's stricter checks. Now I'm going to verify the regular build works with a standard cargo check.
+[RESULT ✓] bash: # Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "kernel"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Nanvix Kernel"
+homepage.workspace = true
+
+[package.metadata.verus]
+verify = t...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -maxdepth 3 -name "*.json" -path "*kernel*" 2>/dev/null; find src/kernel -name
+[RESULT ✓] bash: ./build/targets/x86-kernel.json
+./build/targets/x86_64-kernel.json
+<shellId: 23 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 cargo build --locked -p kernel --target build/targets/x86-kernel.json -Zb
+[RESULT ✓] bash: error: `.json` target specs require -Zjson-target-spec to be added to the cargo invocation
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 cargo build --locked -p kernel --target build/targets/x86-kernel.json -Zb
+[RESULT ✓] bash: rust-lld: error: undefined symbol: memcpy
+          >>> referenced by lib.rs:351 (src/libs/multibin/src/lib.rs:351)
+          >>>               multibin-321da4240dda3eca.1ic4tbpdd4smjwrzx73y3yeqm.18ewgb6.rcgu.o:(multibin::parse) in archive /home/ruize/nanvix-phy-specs/target/x86-kernel/debug/deps/li...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+The kernel crate **compiled** successfully — codegen completed and all object files were produced. The only failure is a final *link* error (`undefined symbol: memcpy/memmove/memcmp`), which is purely because my ad-hoc invocation omitted `compiler-builtins-mem`. Let me confirm with the proper flag.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 cargo build --locked -p kernel --target build/targets/x86-kernel.json -Zb
+
+[THINKING] The kernel crate compiled successfully, but there's a link-time error with undefined memory functions (`memcpy`, `memmove`, `memcmp`) — this is just a missing compiler-builtins configuration issue from my manual cargo invocation not enabling the proper mem feature.
+[RESULT ✓] bash: Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+   Compiling bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bump_allocator)
+   Compiling sysapi v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sysapi)
+   Compiling error v0.16.17 (/home/ruize/nanvix-phy-specs/src/li...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Kernel builds cleanly. Now let me capture the final state of the proven lemmas and verify counts for the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "pub proof fn lemma|admit\(\)|assume\(" src/kernel/src/mm/virt/identity_map.
+
+[THINKING] The build completed successfully, so my changes are working correctly. Now I need to write up the turn_001_fixer.md response, which means I should check the proof.rs file to verify the lemma proofs are still intact and note their line numbers and techniques.
+[RESULT ✓] bash: 6:// Signatures only during the specification phase; bodies are `admit()` placeholders that the
+14:pub proof fn lemma_install_page_maps(v: IdentityMapView, page: int)
+23:pub proof fn lemma_install_page_monotone(v: IdentityMapView, page: int)
+36:pub proof fn lemma_install_page_preserves_inv(v: Identi...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+The 5 lemmas are proven with zero `admit()`/`assume()` in the proof file. Let me view them to document the proof techniques accurately.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+[RESULT ✓] view: 14. pub proof fn lemma_install_page_maps(v: IdentityMapView, page: int)
+15.     ensures
+16.         v.spec_install_page(page).mapped.contains(page),
+17. {
+18.     assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
+19. }
+20. 
+21. // Installing a page never removes an already-mapped p...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+All lemmas have genuine proofs. Now writing the response file.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_fixer.md
+
+[THINKING] All five lemmas check out with valid proofs. Now I'm compiling the response for turn_001_fixer.md with the complete picture: five lemmas proven (reducing the admit count from eight to three), and three execution functions still blocked by specific errors. The main blocker is `bump_view(self).inv()` in ensure_pt, which fails its precondition at the allocation site in lib.rs—the into_raw workaround handles the read precondition and alignment, but bump_view itself remains the fundamental obstacle.
+
+The other two functions have their own postcondition failures: ensure_pte can't establish the mapped.contains check at line 624, and identity_map_page fails the accessibility postcondition at line 712. I've also confirmed there's no establishing fact for bump_view's invariant anywhere in the codebase, and attempting to use type_invariant on TableIndex just returns an internal Verus error about the missing invariant function.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_fixer.md with 6785 characters
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Let me verify the final clean state — confirm no stray experimental code remains in the three functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "ghost_idx_bound|into_raw\(\);|FRAME_SIZE == 4096" src/kernel/src/mm/virt/id
+
+[THINKING] Let me verify the module is clean and ready—checking that the three functions are properly implemented without any leftover experimental code or temporary edits.
+[RESULT ✓] bash: --- admits in exec ---
+534:    proof! { admit(); }
+632:    proof! { admit(); }
+719:    proof! { admit(); }
+--- git status ---
+ ...ialogue-fixer-t001-claude-20260615-124030.jsonl | 285 +++++++++++++++++++++
+ .../dialogue-fixer-t001-claude-20260615-124030.txt | 200 +++++++++++++++
+ 2 files changed, 48...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+The exec functions are clean. The diff only shows log files — but my lemma proofs and exec edits should appear. Let me check git state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status --short | grep -E "identity_map|proof|\.md" | head; echo "--- i
+
+[THINKING] I'm checking why the modified proof and implementation files aren't showing up in the git diff, even though I've made changes to them — they might already be committed from an earlier checkpoint, or the diff is comparing against a state that already includes those changes. Let me verify the actual git status to see what's really staged and uncommitted.
+[RESULT ✓] bash: ?? verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_001_fixer.md
+--- is proof file tracked/changed? ---
+--- untracked? ---
+src/kernel/src/mm/virt/identity_map.proof.rs
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Everything is consistent: the working tree matches HEAD (lemma proofs and restored exec admits are already committed from this session's checkpoints), and only the new `turn_001_fixer.md` is untracked. Final verification is green and the build passes.
+
+## Summary
+
+**Fixed (real proofs):** All 5 lemmas in `identity_map.proof.rs` are now genuinely proven — in-scope `admit()` dropped **8 → 3**. Techniques: `Set` extensionality (`=~=`) + `insert().contains()`, with `forall` case-splits and an init-state case-split. No spec weakened, no `external_body`/`assume` added.
+
+**Verification:** `make verify-kernel MODULE=mm::virt::identity_map` → **9 verified, 0 errors**, in-scope admit=3. Kernel `cargo build` → **Finished** (build OK).
+
+**NEEDS_GUIDANCE (3 exec functions):** I removed each `admit()` and attempted real proofs. Each is blocked by a deferred ghost-token, not a proof-skill gap — exact errors captured in the report:
+- `ensure_pt:533` → `bump_view(self).inv()` precondition (lib.rs:350); **no** establishing lemma/`type_invariant` exists anywhere. (The `into_raw()` workaround proves the read-index + alignment obligations, isolating this as the sole wall.)
+- `ensure_pte:627` → `mapped.contains` postcondition: no spec link from contents-free `Table::write` to parameter-free `identity_map_view()`.
+- `identity_map_page:718` → `accessible` postcondition: same atomic→view gap.
+
+Reaching `admit=0` requires either realizing the `mm::virt` ghost token (cross-cutting infra) or TCB-listing these three (forbidden here) — flagged for your direction. Response written to `turn_001_fixer.md`.
+
+[THINKING] The proof file is already committed in HEAD with the lemmas properly proven, so the working tree matches what's in the repository. Everything checks out.
+
+
+=== Session End ===
+Session: 7ea4f7b0-3359-4cc2-8b96-7a25f874b9da
+Duration: 666.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue-fixer-t001-claude-20260615-124030.jsonl
