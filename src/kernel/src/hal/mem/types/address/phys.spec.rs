@@ -97,11 +97,19 @@ pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
 // "duplicate specification for ... ::new"). The guaranteed fact is identical
 // (`result@ == value as int`).
 
-// `<VirtualAddress as Address>::into_raw_value` is no longer assumed here: the
-// pure newtype-identity contract (`result as int == self@`) is body-verified in
-// `sys` on the inherent `VirtualAddress::into_raw_value`, which shadows the trait
-// method for concrete `VirtualAddress` callers (the same pattern already used for
-// `VirtualAddress::new` / `from_raw_value`).
+// `<VirtualAddress as Address>::into_raw_value` is pure newtype identity: the
+// returned raw `usize` equals the abstract address. It remains an
+// `assume_specification` trust boundary because this trait-impl method cannot be
+// body-verified in `sys` without marking the whole `impl Address for
+// VirtualAddress` verified, which pulls the sibling `as_ptr`/`as_mut_ptr` methods
+// (unsupported `usize as *const u8` casts) into scope — a Verus front-end
+// limitation (see `verus-ai-logs/verus-unsupported.md`).
+pub assume_specification[ <VirtualAddress as Address>::into_raw_value ](
+    addr: VirtualAddress,
+) -> (result: usize)
+    ensures
+        result as int == addr@,
+;
 
 // `FrameNumber::into_raw_value` projects a frame number to its index; every
 // `FrameNumber` value is in range (`0 ..= MAX`) by construction.

@@ -547,3 +547,34 @@ Turn 21
 [THINKING] I'm checking whether the trait method calling `VirtualAddress::into_raw_value(self)` resolves to the inherent method rather than creating recursion — and it does, since the explicit type path prioritizes the inherent associated function over the trait method.
 
 Now I need to verify that both the sys and kernel modules still compile and pass with this delegation change, then run the full build.
+[RESULT ✓] bash: Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+verification results:: 7 verified, 0 errors
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy/src/libs/raw-array)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy/src/libs/bitmap)
+verifi...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All crates verify (sys 7, kernel 43, 0 errors); sys module CLEAN. Pre-existing `external_body`/`cfg_gate` are in unrelated modules. Now let me confirm a normal (non-Verus) build across all dependent crates, since `into_raw_value` is public API used by 50+ crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 ./z build -- all 2>&1 | tail -40
+
+[THINKING] All the crates are passing verification with no errors, and the delegation method compiled successfully. The sys module is clean, while the cheating detections in other modules like the bump-allocator and kernel are pre-existing issues unrelated to my changes.
+
+Now I should run a full build to verify that the API change doesn't break anything downstream. Since the inherent method and trait method have the same signature and behavior, the risk of ambiguity is low, but with 50+ crates depending on sys, I want to confirm the user-space builds work too. Let me kick off the full build with a generous timeout.
+[RESULT ✓] bash: [INFO]  Build parameters: all
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Unused-import errors appeared. Several are in files I never touched (`kcalls.rs`, `sync.rs`, `mmio.rs`). Let me check whether this build failure is pre-existing (baseline) vs. caused by my change.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short && echo "=== stash and baseline build ===" && git stash && timeout 1200 
+
+[THINKING] I'm noticing these unused import warnings, but they seem to predate my changes. The `::vstd::prelude::*` import at virt.rs:25 was already there, and while it's unused in the non-Verus build configuration, the repository should have been building successfully before. I need to figure out whether my change actually introduced these errors or if they're just surfacing now.
+
+The suspicious part is that `Address` is flagged as unused in kcalls.rs, sync.rs, and mmio.rs — files I didn't touch at all. This either means the build was already failing, or these imports are conditionally used under certain configurations. Since my changes only affected virt.rs and phys.spec.rs, I can't have made `Address` unused in those other files. Let me check the baseline by looking at git diff and testing the build state before my modifications.
