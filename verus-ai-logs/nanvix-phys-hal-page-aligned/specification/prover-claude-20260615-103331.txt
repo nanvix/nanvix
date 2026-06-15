@@ -1313,3 +1313,288 @@ Makefile:629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log
 Turn 71
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
+[RESULT ✓] bash: === Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  cfg-gated...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iB2 -A8 "error\|mismatch\|bound" /tmp/verify1.log | grep -iA8 "error" | head -50
+[RESULT ✓] bash: error: assume_specification trait bound mismatch
+  --> src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:41:1
+   |
+41 | / pub assume_specification<T: Address + View<V = int>> [
+42 | |     <PageAligned<T> as Address>::into_raw_value
+43 | | ](addr: PageAligned<T>) -> (result: usize)
+   | |____...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+assume_specification confirmed to require exact bound match — can't add `View`. But there's an untried bridge: make `PageAligned<T>`'s `View` **unconditional** (`impl<T: Address>`) via an uninterpreted ghost projection defined only inside the cfg-gated block. This sidesteps all four previously-failed mechanisms. Let me check how trait-impl methods are annotated elsewhere.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "verus_verify" src/kernel/src/hal/mem/ | head; echo "=== frame.rs View / verus_spec
+
+[THINKING] I've confirmed that `assume_specification` requires an exact bound match and won't accept adding `View`. The real constraint is that `PageAligned<T>`'s View needs `T: View<V=int>`, but introducing that bound anywhere in `exec` breaks the whole approach. So I'm shifting to making `PageAligned<T>`'s View unconditional instead—that's the only path forward that stays in scope and actually delivers the contracts.
+
+The key insight is defining a ghost spec function that extracts the abstract address from any `T: Address`, living only in the cfg-gated verus block. This lets me implement View for all `T: Address` without touching the exec bounds. Then for `from_address`, I express the contract using this spec function to relate the input address to the resulting `PageAligned` value, and the whole thing stays within the cfg-gated region so it gets erased in the normal build.
+
+Now I'm wrestling with whether I can attach `#[verus_spec]` to just `into_raw_value` without verifying the entire `Address` impl for `PageAligned<T>`. The constraint says the whole impl must be verified, but that might just mean all methods need to typecheck with their specs—empty specs trivially verify. The other seven methods aren't in scope to modify, so I can't add contracts to them, but they should verify fine with default empty specs if I mark the impl block itself for verification.
+
+The key insight is that with the new unconditional `View` (requiring only `T: Address`), the `E0599` error about missing `T: View` bounds disappears, so `self@` works without extra trait bounds. My plan is to add `#[verus_verify]` to the impl block, give `into_raw_value` a proper spec with ensures, and let the other seven methods verify trivially since their bodies just delegate to trait methods on `T` that have no specs—no obligations to discharge.
+
+The tricky part is that `from_address` calls `addr.is_aligned(PAGE_ALIGNMENT)?` where `is_aligned` is a trait method with no spec, so I can't formally prove the alignment postcondition. But the spec itself just needs to compile and reference the defined `spec_addr` and `spec_page_size` functions—the actual proof obligation gets handled in the verification phase, which will report failures if the bodies don't satisfy the ensures.
+
+For exec functions with ensures that can't be proven from unspecced trait methods, I need to use `proof { admit(); }` in the body to satisfy the verifier. The question is whether this counts against the admit budget—the task says admit in proof bodies is fine, but putting it in exec function bodies might be different. The standard pattern would be to have the exec function with its spec and implementation, then handle unprovable parts through admits where necessary.
+
+There's a cleaner approach though: instead of trying to spec the generic trait method, I could use an uninterpreted View for Address, which would let me define the contract without needing to verify against the actual trait implementation. This deviates from the current View design, but the task allows modifying the View following design principles and updating the documentation. The risk is that an uninterpreted View creates an abstract value with no connection to the actual address bits, so the contract asserting equality between the runtime usize and this abstract value would only work via admit, which doesn't really solve the soundness problem.
+
+Actually, that's the standard way to handle uninterpreted views — the exec functions' ensures clauses pin down the meaning at the trusted boundary. Callers can still reason about it: from_address establishes the abstract value, into_raw_value returns it, so the round-trip preserves the address and alignment properties they need. The existing View was closed anyway, so external modules can't see the implementation details, which means switching to an uninterpreted spec wouldn't break any verified code that depends on the current bounded view.
+
+The trait bound also broadens from `T: Address + View` to just `T: Address`, which is fine — PageAligned now works for more types, not fewer. And since nothing in the verified codebase currently depends on PageAligned's view or invariant (this is a newly verified module), I'm free to restructure it. The closed spec hides the body change from consumers, so there's no breakage risk.
+
+Now I need to verify the Address trait impl methods themselves — when I add the verification attribute, all eight methods need to check out, including from_raw_value which delegates to from_address.
+
+Most methods like align_up, align_down, is_aligned, and max_addr verify cleanly without any contracts or admits. But into_raw_value is the problem: it has an ensures clause that the result equals the spec address, yet the underlying T::into_raw_value has no spec, so the result is unconstrained. I can't prove that postcondition without an admit, which means I need to add a proof block with admit as a placeholder for the unverified dependency.
+
+The key insight is that this approach sidesteps all the previous blockers—it doesn't require bounding View, doesn't use assume_specification, doesn't modify the Address trait, and doesn't involve supertrait complications. It's worth implementing and testing. Now I need to figure out where spec_addr and View should live in the spec.rs structure. Defining spec_addr and View... The ensures clauses for both success and failure cases are well-typed and meaningful — they capture that from_address succeeds exactly when the address is page-aligned, preserves that alignment, and returns a properly invariant object. For into_raw_value, the ensures clause correctly states that the raw value equals the spec address. Now I need to figure out the right syntax for annotating trait method implementations with #[verus_spec] and how to structure the whole impl verification — let me look at how other verified trait impls in the codebase handle this.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/types/address/frame.rs
+src/kernel/src/hal/mem/types/address/phys.rs
+src/kernel/src/hal/mem/types/region.rs
+=== frame.rs View / verus_spec usage ===
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== frame.rs ==="; grep -n "verus_spec\|verus_verify\|View for\|spec fn view\|uninterp\
+[RESULT ✓] bash: === frame.rs ===
+27:#[verus_verify(external_derive)]
+34:pub uninterp spec fn spec_page_size() -> int;
+41:impl View for FrameAddress
+45:    closed spec fn view(&self) -> int
+52:    pub open spec fn inv(&self) -> bool
+102:    #[verus_verify(external_body)]
+103:    #[verus_spec(result =>
+107:    pub fn...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 27. #[verus_verify(external_derive)]
+28. #[derive(Clone, Copy)]
+29. pub struct FrameAddress(PageAligned<PhysicalAddress>);
+30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. pub uninterp spec fn spec_page_size() -> int;
+35. 
+36. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usi...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+FrameAddress shows the pattern: `uninterp spec fn spec_page_size`, `closed spec fn view`, and `#[verus_spec(result => ensures ...)]`. Let me see how a normally-verified (non-external_body) exec function is annotated, to get the enable-verification pattern right.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== phys.rs ==="; grep -n "verus_spec\|verus_verify\|spec fn view\|fn from_raw_value\|f
+
+[THINKING] Looking at how FrameAddress handles this with `#[verus_verify(external_body)]` and the inline `#[verus_spec]` attribute that ensures the result matches the value—that's a concrete type approach that works because it's in the TCB allowlist. The challenge with PageAligned is that it's generic over T, and I need to figure out how to apply a similar pattern to an inherent method on F when the type parameter is involved.
+
+The real issue is that PageAligned's into_raw_value is a trait method, not an inherent method like FrameAddress's. If I use external_body on a trait method, it forces verification of the entire impl block, which means I'd need to verify all eight methods. But since T::into_raw_value is unspecified, I'd need to use admit there anyway. Let me think through whether the other seven methods would actually verify cleanly if I just add the specs and admit on into_raw_value, or if I should reconsider the whole-impl verification requirement. I'm weighing whether adding the contract to into_raw_value is worth triggering whole-impl verification of the other seven methods. The risk is that one of them might fail to verify due to overflow or missing preconditions, but I think enabling verification with default specs shouldn't count as "touching" those functions — I'm not changing their logic or contracts. My plan is to add #[verus_verify] to the Address impl, annotate into_raw_value and from_address with #[verus_spec] and admit(), then test to see if the other methods cause issues. I need to figure out whether a normal (non-external_body) function requires #[verus_verify] to be verified, or if #[verus_spec] alone is sufficient. Let me check how other verified functions in the codebase are annotated to understand the pattern.
+[RESULT ✓] bash: === phys.rs ===
+35:#[verus_verify(external_derive)]
+146:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+226:    fn into_raw_value(self) -> usize {
+256:    closed spec fn view(&self) -> int
+<shellId: 49 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "verus_spec" src/kernel/src/ | head; echo "=== find non-external_body verus_spec ex
+
+[THINKING] I'm noticing that the `Address` trait methods in phys.rs—specifically `from_raw_value` and `into_raw_value`—lack any verus_spec annotations, meaning they're completely unspecified even in the verified module. This establishes a clear pattern in the codebase where trait methods on `Address` remain uncontracted despite having View and invariant definitions elsewhere. The precedent here strongly points toward leaving `into_raw_value` unspecified as well.
+
+But the task explicitly calls out `PageAligned::into_raw_value` as something that needs a contract, which creates tension with what phys.rs demonstrates. I need to look at how other verified modules handle this—specifically whether there's a pattern for specifying trait methods in verified code, or if I should examine how concrete inherent methods get specs through external_body and tcb annotations to understand what's actually feasible here.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+src/kernel/src/hal/mem/types/address/frame.rs
+src/kernel/src/mm/phys/kframe.rs
+src/kernel/src/mm/phys/upool.rs
+src/kernel/src/mm/phys/mod.rs
+src/kernel/src/mm/phys/mod.proof.rs
+src/kernel/src/mm/phys/manager.rs
+src/kernel/src/mm/phys/frame.rs...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] view: 70.     ///
+71.     /// # Parameters
+72.     ///
+73.     /// - `base`: Frame address.
+74.     ///
+75.     /// # Returns
+76.     ///
+77.     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+78.     ///
+79.     #[verus_spec(result =>
+80.         ensures
+81.    ...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== kframe.spec.rs ==="; cat src/kernel/src/mm/phys/kframe.spec.rs 2>/dev/null; echo "=
+
+[THINKING] I'm realizing that `kframe::new` is actually a verified function with a proof body, not just an assumption. It calls into helper functions like `PageAligned::from_raw_value` and `into_raw_value`, and to prove its postcondition that `frame@ == base@`, it must be relying on the specifications of those dependencies. I need to look at kframe.spec.rs to see how `PageAligned::from_raw_value` is specified there.
+
+The key insight is that kframe.spec.rs already provides an `assume_specification` for `PageAligned::from_raw_value`, and `FrameAddress::into_raw_value` is marked as `external_body` — these are the trust boundaries that allow mm::phys to verify without page.rs being verified. When I verify page.rs, those trust-boundary shims should eventually be replaced with real specs from page.rs itself. For now, I need to check kframe.spec.rs to understand the existing assumptions and ensure my page.rs specs align with them.
+[RESULT ✓] bash: === kframe.spec.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// KernelFrame - Specifications
+//
+// `KernelFrame` is an owned, move-only RAII handle to a single page-sized
+// physical frame allocated for kernel use and identity-mapped into the kernel
+// addres...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+The tcb-allowed.md explicitly documents the architectural constraint: trait-impl methods get `assume_specification` (trivial, no `@`) because per-method `external_body` forces whole-impl verification. The verified `phys.rs` leaves `Address` trait methods unspecced entirely.
+
+My new approach — an **unconditional uninterpreted View** (`impl<T: Address>`, defined only in the cfg-gated block) — lets me reference `@` for bare `T: Address` without breaking the normal build or region.rs. Let me implement it.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp src/kernel/src/hal/mem/types/address/aligned/page.rs /tmp/page.rs.clean.bak; cp src/kernel
+
+[THINKING] The codebase's own documentation in tcb-allowed.md reveals that trait methods like `<PageAligned<T> as Address>::from_raw_value` must use `assume_specification` rather than standalone `external_body` contracts, since marking the entire trait impl block as verified would unnecessarily pull all sibling methods into scope.
+
+When page.rs gets verified, the real specs should replace the current assumptions. The critical tension is that `from_raw_value` uses a trivial assume_specification with no View bound and no @ references (just `T: Address`), whereas the task asks for `into_raw_value` to have an ensures clause with `@` that requires View semantics. The kframe precedent shows they never gave the generic trait method an @-contract—only the concrete FrameAddress implementation got that treatment. This suggests the @-contract on the generic method breaks the established pattern, but the task explicitly requests it, and my unconditional-uninterp-View approach could actually make it sound. I need to weigh whether delivering the requested contracts with meaningful specs justifies the risk of whole-impl verification complications.
+
+The real concern is whether changing PageAligned's View from bounded to unconditional-uninterp would break other verified modules. FrameAddress directly uses PageAligned<PhysicalAddress>@ in its view method, so changing how that @ is defined—from the inner PhysicalAddress's view to an uninterpreted spec value—could affect callers. Since FrameAddress::into_raw_value is external_body (trusted), its ensures clause isn't verified, only relied upon by downstream code in kframe and manager.
+
+But here's the key: the view method is marked closed, so the actual value of PageAligned@ is opaque outside the module. Changing its internal definition doesn't matter as long as it stays consistent. FrameAddress's invariant (self@ % spec_page_size() == 0) still holds with the unconditional inv on PageAligned, so there's no breakage there.
+
+In a normal build, the spec_addr function and View impl are both gated behind verus blocks and erased away, so the normal kernel build is unaffected. The remaining question is whether region.rs—which is also verified—references PageAligned@ anywhere, since the current bounded View requires T to have a View trait.
+
+Since region.rs compiles today with PageAligned<T> where T is bare Address, it clearly doesn't reference PageAligned's @. Adding an unconditional View impl won't break it; region.rs just gains an impl it doesn't use. The real test is running make verify across all modules to see if the change to PageAligned's View affects mm::phys verification, but the closed view and trusted boundaries should insulate it.
+
+Given that the task explicitly requests these contracts and admit() is allowed, attempting the unconditional-uninterp-View approach is worth trying. If make verify breaks in ways I can't contain, I can fall back to documentation. There's a subtlety with into_raw_value being a trait method and how #[verus_spec] interacts with the whole-impl rule—I need to mark just that method with #[verus_spec] while letting the other seven methods get default specs from the trait.
+
+The other methods (from_raw_value, align_up/align_down, is_aligned, max_addr, as_ptr/as_mut_ptr) should verify trivially since they just delegate to T's methods. But into_raw_value has an ensures clause that T::into_raw_value's missing spec makes impossible to prove, so I'll need admit() in the body. The cleaner pattern would be assume_specification on the inner T::into_raw_value dependency, but that's tricky with a generic trait method. Both exec functions need `proof { admit(); }` in their bodies since `is_aligned` lacks a spec, making the ensures clause unprovable. That gives me 2 admits total, which the task says is acceptable for the spec phase. I could alternatively extract the unprovable obligations into proof lemmas that the exec functions call, but that adds unnecessary complexity.
+
+The bigger risk is the whole-impl trait verification — if any of the 7 sibling methods fail, I either have to fix them (which violates the scope constraint) or the build breaks. To hedge against this, I'm going to attempt the full approach with both functions specced since the task asks for it, but I'm prepared to fall back to speccing only `from_address` and leaving `into_raw_value` unspecced if the trait impl verification surfaces unsolvable issues in sibling methods. That matches the precedent in phys.rs and kframe where trait methods have documented constraints.
+
+Now I'll start implementing: defining the uninterpreted spec function for address alignment...
+
+Checking the imports and scope — `Address` is imported in page.rs at line 19, and since page.spec.rs is included into page.rs, the spec block will have access to it. The `spec_addr` function will be defined in the spec block before it's used in the View impl, so ordering is fine. Accessing the private field `self.0` in the view function is allowed since we're in the same module.
+
+For the spec function signature, I'm deciding between taking `addr: T` by value or `addr: &T`. Since spec functions are ghost code, taking by value works fine, but vstd conventions use references for `self`. I'll go with `&T` to match that pattern — so `spec_addr(&self.0)` in the View impl and `spec_addr(&addr)` in the from_address ensures clause.
+
+Now I'm restructuring page.spec.rs to define the `spec_addr` helper predicate there, while keeping the View and inv implementations in page.rs but modifying them to use the generic parameter.
+[RESULT ✓] bash: backed up
+=== region.rs PageAligned @ usage ===
+12:        PageAligned,
+287:pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
+293:        start: PageAligned<T>,
+327:        start: PageAligned<T>,
+340:        let start: PageAligned<T> = PageAligned::from_address(start)?;
+357...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+region.rs's views are all `closed` and bounded by `T: View<V=int>`; my unconditional View only broadens availability and the value is opaque, so no compile/semantic break. Implementing now.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat > src/kernel/src/hal/mem/types/address/aligned/page.spec.rs <<'EOF'
+// Copyright(c) The M
+
+[THINKING] I'm working through the trait bounds for TruncatedMemoryRegion, which wraps a MemoryRegion of PageAligned types. The View implementation needs PageAligned<T> to satisfy View<V=int>, but I'm hitting a constraint issue with the current bounds...
+
+Actually, with an unconditional View impl for PageAligned<T> (where it works for any T: Address), the trait bounds become consistent across the board. The region.rs invariants that check alignment still hold since the View is closed and value changes stay invisible. I need to verify there's no conflicting View implementation for PageAligned already defined, then run the verifier to catch any regressions.
+
+Now I'm ready to implement — I'll create the spec file with the spec_addr definition and documentation, then update page.rs accordingly.
+[RESULT ✓] bash: wrote page.spec.rs
+<shellId: 53 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+Now modify the View/inv block in page.rs to be unconditional:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Now add `#[verus_spec]` to `from_address` and `#[verus_verify]`/`#[verus_spec]` to the `Address` impl `into_raw_value`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+`proof { }` isn't valid in attribute-style (non-`verus!`) exec bodies. Let me check the codebase convention for ghost blocks in exec functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "proof!\|proof {\|admit()" src/kernel/src/mm/ src/kernel/src/hal/ src/libs/ 2>/dev/n
+
+[THINKING] I'm checking whether `proof { admit(); }` syntax is valid in exec functions with the `#[verus_spec]` attribute. In Nanvix, these functions aren't wrapped in a `verus!{}` macro, so when the verus_keep_ghost flag is off, the proof block won't parse as valid Rust and the code will fail to compile.
+
+Looking at how the codebase actually handles this, I realize the correct syntax in attribute mode is `proof! { admit(); }` with a macro invocation, not a bare proof block. The `proof!` macro expands away in normal builds and only becomes actual proof code under verus. Let me search the codebase to confirm this pattern.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:760:    proof! {
+src/kernel/src/mm/phys/frame.rs:810:    proof! {
+src/kernel/src/mm/phys/frame.rs:860:    proof! {
+src/kernel/src/mm/phys/frame.rs:960:    proof! {
+src/kernel/src/mm/phys/frame.rs:1001:    proof! {
+src/kernel/src/mm/phys/frame.rs:1041:    proof! {
+src/...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+The convention is `proof! { ... }` (macro form). Let me fix both:
+[TOOL] bash: cd /home/ruize/nanvix-phy; perl -0pi -e 's/        proof \{\n            \/\/ Discharged in the proving phase once `Addr
+[RESULT ✓] bash: 62:        proof! {
+86:        proof! {
+<shellId: 55 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I need to verify that `admit()` and the `proof!` macro are available from the vstd prelude, and check the `#[verus_spec]` attribute syntax before reviewing the modified code sections.
+[RESULT ✓] view: 40. impl<T: Address> PageAligned<T> {
+41.     /// Constructs a page address from an aligned virtual address.
+42.     #[verus_spec(result =>
+43.         ensures
+44.             // `from_address` validates; it never rounds/normalizes. On success
+45.             // the wrapped address is unchanged (`re...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+The `admit()` must dominate all return paths — the early `Err` return bypasses it. Move it to the top of `from_address`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm spotting a verification issue with the error path in `from_address` — when the function returns early with an error, it bypasses the `admit()` call, but Verus still needs to verify that the ensures clause holds on that path. The problem is that the error branch returns without satisfying the alignment specification, so Verus can't prove the ensures condition for that code path.
+
+The fix is to move the `proof! { admit(); }` to the very beginning of the function, before any branching logic. That way Verus assumes false from the start and all paths — including the early error return — will verify correctly. I'll restructure `from_address` with the admit at the top.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Now run verify-kernel for this module:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp

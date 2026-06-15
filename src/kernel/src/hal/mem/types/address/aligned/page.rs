@@ -39,7 +39,26 @@ pub struct PageAligned<T: Address>(T);
 
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
+    #[verus_spec(result =>
+        ensures
+            // `from_address` validates; it never rounds/normalizes. On success
+            // the wrapped address is unchanged (`result@ == spec_addr(&addr)`)
+            // and the page-alignment invariant holds (`result.inv()`). On
+            // failure the input was not page-aligned (value type: no effect).
+            match result {
+                Ok(p) => p@ == spec_addr(&addr) && p.inv(),
+                Err(_) => spec_addr(&addr) % spec_page_size() != 0,
+            },
+            // Success iff the input address is page-aligned (stated both ways
+            // for liveness).
+            (result is Ok) <==> (spec_addr(&addr) % spec_page_size() == 0),
+    )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
+        proof! {
+            // Discharged in the proving phase once `Address::is_aligned` and the
+            // alignment encoding (`PAGE_ALIGNMENT`) carry specs.
+            admit();
+        }
         // Check if `addr` is not aligned to a page boundary.
         if !addr.is_aligned(PAGE_ALIGNMENT)? {
             return Err(Error::new(ErrorCode::BadAddress, "unaligned virtual address"));
@@ -53,8 +72,22 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
+    #[verus_spec(result =>
+        ensures
+            // Pure newtype identity projection: the returned raw `usize` is
+            // exactly the abstract address. In-page offset math and page walking
+            // performed by callers require an identity projection (no
+            // masking/shifting).
+            result as int == self@,
+    )]
     fn into_raw_value(self) -> usize {
+        proof! {
+            // Discharged in the proving phase once `Address::into_raw_value`
+            // carries its newtype-identity spec.
+            admit();
+        }
         self.0.into_raw_value()
     }
 
@@ -209,17 +242,17 @@ verus! {
 
 use crate::hal::mem::spec_page_size;
 
-impl<T: Address + View<V = int>> View for PageAligned<T>
+impl<T: Address> View for PageAligned<T>
 {
     type V = int;
 
     closed spec fn view(&self) -> int
     {
-        self.0@
+        spec_addr(&self.0)
     }
 }
 
-impl<T: Address + View<V = int>> PageAligned<T>
+impl<T: Address> PageAligned<T>
 {
     pub open spec fn inv(&self) -> bool
     {
