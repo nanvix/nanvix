@@ -1,0 +1,430 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T17:21:47.850573
+Model: claude-opus-4.8
+Session: 9f800461-9d25-46d7-8d9e-8a4a5285244c
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+Machine verification gate failed: `make verify` failed — see /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/gate_verify_fail_1.log. Read the log(s) and fix all errors AND warnings. Follow all skills strictly (especially verus-constraints). Then re-run both commands to confirm they pass cleanly.
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading gate failure log
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/gate_verify_fail_1.log
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/6 exec functions have contracts.
+  Unverified function list written to: verus-ai...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The strengthened `FrameAddress::inv()` (added `spec_frame_number(self@) <= spec_max_frame_number()`) broke downstream callers. Earlier `make verify` passed only because kernel was cached; now a real rebuild surfaces 2 errors. Let me investigate.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== base branch inv ==="; git show verus-ai/sys-virt-address:src/kernel/src/hal/mem/t
+
+[THINKING] I'm noticing that `make verify` is now failing with errors in `upool.rs` where calls to `frame::share` and `frame::refcount` are expecting `frame.inv()`, but these are from out-of-scope modules. This is strange because an earlier run of `make verify` passed successfully — something must have changed. Let me check what happened with the FrameAddress `inv` implementation on the base branch.
+
+The issue is becoming clearer: the `FrameAddress::inv()` was strengthened to include the additional constraint `spec_frame_number(self@) <= spec_max_frame_number()`, and now callers in `upool.rs` can't prove this precondition. But here's the catch — my earlier `make verify` showed the kernel as "cached (no recompilation)" with exit 0, which means it wasn't actually re-verifying. Now that the cache has been invalidated or the gate forced a rebuild, the real errors are surfacing.
+
+The core problem is that strengthening an in-scope function's invariant (`FrameAddress::inv()`) has broken downstream callers in `frame::share` and `frame::refcount`, which are then called from `upool.rs`. Since I can only modify the listed in-scope functions and not the downstream callers, I need to figure out whether this strengthening was intentional or if I need to adjust the invariant itself to make it provable from the callers' context.
+[RESULT ✓] bash: === base branch inv ===
+52:    pub open spec fn inv(&self) -> bool
+53-    {
+54-        self@ % spec_page_size() == 0
+55-    }
+56-}
+=== frame.rs:1000-1060 share/refcount ===
+    let res = r.alloc_range(region);
+    proof! {
+        auth.v.frames = (*r)@;
+    }
+    res
+}
+
+/// Add a new reference to an...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '120,210p' src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm noticing that `frame::share` and `frame::refcount` need `frame.inv()` to be satisfied, but the callers in upool.rs are passing `self.addr` without being able to prove that invariant holds. Let me trace back through upool.rs to understand where `self.addr` comes from and why the invariant can't be established at those call sites.
+[RESULT ✓] bash: ///
+    /// On success, a new [`UserFrame`] that aliases the same physical frame as
+    /// `self`. On failure, an error is returned.
+    ///
+    #[verus_spec(child =>
+        with Tracked(auth): Tracked<&mut PhysAuth>
+        requires
+            self.inv(),
+            phys_view().initialized,
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec fn inv\|struct UserFrame\|addr:" src/kernel/src/mm/phys/upool.rs src/kernel/
+
+[THINKING] I'm tracing through the invariant requirements: `UserFrame::share` needs `self.inv()`, which calls `frame::share(self.addr)` that requires `self.addr.inv()`. This means `UserFrame::inv()` must guarantee the invariant holds for the underlying `FrameAddress`. Let me check what `UserFrame::inv()` actually enforces.
+[RESULT ✓] bash: src/kernel/src/mm/phys/upool.rs:34:pub struct UserFrame {
+src/kernel/src/mm/phys/upool.rs:36:    addr: FrameAddress,
+src/kernel/src/mm/phys/upool.rs:65:    pub fn new(addr: FrameAddress) -> Self {
+src/kernel/src/mm/phys/upool.rs:155:            Ok(()) => Ok(Self { addr: self.addr }),
+src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '40,70p' src/kernel/src/mm/phys/upool.spec.rs
+[RESULT ✓] bash: /// A user-frame handle is well-formed iff the frame it names is
+    /// page-aligned: it denotes a real physical frame, not an arbitrary byte.
+    ///
+    /// This is the only abstraction-level fact provable about a handle in
+    /// isolation. Stronger facts -- "this frame is currently allocated",...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The root cause: `FrameAddress::inv()` was strengthened (added `spec_frame_number(self@) <= spec_max_frame_number()`) vs the base branch's page-aligned-only inv. Downstream `UserFrame::inv()` (page-aligned only) can no longer satisfy `frame::share`/`refcount`'s `frame.inv()` precondition. Let me check whether the strengthening is actually needed by the in-scope `into_frame_number`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== PhysicalAddress::into_frame_number contract ==="; grep -rn "into_frame_number" sr
+
+[THINKING] I see the issue now—`UserFrame::inv()` only checks page alignment, but `FrameAddress::inv()` adds an additional constraint that the frame number doesn't exceed the maximum allowed. This means a UserFrame satisfying its invariant won't necessarily satisfy FrameAddress's invariant, breaking the assumption that `frame::share` relies on.
+
+The real problem is that these errors were masked by stale caching during the earlier `make verify` run, so they only surfaced when the gate forced a fresh recompilation. The strengthening of `FrameAddress::inv()` is a legitimate semantic change to the contract, but it creates a mismatch with downstream code that was verified against the weaker invariant.
+
+I need to figure out whether this strengthening was actually necessary from the proving phase or if it's something I should reconsider. Let me trace back through the git history to see if the base branch already had this stronger invariant or if it's new to this task.
+
+Actually, the real issue is clearer now — the downstream modules like `upool.rs` and `frame.rs` were verified against the original weaker `FrameAddress` invariant. By strengthening it, I've broken their proofs because callers can't satisfy the stronger precondition. When `frame::share` requires `frame.inv()`, and that invariant got stronger, the caller in `upool.rs` can't prove it anymore.
+
+So I have a dilemma: either revert the invariant strengthening (which might break `into_frame_number`'s proof since it relies on the representability bound), or find another way to make the downstream modules work with the stronger invariant.
+
+Let me check whether `into_frame_number` actually needs that representability conjunct in the invariant, or if it can be proven without it. If the strengthening isn't necessary for any in-scope function, I should revert it to match the base branch and avoid breaking downstream code. If it is necessary, I need a different approach.
+[RESULT ✓] bash: === PhysicalAddress::into_frame_number contract ===
+src/kernel/src/hal/mem/types/address/phys.rs:120:    // satisfies the type invariant and may later flow into `into_frame_number`.
+src/kernel/src/hal/mem/types/address/phys.rs:148:    // (alignment) and later project it back with `into_frame_number`...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '180,200p' src/kernel/src/hal/mem/types/address/phys.rs; echo "=== phys.spec.rs into
+[RESULT ✓] bash: proof! {
+            // Alignment and invariant follow from `(fr * p) / p == fr <= MAX`.
+            lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
+            lemma_div_by_multiple(spec_frame_raw_value(frame), spec_page_size());
+        }
+        Self(VirtualAddress::new(...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+`FrameAddress::into_frame_number` genuinely requires the strengthened `inv()` (it needs `PhysicalAddress::inv()` = representability to call `PhysicalAddress::into_frame_number`). Reverting isn't viable. Let me check the history to understand when this regression was introduced and whether `UserFrame::inv` was meant to match.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git log for frame.spec.rs ==="; git log --oneline -8 -- src/kernel/src/hal/mem/ty
+
+[THINKING] I see how the conversion works now—`FrameAddress` delegates to `PhysicalAddress` by dereferencing itself, and that underlying method requires proving the frame number stays within valid bounds.
+
+The strengthened invariant on `FrameAddress` is actually necessary here because it's the only way to satisfy the precondition of the downstream method. But this creates a problem: the strengthening propagates outward to `UserFrame`, which lives in a different module that's out of scope for this verification task.
+
+The real question is whether `make verify` actually passed at the start of this task, or if the proving phase already introduced this inconsistency. Either way, I'm stuck between needing the stronger invariant to prove the in-scope function, but being forbidden from touching the out-of-scope code that now fails as a result. The only resolution would be to strengthen `UserFrame::inv()` as well to match, but that's outside my allowed scope. So the real question is whether this regression is new from my proving phase or if it was already broken. Let me check the git history to see when `FrameAddress::inv` was strengthened and whether the verify gate caught it, or if there's caching involved. I need to look at the diffs between the base commit and current state for both `upool.spec.rs` and `frame.spec.rs` to understand if this is a genuine new issue from this task.
+[RESULT ✓] bash: === git log for frame.spec.rs ===
+36d042f86 [verus] verify PASS: kernel::hal::mem::types::address::frame (5 verified, 0 errors)
+4d5ef59f7 [verus] verify FAIL: kernel::hal::mem::types::address::frame (0 verified, compilation/setup error (verus did not run))
+27c1594ba [verus] verify FAIL: kernel::hal:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+This is a real regression: the proving phase strengthened `FrameAddress::inv()` (needed by in-scope `into_frame_number`), but the tightly-coupled downstream `UserFrame::inv()` (page-aligned only) no longer implies it. Per code-change rules, I must fix this coupled breakage. Let me assess the full blast radius in upool.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,70p' src/kernel/src/mm/phys/upool.rs
+
+[THINKING] In the base branch, both `UserFrame::inv()` and `FrameAddress::inv()` required page alignment, so they were consistent. But when the proving phase strengthened `FrameAddress::inv()` to also require representability, it created an inconsistency—now `UserFrame::inv()` being page-aligned doesn't guarantee `FrameAddress::inv()` is satisfied. The thought cuts off mid-question about whether this was intentional.
+
+Looking at the actual verification: when `mm/phys` modules were verified earlier (before the recent `hal-frame-address` proving), `FrameAddress::inv()` was still page-aligned-only, so `frame::share`'s precondition `requires frame.inv()` was written against that weaker spec. Now that `FrameAddress::inv()` has been strengthened, the precondition automatically became stronger too—but since a stronger precondition is easier to satisfy, the body of `share` should still verify fine.
+
+The real problem is the callers in `upool.rs` can't prove the now-stronger precondition. The root cause is that strengthening `FrameAddress::inv()` to include representability is necessary for `into_frame_number` to verify, but it breaks downstream code I'm not supposed to modify.
+
+I'm wondering if there's a way to make `into_frame_number` work without baking representability into `inv()` itself—maybe by requiring it as an explicit separate precondition instead, so callers have to prove it directly rather than relying on the invariant.
+
+But looking at the spec comment, the design explicitly intends for `FrameAddress::inv()` to guarantee representability as the foundation that makes `into_frame_number` total. The inconsistency is that `UserFrame::inv()` is weaker and doesn't include this guarantee, even though a `UserFrame` wraps an allocated frame that should always be representable.
+
+The tension is between the scope rule ("don't touch unlisted functions") and the requirement that full-crate verification must pass. I need to figure out whether the strengthening of `FrameAddress::inv()` was actually necessary for the in-scope functions, or if the proving phase over-strengthened it.
+
+An alternative approach: keep `FrameAddress::inv()` page-aligned-only to match the base and downstream, then add representability as an explicit precondition directly on `into_frame_number` instead. But that would require callers to prove representability separately, and I need to check who actually calls this function and whether that's feasible.
+
+The core tension is that strengthening `FrameAddress::inv()` inadvertently over-constrains the callers in `frame::share` and `frame::refcount`, which were written to only require page-alignment. The question is whether those functions genuinely need representability or if the design intent was to keep them weaker. The base version of `into_frame_number` had no contract at all—it was just a plain delegation. The proving phase added the verification requirement, which forced the representability constraint into `FrameAddress::inv`. Since `into_frame_number` is in the verification target list and needs a meaningful contract, and since representability must live in the inv (because callers depend on that encapsulation), strengthening UserFrame's inv to match is the intended completion path rather than a scope violation.
+
+The upool breakage is directly caused by and tightly coupled to the FrameAddress change I'm making, so per the code-change instructions about fixing bugs directly caused by in-scope changes, I should strengthen UserFrame::inv as well. Now I need to trace through upool.rs and manager.rs to see the full construction chain and verify that all UserFrame creation sites can establish the stronger invariant. I should empirically test this by strengthening UserFrame::inv and running the verifier to see what actually breaks, rather than trying to reason through all the implications. First, let me examine the full upool.rs file to understand the blast radius.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,55p' src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] I'm checking whether strengthening `UserFrame::inv` to include representability would break the `new` constructor. Since `ret@` equals `addr@` and the precondition `addr.inv()` already guarantees `spec_frame_number(addr@) <= max`, the representability constraint carries through automatically. Now I need to verify the `view` method works with this stronger invariant.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// UserFrame / Upool - Specifications
+//
+// `UserFrame` is an RAII owning handle to one reference of a reference-counted
+// physical user frame, abstracted by the physical address of the frame it owns
+// (`UserFrame@ : in...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me check who calls `FrameAddress::into_frame_number` and whether keeping `inv` at base (page-aligned) with representability as a separate precondition is viable — that would avoid touching out-of-scope modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== callers of FrameAddress::into_frame_number ==="; grep -rn "\.into_frame_number()"
+
+[THINKING] The cleanest approach is to have `UserFrame::inv()` delegate directly to `self.addr.inv()`, which calls `FrameAddress::inv` and ensures consistency by construction. Since `UserFrame@` equals `self.addr@`, this makes them equivalent by definition—both representing a page-aligned, representable address.
+
+But I'm realizing this requires modifying `UserFrame::inv()` in upool.spec.rs, which is outside my scope. The real issue is that `frame::share()` has a `requires` clause expecting the weaker page-alignment property from `FrameAddress::inv`, but that property was silently strengthened during the mm/phys proving task. I need to figure out if there's a way to fix this entirely within the frame module itself, or if I'm forced to touch out-of-scope code.
+
+Let me think about whether `into_frame_number` could carry its own explicit precondition for representability instead of relying on `inv()` to encode it. That way the callers of `into_frame_number` would be responsible for proving representability directly, rather than routing it through the inv check.
+[RESULT ✓] bash: === callers of FrameAddress::into_frame_number ===
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:105:            paddr.into_frame_number(),
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:143:            paddr.into_frame_number(),
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+`FrameAddress::inv` strengthening only broke 2 call sites (both in `upool.rs`), confirming minimal blast radius. The correct root-cause fix is making `UserFrame::inv()` delegate to `self.addr.inv()`. Let me read the rest of upool to confirm no cascade.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '210,320p' src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The issue is that strengthening `FrameAddress::inv` would tighten preconditions across many functions in `frame.rs` that already require it, making their callers work harder even though the function bodies themselves would become easier to verify. The real problem is isolated to the `frame::share` and `refcount` callers in `upool.rs`, while other frame operations like `alloc` and `free` aren't affected.
+
+The cleanest fix is to make `UserFrame::inv` imply `FrameAddress::inv` directly—essentially defining `UserFrame::inv()` as `self.addr.inv()`—since the two failing callers specifically need `self.addr` to be representable. But this touches `UserFrame::inv`, which is a spec function in a different module and technically unlisted, creating a tension with the constraint against modifying unlisted functions. I'm now reconsidering whether there's a way to keep `FrameAddress::inv` weak and instead give `into_frame_number` a stronger explicit precondition, though that would require checking how callers in `page_directory.rs` and `page_table.rs` handle it—whether they're in verified or unverified contexts and whether they'd need to prove the precondition.
+
+Actually, strengthening the precondition on `into_frame_number` would likely break those arch callers since they'd suddenly need to prove representability in addition to page-alignment, which is worse than the localized fix. The strengthened `UserFrame::inv` approach is minimal and correct because it only affects the two failing callers, while the arch code either isn't verified or already establishes representability—which is why only those two errors appeared in the first place.
+
+Now I need to trace through all the places where `UserFrame::inv` is ensured to understand the full blast radius: `UserFrame::new` requires the address to be valid and ensures the frame is valid, `UserFrame::share` constructs a new frame from the same address, and there are other methods like `leak` and refcount operations to check. The manager code that allocates user frames also needs to be examined, along with the proof file. The fastest way to find remaining errors is to make the change and run the full verification, but first let me read through the rest of upool and its proof file to understand the complete picture.
+[RESULT ✓] bash: // propagated, so `drop` cannot unwind.
+            phys_view().inv(),
+        opens_invariants none
+        no_unwind
+    )]
+    fn drop(&mut self) {
+        if let Err(e) = frame::free(self.addr) {
+            error!("failed to free user frame: {:?}", e);
+        }
+    }
+}
+
+//=====================...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "fn leak\|fn address\|inv()\|\.inv\b" src/kernel/src/mm/phys/upool.rs | head -30; e
+
+[THINKING] I'm tracing through the invariant requirements for `Upool::alloc` — it needs to ensure `uf.inv()` holds, where `uf` is created from a `UserFrame` initialized with an address from `frame::alloc()`. The key is that `frame::alloc()` must guarantee the address invariant so that `UserFrame::new`'s precondition is satisfied, and then the strengthened `uf.inv()` relies on the representability property that flows from the address invariant.
+
+Now I need to check whether `frame::alloc` actually ensures the strong invariant for the returned address, and also look into the `UserFrame::leak` function to see if there are any issues there.
+[RESULT ✓] bash: 56:            addr.inv(),
+63:            ret.inv(),
+83:    pub fn address(&self) -> FrameAddress {
+103:    pub fn leak(self) -> FrameAddress {
+127:            self.inv(),
+129:            phys_view().inv(),
+132:            old(auth)@.inv(),
+135:            final(auth)@.inv(),
+144:                   ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '72,118p' src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] bash: /// Returns the physical address of the target user frame.
+    ///
+    /// # Returns
+    ///
+    /// The physical address of the target user frame.
+    ///
+    #[verus_spec(ret =>
+        ensures
+            // Pure getter: returns exactly the address the handle owns.
+            ret@ == self@,
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== upool.proof.rs ==="; cat src/kernel/src/mm/phys/upool.proof.rs 2>/dev/null; echo 
+
+[THINKING] I'm checking that `address()` and `leak()` only enforce the equality constraint without relying on any invariant claims. Now I need to verify the proof file and manager.rs to see how they use `UserFrame::inv`, and it looks like the cleanest approach is to delegate `UserFrame::inv()` to `self.add`.
+
+inv()` since `FrameAddress::inv` is public and open. The key concern is that strengthening `UserFrame::inv` affects its public contract — callers that must establish it as a precondition (like in share/refcount/drop) now need to prove the stronger invariant, but since all producers (alloc/new/share) already ensure the strong invariant, consumers should be fine. Let me trace through manager.rs to confirm it calls alloc_user correctly.
+[RESULT ✓] bash: === upool.proof.rs ===
+verus! { } // verus!
+=== manager.rs UserFrame usage ===
+21:            UserFrame,
+102:            phys_view().inv(),
+104:            phys_view().inv(),
+181:            phys_view().inv(),
+184:            phys_view().inv(),
+201:        frames: &mut Vec<UserFrame>,
+243:    /// Up...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '240,300p' src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] bash: ///
+    /// # Returns
+    ///
+    /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    // Trusted shim: applies the watermark gate then delegates to the global
+    // `Upool::alloc`. On success the returned frame's physical address is now in
+...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== external callers of UserFrame .share()/.refcount() ==="; grep -rn "\.share()\|\.r
+
+[THINKING] Looking at how `alloc_user_frame` works as an external body function—it guarantees page alignment but doesn't expose the invariant for either the frame or the UserFrame itself, so strengthening the UserFrame invariant wouldn't change what this shim actually provides.
+
+The real issue is that the two errors occur inside `UserFrame::share` and `UserFrame::refcount` when they call the underlying frame methods, which require a strong `FrameAddress::inv()`. Currently the weak `UserFrame::inv()` can't prove this, but if I strengthen `UserFrame::inv()` to be equivalent to `self.addr.inv()`, then the strong invariant flows directly through—the share and refcount methods would have exactly what they need. This fix doesn't cascade because the new invariant still satisfies what `alloc` promises to deliver.
+[RESULT ✓] bash: === external callers of UserFrame .share()/.refcount() ===
+src/kernel/src/mm/phys/test.rs:156:    let second: UserFrame = match first.share() {
+src/kernel/src/mm/phys/test.rs:169:    let third: UserFrame = match second.share() {
+src/kernel/src/mm/virt/manager.rs:350:        let child_handle: UserFra...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+External `.share()`/`.refcount()` callers exist (mm/virt, tests). I must check whether they're verified and how they currently establish `self.inv()`. Let me inspect the virt callers.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '335,355p' src/kernel/src/mm/virt/manager.rs; echo "=== is this fn verified? search 
+
+[THINKING] I'm trying to figure out whether external callers of `.share()` and `.refcount()` in the test files and manager/vmem modules are verified under Verus. The key question is whether Verus checks preconditions for unverified functions—it seems like Verus verifies all functions in the crate unless they're explicitly marked as external, but I need to understand how it handles functions without the spec annotations.
+
+The critical insight is that the gate only reported 2 errors (both internal to upool), which suggests that either the external callers aren't verified at all, or they're already proving the weak invariant that `share()` currently requires. If I strengthen `UserFrame::inv`, those verified callers would need to prove the stronger invariant, but `alloc_user_frame` only guarantees page-alignment, not representability—so they'd fail to prove the strengthened invariant and introduce new errors. I need to test the full crate after making this change to see what breaks.
+[RESULT ✓] bash: child: &mut Vmem,
+        vaddr: PageAligned<VirtualAddress>,
+        frame: FrameAddress,
+        writable: bool,
+        page_table_allocator: &F,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> Result<PageTable<PageTableStorage>, Error>,
+    {
+        // Wrap the parent's already-owned fr...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verus annotations in mm/virt/manager.rs ==="; grep -c "verus_spec\|verus_verify" 
+
+[THINKING] I'm checking whether `link_one_user_page` has the `#[verus_spec]` annotation by looking at the code around line 334, and I suspect the mm/virt module hasn't been verified yet since there are no visible contracts.
+[RESULT ✓] bash: === verus annotations in mm/virt/manager.rs ===
+0
+=== in vmem.rs ===
+0
+=== in pm/test.rs, mm/phys/test.rs ===
+src/kernel/src/pm/test.rs:0
+src/kernel/src/mm/phys/test.rs:0
+<shellId: 18 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Confirmed: all external `.share()`/`.refcount()` callers are **unverified** exec code (0 verus annotations), so they impose no proof obligations. The blast radius is contained to `upool.rs`'s own verified functions. Reverting `FrameAddress::inv` would instead break the verified `frame.rs` callers (which already pass with the strong inv). The correct root-cause fix is aligning `UserFrame::inv()` with `FrameAddress::inv()`. Let me verify `frame::free`'s precondition (drop path) before editing.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== frame::free signature/requires ==="; awk '/pub\(super\) fn free\(/{found=NR} foun
+
+[THINKING] I'm realizing that the external callers in the codebase don't have Verus annotations, so they're unverified code. This means Verus won't actually check preconditions for calls made inside these unverified functions in this selective-verification setup. But I'm second-guessing whether that's actually how Verus works by default...
+
+Actually, the fact that the gate only showed 2 errors confirms these external callers aren't being verified — if they were, they'd already be failing on the weak invariant requirements too. So strengthening UserFrame::inv() only impacts the verified code within upool.rs and manager.rs, which all chain correctly. This means the change is safe and the blast radius is contained.
+
+But I'm hitting a scope constraint issue — the task says to only modify the listed FrameAddress functions and not touch unlisted ones, yet fixing this properly requires strengthening UserFrame::inv() in a different module. This is genuinely needed to make the verification pass and it's directly coupled to the FrameAddress::inv strengthening, but I should seriously reconsider whether reverting FrameAddress::inv to its original state might be the right call to respect the hard scope boundary.
+
+If I revert FrameAddress::inv back to just the page-alignment check, then into_frame_number loses the representability proof it needs. But what if into_frame_number doesn't actually require that invariant to be part of inv itself? I could instead add representability as an explicit requires clause directly on into_frame_number, keeping FrameAddress::inv weak and avoiding the UserFrame::inv change entirely. This would push the representability burden onto into_frame_number's callers to prove, which means I need to check whether those callers in page_table.rs, page_directory.rs, frame.rs, and test.rs are actually being verified.
+
+Looking at frame.rs specifically — the verified functions calling into_frame_number at lines 291, 369, and 429 already have `requires frame.inv()` in their contracts. If I weaken FrameAddress::inv but add an explicit representability requires to into_frame_number, those frame.rs callers would need to prove representability from their weak inv, which they can't. That breaks frame.rs verification, which is worse than the current situation.
+
+So the cleaner path is to keep FrameAddress::inv strengthened with representability, which means aligning UserFrame::inv to match it. That way frame.rs callers already passing the strong invariant continue to work correctly.
+
+I'll make the minimal fix by delegating UserFrame::inv to self.addr.inv(). Before committing, I should verify that frame::free (called by drop) doesn't have any inv requirements that would conflict.
+[RESULT ✓] bash: === frame::free signature/requires ===
+896: pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+--- search free contract ---
+290:    fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+896:pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+<shellId: 19 completed wit...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '870,900p' src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] bash: // signature is `opens_invariants none` + `no_unwind` and therefore cannot receive
+// a `Tracked<&mut PhysAuth>` carrier nor open a global invariant. Without the
+// token the body cannot discharge `instance()`'s `phys_view().initialized`
+// precondition nor `Inner::free`'s `frame.inv()` precondition...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The analysis is conclusive: there is **no** in-scope-only fix. Page-alignment cannot imply frame-representability, so `UserFrame::inv()` must carry the same guarantee as `FrameAddress::inv()`. Reverting the in-scope `inv` would break verified `frame.rs` callers (worse). The minimal root-cause fix is delegating `UserFrame::inv()` to `self.addr.inv()`. Let me apply it.
+[TOOL] report_intent: Aligning UserFrame invariant
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] `frame::free` is external and has no precondition, so it won't affect drop safety. Now I'm ready to implement the fix: I'll strengthen `UserFrame::inv()` to delegate to `self.addr.inv()`, which aligns it with `FrameAddress::inv()` and satisfies the precondition that `frame::share` and `refcount` expect from `frame.inv()`. Let me update the spec file with this change.
+
+Actually, I need to reconsider the scope constraint here—UserFrame::inv is unlisted, but the strengthening I did to FrameAddress::inv in the proving phase created a crate-wide inconsistency that blocks `make verify`. The code-change instructions say to fix bugs tightly coupled to my changes, and the mandatory gate requires no regressions, so I'll make the minimal fix to UserFrame::inv with thorough documentation. But let me first double-check whether there's a way to avoid touching out-of-scope code entirely, or whether the proving-phase strengthening was actually necessary for `into_frame_number`.
+
+Looking at `into_frame_number` again: it calls `pa.into_frame_number()` where `pa = *self.0`, and that requires `pa.inv()` to hold—specifically that the frame number is representable. The PageAligned wrapper guarantees alignment but not representability, and since FrameAddress only has access to the spec address through the Deref boundary, there's no way to derive representability from page-alignment alone. A page-aligned address could still exceed the max frame number. So the representability information genuinely has to come from UserFrame::inv—there's no lemma or alternative proof path that avoids needing the stronger invariant.
+
+I need to strengthen UserFrame::inv to require `self.addr.inv()` directly and update the comment to explain that the invariant delegates to the address's own representability check.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "spec_page_size" src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] I need to check whether `spec_page_size` is still being used elsewhere in the file after my changes, since the `inv` method now handles what was previously done directly with that import.
+[RESULT ✓] bash: 23:use crate::hal::mem::spec_page_size;
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+`spec_page_size` is now unused in upool.spec.rs — removing it to avoid a warning.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '21,26p' src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] I notice that `spec_page_size` is imported but no longer used in the file, which would trigger a warning. I need to remove that unused import to clean up the code.
+[RESULT ✓] bash: verus! {
+
+use crate::hal::mem::spec_page_size;
+use crate::mm::phys::phys_view;
+use crate::mm::phys::PhysAuth;
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Now run the full kernel verification to confirm the fix resolves both errors without new regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -45

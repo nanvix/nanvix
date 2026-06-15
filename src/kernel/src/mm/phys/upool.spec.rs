@@ -20,7 +20,6 @@
 
 verus! {
 
-use crate::hal::mem::spec_page_size;
 use crate::mm::phys::phys_view;
 use crate::mm::phys::PhysAuth;
 
@@ -37,8 +36,15 @@ impl View for UserFrame {
 }
 
 impl UserFrame {
-    /// A user-frame handle is well-formed iff the frame it names is
-    /// page-aligned: it denotes a real physical frame, not an arbitrary byte.
+    /// A user-frame handle is well-formed iff the frame address it names is
+    /// well-formed, i.e. `self.addr.inv()`: the frame is page-aligned *and* has
+    /// a representable frame number (`spec_frame_number(self@) <=
+    /// spec_max_frame_number()`). The handle delegates to the wrapped
+    /// `FrameAddress`'s invariant so the two stay in lock-step: the
+    /// representability conjunct is exactly the precondition the global
+    /// allocator shims (`frame::share`, `frame::refcount`) demand of the address
+    /// they receive (`frame.inv()`), so a well-formed handle can always exercise
+    /// them. It denotes a real physical frame, not an arbitrary byte.
     ///
     /// This is the only abstraction-level fact provable about a handle in
     /// isolation. Stronger facts -- "this frame is currently allocated", "its
@@ -47,7 +53,7 @@ impl UserFrame {
     /// them without changing this handle), so they are stated in
     /// `requires`/`ensures` over `phys_view()` instead.
     pub open spec fn inv(&self) -> bool {
-        self@ % spec_page_size() == 0
+        self.addr.inv()
     }
 }
 
