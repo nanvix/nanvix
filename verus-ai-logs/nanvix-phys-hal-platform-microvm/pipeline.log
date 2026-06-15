@@ -55,3 +55,25 @@ Module: hal-platform-microvm
 [2026-06-15 14:51:13] [DIALOGUE] Reviewer turn 2 (remaining: 6947s)...
 [2026-06-15 14:51:13] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 14:52:25]   ↳ dialogue-reviewer-t2 done in 1m11s (exit=0)
+[2026-06-15 14:52:25] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 14:52:25] [DIALOGUE] STOP detail:
+RESOLVED
+
+All 17 specification-phase checklist items are PASS or FIXED with tool evidence.
+
+Turn 1 found one FAIL: item 13 (no cheating on module's own functions) — the
+module's own proof fn `lemma_translation_injective` (mod.proof.rs) used admit().
+
+Turn 2 verified the fix independently:
+- mod.proof.rs: admit() removed; empty body auto-discharges v.injective() from
+  the open identity definition of spec_gva_to_gpa.
+- `make verify-kernel` → exit 0, admit=0 (was admit=1).
+- cheating-detail.txt: zero entries attributed to platform/microvm.
+- Residual external_body=25/cfg_gate=7 are all in OTHER modules (external
+  dependencies), temporarily allowed.
+- spec_drift git-diff: ensures removed=0, requires added=0; only change is the
+  admit() removal, which strengthens (not weakens) the proof.
+
+In-scope target gva_to_gpa has a complete, caller-usable ensures contract
+(result == gva, tied to MicrovmTranslationView::spec_gva_to_gpa) and verifies.
+[2026-06-15 14:52:25] [DIALOGUE] specification ended after 2 turns: RESOLVED (325s)
