@@ -70,3 +70,4 @@ Phases: proving → cheating-elimination + final-review
 PHASE: proving
 Module: phys-kframe
 ============================================================
+[2026-06-15 11:34:06] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs
