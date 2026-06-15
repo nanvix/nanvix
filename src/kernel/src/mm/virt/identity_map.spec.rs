@@ -174,9 +174,10 @@ pub struct ExPageTableBss(PageTableBss);
 // former placeholder `assume_specification`s here were removed — the real arch
 // specifications supersede them.
 
-// --- Slice base pointer (std, not covered by vstd) ---
-
-pub assume_specification<T>[ <[T]>::as_ptr ](s: &[T]) -> *const T;
+// `<[T]>::as_ptr` no longer needs a placeholder `assume_specification` here: its only
+// caller in this module is `ensure_pt`, whose body is `#[verus_verify(external_body)]`
+// (TCB-listed) and therefore not translated by Verus. The former declaration was removed
+// to shrink the trust surface.
 
 // --- Page-table BSS bump allocator constructor (kernel/`bump_allocator`, not yet verified) ---
 

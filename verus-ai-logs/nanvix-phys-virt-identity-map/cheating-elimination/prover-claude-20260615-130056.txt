@@ -343,3 +343,106 @@ But the constructor lives in the bump_allocator crate, which is outside the scop
 Without a spec for `new`, Verus treats it as opaque and would reject the static initializer call unless we provide one through `assume_specification`. That assumption is genuinely necessary for the code to compile, but it's not listed in tcb-allowed.md, which raises the question of whether this is acceptable cheating or if I need to reconsider the whole approach — maybe the static PAGE_TABLE_ALLOCATOR itself shouldn't be verified in the first place since it's an unlisted item.
 
 Let me actually run the verification gate on just this module to see what cheating it currently reports and whether we're already passing the gate with the TCB-allowed items excluded.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The module gate reports only the 3 TCB-allowed `external_body` functions. Let me inspect the cheating-detail to understand what's counted and confirm there are no admit/assume.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -iE
+
+[THINKING] The module's cheating gate only flags the three external_body functions that TCB allows—it doesn't treat the assume_specification declarations or ExPageTableBss as cheating violations. So the module-scoped check is specifically focused on exec function externals, not on the specification assumptions.
+
+But the task explicitly lists assume_specification as a cheating category that needs before/after counts in the fix report, yet the module gate isn't flagging those. I need to check the cheating-detail file to understand how the gate determines pass/fail and whether the global counts differ from what the module-scoped check reports.
+[RESULT ✓] bash: - mm/virt/identity_map.rs:534 ensure_pt: external_body
+    - mm/virt/identity_map.rs:625 ensure_pte: external_body
+    - mm/virt/identity_map.rs:714 identity_map_page: external_body
+    - mm/virt/identity_map.spec.rs:143 ExPageTableBss (struct): external_type_spec
+=== total lines ===
+27 verus-ai-log...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] Looking at the cheating-detail breakdown for identity_map, I see three external_body entries and one ExPageTableBss external_type_spec marked as TCB-allowed, but the assume_specifications like as_ptr and FixedSizeBumpAllocator::new aren't being counted as cheating by the gate. This suggests the gate treats assume_specification differently or only flags certain categories as violations. I need to examine the full cheating-detail structure to understand what's actually being categorized.
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/phys/frame.rs:1502 alloc: external_body
+    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All cheating in this module is TCB-sanctioned (3 `external_body` + `ExPageTableBss`), and the gate doesn't flag the two `assume_specification`s. Let me check whether the `as_ptr` assume_specification is now dead (only used inside the `external_body` `ensure_pt`), so it can be removed to reduce trust surface.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== as_ptr usage in kernel crate ==="; grep -rn "\.as_ptr()" src/kernel/src/ | 
+
+[THINKING] Looking at the cheating details for the identity_map module, there are three external_body items that are TCB-allowed, plus one external_type_spec that's also TCB-allowed. The assume_specifications don't factor into this gate's cheating count, which is good to know.
+
+Across the kernel crate globally, I'm seeing external_body=23, admit=4, and cfg_gate=19 — the admit items are all in mm/phys/manager.proof.rs which is out of scope, and I need to track down where those cfg_gate items are. But for identity_map specifically, all the cheating is already TCB-sanctioned, so the module passes verification.
+
+Now I'm reconsidering what the task actually wants: the instructions say to eliminate all cheating except TCB-listed items, and these three functions are exactly that — the sanctioned exception. But I should verify whether keeping them as external_body is really the intended outcome, or if I should attempt to prove them in-body and remove them from the TCB list entirely, since the task emphasizes eliminating external_body. The verification docs suggest they're genuinely stuck on deferred ghost tokens and unspecified behavior.
+
+Given the escalation ladder and the extensive work already done in the proving phase, attempting to verify these in-body would require cross-module ghost tokens which I can't access without changing out-of-scope code. The presence of tcb-allowed.md with these exact entries indicates the intended final state is external_body for these three functions, making the cheating elimination effectively complete.
+
+Now I need to verify the global picture: the task is scoped to virt-identity-map, and other modules with external_body, admit, and cfg_gate entries are out of scope and TCB-listed. The real question is whether the current state already represents a passing condition, and I should check what the fix_report expects regarding assume_specification counts.
+
+I notice that `as_ptr` has an assume_specification but is only called inside the external_body `ensure_pt`, which means its body isn't translated anyway. If I remove that assume_specification and the module still verifies, I can eliminate one form of cheating. The `FixedSizeBumpAllocator::new` assume_specification is needed because it's used in verified code, but `as_ptr` might be removable if it's truly only used in unverified contexts.
+
+Before removing it, I should check if `as_ptr` is used elsewhere in the kernel crate in verified code, since assume_specifications are crate-global and other modules might depend on it.
+[RESULT ✓] bash: === as_ptr usage in kernel crate ===
+src/kernel/src/hal/arch/x86/cpu/tss.rs:79:        self.0.as_ref().as_ptr() as usize
+src/kernel/src/hal/arch/x86/cpu/tss.rs:150:    TSS.as_ref().unwrap().0.as_ref().as_ptr()
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:192:        let vaddr: usize = se...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The `as_ptr` assume_specification is unique to this spec file and only used inside the now-`external_body` `ensure_pt` — making it likely dead. Let me check whether the hal `.as_ptr()` callers are in verified scope, then test removal.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "verus_verify|verus_spec|fn .*as_ptr|verus!" src/kernel/src/hal/arch/shared/
+
+[THINKING] The `as_ptr` assume_specification is specific to identity_map.spec.rs, and the only relevant `.as_ptr()` call in mm/virt that falls under verified scope is in identity_map.rs at line 557 within the external_body ensure_pt function. Other `.as_ptr()` usages appear in hal/ modules which operate under their own verification scope, though I'm realizing that assume_specification is actually crate-global once compiled rather than module-local.
+
+When the full kernel crate is verified, this as_ptr assume_specification would apply globally to `<[T]>::as_ptr`, so removing it could break any verified code calling `slice::as_ptr` in translated context. The hal modules in page_table.rs and page_directory.rs do call `self.entries.as_ptr()`, but I'm uncertain whether those are currently verified or if they have their own handling for this.
+
+The key insight is that the module-scoped cheating gate doesn't flag assume_specifications at all — it only flags external_body and external_type_spec, both of which are TCB-allowed. So from the gate's perspective, this module has only sanctioned cheating. The three external_body declarations and ExPageTableBss are all TCB-listed, and the assume_specifications don't count as cheating by the gate's definition.
+
+Given that the proof file contains real lemmas with no admits, module verification already passes, and the previous proving phase exhaustively documented the irreducible blockers, the module is already in its target state. The established pattern across mm::phys and elsewhere is to use the TCB approach for these deferred ghost tokens. While I could attempt to remove the as_ptr assume_specification and test both module and full verify, this provides marginal benefit and risks regression — especially since the assume_specification isn't even flagged as cheating by the gate.
+
+The cleaner interpretation is that as_ptr was needed when ensure_pt was verified-by-admit, but now that ensure_pt is external_body, the body isn't translated, so as_ptr is genuinely dead within this module's scope. Removing it would reduce the trust surface, but the risk is whether other crate code depends on it — and since it's only defined in identity_map.spec.rs specifically for identity_map, any hal code calling as_ptr in a verified context would already need its own specification.
+
+For FixedSizeBumpAllocator::new, it's a legitimate placeholder for a not-yet-verified callee that's needed by the verified static PAGE_TABLE_ALLOCATOR. Since page_table_allocator.rs is out of scope and I can't remove the #[verus_verify] attribute, this assume_specification must stay — it's the sanctioned placeholder class that gets eliminated once the module is verified.
+
+My plan is to empirically test removing the as_ptr assume_specification (which appears genuinely dead since ensure_pt is external_body), run module and full crate verification, then check AST consistency against the base branch before writing the fix report. Let me start by testing whether removing as_ptr actually works.
+[RESULT ✓] bash: === check if those hal fns verified ===
+            Some(pte) if pte.is_present() => Some(pte),
+            _ => None,
+        }
+    }
+
+    pub fn physical_address(&self) -> Result<FrameAddress, Error> {
+        let vaddr: usize = self.entries.as_ptr() as usize;
+        let paddr: usize = crate::hal...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The hal `.as_ptr()` callers aren't in verified scope, and `as_ptr` is only used inside the now-`external_body` `ensure_pt`. Let me remove this dead assume_specification and re-verify.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs
+[TOOL] report_intent: Removing dead assume_specification
+
+[THINKING] The `as_ptr` assume_specification in identity_map.spec.rs might not be needed since page_table.rs isn't verified and doesn't translate that function. Let me test removing it and see if the module verification still passes, then run the full verify to confirm it's safe to drop.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -35
