@@ -225,3 +225,326 @@ Turn 6
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Baseline `make verify-sys` is already **CLEAN** — zero cheating in the sys crate. Let me confirm there's no cheating anywhere in the sys crate and understand the `into_raw_value` situation.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== cheating in sys crate ==="; grep -rn "external_body\|assume_specification\|admit(\|
+
+[THINKING] The baseline verification shows no cheating detected across the `sys` crate, but I need to focus specifically on the `virt.rs` module and the target function `VirtualAddress::into_raw_value`, which currently isn't verified since it's in a plain impl block rather than a verified one. The core requirement is that `make verify-sys` passes cleanly with zero cheating, which it already does. But the deeper question is whether I should attempt to body-verify `into_raw_value` in-place to eliminate the need for the consumer's `assume_specification` in the kernel crate—though that assume is already explicitly allowed by tcb-allowed.md. The challenge is that verifying the whole `impl Address for VirtualAddress` block would require handling pointer casts that Verus doesn't support, so the current approach of leaving `into_raw_value` unverified and letting consumers trust it via `assume_specification` is the practical boundary.
+
+Let me search the sys crate more thoroughly to confirm there's no hidden `assume_specification` for VirtualAddress that I've missed.
+[RESULT ✓] bash: === cheating in sys crate ===
+=== assume in comments excluded; raw grep counts ===
+src/libs/sys/src/sys/mm/address/virt.rs
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== diff virt.rs vs base ==="; git diff verus-ai/hal-platform-microvm -- src/libs/sys/s
+
+[THINKING] The only match for "assume" in the sys crate is a comment in virt.rs, so there's no actual cheating there. Now I need to decide whether to body-verify `into_raw_value` — it's listed as a target function and the goal is to give it a real proof instead of relying on the consumer's assume_specification. The verification gate for `make verify-sys` is clean and passes, but the task is to eliminate cheating entirely. The `into_raw_value` function in virt.rs isn't currently verified, and I'm considering whether to tackle that.
+
+The consumer's assume_specification in the kernel crate is allowed by tcb-allowed, but the broader goal is presumably to eventually verify `into_raw_value` in-place so that consumer assumption can be removed. However, that's outside the scope of verify-sys. My focus should be on making verify-sys pass cleanly and delivering the fix_report.md. Since there's no cheating to eliminate, I could strengthen the module by adding a verified contract to `into_raw_value`. The challenge is that it's a trait method in an impl block, and verifying it might require pulling in other methods with unsupported casts. Let me test whether adding `#[verus_verify]` to the impl block and `#[verus_spec]` to `into_raw_value` actually works or hits that limitation. Since `into_raw_value` is in the listed functions I'm allowed to touch, I can attempt this.
+
+But I should reconsider the actual goal: the cheating gate is already clean, and the task is fundamentally about eliminating cheating—there is none. Attempting to verify `into_raw_value` is a coverage improvement, not cheating elimination, and risks creating a regression if the impl block verification fails. Let me first verify the AST consistency against the base branch and check what's already been changed in virt.rs by diffing it against the base.
+[RESULT ✓] bash: === diff virt.rs vs base ===
+diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index 2da5cf08d..9917c574f 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //==================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The branch already verifies `new`/`from_raw_value`; `into_raw_value` is left unverified relying on a kernel-side `assume_specification`. Baseline is clean. Let me try to actually body-verify `into_raw_value` to strengthen the target. First, let me load the verus-constraints skill and check attribute conventions.
+[TOOL] skill: coding-standards
+
+[THINKING] The branch already has `new` and `from_raw_value` verified with specs and proofs, plus a View implementation, but `into_raw_value` remains unverified with a comment explaining the reasoning. The verify-sys crate is clean with no cheating, though the task now requires eliminating all cheating entirely, and the comment on `into_raw_value` seems to be cut off mid-explanation. So marking the impl block `#[verus_verify]` would bring `into_raw_value` into scope for verification, but I'd need to mark `as_ptr` and `as_mut_ptr` as external since they use unsupported casts. The key insight is that `external` isn't a cheating pattern—it's just unverified coverage, whereas `external_body` would be cheating. Let me test whether this approach actually works by trying to mark the impl block for verification and excluding those sibling methods.
+[RESULT ✓] skill: Skill "coding-standards" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls .github/skills/ 2>/dev/null; echo "==="; find . -iname "*verus-constraints*" -o -iname "*s
+
+[THINKING] I'm noticing that the verus-constraints skill mentioned in the task requirements isn't showing up in the available skills list, so I need to verify whether that skill file actually exists.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+===
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; find / -iname "*verus-constraints*" 2>/dev/null | head; echo "---ai dir---"; ls /home/ruize/v
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/docs/skills/verus-constraints
+/mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/verus-constraints
+/mnt/shared/view-design-exp/kheap-worker7-clean/docs/skills/verus-constraints
+/mnt/shared/verus-ai-improve5-kheap-claw/docs/skills/verus-constraints
+/mnt/shared/kheap-ma...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/verus-constraints/SKILL.md 2>/dev/null | head -150
+[RESULT ✓] bash: ---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+
+# Verus Constraints
+
+Study `...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '150,230p' /home/ruize/.openclaw/workspace/skills/verus-constraints/SKILL.md 2>/dev/null
+
+[THINKING] I'm noting that the verus-constraints skill recommends using `verus! { }` syntax for new code, but since the existing codebase uses attribute-style annotations, I should keep that pattern consistent. Also, I can't use `#[verifier::external]` to suppress verification errors on functions like `as_ptr` and `as_mut_ptr` — that's explicitly banned as a workaround.
+
+Now I'm checking whether pointer casts like `usize as *const u8` are actually a limitation or if they're supported.
+[RESULT ✓] bash: | `async fn` / `await` | Cannot write requires/ensures. Must use `#[verifier::external]`. |
+| `f32`/`f64` arithmetic in spec | Cannot reason about float results. |
+| `static mut` | No spec model. |
+| `transmute` | No spec model. |
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me verify the claim that `usize as *const u8` is unsupported, per the escalation ladder (isolated reproducer).
+[TOOL] bash: cd /tmp; cat > repro_ptr.rs <<'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+pub struct VA(usize);
+
+impl VA {
+    pub fn into_ra
+
+[THINKING] I need to verify whether pointer casts like `usize as *const u8` are actually unsupported by Verus as the code comment claims, so I'll create a minimal test case to check. The bigger question is whether I can verify `into_raw_value` directly in the sys crate without introducing any unsound code — right now the sys crate has zero cheating and passes verification cleanly, but `into_raw_value` itself remains unverified.
+
+The real tradeoff is whether attempting to verify the entire `impl Address` block is worth the risk of breaking the build, versus leaving it as-is and accepting that the downstream kernel code uses an `assume_specification` to work around it. Let me first test if I can selectively mark just `into_raw_value` with verification attributes while leaving the rest of the impl block unmarked, or if Verus requires the whole block to be treated uniformly.
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u8`
+  --> repro_ptr.rs:13:9
+   |
+13 |         self.0 as *const u8
+   |         ^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp; cat > repro_trait.rs <<'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+pub trait Addr: Sized {
+    fn into_raw_value(sel
+
+[THINKING] I've confirmed that Verus doesn't support casting `usize` to `*const u8`, so verifying the entire `impl Address` block fails on `as_ptr` and `as_mut_ptr`. Now I'm testing whether I can selectively verify just `into_raw_value` while leaving those pointer methods unverified within the same trait implementation, or if Verus requires the whole block to be verified together.
+[RESULT ✓] bash: error: Verus does not support this cast: `usize` to `*const u8`
+  --> repro_trait.rs:20:9
+   |
+20 |         self.0 as *const u8
+   |         ^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Confirmed: verifying the trait impl drags in the sibling `as_ptr` cast (`usize as *const u8`), a genuine Verus limitation. The two methods cannot be split into separate `impl` blocks (Rust forbids splitting one trait impl). So `into_raw_value` cannot be body-verified in-place — but it carries **no cheating marker** in the sys crate. Let me confirm the module-scoped state and check existing artifacts.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/nanvix-phys-sys-virt-address/ 2>/dev/null; echo "=== existing todo ==="; cat
+
+[THINKING] The trait impl block is pulling in the sibling `as_ptr` method with an unsupported cast, which confirms the comment's claim. Now I need to figure out if there's a way to verify `into_raw_value` independently without triggering the `as_ptr`/`as_mut_ptr` verification—maybe the `Address` trait in the sys crate could be cfg-gated or restructured to separate these concerns.
+
+Actually, the real constraint is that `as_ptr` and `as_mut_ptr` aren't on my target list, so I can't modify them per the hard rule. And I can't verify `into_raw_value` without pulling them in. Rust doesn't allow splitting a single trait impl into multiple blocks—all trait methods must stay together in one `impl Address for VirtualAddress` block. So this is a genuine Verus limitation: the unsupported pointer cast in the sibling methods blocks body verification of `into_raw_value` in-place.
+
+The current approach is correct: `into_raw_value` stays unverified (no cheating), and the contract is handled by a consumer-side `assume_specification` in the kernel, which is already in tcb-allowed.md. For the sys-virt-address module, that means zero cheating items and a clean verify-sys pass, with `into_raw_value` left unverified due to this genuine Verus limitation.
+
+Now I'm checking whether this counts as a proof gap or just a coverage gap. A proof gap is verifiable but not yet proven—`into_raw_value` isn't verifiable in-place due to the true limitation, so there's no admit or assume for it in the sys crate. The cheating gate stays clean. Let me verify the target functions: `new` ✅, `from_raw_value` ✅, `into_raw_value` (can't verify in place, no cheating), and the `VirtualAddress` struct with its View impl and invariant spec. The trait method only exists once, and the exec code in virt.rs matches the base branch—just verus annotations added, no semantic changes. I should check the AST consistency properly to confirm the structural split of the impl blocks preserves semantics. The kernel's `assume_specification` for `into_raw_value` is the only way to provide a contract for that trait method, and it's already in the tcb-allowed list, so there's genuinely nothing more to verify in the sys crate. I should record this as a documented limitation in verification_todo.md since it's a true Verus constraint rather than a proof gap, then run the module-scoped verify to confirm everything is clean before writing the report.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+=== existing todo ===
+none
+=== check into_raw_value assume_spec in kernel ===
+<shellId: 14 compl...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/ 2>/dev/null; echo "=== ca
+
+[THINKING] I need to check the cheating-elimination directory for any existing fix reports and review the body_removed_source.rs file to understand the original implementation. I should also verify that the module-scoped verify-sys works correctly, though the full verify-sys should be sufficient since it ran cleanly. Then I'll run the AST consistency check to load that capability.
+[RESULT ✓] bash: prover-claude-20260615-160200.jsonl
+prover-claude-20260615-160200.txt
+=== caller analysis for into_raw ===
+<shellId: 15 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/ast-consistency/SKILL.md 2>/dev/null | head -120
+
+[THINKING] I need to look up the ast-consistency skill to make sure I'm running the check correctly.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 scripts/ast_consistency.py --base-ref verus-ai/hal-platform-microvm src/libs/sys/src/
+[RESULT ✓] bash: python3: can't open file '/home/ruize/nanvix-phy/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; find . /home/ruize/verus-ai-exp -name "ast_consistency.py" 2>/dev/null | head; ls /home/ruize
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/backup/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-property-analysis-0416/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/scripts/ast_consis...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/hal-
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+MISMATCHes detected. Let me inspect each.
+[TOOL] bash: cd /home/ruize/nanvix-phy; for fn in "VirtualAddress::from_raw_value" "VirtualAddress::align_up" "VirtualAddress::align_
+
+[THINKING] I'm noticing some mismatches in the function names—align_down, align_up, from_raw_value, and is_aligned are flagged, but align_up, align_down, and is_aligned aren't actually on my target list, and I didn't see changes to them in the earlier diffs. Let me verify what's actually changed, especially for from_raw_value which is in my target list.
+[RESULT ✓] bash: ===== VirtualAddress::from_raw_value =====
+✅ VirtualAddress::from_raw_value: MATCH
+===== VirtualAddress::align_up =====
+## VirtualAddress::align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,4 @@
+-    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+-        mm::align_up(self.0...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+These MISMATCHes are tool false positives: `align_up`/`is_aligned` exist twice (inherent `impl VirtualAddress` returning `Option`/`bool`, and `impl Address` returning `Result`). The checker keyed by name and cross-matched them. Let me confirm no real exec change via git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git diff verus-ai/hal-platform-microvm -- src/libs/sys/src/sys/mm/address/virt.rs | grep -E "
+
+[THINKING] The AST tool is incorrectly matching inherent methods with trait methods that share the same name—`align_up`, `align_down`, and `is_aligned` exist in both the plain `impl VirtualAddress` block and the `impl Address for VirtualAddress` trait implementation, but they have different signatures and return types. Since the tool keys by function name alone, it's conflating these as mismatches when they're actually distinct implementations.
+
+I can verify this isn't a real change by checking the git diff directly—the earlier output showed only import changes, annotation updates, the impl split, and comment modifications, with no actual changes to the method bodies themselves.
+[RESULT ✓] bash: 
+<shellId: 21 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== Full added/removed exec (non-verus) lines ==="; git diff verus-ai/hal-platform-micr
+
+[THINKING] The git diff confirms there are no actual changes to the method bodies—only verus annotations were modified. The AST tool mismatches are false positives stemming from name collisions between the inherent impl and trait impl, where both define align_up, align_down, and is_aligned but with different return types (Option vs Result).
+[RESULT ✓] bash: === Full added/removed exec (non-verus) lines ===
++use vstd::prelude::*;
++#[cfg(verus_keep_ghost)]
++include!("virt.spec.rs");
++#[cfg(verus_keep_ghost)]
++include!("virt.proof.rs");
++
+-use ::vstd::prelude::*;
++// Verification-target constructors. They live in a dedicated `#[verus_verify]`
++// impl blo...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Confirmed: only verus annotations + an inherent-impl block split (semantically identical) were added — zero exec logic change. The 4 AST MISMATCHes are tool false-positives from inherent/trait method name collisions. Let me verify the kernel-side consumer boundary referenced by the comment, then run a final regression check.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "into_raw_value\|VirtualAddress" src/kernel/src/mm/phys/ 2>/dev/null | grep -i "assu
+
+[THINKING] The changes are mostly structural and annotation-related: reordering imports with conditional compilation, updating comments, adding verification attributes to the new impl block, and splitting the implementation into separate blocks for the verification target and the new methods.
+
+The key insight is that splitting the inherent impl into two blocks is semantically identical in Rust but necessary for Verus, which requires a `#[verus_verify]` wrapper around the self-less associated functions while the other methods can't be verified. The reported AST mismatches are false positives from method-name collisions between inherent and trait implementations—the actual executable code hasn't changed at all.
+
+I'm confident the phase passes: the sys crate is clean, the exec code is unchanged, and the into_raw_value limitation is a genuine Verus constraint, not cheating. Now I should run the full verification suite as a regression check to confirm everything still works. Since I haven't made any code changes, the crate state is identical to baseline and already verified clean. I'll run `make verify-sys` once more to confirm, then write up the reports. Before finalizing, let me verify where the consumer's assume_specification actually lives to make sure my documentation is accurate.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.rs:28:        VirtualAddress,
+src/kernel/src/mm/phys/mod.rs:118:    mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+src/kernel/src/mm/phys/mod.rs:132:                PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
+src/kernel...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+No code changes were needed — the module is already clean. Let me run a final confirmation of `make verify-sys` and kick off the broader `make verify` for regression assurance.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | grep -E "cheating|status|covera
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | tail -60
+
+[THINKING] The reference to `phys.spec.rs` in the comment might not be accurate since that file doesn't actually contain the VirtualAddress assume_specification mentioned, but that's a kernel crate concern and doesn't impact my work on verify-sys. What matters is that the sys crate has no cheating and verify-sys passes its checks.
+
+Now I need to run a final regression check — I'll kick off `make verify-sys` for a quick confirmation, and since the task asks for it, I'll also run `make verify` in the background even though I haven't changed any source files, so there's no actual regression surface to worry about. The working tree is identical to what already passed verification.
+[RESULT ✓] bash: <command started in background with shellId: fullverify>
+[RESULT ✓] bash: Exit code : 0
+  ✅ No cheating detected.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 2/254 exec functions have contracts
+  status: CLEAN
+<shellId: 24 com...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
