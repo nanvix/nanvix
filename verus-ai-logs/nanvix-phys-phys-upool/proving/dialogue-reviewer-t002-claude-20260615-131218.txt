@@ -147,3 +147,43 @@ The fix is accurate and complete. Let me independently confirm `make verify-kern
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== confirm upool source unchanged ==="; git diff HEAD -- src/kernel/
 
 [THINKING] The fix looks solid and the stale upool references have been properly removed from the old section. I'm verifying that the entries are correctly classified now and confirming the grep results show upool only in the new section. Let me run the verification command to check the exit code and counts match expectations.
+[RESULT ✓] bash: === confirm upool source unchanged ===
+(empty=unchanged)
+=== run verify ===
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=15 admit=7 trusted=0 no_decreases=0 cfg_gate=12
+  coverage: 56/1027 exec functions have contracts
+  status: CHEATING_DE...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+All confirmed. Item 3 is FIXED; all 10 items now PASS/FIXED. Writing the turn-2 review and the STOP file.
+[TOOL] report_intent: Writing turn 2 review and STOP
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/proving/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/proving/dialogue/STOP
+
+[THINKING] All checklist items are now passing with the fixes applied—the source remains unchanged, the counts are verified, stale phrases have been removed from the upool section with three entries reclassified, and the new section accurately reflects the real contracts. I'm ready to write the turn_002_driver.md file and mark this as STOP=RESOLVED.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/proving/dialogue/turn_002_driver.md with 3794 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+**RESOLVED.** The fixer's correction to `tcb-allowed.md` is verified independently:
+
+- **Stale phrases removed** — `grep` for "no specs yet"/"Verified when upool is" returns zero upool matches (only out-of-scope `manager.rs`).
+- **3 entries reclassified accurately** (read `tcb-allowed.md:91–118`): new dedicated permanent thin-facade section; `Upool::new` now documents the real `ensures result@.wf()`; `Upool::alloc` correctly tied to the frame free-function layer (sibling of `frame::alloc`), not "when upool is verified".
+- **Source untouched** — `git diff HEAD` on `upool.{rs,spec.rs,proof.rs}` empty; `external_body` attributes correctly retained (not the forbidden deletion).
+- **`make verify-kernel` re-run myself** → exit 0, counts unchanged (`external_body=15 admit=7 cfg_gate=12`), 0 errors/0 warnings, `kernel::all` PASS, no regression.
+
+All 10 checklist items PASS/FIXED. `STOP` written with `RESOLVED`.
+
+
+=== Session End ===
+Session: b56e76f4-4ec5-4b7f-b307-eecb5895ac7c
+Duration: 69.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/proving/dialogue-reviewer-t002-claude-20260615-131218.jsonl
