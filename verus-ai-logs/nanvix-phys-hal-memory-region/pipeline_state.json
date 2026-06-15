@@ -30,6 +30,17 @@
       "review_file": null,
       "duration_s": 197.3,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 2651.7,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "5a10b5aa-3097-4868-a59b-12dc4710e782",
@@ -38,7 +49,8 @@
   "verus_branch": "verus-ai/hal-memory-region",
   "phase_boundary_shas": {
     "caller-analysis": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2",
-    "view-design": "776a78e85ce25637dc8c495412538013c9f76d56"
+    "view-design": "776a78e85ce25637dc8c495412538013c9f76d56",
+    "specification": "cd87d8eb3a41d78488c7daeb115050b9f83cbcab"
   },
   "phase_start_shas": {
     "caller-analysis": "c5c4f78a66b4a71e704e87934380be624047b6d0",
@@ -74,6 +86,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "776a78e85ce25637dc8c495412538013c9f76d56",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "cd87d8eb3a41d78488c7daeb115050b9f83cbcab",
       "rollback_iter": 0
     }
   ],
