@@ -447,3 +447,60 @@ Turn 27
 [TOOL] report_intent: Verifying module changes
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -40
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::virt::identity_map
+
+verification results:: 4 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.36s
+
+=== Results ===
+  4 verified
+  0 err...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+4 verified, 0 errors, 0 admit, 0 assume. The "CHEATING_DETECTED" is only the `external_body` on the 3 shims that are explicitly listed in `tcb-allowed.md`. Let me confirm the checker's relationship to the allow-list by checking how the already-verified `phys` module (which also has allowed `external_body`) is treated.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "tcb-allowed\|tcb_allowed\|CHEATING\|external_body" $(find . -name "Makefile" | he
+
+[THINKING] I'm seeing that 4 checks passed with no errors, and the "CHEATING_DETECTED" warning is flagging external_body references in 3 shims that are actually listed as allowed in tcb-allowed.md. The checker is catching these external_body calls but they're explicitly permitted, so I need to verify that the checker is properly cross-referencing the allowlist. I should check whether the cheating detection script actually consults tcb-allowed.md, or if it's just flagging external_body unconditionally. Let me look at the verification logic to see if other modules like phys that have sanctioned external_body also show this warning.
+[RESULT ✓] bash: === makefile verify-kernel target ===
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "Cheating Pattern Check\|CHEATING_DETECTED\|external_body" --include=*.sh --includ
+[RESULT ✓] bash: ./scripts/verify.sh:282:echo "=== Cheating Pattern Check ==="
+./scripts/verify.sh:301:combined = {"assume": 0, "external_body": 0, "admit": 0, "trusted": 0, "no_decreases": 0}
+./scripts/verify.sh:305:    combined["external_body"] += r.external_body_count
+./scripts/verify.sh:318:# merely *mentioned* ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '525,600p' scripts/verify.sh
+[RESULT ✓] bash: if [[ -d "$CRATE_SRC_DIR/$MOD_CHEAT_PATH" ]]; then
+                cp -r "$CRATE_SRC_DIR/$MOD_CHEAT_PATH"/* "$MODULE_CHEATING_DIR/" 2>/dev/null || true
+            fi
+        fi
+    fi
+fi
+
+# --- Run scans ---
+GLOBAL_CHEATING_JSON="$(run_cheating_scan "$CHEATING_DIR")"
+GLOBAL_CFG_GATE_COUNT="$(count_...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The cheating check is a purely syntactic guardrail that doesn't consult `tcb-allowed.md`. The `external_body` on these 3 shims is explicitly sanctioned by `tcb-allowed.md` and is the *only* way to discharge postconditions over the uninterpreted `identity_map_view()` (which reads statics + external `arch` paging ops Verus cannot model). The substantive result: **4 verified, 0 errors, 0 admit, 0 assume**. Now confirming no regressions across all modules.
+[TOOL] report_intent: Running full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -45
+
+[THINKING] The checker performs a syntactic scan without consulting the allow-list, so it flags any external_body as a potential violation. However, the task explicitly permits external_body for functions listed in tcb-allowed.md, and these three functions are indeed on that list. The checker is a blunt tool that doesn't account for the human-curated exceptions, so I need to determine whether external_body is actually the right approach here despite the flag.
+
+I'm reconsidering whether the intended solution avoids external_body entirely. To verify these bodies in-place would require assume_specification for roughly 25 external arch functions and types—a much larger trusted surface than a single external_body boundary, and one that would require human approval anyway. Even with all those assumptions, the postcondition over the uninterpreted identity_map_view() still couldn't be proven without an axiom relating concrete writes to that view, which is fundamentally impossible since identity_map_view() reads statics Verus can't see. So external_body is the only viable path forward and the intended solution. The CHEATING_DETECTED flag is an expected artifact of the syntactic guardrail, while the external_body itself is sanctioned by tcb-allowed.md. The verification results confirm this: 4 verified, 0 errors, 0 admit, 0 assume.
+
+Now I'm verifying the cheating-detail to confirm only the 3 expected functions are flagged, then running the full make verify to check for regressions. The prompt's governing rule is clear: don't add external_body unless the function is in tcb-allowed.md, and these functions were already intended to be external_body since their bodies are unverifiable and they're on the allow-list. Without external_body the module doesn't compile under Verus, so there's no alternative that satisfies the 0 errors requirement. I'm confident this is correct. Before running the full verify, I'll double-check for any bugs to report—the exec bodies like page_aligned_cover are out of scope, and within my 3 target functions the arithmetic looks sound with checked operations and proper bounds checking. No obvious bugs to fix.
+[RESULT ✓] report_intent: Intent logged
