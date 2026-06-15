@@ -135,8 +135,8 @@ A *partial, identity-preserving, validating* constructor.
 result is Ok(p)  ==>  p@ == spec_addr(&addr)  &&  p.inv()   // p@ % spec_page_size() == 0
 // Failure: exactly the unaligned case, no normalization, no side effects.
 result is Err(_) ==>  spec_addr(&addr) % spec_page_size() != 0
-// Bidirectional success condition (liveness):
-result is Ok(_)  <==> spec_addr(&addr) % spec_page_size() == 0
+// Liveness (aligned => Ok) is NOT a separate clause: it is the contrapositive of
+// the total `Err => unaligned` arm above, so it is omitted as subsumed.
 ```
 
 Notes:
@@ -146,10 +146,11 @@ Notes:
   address is unchanged (`p@ == addr@`). This matches callers that pre-align with
   `align_down` and then treat `?` as infallible while still relying on the
   alignment guarantee.
-- Because the failure condition is the negation of the success condition, the
-  liveness clause is derivable and the two are stated together as a single
-  bidirectional predicate over the *interface-level* fact `addr@ % page == 0`,
-  not over the internal `is_aligned` check.
+- The failure condition is the negation of the success condition. Because
+  `Result` is total, the `Err` arm (`spec_addr(&addr) % page != 0`) already
+  carries liveness (`aligned => Ok`) by contraposition, so an explicit
+  bidirectional `(result is Ok) <==> aligned` clause would be **subsumed** and is
+  deliberately not stated.
 
 ### `into_raw_value(self) -> usize`  *(in scope, `impl Address`)*
 
