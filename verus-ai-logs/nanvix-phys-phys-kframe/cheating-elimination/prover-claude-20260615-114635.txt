@@ -1179,3 +1179,38 @@ The task requires running `make verify-kernel` and `make verify` for verificatio
 Regarding the AST consistency requirement: my changes don't introduce any exec code modifications through cfg gates. The View impl moved from a cfg-gated block in kframe.rs to kframe.spec.rs (also cfg-gated during inclusion), so it remains ghost/spec-only. The split of `new` into `new` and `map_frame` preserves the exact same exec behavior—the operations happen in the same order with identical complexity, just reorganized into a helper function. The error calls that were previously in `new`'s map_err closures are now in `map_frame`, but since `map_frame` is exec-only with assume_specification, Verus doesn't translate its body anyway, so there's no cfg-gating issue.
 
 The only AST differences between verify and normal builds are the standard Verus scaffolding: the `#[verus_spec]` and `#[verus_verify]` attributes (which are no-ops in normal builds) and the included spec file. These aren't exec changes. Now I'll kick off the full `make verify` and prepare the report.
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs-bottom-up/build/targets/x86-kernel.json" \
+/hom...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+`make verify` exit 0 — all crates pass. The kernel verify shows "cached"; to be certain manager didn't regress, let me force a fresh (non-cached) full kernel verification by locating and clearing the verus-ai cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json 2>/dev/null |
+
+[THINKING] The `make verify` command completed successfully with exit code 0, which means all crates passed verification—the kernel module was cached during the check. Since make would have stopped with a non-zero exit if any verification target failed, and it reached the kernel verification step and exited cleanly, all the prior crates must have passed as well.
+
+The caching here is actually reassuring rather than concerning: the kernel-wide verify shows "cached (no recompilation)" for the kframe module because I already ran a full verification earlier, and since new's contract is byte-identical to what I confirmed (it still requires base.inv() and ensures unchanged), manager's dependency on new's spec hasn't changed, making the cache valid. The strongest evidence that everything is correct is that when I ran the targeted verification of kframe with my changes, it showed "3 verified, 0 errors"—a fresh verification confirming the changes work.
+[RESULT ✓] bash: {
+  "module_name": "phys-kframe",
+  "log_name": "nanvix-phys-phys-kframe",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs",
+  "current_phase": "cheating-elimination",
+=== find cache ===
+./.z.cache
+total 388
+drwxrwxr-x 1 ruize ruize    624 Jun 13 22:36 .
+drw...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+Let me force a fresh, non-cached full-kernel verification to definitively confirm no regression anywhere (including manager).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && touch src/kernel/src/mm/ph
+
+[THINKING] The "cached" result is actually cargo's compilation cache—since the manager.rs source file hasn't changed, cargo skips re-running verus verification on it, even though the verification itself is valid from the prior run. To force a fresh verification, I'd need to touch the source files or run `cargo clean`, but the real proof that manager is fine is that I only modified kframe files, so manager's verification dependencies remain untouched.
+
+Let me force a definitive full-kernel re-verification by clearing the kernel's build artifacts so verus runs on everything from scratch. The challenge is that the entire kernel is a single crate, so when I run `make verify-kernel MODULE=mm::phys::kframe`, it only verifies that specific module, which is why it showed "3 verified"—but running the full verification without the MODULE filter still shows "cached" because cargo thinks nothing changed at the crate level.
+
+The real issue is that my MODULE-filtered run updated the cargo cache for the whole kernel crate, but it only actually verified kframe functions, not the entire crate. So I'm not certain whether the whole kernel has been verified with my changes or just the kframe module. The most reliable way forward is to clean the kernel target completely and run a fresh full verification.
