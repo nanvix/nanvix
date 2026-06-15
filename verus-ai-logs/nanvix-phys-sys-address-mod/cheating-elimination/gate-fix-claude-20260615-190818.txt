@@ -114,3 +114,114 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Restored. Now run both commands immediately in a single sequence to minimize the race window.
 [TOOL] bash: cd /home/ruize/nanvix-phy && echo "### verus version at start: $(cat /home/ruize/toolchain/verus/version.txt)" && echo "
+[RESULT ✓] bash: ### verus version at start: 0.2026.05.31.5dd6d83
+===== make verify-sys =====
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/254 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Both pass now (verify: sys 6, bitmap 70, slab 35, kernel 47 — all 0 errors). The version held through both runs. But the clobberer is a concurrent process that may strike again before the gate re-runs. Let me check whether the gate harness reads `VERUS_EXECUTABLE_DIR` from a config I can pin to a private stable copy.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== pipeline_state ==="; head -c 2000 verus-ai-logs/nanvix-phys-sys-address-mod/pipel
+
+[THINKING] The verification passed across all crates with no errors, and the kernel's external body and config gate are pre-existing TCB-allowed issues outside my scope. Now I'm tackling the durability problem—the clobberer could strike again before the gate reruns, and since it already failed once and will retry, I need to figure out how to prevent that.
+
+The real issue is that some concurrent process keeps reinstalling version 06.14, and I can't stop it since this is a shared environment. I can't interfere with other users' work, but I could make my repo more resilient. The setup script checks version.txt and only reinstalls on mismatch, so maybe another worktree is expecting 06.14. Either way, I can't prevent the clobbering itself, but I'm wondering if I could make the gate more robust or if there's a way to trick the clobberer's version check into thinking 06.14 is already installed so it skips the reinstall.
+
+Actually, that won't work — if another worktree pins 06.14 and sees a different version, it'll just reinstall 06.14 again and clobber me right back. This is a symmetric contention problem I can't solve unilaterally without affecting other users.
+
+The right approach is to document that the gate failure was environmental, not a source or proof defect, since both commands pass cleanly now. I should check if there's a way to make the gate use a private pinned verus directory that the clobberer won't touch — maybe by overriding VERUS_EXECUTABLE_DIR through a config file or environment setup that I can control per-repo. Let me look at pipeline_state.json and any harness configuration to see if that's possible.
+[RESULT ✓] bash: === pipeline_state ===
+{
+  "module_name": "sys-address-mod",
+  "log_name": "nanvix-phys-sys-address-mod",
+  "source_path": "/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs",
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "caller-analysi...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n "verus-version\|verus_version\|VERUS_EXECUTABLE_DIR\|install\|toolchain/
+
+[THINKING] I need to look at the verus_setup.py file in the harness to see what version of verus it installs before running the gate.
+[RESULT ✓] bash: 413:def ensure_verus_installed(project_root: Path) -> Optional[str]:
+414:    """Ensure Verus is installed, auto-downloading if needed.
+417:    Returns the VERUS_EXECUTABLE_DIR path, or None if Verus cannot be set up.
+419:    # Check if VERUS_EXECUTABLE_DIR is already set and valid
+420:    verus_dir ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '413,475p' scripts/verus_setup.py
+
+[THINKING] I'm seeing a critical detail about how the harness handles Verus installation: if the environment variable `VERUS_EXECUTABLE_DIR` is already set and points to a valid location, it skips reinstalling entirely. The harness then passes this directory to the verify process. However, there's a version check happening—when `ensure_verus_installed` runs, it compares the version in the default directory against what's specified in build/verus-version, and triggers a reinstall if they don't match.
+
+This creates a potential conflict: if multiple concurrent pipelines are targeting different worktrees with different pinned Verus versions, they'll be fighting over the shared default installation directory, constantly reinstalling their respective versions. The key insight is that I can break this cycle by explicitly setting `VERUS_EXECUTABLE_DIR` in the environment before the harness runs—that way it bypasses the version check and reinstall logic entirely.
+
+But there's a catch: the gate harness is launched by the pipeline orchestrator as a parent process, so I can't directly set environment variables on it. I need to check whether the harness reads from a persistent config file or if it inherits the environment in a way I can influence.
+
+Let me refocus on what's actually achievable. My proof changes are solid and verified locally. The gate failure is purely environmental—a known recurring flake where the shared Verus directory got clobbered by a concurrent process. I've restored the correct version, so the best move now is to let the gate retry and see if the harness itself handles the version check correctly before each run.
+
+The key question is whether the harness's `ensure_verus_installed` function runs before `make verify` and automatically reinstalls the correct version on mismatch. If it does, the system should self-heal. But the gate failed at 19:08 with version 06.14 instead of 05.31, which suggests either the ensure step didn't run beforehand or the clobber happened between that check and the actual verify step. I need to trace when exactly `ensure_verus` is called relative to the gate verification.
+[RESULT ✓] bash: def ensure_verus_installed(project_root: Path) -> Optional[str]:
+    """Ensure Verus is installed, auto-downloading if needed.
+
+    Uses the project's scripts/setup/verus.sh to download the pinned version.
+    Returns the VERUS_EXECUTABLE_DIR path, or None if Verus cannot be set up.
+    """
+    # Ch...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rn "VERUS_EXECUTABLE_DIR\|toolchain/verus" /home/ruize/.bashrc /home/ruize/.profile /home/ruize/.bash_profile /hom
+
+[THINKING] I'm noticing a critical discrepancy in how Verus is located: the `ensure_verus_installed` function first checks the `VERUS_EXECUTABLE_DIR` environment variable and uses that if the binary exists there, but otherwise defaults to `~/verus`. However, the Makefile points to `~/toolchain/verus` instead, creating a path mismatch that could cause the harness to look in the wrong location.
+
+The real issue is that when `VERUS_EXECUTABLE_DIR` is already set in the environment (as the Makefile does with `export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus`), the `ensure_verus` function returns early if it finds the binary there, skipping version validation entirely. This means if a concurrent process corrupts the Verus binary in that directory to an older version like 06.14, the gate won't catch it—it just trusts whatever's already there. The only way to fix this is to guarantee that `/home/ruize/toolchain/verus` contains the correct 05.31 version when the gate runs.
+
+I should check if `VERUS_EXECUTABLE_DIR` is being set globally in the shell profile or orchestrator environment.
+[RESULT ✓] bash: === current shell env ===
+VERUS_EXECUTABLE_DIR=<unset>
+=== does ~/verus exist (harness default)? ===
+-rw-r--r-- 1 ruize ruize 20 May 18 01:54 /home/ruize/verus/version.txt
+0.2026.05.17.e479cce
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Root cause confirmed: the gate runs `make verify` against the shared `~/toolchain/verus` (Makefile default), and a concurrent pipeline for a *different* target system (which pins verus `06.14`) intermittently reinstalls that incompatible version into the shared dir. It's an unavoidable shared-resource race, not a source/proof defect — my source diff is empty and both commands pass with the correct version. Let me re-check the version is still good and lock in the final state.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cur=$(cat /home/ruize/toolchain/verus/version.txt 2>/dev/null); exp=$(cat build/verus-versi
+
+[THINKING] The harness's ensure_verus_installed function finds VERUS_EXECUTABLE_DIR unset, checks the default location at ~/verus, discovers a version mismatch between what's expected (05.31) and what's installed (05.17), and triggers a reinstall into ~/verus before returning that path.
+
+But here's the puzzle: the gate might not be calling ensure_verus_installed at all. The pipeline log shows the gate just runs `make verify` directly through workflow.py's gate logic, which would use the Makefile's default of `/home/ruize/toolchain/verus` rather than ~/verus. If the orchestrator set up verus once at the start into that toolchain directory and something clobbered it to 06.14, that would explain the atomic error the gate hit—not a version mismatch, but a completely different binary version than expected.
+
+Since my shell has VERUS_EXECUTABLE_DIR unset and `make verify` works with the Makefile default, the gate must also be using `/home/ruize/toolchain/verus`. The clobberer is some concurrent pipeline's setup script that reinstalls when versions don't match, and since it's writing 06.14, that means a different target system (not nanvix-phy) is pinning that version. I can't control that, so this is genuinely an unavoidable race condition in the shared environment.
+
+The practical path forward is to restore 05.31, confirm both commands pass, document what happened, and finish quickly so the gate's next retry has the best chance. The question is whether I can make `make verify` robust against future clobbers without modifying tracked files—maybe by having the Makefile's ensure-verus target also restore the correct version, but that would require changing the tracked Makefile itself, which crosses into risky territory.
+
+Actually, the user asked me to fix all errors and warnings, then re-run both commands to confirm they pass cleanly. I've done exactly that: identified the root cause (the version clobber), fixed it by restoring 05.31, and both commands pass. The verify output shows 6 verified with 0 errors and no actual Verus warnings—the [TOPLEVEL DRIFT] entries in the pipeline log are just informational drift notes comparing to the base branch, not real warnings. The kernel's external_body and cfg_gate values are pre-existing TCB-allowed exceptions outside my scope. Let me do one final check to make sure the version is still correct right now.
+[RESULT ✓] bash: installed=0.2026.05.31.5dd6d83 expected=0.2026.05.31.5dd6d83
+>>> still correct
+<shellId: recheck completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Still correct. Let me do the final clean confirmation run of both commands, then update the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "ver=$(cat /home/ruize/toolchain/verus/version.txt)"; echo "=== make verify-sys ==="; 
+
+[THINKING] I'll run both commands one more time in sequence to confirm they pass cleanly, then update the fix report.
