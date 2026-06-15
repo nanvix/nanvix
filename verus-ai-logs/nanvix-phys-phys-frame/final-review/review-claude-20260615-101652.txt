@@ -975,3 +975,172 @@ frame.rs:845:    // VERUS REWRITE: original idiom is the single expression
 ────────────────────────────────────────────────────────────
 Turn 17
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running drift coverage scripts
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy/src/kernel/src/mm/phys/f
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 27 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs 
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs`
+- **Verus file:** `/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|-----...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Frame module cfg usage is only the two allowed `include!` lines. Now let me run the spec_drift and fn_coverage scripts, and kick off full `make verify`.
+[TOOL] report_intent: Running drift and coverage scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/src/mm/
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -40
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 30 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+spec_drift shows 0 drift (working tree == HEAD). Let me find a baseline for fn_coverage and check git history of frame.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -15 -- src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] bash: 5fd42e370 [verus] verify PASS (cheating detected): kernel::mm::phys (31 verified, 0 errors, external_body=23 cfg_gate=9)
+92f1807aa [verus] verify FAIL: kernel::mm::phys (30 verified, 1 errors)
+6e16512c7 [verus] verify PASS (cheating detected): kernel::mm::phys (31 verified, 0 errors, external_body=2...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline --all -- src/kernel/src/mm/phys/frame.rs | tail -8; echo "---find first v
+[RESULT ✓] bash: 22380297a [bitmap] B: Checked Arithmetic on from_raw_array
+bbcf5fb72 [kernel] E: Better Err Handling in FrameAllocator
+d902a4066 [kernel] B: Fixing Log Statements
+a6633da36 [kernel] E: Improve Error Logging in Memory Module
+9591070fc [libs] F: arch Crate
+03db38086 [libs] E: adding '::' prefix to usa...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -- src/kernel/src/mm/phys/frame.rs | grep -viE "verus" | head; echo "=== 
+[RESULT ✓] bash: a49054e16 [kernel] E: Rename UpoolView to FrameAllocView
+29a7e37bd [kernel] E: Update frame allocator specs for refcount semantics
+1726865ac Merge branch 'dev' into verify-phys2-update
+d663f662f [kernel] F: Add duplicate() kcall
+119325e0c [kernel] E: Add per-frame reference counts
+d771d7bcd [kernel]...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && base=$(git log --reverse --oneline -- src/kernel/src/mm/phys/frame.rs | grep -iE "verus" | 
+[RESULT ✓] bash: first verus commit: 75975523f
+parent: 706b9332b2b9c7b4a339f663dc46d05c89255512
+706b9332b [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+=== extract baseline frame.rs ===
+764 /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/final-review/fram...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && d=verus-ai-logs/nanvix-phys-phys-frame/final-review; git show a49054e16:src/kernel/src/mm/p
+[RESULT ✓] bash: 764 verus-ai-logs/nanvix-phys-phys-frame/final-review/frame.orig.rs
+=== fn_coverage (orig vs current) ===
+# Function Coverage Report
+
+- **Source file:** `verus-ai-logs/nanvix-phys-phys-frame/final-review/frame.orig.rs`
+- **Verus file:** `src/kernel/src/mm/phys/frame.rs`
+- **Verus dir:** `/home/ruize...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re
+from pathlib import Path
+path=Path('src/kernel/src/mm/phys/frame
+[RESULT ✓] bash: alloc#1 fn_line=137 verus_spec=True requires=True ensures=True
+alloc_contiguous#1 fn_line=210 verus_spec=True requires=True ensures=True
+free#1 fn_line=290 verus_spec=True requires=True ensures=True
+share#1 fn_line=368 verus_spec=True requires=True ensures=True
+refcount#1 fn_line=428 verus_spec=True...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+All 11 functions matched. Let me run AST consistency and start the full `make verify` in background.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | tail -30
+[TOOL] bash: cd /home/ruize/nanvix-phy && d=verus-ai-logs/nanvix-phys-phys-frame/final-review; echo "=== AST consistency count ==="; 
+[RESULT ✓] bash: <command started in background with shellId: verifyall>
+[RESULT ✓] bash: === AST consistency count ===
+⚠️  6 mismatched (13 functions match)
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
