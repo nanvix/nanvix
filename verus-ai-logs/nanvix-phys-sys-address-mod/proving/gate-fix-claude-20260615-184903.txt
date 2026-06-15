@@ -583,3 +583,16 @@ Now toolchain (`0.2026.05.31`) and vstd pin (`2026-05-31-0205`) are matched. Let
 [TOOL] report_intent: Verifying with matched toolchain
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -30
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Crate     : sys
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/sys/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+`verify-sys` is now CLEAN (6 verified, 0 errors). Now the full `make verify`.
+[TOOL] report_intent: Running full make verify
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -40
+[RESULT ✓] report_intent: Intent logged
