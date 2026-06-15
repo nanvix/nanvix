@@ -238,4 +238,97 @@ proof fn lemma_internal_inv_implies_wf(inner: &Inner)
     };
 }
 
+// A refcount update at an already-set index `fnn` to a new positive value preserves `internal_inv`
+// and changes the view only by setting `pa`'s (= `fnn * ps`) refcount to the new value. Used by
+// `share` (increment) and the shared-still-owned case of `free` (decrement that stays positive).
+proof fn lemma_refcount_bump(old_inner: &Inner, new_inner: &Inner, fnn: int, new_val: u8, pa: int)
+    requires
+        old_inner.inv(),
+        new_inner.bitmap == old_inner.bitmap,
+        new_inner.refcount@ == old_inner.refcount@.update(fnn, new_val),
+        0 <= fnn < old_inner.bitmap@.num_bits,
+        old_inner.bitmap@.set_bits.contains(fnn),
+        new_val > 0,
+        pa == fnn * spec_page_size(),
+    ensures
+        new_inner.internal_inv(),
+        new_inner@.allocated_frames == old_inner@.allocated_frames,
+        new_inner@.free_frames == old_inner@.free_frames,
+        new_inner@.refcounts =~= old_inner@.refcounts.insert(pa, new_val as int),
+{
+    let ps: int = spec_page_size();
+    let nbits: int = old_inner.bitmap@.num_bits;
+    assert(ps > 0);
+    assert(old_inner.bitmap.inv());
+    assert(old_inner.bitmap@.wf());
+    assert(new_inner.refcount@.len() == old_inner.refcount@.len());
+    assert(new_inner.refcount@[fnn] == new_val);
+    assert forall|i: int| i != fnn implies new_inner.refcount@[i] == old_inner.refcount@[i] by {};
+
+    // internal_inv(new_inner): only slot `fnn` changed, and it stays set and positive.
+    assert(new_inner.internal_inv()) by {
+        assert(new_inner.bitmap.inv());
+        assert forall|i: int| 0 <= i < nbits implies (
+            #[trigger] new_inner.bitmap@.set_bits.contains(i) <==> new_inner.refcount@[i] > 0
+        ) by {
+            if i == fnn {
+            } else {
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        };
+        assert forall|i: int| 0 <= i < nbits implies (
+            !(#[trigger] new_inner.bitmap@.set_bits.contains(i)) <==> new_inner.refcount@[i] == 0
+        ) by {
+            if i == fnn {
+            } else {
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        };
+        assert forall|i: int| 0 <= i < nbits && new_inner.bitmap@.set_bits.contains(i) implies
+            0 < #[trigger] new_inner.refcount@[i] <= 255 by {
+            if i == fnn {
+            } else {
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        };
+        assert forall|i: int| nbits <= i < new_inner.refcount@.len() implies
+            #[trigger] new_inner.refcount@[i] == 0 by {
+            assert(i != fnn);
+            assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+        };
+    };
+
+    // The bitmap is unchanged, so the allocated/free sets are unchanged.
+    assert(new_inner@.allocated_frames =~= old_inner@.allocated_frames);
+    assert(new_inner@.free_frames =~= old_inner@.free_frames);
+
+    // The refcount map changes only at key `pa`.
+    assert(old_inner@.refcounts.contains_key(pa)) by {
+        assert(pa == frame_addr_of(fnn));
+    };
+    assert(new_inner@.refcounts =~= old_inner@.refcounts.insert(pa, new_val as int)) by {
+        assert forall|addr: int|
+            #[trigger] new_inner@.refcounts.contains_key(addr) implies
+            old_inner@.refcounts.insert(pa, new_val as int).contains_key(addr) by {}
+        assert forall|addr: int|
+            old_inner@.refcounts.insert(pa, new_val as int).contains_key(addr) implies
+            #[trigger] new_inner@.refcounts.contains_key(addr) by {}
+        assert forall|addr: int|
+            new_inner@.refcounts.contains_key(addr) implies
+            #[trigger] new_inner@.refcounts[addr]
+                == old_inner@.refcounts.insert(pa, new_val as int)[addr] by {
+            let i = choose|i: int|
+                #[trigger] new_inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+            assert(addr == i * ps);
+            assert(addr / ps == i) by (nonlinear_arith) requires addr == i * ps, ps > 0;
+            if addr == pa {
+                assert(i == fnn) by (nonlinear_arith) requires ps > 0, i * ps == fnn * ps, addr == i * ps, pa == fnn * ps, addr == pa;
+            } else {
+                assert(i != fnn);
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        }
+    };
+}
+
 }
