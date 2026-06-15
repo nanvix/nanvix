@@ -202,3 +202,331 @@ Let me start the verification and examine the external_body functions in frame.r
 ────────────────────────────────────────────────────────────
 Turn 4
 ────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[TOOL] grep: pub(super) (unsafe )?fn |pub fn |fn 
+
+[THINKING] I've found seven instances of external_body functions scattered through the code at various line numbers, but I'm noticing the grep results might be incomplete—there could be additional related functions like free_count, share, and refcount that I need to search for more carefully.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs:255:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+/home/ruize...
+[RESULT ✓] view: 1454. #[verus_verify(external_body)]
+1455. #[verus_spec(result =>
+1456.     requires
+1457.         region.inv(),
+1458.     ensures
+1459.         match result {
+1460.             Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+1461.                 crate::mm::phys::region_frame_addrs(regi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 5}
+
+[THINKING] Looking at the grep results for external_body, I found it appears in lines 1235, 1268, 1314, 1342, 1396, and 1435, which correspond to the instance, init, alloc, alloc_contiguous, and free methods respectively. Meanwhile, share, refcount, free_count, and is_covered don't have this attribute.
+
+Wait, I need to reconsider — those free functions actually call instance() which returns a reference to Inner, and since those Inner methods are verified, the free functions themselves are effectively verified even without the external_body marker. So there are actually fewer external_body functions than what the tcb list specifies, which is fine since the tcb list represents the allowed set, not a required set. All seven functions with external_body (instance, init, alloc, alloc_contiguous, free, book, alloc_range) are in the tcb-allowed list, and the three functions listed as cross-module deps with external_body in the tcb list but lacking it in the actual code are just being more strict than necessary. Now I should check the verify output.
+[RESULT ✓] read_bash: - frame.rs:1466 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attached: admit
+    - manager.proof.rs:21 lemma_free_count_bounded: admit
+    - manager.proof.rs:36 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:49 lemma_kernel_alloc_cont...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== full cheating detail (frame only) ===" && grep -nE 'frame\.(rs|sp
+
+[THINKING] I need to narrow my focus to just the frame.rs, frame.spec.rs, and frame.proof.rs files since the cheating report covers other modules that are outside my scope. Let me pull up the detailed report and filter it down to only the entries relevant to the frame module.
+[RESULT ✓] bash: === full cheating detail (frame only) ===
+1:    - mm/phys/frame.rs:1242 instance: external_body
+2:    - mm/phys/frame.rs:1269 init: external_body
+3:    - mm/phys/frame.rs:1325 alloc: external_body
+4:    - mm/phys/frame.rs:1355 alloc_contiguous: external_body
+5:    - mm/phys/frame.rs:1403 free: exter...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== full detail tail (cfg section) ==="; sed -n '30,200p' verus-ai-lo
+
+[THINKING] Checking the frame.rs scope now—all 7 external_body functions are properly listed in the tcb-allowed set. I'm also confirming that frame.rs has zero admit statements, zero assume statements, and zero trusted declarations, with exec_all also at zero.
+
+Now I need to verify the cfg-gated code situation. The report shows 13 cfg_gate entries globally, and I can see multiple `#[cfg(not(verus_keep_ghost))]` blocks scattered throughout frame.rs. The checklist requires zero cfg-gated exec code except for imports, derives, debug_assert, and logging, so I need to examine each cfg-gated block in frame.rs to ensure they're all compliant.
+[RESULT ✓] bash: === full detail tail (cfg section) ===
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && wc -l verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt && cat ver
+[RESULT ✓] bash: 29 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+    - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
+    - mm/phys/manager.proof.rs:36 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs:49 lemma_kernel_alloc_contiguous: admit
+    - mm/phys/manager.proof.rs:71 lem...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The detail file only tracks global counts for cfg_gate. I must manually inspect each cfg block in frame.rs. Let me view them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for ln in 47 145 189 204 261 269 315 346 399 475 491 535 622 638 655 735 75
+
+[THINKING] The detail file doesn't break down cfg_gate usage per function, so I need to manually inspect the cfg-gated code in frame.rs to verify it only contains allowed constructs like imports, derives, debug assertions, and logging. I'm looking at each `#[cfg(not(verus_keep_ghost))]` block and the two `#[cfg(verus_keep_ghost)]` annotations at lines 49 and 52.
+
+There are many cfg lines scattered throughout the file at lines 147, 153, 191, 206, 263, 271, 317, 348, 401, 477, 493, 537, 624, 640, 657, 737, 753, 822, 850, 1032, 1099, 1158, and 1172, but the global cfg_gate count is only 13, which suggests the tool is counting something specific—likely cfg-gated exec code blocks that fall outside the allowed categories. Let me examine the actual code around these lines to determine which ones are legitimate.
+[RESULT ✓] bash: === L47 ===
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+include!("frame.spec.rs");
+
+#[cfg(verus_keep_ghost)]
+=== L145 ===
+                    lemma_full_no_free(self);
+                }
+                #[cfg(not(verus_keep_ghost))]
+                error!("{error:?}");
+                return Er...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the conditional compilation blocks in frame.rs, the `#[cfg(not(verus_keep_ghost))]` sections are wrapping logging and debug assertions, which are both allowed, while the `#[cfg(verus_keep_ghost)]` blocks at lines 49 and 52 are gating the includes for the spec and proof files—also allowed.
+[RESULT ✓] view: 49. #[cfg(verus_keep_ghost)]
+50. include!("frame.spec.rs");
+51. 
+52. #[cfg(verus_keep_ghost)]
+53. include!("frame.proof.rs");
+54. 
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All cfg-gated code is allowed (includes, logging, debug_assert). Now checking AST consistency, spec drift, and exec rewrites tooling.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== VERUS REWRITE in frame.rs ==="; grep -nE 'VERUS REWRITE|REWRITE' 
+
+[THINKING] All cfg-gated exec code is allowed, including imports, logging, and debug assertions. Now I need to verify the remaining checklist items—specifically checking if there's an ast-consistency skill available. Looking at the project skills list, I don't see ast-consistency among the options like benchmarking, build, ci-cd-pipeline, and the others, so that's a gap I need to address.
+
+I'm searching for the ast-consistency and spec-drift-check scripts in the repository, and also looking for VERUS REWRITE comments in frame.rs to confirm all exec rewrites have the required annotation and minimal reproducers. Then I'll need to run the full kernel verification to ensure all verified modules pass, and finally verify that the build completes with zero errors and warnings.
+[RESULT ✓] bash: === VERUS REWRITE in frame.rs ===
+=== ast-consistency / spec-drift scripts ===
+=== find skills dirs ===
+<shellId: 9 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== scripts ==="; ls scripts/ 2>/dev/null; echo "=== verus-ai tooling
+
+[THINKING] Looking at frame.rs, there are no VERUS REWRITE comments, which means the check for exec rewrites passes vacuously since there's nothing to flag. I need to distinguish between proof! and proof_decl! macros—those are ghost insertions in exec mode, not actual rewrites of the original exec code. The "exec rewrites" I'm looking for are cases where the original exec code itself was semantically transformed.
+
+Now I'm searching for how to run the AST consistency and spec-drift checks. I don't see a dedicated skill or script for ast-consistency, so I need to look through the scripts directory and the verus-ai tooling to find where these checks are implemented.
+[RESULT ✓] bash: === scripts ===
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test.py
+run-uservm.py
+setup
+setup-nanvix....
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai 2>/dev/null; echo "=== skills ==="; ls /home/ruize/verus-ai-exp/verus-ai/skills 2>/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== bump-allocator cheating driver (reference for tools) ==="; sed -n
+
+[THINKING] I need to locate the ast-consistency and spec-drift-check skills that are referenced in the verus-ai workflow, which should be in the VERUS_AI_DIR directory. Let me explore that directory and also look at how previous cheating-elimination dialogues handled similar tooling to understand what's available.
+[RESULT ✓] bash: === bump-allocator cheating driver (reference for tools) ===
+## Turn 1: Full Checklist Walkthrough — bump-allocator cheating-elimination
+
+### Progress
+- Done (PASS): all 12 checklist items (see Verification).
+- Current: final sign-off.
+- Remaining: none.
+
+### Verification
+
+Commands run (output read ...
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== skills ===
+/home/...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && echo "=== ast-consistency SKILL ==="; cat docs/skills/ast-consistency/SKILL.md 2
+
+[THINKING] I need to check the documentation for the ast-consistency and spec-drift-check tools to get the exact commands, then apply them to frame.rs.
+[RESULT ✓] bash: === ast-consistency SKILL ===
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `veru...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Now let me run the AST consistency and spec-drift tools on frame.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch --show-current; echo "=== pipeline_state ==="; find . -maxdepth 
+
+[THINKING] I'm going to run the ast-consistency and spec-drift tools to check for issues, starting by establishing a baseline from git status and the pipeline state file, then running the AST consistency check on frame.rs with auto-detection enabled.
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+=== pipeline_state ===
+./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-l...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-phys-frame/pipeline_state.json 2>/dev/null | 
+[RESULT ✓] bash: {
+    "module_name": "phys-frame",
+    "log_name": "nanvix-phys-phys-frame",
+    "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs",
+    "current_phase": "cheating-elimination",
+    "current_phase_idx": 4,
+    "completed_phases": [
+        "proving"
+    ],
+    "p...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && echo "=== AST consistency (frame.rs, base-ref cheating-elimination start) ==="; 
+
+[THINKING] I'm starting the cheating-elimination phase from a specific commit and need to run the AST consistency and spec drift checks using the verus-ai scripts.
+[RESULT ✓] bash: === AST consistency (frame.rs, base-ref cheating-elimination start) ===
+ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs' exists on disk, but not in '89f37ecaadb84fda30a9e3cbba2c9c6d6f2c540e'
+<shellId: 16 completed with exit cod...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== AST consistency ==="; python3 /home/ruize/verus-ai-exp/verus-ai/s
+
+[THINKING] I need to adjust how I'm running the script—the git path should be relative to the repo root, so I'll execute it from the nanvix directory itself using an absolute path to the script so it can properly access git in that working directory.
+[RESULT ✓] bash: === AST consistency ===
+⚠️  1 mismatched (18 functions match)
+=== SUMMARY ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MATCH    ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+AST consistency reports a MISMATCH in `free_count`. Let me inspect the diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+
+[THINKING] I'm noticing an AST mismatch in the `free_count` function and need to check the diff to understand what changed. The baseline should be the original exec code before any verification work, so if there's a mismatch, it means the code was modified during the cheating-elimination phase—either as an approved deviation or I'm comparing against the wrong baseline.
+[RESULT ✓] bash: ## free_count (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,4 +1,11 @@
+ pub(super) fn free_count() -> usize {
+     let inner = instance();
+-    inner.bitmap.number_of_bits() - inner.bitmap.usage()
++    // VERUS DEVIATION (pre-approved: intermediate value). The two bitmap reads are bound to
++    ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+This is a pre-approved "intermediate value" deviation. Let me check the repo's established comment convention.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== VERUS DEVIATION count (src) ==="; grep -rcE 'VERUS DEVIATION' src
+
+[THINKING] The free_count function was refactored to use intermediate local variables instead of a complex nested expression, which is a pre-approved deviation for assertion support. The AST consistency check is flagging this mismatch, though it's documented with the appropriate deviation comment.
+
+I'm now checking whether the comment convention is correct—the checklist specifies "VERUS REWRITE" but the code uses "VERUS DEVIATION (pre-approved: intermediate value)". The rewrite itself is semantically equivalent and pre-approved per the skill table, so it should qualify under the parenthetical allowance for verified Verus limitations, but the comment label and minimal reproducer documentation may not fully align with the strict checklist requirements.
+[RESULT ✓] bash: === VERUS DEVIATION count (src) ===
+src/kernel/src/hal/mem/types/address/phys.rs:1
+src/kernel/src/mm/phys/frame.rs:1
+=== VERUS REWRITE count (src) ===
+=== total ===
+2
+0
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+`VERUS DEVIATION` is the established repo convention; pre-approved intermediate-value deviation, properly documented. Now running spec-drift.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec drift (auto) ==="; python3 /home/ruize/verus-ai-exp/verus-ai
+
+[THINKING] Looking at the repo conventions, "VERUS DEVIATION" is the established pattern used across verified modules like phys.rs, not "VERUS REWRITE". Since this is a pre-approved deviation for intermediate value binding, it only needs a documenting comment rather than a minimal reproducer, and the comment is already present and properly labeled.
+
+Both the AST consistency and exec rewrite checks pass — the single mismatch is a semantically-equivalent, pre-approved rewrite with appropriate documentation following repo conventions. Now I'm checking for spec drift.
+[RESULT ✓] bash: === spec drift (auto) ===
+Module:   phys-frame
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+Baseline: 89f37ecaadb8
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Spec drift: PASS. Now running full cross-module verification and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | tail -45
+
+[THINKING] The spec drift check passed with no changes detected between the baseline commit and HEAD, but I'm noticing a discrepancy—the free_count rewrite might not have been committed, yet the AST comparison was done against the same baseline. The spec drift found zero function changes, which suggests the working tree modifications haven't made it into the committed state yet.
+
+Let me verify the current state by checking git status to confirm whether frame.rs is actually committed or still sitting in the working tree. Once I confirm that, I need to run the full kernel verification without any module scoping to ensure all verified modules pass, not just the mm::phys subset I tested earlier.
