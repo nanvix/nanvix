@@ -1,4 +1,4 @@
-# Unverified exec functions: 1067/1069
+# Unverified exec functions: 1057/1069
   do_debug
   debug
   do_evctrl
@@ -628,26 +628,16 @@
   as_mut_ptr
   load
   pgdir
-  map_kpage
   allocate_kernel_page_table
   allocate_user_page_table
-  map
-  is_user_page_mapped
-  is_user_addr
-  is_user_region
   is_kernel_addr
   is_kernel_region
-  is_physical_region
   lookup_user_page_table
   lookup_kernel_page_table
   find_user_frame
   try_find_user_frame
-  try_find_user_pte
   for_each_user_mapping
-  mark_user_page_cow
-  unmark_user_page_cow
   replace_user_page_cow_frame
-  resolve_cow_at
   resolve_cow_for_region
   user_vaddr_to_paddr
   copy_from_user_unaligned

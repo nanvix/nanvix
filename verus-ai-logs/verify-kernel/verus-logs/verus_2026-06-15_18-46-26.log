@@ -1,0 +1,60 @@
+Timestamp: 2026-06-15_18-46-26
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=43
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=41
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/virt/vmem.rs:299:25
+    |
+299 |                     &&& self@.kernel_mapped(vaddr.addr_nat())
+    |                         ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/virt/vmem.rs:432:25
+    |
+432 |                     &&& self@.user_mapped(vaddr.addr_nat())
+    |                         ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/virt/vmem.rs:946:26
+    |
+946 |                 Ok(_) => self@ == old(self)@.spec_mark_cow(vaddr.addr_nat()),
+    |                          ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/virt/vmem.rs:987:26
+    |
+987 |                 Ok(_) => self@ == old(self)@.spec_unmark_cow(vaddr.addr_nat()),
+    |                          ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+    --> src/kernel/src/mm/virt/vmem.rs:1078:40
+     |
+1078 |                     &&& exists|f: nat| self@ == old(self)@.spec_resolve_cow(vaddr.addr_nat(), f)
+     |                                        ^^^^
+     |
+     = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors
