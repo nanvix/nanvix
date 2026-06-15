@@ -372,3 +372,162 @@ The pinned Verus is installed from cache. Now let me run verification with the c
 [TOOL] report_intent: Running verify-sys with pinned Verus
 [TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 timeout 1800 make verify-sys 2
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus-pinned-0531.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus-pinned-0531:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compil...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passes (6 verified, 0 errors) with the pinned Verus. Now let me examine the concrete implementor and check the spec critically.
+[TOOL] report_intent: Reviewing concrete impl and specs
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "is_aligned\|into_raw_value\|from_raw_value\|fn align_up\|fn align_down\|impl Addre
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The verification checks out with no errors, so now I'm critically reviewing the spec against the checklist. I need to focus on the three in-scope functions—`is_aligned`, `into_raw_value`, and `from_raw_value`—and verify that each one has proper requires and ensures clauses according to the coverage requirements.
+
+Looking at the actual specs, all three trait methods have ensures clauses, which passes the first checklist item. For the view consistency check, I notice the spec uses `spec_addr` and `addr_inv` instead of the `self@` and `inv()` pattern documented in view_design.md, but this is a justified deviation due to cycle avoidance constraints that are explicitly documented in the codebase, so I'll mark that as acceptable.
+
+Now examining the ensures clauses for tautological conditions—I'm checking `is_aligned` and seeing it has a match statement where the error case returns true, which I need to evaluate against the checklist's requirement for meaningful ensures. No, actually the stronger fix is to add `ensures result is Ok` to the contract — that's non-tautological and aligns with what the analysis confirms: concrete implementors never error. This would make the contract explicit about what callers can rely on, rather than leaving them with a meaningless `Err(_) => true` clause. I need to check the actual implementation in virt.rs to see if `is_aligned` can actually return an error, since that determines whether strengthening the spec to `result is Ok` is even provable. I'm also moving on to evaluate other checklist items like whether `addr_inv` in `from_raw_value` is redundant given the other ensures already imply it.
+
+For the error paths, `is_aligned` returning `true` as an error case is clearly not meaningful — that's a problem. But for `addr_inv` being explicit in the ensures, even though it's technically derivable from the other ensures and the type of `raw_addr`, keeping it explicit actually helps callers who don't want to unfold those details themselves. So that's more of a judgment call about usability versus strict redundancy avoidance.
+
+Now I'm working through the remaining checklist items. The trait obligations look satisfied, and there are no loops or admits to worry about. The main concern is verifying that specs haven't drifted — I need to check the git diff and potentially run the full workspace verification to ensure cross-module regression hasn't happened. The kernel was supposedly re-verified according to bugs.md, but I should confirm that with `make verify` or at least check the build status. The critical failure remains that `is_aligned` error case.
+
+Let me examine the virt.rs implementation to understand whether the `Err(_) => true` ensures clause is actually provable or if it needs adjustment.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 170.         self.0.checked_sub(rhs).map(VirtualAddress::from_raw_value)
+171.     }
+172. }
+173. 
+174. impl Address for VirtualAddress {
+175.     ///
+176.     /// # Description
+177.     ///
+178.     /// Instantiates a new [`VirtualAddress`] from a raw value.
+179.     ///
+180.     /// # Parameters
+181...
+[RESULT ✓] bash: 47:// impl block so that the self-less associated functions `new` / `from_raw_value`
+76:    pub fn from_raw_value(raw_addr: usize) -> Self {
+97:    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+115:    pub fn align_down(&self, align: Alignment) -> Self {
+133:    pub fn is_aligned(&self,...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,75p' src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls src/libs/sys/src/sys/mm/address/*.spec.rs src/libs/sys/src/sys/mm/address/*.proof.rs 2>/
+
+[THINKING] I'm realizing the `impl Address for VirtualAddress` block isn't actually being verified—the trait method specs are checked at the declaration level, but the implementation bodies with those `as_ptr` casts can't be verified, so the impl would need to be marked as external. This makes me wonder how `make verify-sys` is reporting 6 verified items if the impl block itself isn't being verified against the trait specs.
+
+The core issue is that `is_aligned` has an `Err(_) => true` ensures clause, which is exactly the tautological pattern the checklist flags as something to avoid. Even though there's design documentation arguing the error case is unreachable and carries no abstract state, the checklist explicitly says not to accept justifications as fixes—I need concrete evidence. The right spec should reflect what callers can actually rely on: since the concrete implementation never errors, the strongest contract would be that the result is always `Ok` with a specific boolean value matching the alignment check. I'm weighing two positions: either the `Err(_) => true` clause is a prohibited tautology that needs to be strengthened to `result is Ok` (which matches what callers actually expect), or the design doc justifies leaving it as-is. Since I'm instructed to be strict and the checklist is explicit, I'm leaning toward failing this and requesting the change to make the spec non-tautological and more honest about what the implementation actually does. Before I finalize the fix request, I need to verify whether the impl is external and confirm how the verification passes without checking the impl body. The trait deliberately allows `Err` for forward-compatibility even though callers treat `is_aligned` as infallible in practice, but the stricter position is that the spec should ensure `result is Ok` since that's what the actual implementations and callers depend on — this would strengthen rather than weaken the contract and eliminate unnecessary error handling. I'm settling on flagging the `is_aligned` Err arm as a FAIL since it's tautological and violates the checklist's requirement for meaningful error ensures — the fix is to either mandate `result is Ok` or provide a real ensures clause. Since other implementors like PhysicalAddress and PageAligned never actually error, strengthening the trait to require Ok is safe and consistent. Before finalizing the review, I need to verify whether the Address impl is marked external, run the build to confirm it passes, and do a quick cross-module check.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.proof.rs
+src/libs/sys/src/sys/mm/address/mod.spec.rs
+src/libs/sys/src/sys/mm/address/virt.proof.rs
+src/libs/sys/src/sys/mm/address/virt.spec.rs
+---virt.spec.rs---
+verus! {
+
+// Well-formedness invariant for `VirtualAddress`.
+//
+// `VirtualAddress` is a thin, infall...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -5; echo "---diff stat for address module---"; git --no-pager diff --stat
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build|^[a-z-]+:.*##|build-sys|^all:" Makefile | head -40
+
+[THINKING] The `impl Address for VirtualAddress` block isn't verified since it's external to the trait specs defined in mod.rs, which means strengthening `is_aligned` to guarantee `Ok` results won't be checked against the implementation during verification—so the system stays sound even though the trait specs act as a trust boundary. But there's a question about whether this is actually sound when the trait has specs but the impl is external.
+
+In this macro-based setup with `#[verus_verify]` attributes, only annotated items get verified, so the unmarked impl is treated as external and trusted to satisfy the trait spec. My fix for `is_aligned` is feasible and won't break verification.
+
+On the `spec_addr` View consistency issue, the spec deviates from the prescribed `self@` and `inv()` pattern due to documented supertrait cycle constraints, maintaining the invariant through `addr_inv` instead. That's acceptable given the documented impossibility of a View supertrait on Address. But there's a subtle inconsistency: `VirtualAddress` uses `self@` with `inv()` in its spec, while the Address trait uses `spec_addr` with `addr_inv`.  There's no proof linking `spec_addr(&va)` to `va@`, so the trait-level specs and VirtualAddress-level specs are disconnected. The kernel still relies on its own `assume_specification` with the `@` version, and this bridging gap is acknowledged as future "wiring downstream" work, which is acceptable for this phase.
+
+For generic `T: Address` callers like `PageAligned<T>` and `MemoryRegion<T>`, the specs are directly usable in terms of `spec_addr`. For VirtualAddress concrete callers, a bridge is needed — a partial-usability concern I'll note.
+
+Now I need to check the git diff for spec drift and run a build of the sys crate to verify everything compiles.
+[RESULT ✓] bash: 411:all: all-nanvix
+<shellId: 11 completed with exit code 0>
+[RESULT ✓] bash: d22952eb0 [verus] verify PASS: sys::all (6 verified, 0 errors)
+3e56b2f76 [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
+bdc5e48a4 [verus-ai] specification scaffold END: sys-address-mod
+ac8020f1a [verus-ai] specification prover END: sys-address-mod
+d791be2cd [...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls z z.ps1 2>/dev/null; echo "---spec drift: what spec phase added to mod.spec.rs---"; git 
+
+[THINKING] The git diff shows no changes because the spec work is already committed in d22952eb0. To check for spec drift, I need to compare against the pre-specification baseline by looking at what was added to the spec files before the specification phase started.
+
+Now I'm checking the build target and looking for the build command to verify the setup.
+[RESULT ✓] bash: z
+z.ps1
+---spec drift: what spec phase added to mod.spec.rs---
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== log for mod.spec.rs ==="; git --no-pager log --oneline -8 -- src/libs/sys/src/sys
+
+[THINKING] The diff came up empty, so I need to trace back through the git history to find when mod.spec.rs actually got populated. Let me look at the pragmatic angle here — the spec drift check is really about verifying that the original guarantees haven't been weakened. The pre-existing guarantees I'm tracking are the VirtualAddress::new and from_raw_value functions, which should maintain the invariant that the result equals the input value and satisfies the invariant check, and those are still present and unchanged in the current virt.spec.rs and virt.rs files.
+
+Since mod.spec.rs and mod.proof.rs were empty before and now have content, that's actually strengthening the spec, not weakening it. Rather than keep digging through the git history, let me just run a build to verify the build command passes and then properly run the spec drift comparison. The key question is whether any existing specs have been weakened, so I should diff the virt.spec.rs and virt.rs files across the whole spec phase and find the first commit that touched mod.spec.rs with actual content.
+[RESULT ✓] bash: === log for mod.spec.rs ===
+be1c02d72 [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+c872ed68f [verus] verify FAIL: sys::mm::address (0 verified, 0 errors)
+7c2fdcf95 [verus-ai] caller-analysis START: sys-address-mod
+=== log for virt.spec.rs ===
+419a2e991 [verus] verify FAIL: sys::...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Existing VirtualAddress specs were unchanged during this phase (no weakening). Let me run the build and kick off cross-module verification.
+[TOOL] report_intent: Running build and cross-module checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "verify:|^verify |VERUS_CRATES|verify-all|build-sys|^build:" Makefile | head; echo
+
+[THINKING] The virt files haven't changed during this spec phase, so there's no weakening of existing VirtualAddress specs. The mod.spec.rs additions came from an earlier commit and introduce new trait specs rather than modifying existing ones.
+
+Now I need to verify the build works. The checklist requires running both the verus command (which already passed with `make verify-sys`) and a build command. Since the sys crate is no_std and targets a custom kernel config, I should do a focused cargo check rather than building the entire OS. Let me run a quick build to confirm the non-verus compilation works, especially since the spec notes they avoided using View as a supertrait to prevent cargo build issues.
+
+I'll also need to handle the cross-module verification requirement from item 16, which demands running the full verus verification. That could take a while, so I'll kick it off in the background while I work on documenting the review. The main finding—the is_aligned tautology failure—is already solid, so I can prioritize getting the build check done and the verification running while I write up the results.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+---z build help---
+
+Main Build Targets
+  all          Buil...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 timeout 2400 make verify 2>&1 
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt 2>/dev/null | grep -i "addr
+
+[THINKING] I'm kicking off `make verify` in the background to run the cross-module regression tests across bitmap, sys, nanvix-slab, bump-allocator, and kernel with the pinned verus version, since that's likely to take a while. Meanwhile, I should run a separate build command—though building the entire OS is resource-intensive, so I'll stick with what the checklist specifies rather than doing a full `make all`.
+[RESULT ✓] bash: <command started in background with shellId: verifyall>
+[RESULT ✓] bash: ---grep in-scope fns coverage---
+<shellId: 16 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
