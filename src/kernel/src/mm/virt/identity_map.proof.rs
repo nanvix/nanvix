@@ -29,7 +29,7 @@ pub proof fn lemma_map_idempotent(v: IdentityMapView, frame: nat)
     ensures
         v.spec_identity_map_page(frame) =~= v,
 {
-    admit();
+    assert(v.mapped.insert(frame) =~= v.mapped);
 }
 
 /// Map-on-success: after mapping the page covering `phys_addr` on a live mapper,
@@ -43,7 +43,9 @@ pub proof fn lemma_map_on_success(v: IdentityMapView, phys_addr: int)
     ensures
         v.spec_identity_map_page((phys_addr / spec_page_size()) as nat).maps(phys_addr),
 {
-    admit();
+    let frame = (phys_addr / spec_page_size()) as nat;
+    assert(v.spec_identity_map_page(frame).mapped =~= v.mapped.insert(frame));
+    assert(v.mapped.insert(frame).contains(frame));
 }
 
 /// Monotone growth: mapping a page never removes any previously reachable page
@@ -54,7 +56,14 @@ pub proof fn lemma_map_monotone(v: IdentityMapView, frame: nat)
         v.mapped.subset_of(v.spec_identity_map_page(frame).mapped),
         v.spec_identity_map_page(frame).initialized == v.initialized,
 {
-    admit();
+    let post = v.spec_identity_map_page(frame);
+    assert(v.mapped.subset_of(post.mapped)) by {
+        if v.initialized {
+            assert(post.mapped =~= v.mapped.insert(frame));
+        } else {
+            assert(post.mapped =~= v.mapped);
+        }
+    }
 }
 
 /// Invariant preservation: mapping an in-range frame keeps every recorded frame
@@ -67,7 +76,17 @@ pub proof fn lemma_map_preserves_inv(v: IdentityMapView, frame: nat)
     ensures
         v.spec_identity_map_page(frame).inv(),
 {
-    admit();
+    let post = v.spec_identity_map_page(frame);
+    assert forall|f: nat| #[trigger] post.mapped.contains(f) implies f < IdentityMapView::max_frames() by {
+        if v.initialized {
+            assert(post.mapped =~= v.mapped.insert(frame));
+            if f != frame {
+                assert(v.mapped.contains(f));
+            }
+        } else {
+            assert(v.mapped.contains(f));
+        }
+    }
 }
 
 } // verus!
