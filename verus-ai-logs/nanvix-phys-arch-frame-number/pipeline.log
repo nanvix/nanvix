@@ -44,3 +44,4 @@ Module: arch-frame-number
 [2026-06-15 19:37:56] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 19:47:53] [COPILOT] ERROR: copilot exited with code 1
 [2026-06-15 19:47:53]   ↳ prover done in 9m57s (exit=1)
+[2026-06-15 19:47:54] [SCAFFOLD] No functions in plan, skipping
