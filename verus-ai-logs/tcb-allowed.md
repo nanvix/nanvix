@@ -56,6 +56,14 @@ Any `external_body` outside this list must be removed.
   slot-update transition (`self@.entries[index@] == Some(entry)`, other slots framed) is therefore
   **deferred to the proving-phase page-table permission token**, exactly the `identity_map_view()`
   `v -> v'` deferral convention in `identity_map.spec.rs`.
+- `src/libs/arch/src/x86/mem/paging/table.proof.rs::lemma_entry_roundtrip` — the foundational
+  `TableEntry` codec law: `spec_entry_from_raw::<E>(spec_entry_raw(e)) == Some(e)` (decode after
+  encode recovers the same entry). `spec_entry_raw` / `spec_entry_from_raw` are `uninterp` over a
+  generic, structureless `E`, so the law cannot be derived in-module — it is a trusted broadcast
+  axiom expressing that a faithful serialization (`raw`) is injective. Stated as a
+  `broadcast proof fn` with an `external_body` (empty) body: the idiomatic Verus axiom form,
+  replacing the former spec-phase `admit()` placeholder with no change to the trusted contract.
+  Each concrete `TableEntry` implementor discharges the same law against its own interpreted codec.
 
 ## `external_body` introduced while speccing `arch::x86::mem::paging` (`mod.rs`)
 

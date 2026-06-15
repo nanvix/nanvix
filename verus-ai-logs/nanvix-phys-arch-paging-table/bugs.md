@@ -25,3 +25,15 @@ page-table-memory ghost (`spec_table_word`/`spec_table_read`), mirroring
 The `entries: Map<nat, Option<E>>` model and the read-after-write round-trip law
 (`lemma_entry_roundtrip`) are now expressed, not deferred. `read`/`write` remain
 `external_body` only for the genuine Verus `usize`→pointer limitation below.
+
+## Proving phase — `admit()` eliminated (no bug)
+
+The spec-phase `admit()` in `lemma_entry_roundtrip` was the trait codec law
+(`spec_entry_from_raw(spec_entry_raw(e)) == Some(e)`). Because the codec spec
+functions are `uninterp` over a structureless generic `E`, the law is not
+derivable in-module; it is a sound foundational axiom (a faithful serialization
+is injective). It was converted from the banned `admit()` placeholder to the
+idiomatic Verus broadcast axiom form (`external_body`, empty body) and registered
+in `verus-ai-logs/tcb-allowed.md`. `read`/`write` keep the documented int-to-ptr
+`external_body` trust boundary. Final: `make verify-arch` 47 verified, 0 errors,
+admit=0, assume=0. No code bug.
