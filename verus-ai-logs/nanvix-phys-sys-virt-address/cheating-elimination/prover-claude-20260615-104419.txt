@@ -239,3 +239,145 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Now let me run the baseline verification for the sys crate.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but reports `cfg_gate=1`. Let me inspect the detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+
+[THINKING] The cheating check is flagging a single `cfg_gate` issue with no assume, external_body, or admit violations. I need to examine the cheating detail file to understand what specifically triggered the cfg_gate flag.
+[RESULT ✓] bash: 
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/verify-sys/verus-logs/ && echo "===detail===" && cat -A verus-ai
+[RESULT ✓] bash: total 604
+drwxrwxr-x 1 ruize ruize 8784 Jun 15 10:45 .
+drwxrwxr-x 1 ruize ruize   20 Jun 13 23:26 ..
+-rw-rw-r-- 1 ruize ruize    0 Jun 15 10:45 cheating-detail.txt
+-rw-rw-r-- 1 ruize ruize 3000 Jun 15 10:45 coverage-unverified.txt
+-rw-rw-r-- 1 ruize ruize  318 Jun 13 23:26 verus_2026-06-13_23-26-31....
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg_gate\|cfg-gate\|cfg_gated\|cfg(" scripts/verify.sh | head -30
+
+[THINKING] The cheating-detail.txt file is empty, so the cfg_gate count of 1 must be coming from the cfg gate detection logic. I need to look at the verify.sh script to understand how it counts cfg gates, and I'm seeing that the source file contains cfg gate annotations like `#[cfg(verus_keep_ghost)]` on lines 9 and 11 for spec and proof includes, with another one appearing around line 39.
+
+Looking at the other cfg gates in the file, there are also `#[cfg(target_pointer_width = "32")]` annotations on lines 296 and elsewhere, but the detection is only counting cfg_gate=1, which suggests it's specifically looking for cfg-gated executable code that differs between versions rather than just any cfg annotation.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The `cfg_gate=1` is a global crate count. Let me locate it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/sys/src')
+cf
+
+[THINKING] The cfg_gate count of 1 applies across the entire `sys` crate source directory, not just virt.rs. The detection pattern looks for attributes like `#[cfg(verus_keep_ghost)]`, `#[cfg(not(verus_keep_ghost))]`, or `#[cfg_attr(...verus_keep_ghost...)]` that aren't directly attached to use statements, includes, module declarations, extern blocks, or log statements. In virt.rs specifically, lines 9-12 have `#[cfg(verus_keep_ghost)]` followed by an include macro, which appears to be excluded from the count.
+
+Since the cfg_gate count is global across the whole crate but the task is scoped to virt.rs functions only, I need to locate which file actually contains the flagged cfg_gate. It could be in virt.rs itself or elsewhere in the crate. Let me search for where this is occurring.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs 151 '#[cfg(verus_keep_ghost)]' -> 'verus! {'
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The cfg_gate is in `alignment.rs` (a different module), not in the virt-address scope. Let me confirm it's pre-existing and check the virt module is genuinely clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== alignment.rs:148-155 ===" && sed -n '148,155p' src/libs/sys/src/sys/mm/alig
+
+[THINKING] I found the cfg_gate in alignment.rs at line 151 with the `#[cfg(verus_keep_ghost)]` attribute wrapping a `verus!` block — not in virt.rs as I initially thought. The scope for verification includes the VirtualAddress functions like `into_raw_value`, `from_raw_value`, and related methods.
+
+Since alignment.rs is a separate module (`mm::alignment`) distinct from the virt module (`mm::address::virt`), and my task is specifically scoped to sys-virt-address with the hard rule of not touching unlisted functions, the cfg_gate in alignment.rs falls outside my scope. Looking at virt.rs itself, there are zero cheating items — no admits, assumes, external_body calls, or cfg-gated exec code in the virt module's source, spec, or proof sections.
+
+Now I need to verify whether that cfg_gate in alignment.rs was pre-existing in the base branch or if it's something new that would affect the cheating count.
+[RESULT ✓] bash: === alignment.rs:148-155 ===
+// Material for verification
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+// Abstract numeric value (in bytes) of an [`Alignment`]. Mirrors the enum's
+// discriminants so specs ca...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+virt.rs/spec/proof are byte-identical to base, and the only `cfg_gate` is in the unrelated `alignment.rs` module. Let me check the pipeline log and confirm how module pass/fail is judged.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -30 verus-ai-logs/nanvix-phys-sys-virt-address/pipeline.log 2>/dev/null; echo "=
+
+[THINKING] Looking at the differences, the virt.rs and spec/proof files are identical to the base branch, and the cfg_gate in alignment.rs is a pre-existing pattern in a separate module that's out of scope. Now I need to determine whether this cfg_gate guarding the `verus! {` block with `#[cfg(verus_keep_ghost)]` is actually a form of cheating that needs to be removed.
+
+The key insight is that virt.rs has an unguarded `verus! {` block at line 319 containing spec functions, while alignment.rs guards its `verus! {` block with the cfg gate. Since the detector flags cfg-gated code as potentially problematic due to AST inconsistency between builds, but a `verus! {}` block containing only spec functions is ghost-only and wouldn't cause actual differences in executable code, this seems like a false positive. More importantly, alignment.rs is completely outside the scope of the virt-address task—the instructions explicitly state not to modify unrelated code paths, and the scope is limited to virt.rs functions only. So for this task, the virt module has zero cheating items to address.
+
+Now I need to verify that the target functions actually verify cleanly. Let me check whether `into_raw_value`, `from_raw_value`, `new`, and `VirtualAddress` have the proper contracts and whether they pass verification. The virt module itself has zero cheating—no admit, assume, external_body, or cfg_gate in virt.rs. The cfg_gate=1 flagged globally comes from alignment.rs, which is out of scope. But there's a tension: alignment.rs guards its verus! block with cfg_gate while virt.rs doesn't, and the task requires "make verify-sys" to pass cleanly with zero cheating. I need to decide whether removing that cfg_gate from alignment.rs violates the "don't touch unlisted functions" rule or if it's necessary to meet the clean verification requirement. I need to check the pipeline.log to see how the pass/fail criteria are actually determined for this module.
+[RESULT ✓] bash: [2026-06-15 10:43:53] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::alloc_user_frame (available: []...)
+[2026-06-15 10:43:53] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai-prove: src/kernel/src/mm/phys/manager.rs:PhysMemoryManager::...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-sys-virt-address/pipeline_state.json
+
+[THINKING] I'm looking at the verification plan and the proving phase to understand what's happening with the cheating-elimination gate for sys-virt-address. The proving phase already completed, so now I need to figure out how the orchestrator determines pass or fail for this specific module—particularly whether the cfg_gate setting in alignment.rs affects the cheating detection logic.
+[RESULT ✓] bash: {
+  "module_name": "sys-virt-address",
+  "log_name": "nanvix-phys-sys-virt-address",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs",
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
+  "phase_resul...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_MODULE_ARG\|MODULE" Makefile | head
+
+[THINKING] I'm checking the scope of the cheating-elimination phase, which focuses on the virt.rs module and its callees. Looking at the verification plan to understand how the cheating gate works at the module level, I notice that virt.rs contains no cheating items—no admit, assume, external_body, assume_specification, or cfg-gate exec—so the verification passes.
+
+The cfg_gate=1 in alignment.rs is a separate module outside my scope, so I shouldn't modify it. I need to verify whether the cheating gate is module-scoped by checking how the orchestrator evaluates this phase, then run the module-scoped verification to confirm the phase passes with zero cheating items in virt.rs.
+[RESULT ✓] bash: 328:ifneq ($(strip $(MODULE)),)
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kern...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys MODULE=mm::address::virt 2>&1 | sed -n '/=== Results/,/Log written/p'
