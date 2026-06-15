@@ -1,0 +1,17 @@
+RESOLVED
+
+All 10 proving-phase checklist items verified PASS for sys-virt-address
+(src/libs/sys/src/sys/mm/address/virt.rs):
+
+1. No specs weakened       — PASS (git diff empty; spec_drift exit 0, 0 drift)
+2. Zero admit()            — PASS (admit=0)
+3. Zero external_body       — PASS (external_body=0; tcb_entry_points=null)
+4. Zero assume/assume_spec  — PASS (assume=0)
+5. No cfg-gated exec code   — PASS (virt.rs gates only spec/proof includes & arch items)
+6. Cheating audit           — PASS (admit/external_body/assume/trusted=0; cfg_gate=1 is a
+                              ghost-only verus!{} block at alignment.rs:151 — false positive,
+                              pre-existing, out-of-scope for virt-address)
+7. Verus-limitation repro   — PASS (verus-unsupported.md has isolated `self.0 as *const u8`)
+8. Exec rewrites minimal    — PASS (zero exec changes; no VERUS REWRITE needed)
+9. Cross-module regression  — PASS (sys::all: 6 verified, 0 errors)
+10. Verify + build clean    — PASS (6 verified/0 errors; cargo build 0 warnings/0 errors)

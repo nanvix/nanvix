@@ -434,3 +434,117 @@ Turn 17
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/virt.rs && make verify-sys 2>&1 | grep -iE "ver
 
 [THINKING] The cache is preventing me from seeing the actual verification results. I need to force a recompile rather than relying on cargo's content hashing—either by touching the source file, clearing the target directory, or checking what options are available in the verify script.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  6 verified
+  0 errors
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  verification: 6 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit/assume/external_body/assume_specification/VERUS REWRITE in virt files
+
+[THINKING] I'm seeing a verification status with a cheating detection flag in the alignment code, and now I need to check the build command to ensure there are no warnings when compiling the sys crate normally—for Nanvix that's `./z build`, though the verus material appears to be conditionally compiled.
+
+Let me work through the full checklist systematically: specs haven't drifted (git diff is clean and spec_drift reports zero), there are no remaining admit() calls anywhere, no external_body usage outside tcb files, and no assume/assume_specification calls. The cfg-gating issue is a false positive—it's only gating ghost spec blocks in alignment.rs, not executable code in virt.rs itself, though the audit is flagging it crate-wide.
+
+The main question is whether that pre-existing cfg_gate in alignment.rs (from before the virt-address proving started) counts as a violation for this review scope. Technically the rule forbids cfg-gated exec code, and what's gated here is spec/ghost code, so it shouldn't violate the rule definition—but I need to report it as a strict reviewer since the audit detected it. I need to verify my claim that alignment.rs:151 is the only cfg_gate and that it gates ghost code, not exec code. Let me also run through the remaining checks: assume_specification, admit statements across all three files, any VERUS REWRITE comments, and check verus-unsupported.md for relevant constraints before doing a final build for warnings.
+[RESULT ✓] bash: === admit/assume/external_body/assume_specification/VERUS REWRITE in virt files ===
+NONE FOUND
+=== verus-unsupported.md ===
+# Verus Unsupported Constructs — `virt` (`src/libs/sys/src/sys/mm/address/virt.rs`)
+
+Genuine Verus front-end limitations encountered while trying to attach an
+impl-level `#[ver...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null
+
+[THINKING] I'm looking at the verus-unsupported.md file which documents specific limitations with isolated reproducers. The first example shows a `usize` to pointer cast that fails with a clear error, and there's also documentation of trait methods that delegate to non-Verus inherent methods. But I'm questioning whether these are truly fundamental Verus limitations or just artifacts of how the scope is defined.
+
+The cast limitation is a genuine front-end constraint in Verus, while the trait delegation issue stems from the all-or-nothing verification model rather than being a hard limitation. Both are reasonably documented though. Looking at the proving phase itself, the specs are all verified cleanly with no errors—`VirtualAddress::new`, the inherent `from_raw_value`, the `View` implementation, and the trait `into_raw_value` spec all check out. The only concern is a pre-existing `cfg_gate` flag in alignment.rs that shows a cheating detection, but since this proving target made no changes to that file, I need to determine whether that should count against the current review.
+
+The cfg_gate is actually a false positive—it's gating a spec-only `verus!` block, not executable code, so by the strict definition it doesn't violate the "no cfg-gated exec code" rule. Since this gate existed before the proving phase started and lives outside the virt-address scope, it's not a regression I introduced. The checklist items for this proving target all pass cleanly.
+
+Now I need to verify the build compiles with zero warnings as required, so I'm looking for the correct build command to run against the sys crate.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -m1 "^name" src/libs/sys/Cargo.toml; echo "=== build sys (guest target, non-veru
+
+[THINKING] I need to run a targeted cargo build on the sys crate to verify the code compiles without warnings, since the verus verification already handles the formal proof side. Let me figure out the correct package name and run the build command.
+[RESULT ✓] bash: name = "sys"
+=== build sys (guest target, non-verus) ===
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/nightly-2026-05-21-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs/sr...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+All evidence gathered. Build is clean (0 warnings), verify shows 6 verified / 0 errors. Let me write the review.
+[TOOL] report_intent: Writing review verdict
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue && echo "dir rea
+
+[THINKING] The build completed cleanly, and now I'm going through the verification checklist to confirm all the requirements are met. The specs haven't been weakened, there are no admit calls anywhere, no external_body usage outside the trusted code base, and no assume statements in the virtual files.
+
+For the cfg-gated code, there's one instance in alignment.rs where a spec-only ghost block is gated, which is a pre-existing pattern and not actual exec code being hidden. The audit shows zero instances of real cheating across all the metrics—no admits, no external bodies, no assumes, and no problematic cfg gates. The isolated reproducer for the Verus limitation is documented properly, the exec rewrites are minimal with no VERUS REWRITE comments needed, and the full cross-module verification passes with six verified modules and zero errors.
+
+Now I'm wrestling with whether to mark this as fully resolved or flag it as cheating detected, since the cfg_gate count is technically 1 even though it's ghost code that shouldn't count against the rules. The cfg_gate in alignment.rs is actually harmless since the verus!{} block gets stripped entirely when verus_keep_ghost is off, so spec functions don't exist at runtime either way. I've confirmed the global counts show zero admits/external_body across sys except for the cfg_gate issue, and running verify-sys passed the whole crate. Now I need to write the comprehensive review document walking through the full checklist with all items marked PASS, then create the STOP file to indicate RESOLVED.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: dir ready
+=== confirm only cfg_gate location ===
+151:#[cfg(verus_keep_ghost)]
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/turn_001_driver.md with 4992 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue/STOP with 1050 characters
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Review complete. **Verdict: RESOLVED.**
+
+All 10 proving-phase checklist items PASS for `sys-virt-address`, verified with tool output:
+
+| # | Item | Result |
+|---|------|--------|
+| 1 | No specs weakened | PASS — diff empty, `spec_drift` 0 drift |
+| 2 | Zero admit() | PASS — admit=0 |
+| 3 | Zero external_body (TCB) | PASS — external_body=0, tcb=null |
+| 4 | Zero assume/assume_spec | PASS — assume=0 |
+| 5 | No cfg-gated exec code | PASS — virt.rs gates only spec/proof includes |
+| 6 | Cheating audit | PASS — all 0; lone `cfg_gate=1` = ghost `verus!{}` block at `alignment.rs:151` (false positive, pre-existing, out-of-scope) |
+| 7 | Isolated limitation repro | PASS — `verus-unsupported.md` has exact `usize as *const u8` repro |
+| 8 | Exec rewrites minimal | PASS — zero exec changes |
+| 9 | Cross-module regression | PASS — sys::all: 6 verified, 0 errors |
+| 10 | Verify + build clean | PASS — 0 errors; build 0 warnings |
+
+The only flagged pattern (`cfg_gate=1`) is a heuristic false positive on a spec-only `verus!{}` block in the **alignment** module — not exec code, pre-existing, and outside the virt-address target's scope, so no fix is requested here. Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: e7ed6a04-9c43-4aa7-92b7-6ba2b14374cf
+Duration: 331.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/proving/dialogue-reviewer-t001-claude-20260615-103822.jsonl
