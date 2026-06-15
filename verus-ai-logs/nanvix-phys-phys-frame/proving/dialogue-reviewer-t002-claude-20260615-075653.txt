@@ -261,3 +261,86 @@ The core issue is whether the spec is genuinely unprovable or just poorly design
 I've independently verified the evidence: the spec architecture with phys_view() as an uninterpreted constant, all three reproducers matching the claimed results, clean git state with six admits, and confirmed that removing the admit in real code fails. Before committing to rollback, I should run a final verification of the current kernel state and confirm the build is clean. But I'm also reconsidering whether there's any way to keep the strong spec and prove it—the fundamental problem is that phys_view() has no definition or axioms connecting it to anything, so the only link to reality is instance()'s postcondition.
 
 The core issue is that after instance() returns, phys_view().frames is pinned to the pre-state by the ensures clause, and there's no axiom saying phys_view() updates when the result is mutated. Adding such an axiom would require either an assume (forbidden) or an inconsistent axiom, so that path is blocked. The real fix belongs in the specification layer—either the shim postconditions should use spec transition functions with threaded state, or phys_view() should be a function of a ghost token. This is fundamentally a specification-phase concern that can't be resolved here. I'll run the baseline verification and then write the driver and create the rollback file.
+[RESULT ✓] bash: ⚠️  admit: 6
+  Global: assume=0 external_body=22 admit=6 trusted=0 cfg_gate=9
+  Unverified functions:
+  cheating: assume=0 external_body=22 admit=6 trusted=0 no_decreases=0 cfg_gate=9
+  status: CHEATING_DETECTED
+<shellId: verbase completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "verification results|verified," verus-ai-logs/verify-kernel/verus-logs/$(ls -t ve
+[RESULT ✓] bash: === git clean check ===
+(empty above = unmodified)
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verified: `frame.rs` is the unmodified committed `admit=6` PASS (32 verified, 0 errors). I've independently confirmed every claim. This is a genuine spec-phase root cause. Writing the review and the ROLLBACK.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_002_driver.md
+
+[THINKING] I've verified that frame.rs remains unchanged with a clean build status, and the module shows 32 verified entries with no errors. I've now independently confirmed this is a genuine rollback by reading the spec architecture to understand that `phys_view()` is an argument-free constant function, running all three reproducers to validate the claimed behavior, and attempting to reproduce the real-code removal to confirm it fails.
+
+The core issue is that the specification models the abstract subsystem state as a constant, which can't express state mutations before and after operations. This makes the six mutating shims' post-state assertions unprovable, and the only modifiable boundary can't soundly bridge them—reproducer 03 demonstrates this inconsistency. I'm now writing the turn_002_driver.md file and creating a ROLLBACK document rather than a STOP, since not all items are resolved yet and the rollback takes precedence.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_002_driver.md with 5077 characters
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/ROLLBACK
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/ROLLBACK with 6247 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+ROLLBACK filed. Final cleanliness check to ensure I left no source modifications.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== source unmodified? ===" && git --no-pager status --short src/ && echo "(empty abo
+
+[THINKING] I decided against creating a STOP since not everything is resolved yet, so I went with ROLLBACK instead. Now I'm verifying that I haven't left any unintended changes to the source code—the reproducer and verification runs both came back clean, so let me do one final check to make sure everything's in order.
+[RESULT ✓] bash: === source unmodified? ===
+(empty above = clean)
+=== dialogue files ===
+ROLLBACK
+turn_001_driver.md
+turn_001_fixer.md
+turn_002_driver.md
+=== STOP exists? ===
+no STOP (correct)
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Turn 2 complete. I independently verified the fixer's ROLLBACK claim rather than trusting it.
+
+**Checklist status:**
+
+| Item | Result |
+|---|---|
+| No specs weakened | ✅ PASS |
+| Zero remaining `admit()` | ❌ FAIL (admit=6) — **root cause is upstream (spec phase)** |
+| Zero `external_body` unless TCB-allowed | ✅ PASS |
+| Zero `assume`/`assume_specification` | ✅ PASS |
+| No cfg-gated exec code | ✅ PASS |
+| Cheating audit | admit=6, external_body=10(allowed), assume=0, cfg=0 in frame.rs |
+| Isolated reproducer for limitation | ✅ SATISFIED (3 reproducers, independently re-run) |
+| Cross-module / 0-err-0-warn | ⏳ blocked on spec redesign |
+
+**What I verified myself:**
+- Read `mod.spec.rs`: `phys_view()` is an `uninterp spec fn` — an argument-free **constant**, which cannot model the singleton's mutation.
+- **Ran all 3 reproducers** with the pinned Verus: `01` → 0 verified/1 error (faithful model of the failure); `02` → 1 verified (the shim postcondition's **negation** is provable ⇒ the spec is *false*, not just unproven); `03` → 1 verified (the only `instance()` strengthening that helps **derives `false`** — unsound).
+- Confirmed real-code removal fails (`31 verified, 1 error`), `frame.rs` unmodified, committed baseline `32 verified, 0 errors, admit=6`.
+
+**Decision:** This is not a justification — it's machine-checked proof that the six mutating-shim postconditions are logically false/inconsistent against the frozen constant `phys_view()`, and every in-phase lever (direct proof, re-spec without weakening, strengthen `instance()`) is provably exhausted. I filed **`ROLLBACK`** documenting the root cause and the required spec-phase fix (make `phys_view()` state-indexed with `old/new`, or thread a ghost ownership token through the `Inner::*` boundary).
+
+I did **not** create `STOP` (checklist is not RESOLVED). Source tree is clean; no modifications left behind.
+
+
+=== Session End ===
+Session: ecebaf79-a858-4775-abad-6cac1297fe48
+Duration: 232.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-reviewer-t002-claude-20260615-075653.jsonl
