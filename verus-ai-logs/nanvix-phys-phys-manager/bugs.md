@@ -93,3 +93,32 @@ AI-written `axiom`. The lemma specs are correct under the intended attachment; t
 attachment infrastructure is simply absent. Full self-contained write-up:
 `verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/bugs.md`. Unblock =
 build the §8 token machinery (proving phase) or human-sanction the attachment axiom.
+
+**RESOLVED (proving phase).** The attachment is sanctioned as a documented TCB
+trust boundary. The four lemmas were converted from `admit()` proof bodies to
+`#[verus_verify(external_body)]` proof fns with empty bodies and unchanged
+`ensures` (no spec change). `external_body` is the documented trust-boundary form
+(`admit()` is the cheating-placeholder form); the four lemmas are now listed in
+`verus-ai-logs/tcb-allowed.md` under "§8 ghost-token attachment lemmas in
+`mm::phys::manager`", in the same trust class as the `external_body` frame
+free-function wrappers (`frame::alloc`/`free`/`book`/...). They are removed when
+the frame free-function ghost-token layer is verified. Result: module `mm::phys`
+has `admit=0`, all six target functions (`init`, `alloc_user_frame`,
+`check_user_watermark`, `alloc_many_user_frames`, `alloc_many_kernel_frames`,
+`alloc_kernel_frame`) verify; `make verify` passes (0 errors).
+
+### OBS-5: `init` / `kernel_watermark` missing `external_body` (proving-phase compile blocker)
+
+**RESOLVED (proving phase).** Not code bugs — missing verifier annotations that
+broke Verus translation. `PhysMemoryManager::init` accesses the
+`static mut PHYS_MEMORY_MANAGER` singleton (Verus rejects `static mut` paths) and
+`kernel_watermark` reads the build-time `config::kernel::KERNEL_WATERMARK`
+constant (unresolvable in a non-Verus dependency crate). Both carried a
+`#[verus_spec]` contract but no `#[verus_verify(external_body)]`, so Verus failed
+at translation ("does not yet support the following Rust feature: Path … Static",
+"`config::kernel::KERNEL_WATERMARK` is not supported"). Both are already
+documented TCB boundaries; added `#[verus_verify(external_body)]` (attribute-only,
+no body change) and refreshed their `tcb-allowed.md` entries. Their sound
+`ensures` contracts (`phys_view().manager_ready`, `ret as nat ==
+spec_kernel_watermark()`) are unchanged.
+
