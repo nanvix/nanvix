@@ -1,0 +1,37 @@
+Timestamp: 2026-06-15_08-20-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+10 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=16
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module hal::mem::types::address::aligned::page
+
+error: postcondition not satisfied
+  --> src/libs/sys/src/sys/mm/address/mod.rs:57:17
+   |
+57 |                   Ok(a) => a@ == raw_addr as int,
+   |                   ^^^^^ failed this postcondition
+   |
+  ::: src/kernel/src/hal/mem/types/address/aligned/page.rs:87:63
+   |
+87 |       fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+   |  _______________________________________________________________-
+88 | |         Self::from_address(T::from_raw_value(raw_addr)?)
+89 | |     }
+   | |_____- at the end of the function body
+
+verification results:: 10 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
