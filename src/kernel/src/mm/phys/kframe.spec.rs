@@ -1,5 +1,14 @@
 verus! {
 
+/// Abstract view of a kernel frame: the physical address of the owned frame.
+impl View for KernelFrame {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.base@
+    }
+}
+
 impl KernelFrame {
     /// Well-formedness of a kernel-frame handle: its owned physical address is page aligned.
     ///

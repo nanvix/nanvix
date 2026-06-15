@@ -42,20 +42,6 @@ pub struct KernelFrame {
     base: FrameAddress,
 }
 
-#[cfg(verus_keep_ghost)]
-verus! {
-
-/// Abstract view of a kernel frame: the physical address of the owned frame.
-impl View for KernelFrame {
-    type V = int;
-
-    closed spec fn view(&self) -> int {
-        self.base@
-    }
-}
-
-} // verus!
-
 // Dependency contract for the manager layer: wrapping a `FrameAddress` produces a handle whose
 // abstract address is the same physical frame.
 #[verus_verify]
@@ -73,12 +59,12 @@ impl KernelFrame {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
-    // Dependency contract: wrapping a frame goes through `mm::virt::identity_map_page`, which
-    // is outside the verification scope of `mm::phys`. On success the returned handle owns the
-    // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
-    // the identity-mapping side effect lives in `mm::virt` and the body's `?`/log closures call
-    // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
-    #[verus_verify(external_body)]
+    // Wrapping a frame produces a handle whose abstract address is the same physical frame
+    // (`kf@ == base@`) and which is well-formed (`kf.inv()`, page alignment carried from
+    // `base.inv()`). The identity-mapping side effect is delegated to [`KernelFrame::map_frame`],
+    // an exec-only helper outside Verus' purview (it materializes a page-table entry through the
+    // not-yet-verified `mm::virt` layer, whose global `identity_map_view().inv()` precondition
+    // cannot be discharged from within `mm::phys`). Verus verifies only the pure wrap here.
     #[verus_spec(result =>
         requires
             base.inv(),
@@ -96,6 +82,20 @@ impl KernelFrame {
         // Deref/DerefMut can safely access it. This lazily installs a page
         // table entry if needed (page tables come from a BSS pool, so no recursive frame
         // allocation occurs).
+        Self::map_frame(base)?;
+
+        Ok(Self { base })
+    }
+}
+
+// Exec-only helper: installs the identity mapping for `base` via `mm::virt::identity_map_page`.
+// Kept outside Verus (no `#[verus_verify]`) because `identity_map_page`'s precondition
+// `identity_map_view().inv()` is a global invariant of the not-yet-verified `mm::virt` module
+// that cannot be discharged from within `mm::phys`. Mirrors the `deref`/`clear` exec-only helpers
+// that also reach into `mm::virt`. Carries no `external_body` attribute, so it is not part of the
+// trusted spec surface — it has no contract Verus relies on.
+impl KernelFrame {
+    fn map_frame(base: FrameAddress) -> Result<(), Error> {
         let phys_addr: PageAligned<PhysicalAddress> =
             PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
                 error!("frame base is not page-aligned: {e:?}");
@@ -104,9 +104,7 @@ impl KernelFrame {
         crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
             error!("failed to identity-map frame: {:?}", e);
             e
-        })?;
-
-        Ok(Self { base })
+        })
     }
 }
 
