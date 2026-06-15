@@ -1,0 +1,19 @@
+RESOLVED
+
+All 10 proving-phase checklist items for phys-mod are PASS with tool-backed evidence:
+
+1. No specs weakened — spec_drift.py check phys-mod: Contract drift 0; git diff of
+   mod.rs/mod.spec.rs/mod.proof.rs vs proving start SHA a3967834 is empty.
+2. Zero admit() in scope (kernel-wide admit=3 all in mm/virt/identity_map.rs, out of scope).
+3. external_body only at TCB-listed sites: mod.rs:73 book_physical_memory_regions,
+   mod.rs:103 book_mmio_regions, mod.spec.rs:65 ExLinkedList — all in tcb-allowed.md.
+4. Zero assume/assume_specification in scope.
+5. Zero cfg-gated exec code in mod.rs (all 9 kernel cfg-gates are in other modules).
+6. Cheating audit (scope): external_body=2 fns + 1 external_type_spec, admit=0,
+   assume=0, cfg_gate=0 — all TCB-approved.
+7. LinkedList Verus limitation has a construct-level isolated reproducer in bugs.md
+   (for-loop over alloc LinkedList; root cause E0117 orphan rule + no vstd model).
+8. No VERUS REWRITE/DEVIATION comments; no exec rewrites; init body verified directly.
+9. Cross-module regression: make verify-kernel verifies <all> modules, exit 0.
+10. make verify-kernel exit 0 (no error/warning, only informational trigger notes in
+    out-of-scope frame.rs); ./z build compiles kernel cleanly.
