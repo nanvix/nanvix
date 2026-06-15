@@ -153,8 +153,10 @@ Any `external_body` outside this list must be removed.
 
 ## `assume_specification` for not-yet-verified callees (eliminated when their module is verified)
 
-These `assume_specification` (and one `external_type_specification`) declarations live in
-`src/kernel/src/mm/phys/frame.spec.rs`. They give trusted contracts to callees of the (now
+Most of these `assume_specification` (and one `external_type_specification`) declarations live
+in `src/kernel/src/mm/phys/frame.spec.rs`; a few co-locate with the type they describe (the
+`PageAligned` ones now live in `src/kernel/src/hal/mem/types/address/aligned/page.spec.rs`,
+per the comment at `page.spec.rs:26-37`). They give trusted contracts to callees of the (now
 verified-in-body) `Inner` frame-allocator methods so those bodies translate. Each is superseded
 by the real specification when its module is verified — the same "superseded when the address
 layer is verified" rationale already used for `FrameAddress::from_raw_value`/`into_raw_value`.
@@ -163,6 +165,17 @@ layer is verified" rationale already used for `FrameAddress::from_raw_value`/`in
   - `::arch::mem::paging::FrameNumber` — `external_type_specification` (`ExFrameNumber`).
   - `::arch::mem::FRAME_SIZE` — `ensures result == spec_page_size()`.
   - `::arch::mem::paging::FrameNumber::from_raw_value` / `into_raw_value`.
+  - `::arch::mem::PAGE_ALIGNMENT` — declared at
+    `src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:7`. `PAGE_ALIGNMENT` is a
+    `pub const Alignment` in the external `arch` crate (`Alignment::Align4096`), declared
+    outside any `verus!` block, so Verus cannot resolve its value and exec code referencing
+    it has no specification (removing the declaration fails to compile with
+    `error: cannot use function arch::x86::mem::constants::PAGE_ALIGNMENT which is ignored
+    because it is either declared outside the verus! macro or marked as external`). Trusted
+    contract: `ensures ::sys::mm::spec_align_value(result) == spec_page_size()` — it pins the
+    arch alignment's numeric value to `spec_page_size()`, the link `from_address` relies on to
+    relate `is_aligned(PAGE_ALIGNMENT)` to `spec_aligned(addr@)`. Sibling of `FRAME_SIZE`
+    above; superseded once `arch` carries a real verified spec for `PAGE_ALIGNMENT`.
 
 - **Intra-crate (`kernel` crate `hal::mem::*`) — recorded here per review item #7. These are
   workspace-internal and not external dependencies; they are trusted only until the HAL
