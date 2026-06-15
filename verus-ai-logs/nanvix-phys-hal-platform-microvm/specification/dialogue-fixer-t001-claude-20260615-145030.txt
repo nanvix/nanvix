@@ -58,3 +58,50 @@ The reviewer wants the trivial injectivity proof discharged. Let me replace the 
 Turn 2
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -15
+[RESULT ✓] bash: - register_pic_ioports
+    - register_pit
+    - register_pit_ports
+    - init
+    - mul_u64_u32_shr32
+    - monotonic_time_ns
+    - boot_time_ns
+
+=== Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+  coverage...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+`admit=0`, status: **CLEAN**, exit 0. The empty body auto-proved. Now build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 ./z build -- all-kernel 2>&1 | tail -8
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Both pass. Writing the response file:
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/specification/dialogue/turn_001_fixer.md with 2078 characters
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+**FIXED.** Removed the `admit()` from `lemma_translation_injective` in `mod.proof.rs` — the empty body auto-proves from the `open` identity definition of `spec_gva_to_gpa`.
+
+- `make verify-kernel`: **status CLEAN**, `admit=0`, 2 verified, 0 errors, exit 0.
+- `./z build -- all-kernel`: build complete, exit 0.
+
+Response written to `turn_001_fixer.md`.
+
+
+=== Session End ===
+Session: fcbe8d30-9e37-4d9f-a30d-07c850fe07c6
+Duration: 42.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/specification/dialogue-fixer-t001-claude-20260615-145030.jsonl
