@@ -366,3 +366,19 @@ Turn 24
 ────────────────────────────────────────────────────────────
 Now let me verify nothing regressed with a module check and confirm the global gate state:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module mm::phys::kframe.
+  Global: assume=0 external_body=15 admit=7 trusted=0 cfg_gate=12
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/7 exec functions have contracts.
+  Unverified func...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+kframe module is **CLEAN** (0 cheating, `assume=0 trusted=0 no_decreases=0` — confirming the report's mentions of `limitation_assume`/`exec_allows_no_decreases`/`trusted` don't exist in scope). The global `external_body=15 admit=7` are all out-of-scope sibling modules. Committing the docs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add verus-ai-logs/ && git commit -q -m "docs(phys-kframe): pass-2 cheat
+
+[THINKING] The kframe module is clean with no cheating detected. Looking at the global configuration, external_body is set to 15 with 7 admits, all out-of-scope, and cfg_gate is 12. The driver's limitations around assumption, execution allowances, and trusted settings aren't present here. I'm ready to commit the documentation.
