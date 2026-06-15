@@ -872,3 +872,374 @@ Verus-verified counterpart using tree-sitter AST ...
 ────────────────────────────────────────────────────────────
 Turn 11
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_14-50-50.log
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_14-50-50
+2. Mode: cargo
+3. Crate: kernel
+4. Directory: N/A
+5. Module: mm::phys
+6. Exit code: 0
+7. cached (no recompilation)
+8. —
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=14
+13.   admit=3
+14.   trusted=0
+15.   no_decreases=0
+16.   cfg_gate=9
+17. 
+18. --- ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+My independent audit is conclusive. Key finding: tcb-allowed.md authorizes the 4 lemmas as "`external_body` proof fns", but the actual code implements them as `assume(...)` statements — and an `approved-trust-boundaries.json` side-channel zeroes the gate's `assume` counter. Both forms are blockers (assume>0; external_body on proof fn is "always illegal"). Several lemmas are also unsound universal axioms. Let me check sub-agent progress.
+[TOOL] read_agent: {'agent_id': 'final-review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] I'm seeing a critical mismatch between what tcb-allowed.md claims and what the actual code does. The documentation lists these four lemmas under a section about `external_body` proof functions, but the real implementation uses `assume(...)` statements inside proof function bodies instead. This is the core inconsistency I need to investigate further.
+
+The task explicitly blocks any `assume > 0` statements outright, and tcb-allowed.md can't authorize `assume` directives since they're not `external_body` constructs. Even if I view this charitably as "these should have been external_body," that's also blocked because external_body on a proof function is always illegal according to the gate rules. The workaround using `approved-trust-boundaries.json` to zero out the assume counter introduces a new trust boundary mechanism that the task never sanctioned.
+
+Beyond the authorization issue, there's a deeper soundness problem: `lemma_kernel_alloc_one` claims that for any well-formed pre-state, any post-state, and any address, the post-state equals pre with that address allocated — but this can't universally hold for arbitrary post-states. As an unconditional axiom, this is unsound and could be used to prove false statements.
+
+Similarly, `lemma_manager_attached` asserts that any manager's view equals the global frames, which is clearly false since two different managers can't both equal the same global state. This is the same kind of soundness landmine that was already deleted in OBS-3.
+
+My verdict is a robust FAIL with multiple blockers. Now I'm waiting to hear back from the sub-agents.
+Verification passes (exit 0) but the tool flags `CHEATING_DETECTED` with the 4 `assume` lemmas. Let me check the detail file and run AST consistency.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-kernel/verus
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[RESULT ✓] bash: === cheating-detail.txt ===
+    - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/f...
+[RESULT ✓] bash: ⚠️  4 mismatched, 1 extra (3 functions match)
+---SUMMARY---
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MISMATCH                   ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+AST consistency reports 4 MISMATCH. Let me examine the diffs to see if they are real exec changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+git log --oneline -3 -- src/kernel/src/mm/phys/manager.rs
+echo "=== detect bas
+[RESULT ✓] bash: 84a0c3fcc [verus] verify PASS (cheating detected): kernel::mm::phys (82 verified, 0 errors, admit=3 external_body=18 cfg_gate=9)
+b448ef2e3 [verus] verify PASS (cheating detected): kernel::mm::phys (82 verified, 0 errors, admit=3 external_body=18 cfg_gate=12)
+6360aaa59 [verus] verify PASS (cheating d...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "^[[:space:]]*assume\(" src/kernel/src/mm/phys/manager.rs src/kernel/
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.proof.rs:36:    assume(m@ == phys_view().frames);
+src/kernel/src/mm/phys/manager.proof.rs:56:    assume(pre.free_frames.contains(addr) && post == pre.alloc_one(addr) && post.wf());
+src/kernel/src/mm/phys/manager.proof.rs:77:    assume(frames.len() == count && crate::mm...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "^[[:space:]]*admit!?\(" src/kernel/src/mm/phys/manager.rs src/kernel
+[RESULT ✓] bash: 
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+for f in "PhysMemoryManager::alloc_kernel_frame" "PhysMemoryManager::alloc_man
+[RESULT ✓] bash: ############ PhysMemoryManager::alloc_kernel_frame ############
+## PhysMemoryManager::alloc_kernel_frame (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,9 +1,14 @@
+     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
++        
+         let frame_addr: FrameAddress = frame::all...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing caller coverage
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 33 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All four "mismatches" are ghost-strip artifacts or documented/pre-approved deviations. The decisive blocker is the 4 `assume()`. Let me verify the output dir and check the approved-trust-boundaries.json reference.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up
+ls verus-ai-logs/nanvix-phys-phys-manager/final-review/ 2>&1 || echo "DIR MISS
+[RESULT ✓] bash: review-claude-20260615-144713.jsonl
+review-claude-20260615-144713.txt
+=== approved-trust-boundaries.json exists? ===
+-rw-rw-r-- 1 ruize ruize 5244 Jun 15 14:43 verus-ai-logs/approved-trust-boundaries.json
+verus-ai-logs/approved-trust-boundaries.json
+=== grep VERUS REWRITE across files (should be non...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "L60\|L61\|L62\|L63\|assume\|manager" verus-ai-logs/approved-trust-
+[RESULT ✓] bash: 5:  "source": "src/kernel/src/mm/phys/manager.rs",
+8:    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init",
+9:    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_user_frame",
+10:    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::check_user_watermark",
+11:    "src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 120.   `alloc_one` free→allocated transition plus the empty-pool `Err` arm `free_count() == 0`),
+121.   whereas `frame::alloc`'s contract speaks of `phys_view().frames`. Bridging `self@` to
+122.   `phys_view().frames` is the **deferred §8 ghost token in the frame free-function layer**, so
+123.   `al...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 210. 
+211. - `src/kernel/src/mm/phys/manager.proof.rs::lemma_manager_attached` — `ensures m@ ==
+212.   phys_view().frames`. Pins the manager's uninterpreted `Upool` view to the global frame partition.
+213.   Pure attachment axiom (both sides uninterpreted); not provable within the module.
+214. - `sr...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "admit_count=$(rg -n '^[[:space:]]*admit!?\(' src/kernel/src/mm/phys/m
+[RESULT ✓] bash: admit_count=0
+assume_count=4
+external_body_attr_count=2
+assume_specification_count=3
+cfg_not_verus_keep_ghost_count=9
+cfg_verus_keep_ghost_count=2
+<shellId: 36 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "manager.rs::PhysMemoryManager::init|manager.rs::kernel_watermark" ve
+[RESULT ✓] bash: 129:- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — `external_body`. Brings up the
+188:- `src/kernel/src/mm/phys/manager.rs::kernel_watermark` — `external_body` accessor that returns
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo -n "error_lines=" && rg -n "^error" verus-ai-logs/verify-kernel/verus-
+[RESULT ✓] bash: error_lines=0
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-phys-manager && ls -la verus-ai-logs/nanvi
+[RESULT ✓] bash: total 148
+drwxrwxr-x 1 ruize ruize   490 Jun 15 14:47 .
+drwxrwxr-x 1 ruize ruize  1848 Jun 15 14:43 ..
+-rw-rw-r-- 1 ruize ruize 11206 Jun 15 13:54 body_removed_source.rs
+-rw-rw-r-- 1 ruize ruize  7366 Jun 15 14:04 bugs.md
+drwxrwxr-x 1 ruize ruize   136 Jun 14 00:48 caller-analysis
+-rw-rw-r-- 1 ruize...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: final-review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 275s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review report", tool_calls_completed: 26, (tim...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+I've completed my own independent audit and confirmed the decisive blockers. Both sub-agents are still running (claude is already writing its report). I'll wait for them to complete before consolidating.
+[TOOL] read_agent: {'agent_id': 'final-review-codex', 'timeout': 120, 'wait': True}
+I have all evidence needed. The decisive finding: **4 `assume()` statements** in proof fns, plus the `approved-trust-boundaries.json` attempting to sanction them (which the task says does not count). Let me write the report.
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md with 16175 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat > verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.code
+[RESULT ✓] bash: 
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Review written. Here is the verdict.
+
+## Result: **FAIL**
+
+Report: `verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.claude.md`
+
+### Decisive blocker
+**4 `assume()` statements inside proof functions** in `manager.proof.rs` (lines 36, 56, 77, 182) — `lemma_manager_attached`, `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, `lemma_user_bulk_err_restored`. `assume` is banned in all phases; `assume>0` is an automatic FAIL. They fabricate the entire §8 ghost-token attachment, so the verifier's "0 errors" is unsound (tool explicitly reports `CHEATING_DETECTED`).
+
+These are "approved" only by `approved-trust-boundaries.json` + `// VERUS-AI LIMITATION` comments — neither governs. `tcb-allowed.md` governs `external_body`, not `assume`. Notably, `tcb-allowed.md:198-224` and `bugs.md` OBS-4 both claim these lemmas are `external_body`, but the shipped code uses `assume` — both governance docs are stale.
+
+### Exact guardrail counts (3 module files)
+- `admit`: **0** · `assume(`: **4 (BLOCKER)** · `external_body`: **2** (init, kernel_watermark — both in tcb-allowed.md) · `assume_specification`: **3** (std `and_then`/`inspect_err`/`Vec::capacity`, allowed) · forbidden cfg-gated exec: **0** (only `error!`/`warn!` logging + ghost `include!`).
+
+### Other checks
+- **Caller coverage:** 6/6, none missing.
+- **Verus:** PASS, 0 errors (82 verified) — but `CHEATING_DETECTED`.
+- **AST consistency:** tool shows 4 MISMATCH + 1 EXTRA; on inspection all are ghost-strip blank lines or documented/pre-approved semantics-preserving deviations (result-binding, loop-var, `kernel_watermark()` accessor, `free_count()` hoist). Semantically PASS; no `// VERUS REWRITE`.
+- **Bugs:** 0 true code bugs. OBS-1/2/3/5 valid. OBS-4 "resolved" claim is false vs. shipped code — the four axioms should go to `verification-todo.md`, not `assume`.
+
+No source/spec/proof files were modified; only the review `.md` was created.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Independent Verification Review — `mm::phys::manager`
+2. 
+3. ## Checklist
+4. 
+5. - [x] **Caller Analysis** — Reviewed `caller_analysis.md` and mapped expectations to contracts; coverage computed below (8/13 covered).
+6. - [x] **View Design** — Reviewed `view_design.md`; manager uses `Fram...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Completed. I performed the independent read-only audit and wrote the full report to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.codex.md`
+
+Final result in report: **FAIL**.
+
+Primary blocker: **4 `assume(...)` statements** in `src/kernel/src/mm/phys/manager.proof.rs` (lines 36, 56, 77, 182), which violates the stated guardrail (`assume > 0` is a blocker). Verification command was run exactly as requested, with 0 Verus error lines but cheating status flagged.
+[RESULT ✓] read_agent: Agent completed. agent_id: final-review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 307s, total_turns: 0, model: gpt-5.3-codex, duration: 307s
+
+Completed. I performed the independent read-only audit and wrote the full report to:
+
+`/h...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Both sub-agents completed. Let me retrieve the claude result and verify both reports exist.
+[TOOL] read_agent: {'agent_id': 'final-review-claude', 'wait': False}
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-phys-manager/final-review/ && echo "=== cl
+[RESULT ✓] read_agent: Agent completed. agent_id: final-review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 313s, total_turns: 0, model: claude-opus-4.8, duration: 297s
+
+Review written. Here is the verdict.
+
+## Result: **FAIL**
+
+Report: `verus-ai-logs/nan...
+[RESULT ✓] bash: total 1944
+drwxrwxr-x 1 ruize ruize     222 Jun 15 14:54 .
+drwxrwxr-x 1 ruize ruize     490 Jun 15 14:47 ..
+-rw-rw-r-- 1 ruize ruize   16273 Jun 15 14:54 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize    9023 Jun 15 14:54 final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 1874956 Jun 15 14:54 review-cl...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Both sub-agents independently reached **FAIL**, matching my own audit. Let me review their detailed sections to consolidate accurately.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "########## CODEX ##########" && sed -n '1,200p' verus-ai-logs/nanvix-
+
+[THINKING] Both sub-agents independently confirmed the FAIL verdict that matches my audit, and their reports align on all key findings: the blocker-level assume issue, the two external_body entries already in tcb-allowed.md, the allowed assume_specification items, zero forbidden cfg-gated exec cases, full caller coverage, and the verus status.
+
+Now I'm seeing there are zero actual code bugs despite the cheating detection flag, so I need to reconcile the AST consistency discrepancies where one report flagged 4 mismatches plus 1 extra but marked it semantically passing—I'll cross-reference both reports' AST and spec quality sections to consolidate the checklist accurately.
+[RESULT ✓] bash: ########## CODEX ##########
+# Final Independent Verification Review — `mm::phys::manager`
+
+## Checklist
+
+- [x] **Caller Analysis** — Reviewed `caller_analysis.md` and mapped expectations to contracts; coverage computed below (8/13 covered).
+- [x] **View Design** — Reviewed `view_design.md`; manager ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Both independent reviews and my own audit converge on **FAIL** with the same primary blocker. Now consolidating into the final review.
+[TOOL] report_intent: Writing consolidated final review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.md
+
+[THINKING] I'm seeing two different results for the AST consistency check—codex got a clean pass with matched=8 and mismatched=0 using a specific base ref, while Claude found 4 mismatches and 1 extra but deemed it semantically correct. The base reference choice seems to be the key difference, though both ultimately agree the AST is semantically sound. On caller coverage, there's a bigger gap: Claude counted 6 out of 6, but codex identified 8 out of 13 because it included more granular expectations like capacity contracts and error codes that Claude didn't flag as missing.
+
+Both reviews converge on the same primary failure reason: the assume count is 4. Now I'm working through the consolidated final review document, checking off the verification checklist based on combined evidence from both analyses. For caller analysis and view design, the evidence supports marking those sections complete. On specification coverage, I need to note codex's finding about missing capacity and error-code ensures as gaps, and there's a borderline issue with the init function where both Ok and Err paths lead to the same manager_ready state—not strictly tautological but worth flagging.
+
+The critical failures are the "no cheating on own functions" items where the assume count masks the actual proof work, so those get marked incomplete. For spec drift, there's no evidence of weakening the contracts, so that checks out. I'm moving through the remaining checklist items—bug awareness, cross-module regression checks—to complete the consolidated assessment. Finishing the checklist across the remaining categories — exec_allows_no_decreases, cfg-gated exec, external_body listings, AST consistency, and verification all pass, but the CHEATING_DETECTED flag still blocks the verification requirement. Bug entries are recorded as observations rather than true defects, which is acceptable. Now I need to write out the consolidated report following the exact markdown structure specified in the task, with all checklist subsections, spec quality, caller coverage, proof completeness, TCB compliance, guardrails compliance, AST consistency, verification status, bug summary, and final result.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/final_review.md with 13402 characters
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Done. The comprehensive final review is complete.
+
+## Result: **FAIL**
+
+Two independent sub-agents (claude-opus-4.8, gpt-5.3-codex) plus my own cross-check all converged on the same verdict, with the same decisive blocker.
+
+**Decisive blocker — `assume = 4`:** `manager.proof.rs` lines 36, 56, 77, 182 (`lemma_manager_attached`, `lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`, `lemma_user_bulk_err_restored`). Each unconditionally discharges its lemma `ensures`; the in-scope target functions depend on these lemmas, so the green verus run is **unsound** (wrapper reports `CHEATING_DETECTED`). Several are false universal axioms (e.g. `m@ == phys_view().frames` for *any* `m`).
+
+**Governance issue:** An `approved-trust-boundaries.json` side-channel (ids L60–L63) zeros the gate's `assume` counter. Only `tcb-allowed.md` governs, and it authorizes `external_body` — not `assume`. `tcb-allowed.md:198-224` and `bugs.md` OBS-4 are stale (claim `external_body`; code ships `assume`).
+
+**Other guardrail counts:** admit 0 · external_body 2 (`init`, `kernel_watermark` — both in TCB) · assume_specification 3 (std, allowed) · forbidden cfg-gated exec 0 · AST consistency semantically PASS.
+
+**Spec gaps:** caller coverage 8/13 — `init` Err error-code, `alloc_many_*` Err cause, and bulk-alloc `capacity >= count` requires are unspecified. **True runtime bugs: 0.**
+
+Files written:
+- `final-review/final_review.claude.md`
+- `final-review/final_review.codex.md`
+- `final-review/final_review.md` (consolidated)
+
+No source/spec/proof files were modified.
+
+
+=== Session End ===
+Session: 7a2035f5-79a1-4837-83c8-9da5a48ee7bd
+Duration: 559.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/final-review/review-claude-20260615-144713.jsonl
