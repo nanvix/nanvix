@@ -256,7 +256,6 @@ impl VirtMemoryManager {
                 Err(_) => true,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
         // Allocate a kernel page for the new page directory.
         let pgdir_page: KernelPage = {
@@ -333,7 +332,6 @@ impl VirtMemoryManager {
                 },
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
         // Process the parent's user mappings in fixed-size chunks. We cannot mutate
         // `parent` while borrowing its page tables via `for_each_user_mapping`, so each
@@ -595,7 +593,6 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem)@ == old(vmem)@,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_resolve_cow_fault(
         &mut self,
         vmem: &mut Vmem,
@@ -655,7 +652,6 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem)@ == old(vmem)@,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_unmap_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -709,7 +705,6 @@ impl VirtMemoryManager {
                 },
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_upages(
         &mut self,
         vmem: &mut Vmem,
@@ -861,7 +856,6 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem)@ == old(vmem)@,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn ctrl_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -896,7 +890,6 @@ impl VirtMemoryManager {
                 Err(_) => true,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
@@ -935,7 +928,6 @@ impl VirtMemoryManager {
                 Err(_) => final(kframes)@.len() == 0,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpages(
         &mut self,
         clear: bool,
@@ -987,7 +979,6 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem).inv(),
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn load_elf(
         &mut self,
         vmem: &mut Vmem,
