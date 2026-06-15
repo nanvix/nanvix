@@ -114,3 +114,6 @@ Module: sys-address-mod
 PHASE: proving
 Module: sys-address-mod
 ============================================================
+[2026-06-15 18:41:44] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[2026-06-15 18:41:44] [PROVER] Running proving...
+[2026-06-15 18:41:44] [COPILOT] Running: copilot --model claude-opus-4.8 ...
