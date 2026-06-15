@@ -66,3 +66,19 @@ Two proving-phase obligations are tracked (not spec defects):
 [2026-06-14 07:35:44] [PHASE] specification: dialogue-RESOLVED (30m00s)
 [2026-06-14 07:35:44] [SPEC DRIFT] (within specification) Comparing 9fa3a31e → 4346a4bb
 [2026-06-14 07:35:44] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 11:08:10] [BRANCH] Staying on current branch: verus-ai-prove
+[2026-06-15 11:08:10] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/body_removed_source.rs (5346 -> 4795 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: hal-frame-address
+Source: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.rs
+Crate:  kernel
+Branch: verus-ai-prove (base: verus-ai-prove)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: hal-frame-address
+============================================================
