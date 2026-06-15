@@ -7,6 +7,9 @@
 
 use sys::mm::Alignment;
 
+#[allow(unused_imports)]
+use ::vstd::prelude::*;
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -37,6 +40,7 @@ pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
 ///
 /// Log2 PAGE_SIZE
 ///
+#[verus_verify]
 pub const PAGE_SHIFT: usize = 12;
 
 ///
@@ -44,7 +48,9 @@ pub const PAGE_SHIFT: usize = 12;
 ///
 /// Number of bytes in a page.
 ///
+#[verus_verify]
 pub const PAGE_SIZE: usize = 4096;
+// Compile-time check that the literal matches the shift-based definition.
 ::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
 
 ///
