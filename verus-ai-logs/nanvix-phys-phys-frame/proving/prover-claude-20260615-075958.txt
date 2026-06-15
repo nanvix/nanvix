@@ -596,3 +596,108 @@ Now let me confirm the module compiles/verifies with admits present.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verification:
 
 [THINKING] I'll start by removing the admits and writing proofs for the Inner methods, beginning with the simplest ones to verify they actually fail without the admits in place.
+[RESULT ✓] bash: error: cannot use function `kernel::mm::phys::frame::init` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    = help: The following declaration may resolve this error:
+            assume_specification [crate::mm::phys::frame::init] (_0: bitmap:...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "frame::init\|crate::mm::phys::frame::init\|assume_specification.*in
+
+[THINKING] I'm tracking down where `init` is being called from within verified code. The error indicates that some verified function is trying to call `init`, which is external and marked as ignored. Looking at the tcb-allowed configuration, `init` is in the skip/exclude list but should be callable from verified initialization. I need to check the module initialization code to find the actual caller and determine whether to add an assume_specification for `init`.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.rs:167:pub fn init(
+src/kernel/src/mm/phys/mod.rs:175:    unsafe { frame::init(physical_memory_layout)? };
+src/kernel/src/mm/phys/mod.rs:189:    PhysMemoryManager::init(upool)?;
+src/kernel/src/mm/phys/mod.spec.rs:81:    /// The frame allocator singleton has been initialize...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] view: 140. ///
+141. /// - `physical_memory_regions`: Physical memory regions to book.
+142. /// - `mmio_regions`: Memory-mapped I/O regions to book.
+143. /// - `physical_memory_layout`: Physical memory layout bitmap.
+144. ///
+145. /// # Returns
+146. ///
+147. /// Upon success, `Ok(())` is returned. Upon fai...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager log --oneline -5; echo "---status---"; git --no-pager status -
+
+[THINKING] I see that `mm::phys::init` calls `frame::init`, which is external and causing Verus to complain. The solution is to annotate `frame::init` with `#[verus_verify(external_body)]` and add a `#[verus_spec]` contract that documents what it ensures, so the caller can verify against that specification.
+
+But I need to figure out what contract `frame::init` actually needs. The caller immediately invokes `lemma_frame_initialized()` afterward, which presumably establishes the initialized state. I should check what that lemma expects and work backward to determine the right postcondition for `frame::init`.
+
+Also, this error was masked in the original baseline by the earlier static-mut compilation failure, so it's a pre-existing issue I need to resolve. Since `frame::init` is marked as external_body in tcb-allowed.md, I'm treating it correctly by adding the annotation and spec rather than proving its body.
+[RESULT ✓] bash: da334b1e8 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+14e53d7cf [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+66c01916f [verus-ai] proving strip-external-body: phys-frame (2)
+1c13950bb [verus-ai] pr...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "external_body" src/kernel/src/mm/phys/frame.rs | head; echo "---git 
+
+[THINKING] I'm noticing that git diff --stat isn't showing my frame.rs changes, which is strange since the edit should be there. Let me check if the file might be gitignored or if the changes somehow didn't persist.
+[RESULT ✓] bash: 668:#[verus_verify(external_body)]
+697:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+744:// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+896:// to `phys_view().frames` in the proving phase. `external_body` unti...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+My edit is present. Now I need to handle `frame::init` (called by verified `mm::phys::init`). Let me check the lemma and what contract init needs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat src/kernel/src/mm/phys/mod.proof.rs
+
+[THINKING] I see my edit on line 668 with the external_body change, but git diff isn't showing any modifications to frame.rs at all. That's strange — either the file was already committed with that change, or something else is going on with how git is tracking it. Let me figure out what's actually in the repository versus what I'm seeing locally.
+
+Regardless of how the edit got there, the file currently has external_body on instance, which is what I need. Now I should focus on the real problem: frame::init needs a contract so that mm::phys::init can call it. Let me check what lemma_frame_initialized expects and what state mm::phys::init needs after frame::init completes.
+[RESULT ✓] bash: verus! {
+
+/// After `frame::init` succeeds, the frame allocator singleton is initialized and its
+/// abstract partition is well formed.
+///
+/// `frame::init` is `external_body`, so this fact is asserted as a lemma over the global
+/// `phys_view()` accessor rather than derived from the exec body. The...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager show 66c01916f --stat | head -20; echo "=====DIFF on frame.rs=
+
+[THINKING] The lemmas in mod.proof.rs are outside my scope since they're in a different module and unlisted, so I'm leaving them alone. The immediate issue is that `frame::init` is external and being ignored.
+
+To fix this, I need to add a `#[verus_verify(external_body)]` annotation to `frame::init` so it becomes callable from verified code. Since the actual invariants are established by the lemma that follows the call, I can give `frame::init` a minimal contract—just ensuring the result type matches, effectively `ensures true`. This keeps it within the tcb-allowed scope for external_body functions while making it compatible with the verified caller.
+
+But I'm wondering if this annotation was supposed to be there already. The repo seems to be in the middle of a pipeline, and there's a commit that strips external_body annotations from target functions to force proving. It's possible that commit accidentally removed the annotation from `frame::init` when it shouldn't have, or the baseline setup was incomplete.
+[RESULT ✓] bash: commit 66c01916fab16c0a604daf548b6d8f144cb95872
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 07:59:58 2026 +0800
+
+    [verus-ai] proving strip-external-body: phys-frame (2)
+
+ src/kernel/src/mm/phys/frame.rs                   | 2 --
+ verus-ai-logs/nanvix-phys-phys-frame/pipeline.log | 1 ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+The strip step over-stripped `external_body` from both `instance` and `init` (both legitimately tcb-allowed). Let me restore it on `init`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The strip-external-body pipeline step was too aggressive and removed `#[verus_verify(external_body)]` from both `instance` and `init`, even though these are legitimately marked as external_body in tcb-allowed.md. I need to restore the attribute on both functions—I've already done `instance`, and now I need to add it back to `init`, which originally had only that attribute without any `#[verus_spec]`.
+
+With `external_body` and no spec, `init`'s ensures clause becomes trivially true, which is fine since the caller in `mm::phys::init` invokes `frame::init(...)?` followed by `lemma_frame_initialized()`, and the lemma independently provides the necessary facts. So I'll restore the external_body attribute on init.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verification:
