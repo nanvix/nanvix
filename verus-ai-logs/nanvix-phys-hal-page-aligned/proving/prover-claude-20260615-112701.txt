@@ -269,3 +269,35 @@ Expected — `PAGE_ALIGNMENT` is unsupported. `from_address` is TCB-listed for `
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tail -35
+[RESULT ✓] bash: Module hal::mem::types::address::aligned::page:
+    ⚠️  external_body: 1
+    ⚠️  cfg-gated exec code: 1
+  Affected functions:
+    - page.rs:65 from_address: external_body
+  Global: assume=0 external_body=24 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Verification passes (1 verified, 0 errors). The "CHEATING_DETECTED" flag is from the TCB-approved `external_body` and a pre-existing cfg-gate. Let me confirm the cfg-gate is the standard ghost block and not something to fix.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -iE "page|a
+
+[THINKING] The verification passed successfully, and while the "CHEATING_DETECTED" status is flagged due to external_body and cfg-gated exec code, both are actually approved in the tcb-allowed.md file—the external_body on from_address and the assume_specification used in into_raw_value are both listed there. I'm checking what the cfg-gated exec code warning refers to, which might be related to a conditional compilation attribute.
+[RESULT ✓] bash: - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - mm/virt/identity_map.rs:649 identity_map_page: external_body
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -
+
+[THINKING] I'm looking at the cfg-gate configuration for this module—there's only `from_address: external_body` specified. The summary mentioned one cfg-gated exec code entry under the page module, so let me review the full detail file to see all the cfg gate entries.
+[RESULT ✓] bash: === all cfg lines ===
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git stash list; echo "=== git diff vs HEAD on page.rs ==="; git --no-pager diff -- src/kernel
