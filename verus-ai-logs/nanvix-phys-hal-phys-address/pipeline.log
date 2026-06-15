@@ -198,3 +198,9 @@ All proving-phase checklist items PASS with evidence (see turn_001_driver.md):
 [2026-06-15 12:57:31] ✅ proving: PASS (0/0)
 [2026-06-15 12:57:31] [GATE] Running build: make build
 [2026-06-15 12:57:31] [GATE] Running verify: make verify
+[2026-06-15 12:57:38] [GATE] ✅ Build + Verify passed after proving
+
+============================================================
+PHASE: cheating-elimination
+Module: hal-phys-address
+============================================================

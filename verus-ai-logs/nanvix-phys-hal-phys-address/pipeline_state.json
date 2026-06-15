@@ -2,12 +2,13 @@
   "module_name": "hal-phys-address",
   "log_name": "nanvix-phys-hal-phys-address",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -69,7 +70,8 @@
     "caller-analysis": "528a89ffea81bf969b7682b6220f2c0adfe7d1fc",
     "view-design": "fe3b55053593f816bbce2b7fdac150daedffd4a5",
     "specification": "555acf11bc01d41483680f57c62e33160918773d",
-    "proving": "b35c5d5323dd8bef69912a9b01ef1b9f94a81cf8"
+    "proving": "b35c5d5323dd8bef69912a9b01ef1b9f94a81cf8",
+    "cheating-elimination": "27abdb103171f505eea62d88c14f61886177d1d6"
   },
   "phase_history": [
     {
@@ -118,6 +120,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "f0e04979a0349e7402340a4ba7327774890651cc",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "27abdb103171f505eea62d88c14f61886177d1d6",
       "rollback_iter": 0
     }
   ],
