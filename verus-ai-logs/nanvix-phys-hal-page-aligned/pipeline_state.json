@@ -2,9 +2,11 @@
   "module_name": "hal-page-aligned",
   "log_name": "nanvix-phys-hal-page-aligned",
   "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "6b0edd63cf765e6396a6bd74711599043686e920"
   },
   "phase_start_shas": {
-    "proving": "6bd5876692d8382f7037d523a815b283a03fd0d3"
+    "proving": "6bd5876692d8382f7037d523a815b283a03fd0d3",
+    "cheating-elimination": "24143f2635bbdb902dad9c8110a53b9613a90e0d"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "6b0edd63cf765e6396a6bd74711599043686e920",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "24143f2635bbdb902dad9c8110a53b9613a90e0d",
       "rollback_iter": 0
     }
   ],
