@@ -1063,3 +1063,176 @@ Turn 51
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 3000 make verify 2>&1 | grep -E "verify-|verified,|errors|status:|PAS
 
 [THINKING] I've only modified the frame-related files in the kernel crate, so the dependency crates should be unaffected, but I'll run the full verification suite to make sure everything still checks out.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+  status: CHEATING_DETECTED
+Log written to: verus-ai-logs/verify-bitmap/verus-logs/verus_2026-06-15_10-24-42.log
+/home/r...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+All crates verified with 0 errors (the `CHEATING_DETECTED` status reflects pre-existing cheating in *other* modules — manager, mod, upool, kframe — outside my scope). Let me confirm no verification errors anywhere.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; for c in bitmap sys nanvix-slab bump-allocator arch kernel; do log=$(ls -t ve
+
+[THINKING] All the crates are verified with zero errors, and the "CHEATING_DETECTED" status is from pre-existing issues in other modules that are outside my scope. My changes to the frame module only reduced external_body usage by eliminating the free_count variable. Now I'm checking to confirm there are no verification errors across the entire codebase.
+[RESULT ✓] bash: bitmap: 
+sys: 
+nanvix-slab: 
+bump-allocator: 
+arch: 
+kernel:
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; for c in bitmap sys nanvix-slab bump-allocator arch kernel; do log=$(ls -t ve
+[RESULT ✓] bash: bitmap: 
+sys: 
+nanvix-slab: 
+bump-allocator: 
+arch: 
+kernel:
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; log=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); ec
+[RESULT ✓] bash: kernel log: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-24-48.log
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rhE "status: (CLEAN|CHEATING_DETECTED|VERIFY_FAILED)|verification: .*er
+
+[THINKING] The verification results aren't in the log files directly, but the earlier kernel verification showed 115 verified with no errors, and the full make verify completed successfully with exit code 0 and no compilation errors in the output. Each crate printed its status as either CLEAN or CHEATING, so I should check the exit status and summary files to confirm everything passed.
+[RESULT ✓] bash: === any VERIFY_FAILED in recent logs ===
+<shellId: 40 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; for c in bitmap sys nanvix-slab bump-allocator arch kernel; do d=verus-ai-log
+[RESULT ✓] bash: bitmap ->  | 
+sys ->  | 
+nanvix-slab ->  | 
+bump-allocator ->  | 
+arch ->  | 
+kernel ->  |
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; for c in bitmap sys nanvix-slab bump-allocator arch; do f=$(ls -t verus-ai-lo
+
+[THINKING] The .log files contain raw output rather than the summary strings, which get printed to stdout by verify.sh. Looking back at the make verify output I captured earlier, each crate showed either "status: CLEAN" or "CHEATING_DETECTED" along with its log path, but nothing indicated VERIFY_FAILED. Since make completed successfully and uses `&&` chaining with dependencies, all six crates must have processed through the kernel without stopping.
+
+The key question is whether verify.sh exits non-zero on CHEATING_DETECTED. When I had a real verification error earlier, the module run showed "make: *** Error 101", but when it's just cheating with no actual errors, it exits 0. The full `make verify` run completed all six crates and the shell exited cleanly with no error messages, so everything passed verification. I already confirmed the kernel independently with "115 verified, 0 errors ... status: CHEATING_DETECTED", which is definitive. Let me check the raw log content format to be certain about errors in the dependency crates.
+[RESULT ✓] bash: === bitmap (verus-ai-logs/verify-bitmap/verus-logs/verus_2026-06-15_10-24-42.log) ===
+=== sys (verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_10-24-43.log) ===
+=== nanvix-slab (verus-ai-logs/verify-nanvix-slab/verus-logs/verus_2026-06-15_10-24-44.log) ===
+=== bump-allocator (verus-ai-logs/veri...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+All crates pass with 0 verification errors (dependency logs are cached/empty; kernel ran fresh: 115 verified, 0 errors). Let me gather precise before/after counts for the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== ORIGINAL frame.rs (verus-ai-prove-bottom-up) ==="; echo -n "externa
+
+[THINKING] The logs came back empty because everything was cached and passing, which is expected. The kernel verification ran fresh with 115 successful verifications and zero errors, and the full workspace build completed cleanly across all crates. I've confirmed there are no verification errors introduced by my change—I removed one external_body proof without adding any new cheating.
+
+Now I'm compiling the two output files: a verification_todo.md documenting the five genuinely-stuck wrappers with their specific Verus blockers, and a fix_report.md showing the cheating elimination. I need to get precise cheating counts for the frame.rs module specifically. Before my change, frame.rs had 8 external_body items; after removing free_count, it's down to 7. The assume_specification items (2 tcb-allowed ones for PageAligned) remain unchanged, and there are no admits or assumes. Generating markdown table... Now I need to create the verification and fix report files, and get the exact counts of external_body and cfg gates in the original versus current frame.rs to confirm nothing changed.
+[RESULT ✓] bash: === ORIGINAL frame.rs (verus-ai-prove-bottom-up) ===
+external_body: 7
+admit: 0
+assume: 0
+cfg-gate(not verus_keep_ghost): 23
+
+=== CURRENT frame.rs ===
+external_body: 7
+admit: 0
+assume: 0
+cfg-gate(not verus_keep_ghost): 23
+
+=== assume_specification in frame.spec.rs (orig vs now) ===
+3
+3
+<shellId: 43 c...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== committed frame.rs external_body lines ==="; git show verus-ai-prov
+
+[THINKING] I'm noticing a discrepancy in my count of `external_body` annotations in the original frame.rs file. The grep search found 7 instances, but I had counted 8 earlier when listing the functions. Let me verify which function might not have had the external_body annotation in the original version. I'm realizing the grep pattern might not be catching all instances of the external_body annotation, or there's a mismatch between what the baseline verification showed and what's actually in the committed code. Let me directly examine the committed version of frame.rs to see if free_count actually has the external_body marker.
+[RESULT ✓] bash: === committed frame.rs external_body lines ===
+1235:#[verus_verify(external_body)]
+1264:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+1268:#[verus_verify(external_body)]
+1312:// `external_body` until the `frame` free-function layer is verified; the manager...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+The verify pipeline auto-committed my change. The true baseline is the parent commit `f884ee245`. Let me get original counts from there.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; BASE=f884ee245; echo "=== BASE $BASE frame.rs ==="; echo -n "external_body: "
+
+[THINKING] The verify.sh script auto-committed my changes after a successful verification, so the current branch HEAD now includes my free_count modification. I need to compare against the parent commit instead of the current HEAD to see what I actually changed.
+
+Let me check what the free_count external_body looked like in that parent commit by grepping the relevant section.
+[RESULT ✓] bash: === BASE f884ee245 frame.rs ===
+external_body: 8
+1235:#[verus_verify(external_body)]
+1264:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+1268:#[verus_verify(external_body)]
+1312:// `external_body` until the `frame` free-function layer is verified; the manag...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Confirmed baseline: frame.rs `external_body` 8 → 7 (`free_count` eliminated), 0 admit/assume. All 7 remaining are tcb-allowed. Let me write the output files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/; mkdir -p verus
+
+[THINKING] Looking at the baseline comparison for frame.rs, the external_body count dropped from 8 to 7 after eliminating the free_count field. The admit and assume counts remain unchanged at 0, while assume_specification stays at 3 in frame.spec.rs with all entries being tcb-allowed.
+
+The 7 remaining external_body declarations are all explicitly listed in tcb-allowed.md across two sections: instance and init in the allowed section, plus alloc, alloc_contiguous, free, book, and alloc_range in the cross-module dependencies section. Since there are no admit or assume violations in my scope, I can now document the 5 genuinely-stuck wrappers (alloc, alloc_contiguous, free, book, alloc_range) in the output files, noting that they're external_body rather than proof gaps, while instance and init are tcb-allowed by design.
+[RESULT ✓] bash: prover-claude-20260615-101007.jsonl
+prover-claude-20260615-101007.txt
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md with 4913 characters
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md with 5794 characters
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Let me do final cleanup and a confirming verification run.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; rm -f /tmp/frame.rs.bak /tmp/frame_orig.rs; echo "=== git status ==="; git st
+
+[THINKING] I'm doing a final sanity check to make sure the working tree is clean of my probe artifacts, the free_count change is committed, and the module verification passes. I also need to clean up the /tmp backup and confirm there are no leftover changes from the probe since I restored from a backup that was post-free_count-edit, so the wrappers should have external_body intact.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/prover-claude-20260615-101007.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/prover-claude-20260615-101007.txt
+?? verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+?? verus-ai-lo...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+frame.rs/frame.proof.rs are already committed in the verified state (7 external_body, `free_count` proven). Let me run a final confirming module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verified,|ext
+
+[THINKING] The frame.rs and frame.proof.rs changes are already committed and verified, with the working tree clean. I just need to run a final module verification to confirm everything is in the correct state with zero errors.
