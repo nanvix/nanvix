@@ -2,23 +2,52 @@
   "module_name": "vmem",
   "log_name": "nanvix-virt-vmem",
   "source_path": "/home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs",
-  "current_phase": "property-analysis",
-  "current_phase_idx": 2,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "specification",
+  "current_phase_idx": 3,
+  "completed_phases": [
+    "property-analysis"
+  ],
+  "phase_results": {
+    "property-analysis": {
+      "phase": "property-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 449.4,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "6659da14-79df-4d98-8c88-457eaf10692e",
   "completed": false,
   "base_branch": "virt-mm-ai-spec-property-analysis",
   "verus_branch": "virt-mm-ai-spec-property-analysis",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "property-analysis": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327"
+  },
   "phase_start_shas": {
-    "property-analysis": "379d1c0e12ef8fe83d28c87eac06f3658ab0138d"
+    "property-analysis": "379d1c0e12ef8fe83d28c87eac06f3658ab0138d",
+    "specification": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327"
   },
   "phase_history": [
     {
       "phase": "property-analysis",
       "event": "start",
       "sha": "379d1c0e12ef8fe83d28c87eac06f3658ab0138d",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "property-analysis",
+      "event": "end",
+      "sha": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327",
       "rollback_iter": 0
     }
   ],
