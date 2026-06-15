@@ -804,4 +804,34 @@ impl VirtMemoryManager {
     ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
         elf::elf32_load(self, vmem, elf)
     }
+
+    ///
+    /// # Description
+    ///
+    /// Loads an ELF32 image into `dst_vmem`, reading the image directly from the user address space
+    /// `src_vmem` at virtual address `base` (spanning `len` bytes). This is the `execv()` loader,
+    /// which streams the (possibly non-contiguous) image from the calling process's address space
+    /// rather than from a contiguous kernel blob.
+    ///
+    /// # Parameters
+    ///
+    /// - `dst_vmem`: Destination address space for the new image.
+    /// - `src_vmem`: Source address space that contains the ELF image.
+    /// - `base`: Virtual address of the ELF image within `src_vmem`.
+    /// - `len`: Length of the ELF image in bytes.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the entry point and the address past the last loaded segment are returned.
+    /// Otherwise, an error is returned.
+    ///
+    pub fn load_elf_from_user(
+        &mut self,
+        dst_vmem: &mut Vmem,
+        src_vmem: &Vmem,
+        base: VirtualAddress,
+        len: usize,
+    ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
+        elf::elf32_load_from_user(self, dst_vmem, src_vmem, base, len)
+    }
 }

@@ -59,7 +59,11 @@ use ::arch::mem::{
 };
 use ::core::{
     cell::RefCell,
-    mem::ManuallyDrop,
+    mem::{
+        ManuallyDrop,
+        MaybeUninit,
+    },
+    ops::ControlFlow,
 };
 use ::sys::{
     config,
@@ -736,6 +740,35 @@ impl Vmem {
     where
         F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<(), Error>,
     {
+        self.try_for_each_user_mapping(|vaddr, pte| {
+            f(vaddr, pte)?;
+            Ok(ControlFlow::Continue(()))
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Like [`Self::for_each_user_mapping`], but the callback may stop the walk early by
+    /// returning [`ControlFlow::Break`]. Bounded consumers that snapshot a fixed-size batch of
+    /// mappings per pass use this to stop as soon as their buffer is full, instead of paying for
+    /// a full traversal of every remaining mapping on each pass.
+    ///
+    /// # Parameters
+    ///
+    /// - `f`: Callback invoked with `(vaddr, pte)` for every present user mapping, in the order
+    ///   they appear in the internal user page-table list. Returning `Ok(ControlFlow::Break(()))`
+    ///   stops the iteration; returning an error short-circuits and propagates it to the caller.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned, whether the walk ran to completion or was stopped
+    /// early. Upon failure, the first error returned by `f` is propagated.
+    ///
+    pub(crate) fn try_for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
+    where
+        F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<ControlFlow<()>, Error>,
+    {
         for (pgtab_addr, page_table) in self.user_page_tables.iter() {
             let base: usize = pgtab_addr.into_raw_value();
             for (pte_idx, pte) in page_table.iter_present_ptes() {
@@ -749,10 +782,80 @@ impl Vmem {
                         Error::new(ErrorCode::BadAddress, "user mapping vaddr overflow")
                     })?;
                 let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-                f(vaddr, pte)?;
+                if f(vaddr, pte)?.is_break() {
+                    return Ok(());
+                }
             }
         }
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Unmaps every present user-space page from this address space, freeing the underlying
+    /// physical frames and reclaiming any now-empty user page tables.
+    ///
+    /// This is used by `execv()` to reclaim the frames backing the previous image before its
+    /// address space is dropped. It must not be called on the address space that is currently
+    /// active on the CPU; the caller defers reclamation until after the context switch into the
+    /// new image has loaded a different page directory.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Notes
+    ///
+    /// Errors from this function indicate an internal bug and may leave the address space in a
+    /// potentially inconsistent state. Callers typically log the error and rely on the debug
+    /// assertion in `Vmem::drop` (debug/test builds) to catch leaked user mappings.
+    pub fn clear_user_space(&mut self) -> Result<(), Error> {
+        // Number of mappings unmapped per pass. This bounds an on-stack scratch buffer so the
+        // routine performs no heap allocation: the kernel heap is a small slab allocator that
+        // cannot satisfy the large buffer a full (potentially multi-megabyte) address space would
+        // otherwise require. `unmap` needs `&mut self` whereas `try_for_each_user_mapping` borrows
+        // `&self`, so each pass first snapshots up to `CHUNK` addresses, then unmaps them.
+        const CHUNK: usize = 32;
+
+        loop {
+            let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; CHUNK] =
+                [const { MaybeUninit::uninit() }; CHUNK];
+            let mut count: usize = 0;
+            // Break as soon as the batch is full. Without the early break each pass would
+            // re-traverse every remaining mapping, making a full teardown quadratic in the number
+            // of mapped pages. `unmap` removes emptied page tables from the front, so restarting
+            // the walk each pass still advances and the whole teardown stays linear.
+            self.try_for_each_user_mapping(|vaddr, _pte| {
+                buf[count].write(vaddr);
+                count += 1;
+                if count == CHUNK {
+                    Ok(ControlFlow::Break(()))
+                } else {
+                    Ok(ControlFlow::Continue(()))
+                }
+            })?;
+
+            if count == 0 {
+                return Ok(());
+            }
+
+            // Unmap each collected page. The `UserFrame` returned by `unmap` is dropped
+            // immediately, which frees the underlying physical frame; empty page tables are
+            // reclaimed by `unmap` itself.
+            for slot in buf.iter().take(count) {
+                // SAFETY: indices `< count` were initialized by the scan above.
+                let vaddr: PageAligned<VirtualAddress> = unsafe { slot.assume_init_read() };
+                let _uframe: Option<UserFrame> = self.unmap(vaddr)?;
+                // User frame is dropped here, which frees the underlying physical frame.
+            }
+
+            // Fewer than a full chunk means the scan saw every remaining mapping this pass, so all
+            // user pages have now been unmapped.
+            if count < CHUNK {
+                return Ok(());
+            }
+        }
     }
 
     ///
@@ -1711,6 +1814,18 @@ impl Vmem {
 
 impl Drop for Vmem {
     fn drop(&mut self) {
+        // Safety net: by the time a `Vmem` is dropped, every user frame it mapped must already
+        // have been reclaimed (via `clear_user_space()` or explicit unmapping). Dropping the user
+        // page tables below frees only their backing storage, NOT the user frames their entries
+        // reference, so any user page still mapped here is a leaked frame. Catch teardown paths
+        // that forget to reclaim user frames in debug and test builds.
+        debug_assert!(
+            self.user_page_tables
+                .iter()
+                .all(|(_, page_table)| page_table.nmapped() == 0),
+            "Vmem dropped with user pages still mapped: user frames would leak"
+        );
+
         while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
             drop(user_page_table);
         }

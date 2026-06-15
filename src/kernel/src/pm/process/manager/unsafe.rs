@@ -10,12 +10,14 @@ use crate::{
         arch::ContextInformation,
         mem::{
             Address,
+            FrameAddress,
             PageAligned,
             VirtualAddress,
         },
         platform::Interrupts,
     },
     mm::{
+        phys::PhysMemoryManager,
         VirtMemoryManager,
         Vmem,
     },
@@ -68,10 +70,14 @@ use ::core::{
     },
 };
 use ::sys::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::Message,
     pm::{
         ConditionAddress,
+        ExecvArgs,
         MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
@@ -104,6 +110,68 @@ pub(super) static FPU_OWNER_TID: AtomicI32 = AtomicI32::new(ThreadIdentifier::KE
 
 /// Nesting depth of exception handlers currently being served.
 static SERVING_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
+
+//==================================================================================================
+// Execv Staging
+//==================================================================================================
+
+/// A transient, physically contiguous, page-aligned region of kernel frames used by `execv()` to
+/// stage small data (currently the argument and environment strings) read from the calling
+/// process's user-space buffers. The kernel heap is a small slab allocator that cannot hold
+/// multi-kilobyte buffers, so the page-frame allocator is used instead. On the microvm platform
+/// physical memory is identity-mapped into the kernel, so the base frame address doubles as a
+/// kernel-readable pointer to the region.
+///
+/// The underlying frames are released when the region is dropped.
+struct KernelRegion {
+    /// Base frame address of the region (also a kernel-usable pointer, identity-mapped).
+    base: FrameAddress,
+    /// Number of contiguous frames in the region.
+    count: usize,
+}
+
+impl KernelRegion {
+    ///
+    /// # Description
+    ///
+    /// Allocates a physically contiguous, page-aligned region of `count` kernel frames and wraps
+    /// it in a [`KernelRegion`]. The underlying frames are released when the region is dropped.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of contiguous frames to allocate. Must be non-zero.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the allocated region is returned. Upon failure, an error is returned instead.
+    ///
+    fn new(count: usize) -> Result<Self, Error> {
+        // SAFETY: the physical memory manager is initialized and access is synchronized (single
+        // core, interrupts disabled during kernel-call servicing).
+        let pmm: &mut PhysMemoryManager = unsafe { PhysMemoryManager::get_mut() };
+        let base: FrameAddress = pmm.alloc_kernel_region(count)?;
+        Ok(Self { base, count })
+    }
+
+    /// Returns the base of the region as a raw kernel address.
+    fn base_addr(&self) -> usize {
+        self.base.into_raw_value()
+    }
+}
+
+impl Drop for KernelRegion {
+    fn drop(&mut self) {
+        if self.count == 0 {
+            return;
+        }
+        // SAFETY: the physical memory manager is initialized and access is synchronized (single
+        // core, interrupts disabled during kernel-call servicing).
+        let pmm: &mut PhysMemoryManager = unsafe { PhysMemoryManager::get_mut() };
+        if let Err(e) = pmm.free_kernel_region(self.base, self.count) {
+            warn!("KernelRegion::drop(): failed to free staging region: {e:?}");
+        }
+    }
+}
 
 //==================================================================================================
 // Implementations
@@ -244,6 +312,206 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Replaces the image of the calling process with a new program, following POSIX `execv()`
+    /// semantics. The address space and main thread of the calling process are replaced with ones
+    /// built from the program image and the argument/environment strings described by `args`, while
+    /// the process identity is preserved.
+    ///
+    /// The ELF image is streamed directly from the calling process's (still-active) address space
+    /// into the new image, so there is no kernel-side staging copy of the program and hence no
+    /// artificial size limit. The much smaller argument and environment strings (each at most one
+    /// page) are staged into transient page-frame-backed kernel regions, because the kernel heap is
+    /// a small slab allocator that cannot hold even page-sized buffers; those regions are released
+    /// before the context switch, which never returns and would otherwise leak them.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the calling process.
+    /// - `args`: Description of the user-space ELF image and argument/environment strings.
+    ///
+    /// # Returns
+    ///
+    /// This function returns only on failure, yielding the error that prevented the image from
+    /// being replaced; the calling process is left intact in that case. On success it does not
+    /// return: control transfers to the entry point of the new image.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may replace the calling process's image and perform a
+    /// context switch.
+    ///
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The calling thread is not a kernel thread.
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
+    ///
+    pub unsafe fn exec(pid: ProcessIdentifier, args: ExecvArgs) -> Error {
+        trace!(
+            "pid={pid:?}, elf_len={}, args_len={}, env_len={}",
+            args.elf_len,
+            args.args_len,
+            args.env_len
+        );
+
+        // Reap any detached-thread zombies and exec'd-away address spaces deferred from a previous
+        // context switch.
+        Self::reap_deferred();
+
+        // SAFETY: the process manager and virtual memory manager are initialized, access is
+        // synchronized, and the resulting references do not alias.
+        let pm: &mut ProcessManager = unsafe { Self::get_mut() };
+        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
+        // Stage the (small, at most one page each) argument and environment strings into kernel
+        // frame regions. Empty strings need no backing region. The ELF image itself is NOT staged:
+        // it is streamed directly from the caller's address space by `do_execv`.
+        let args_region: Option<KernelRegion> = if args.args_len > 0 {
+            match unsafe { Self::stage_user_region(pm, pid, args.args_ptr, args.args_len) } {
+                Ok(region) => Some(region),
+                Err(e) => return e,
+            }
+        } else {
+            None
+        };
+        let env_region: Option<KernelRegion> = if args.env_len > 0 {
+            match unsafe { Self::stage_user_region(pm, pid, args.env_ptr, args.env_len) } {
+                Ok(region) => Some(region),
+                Err(e) => return e,
+            }
+        } else {
+            None
+        };
+
+        // Interpret the staged argument/environment bytes as UTF-8 strings.
+        let args_str: &str = match &args_region {
+            // SAFETY: the region holds `args.args_len` valid bytes staged from user space.
+            Some(region) => match core::str::from_utf8(unsafe {
+                core::slice::from_raw_parts(region.base_addr() as *const u8, args.args_len)
+            }) {
+                Ok(s) => s,
+                Err(_) => {
+                    return Error::new(
+                        ErrorCode::InvalidArgument,
+                        "execv argument string is not valid UTF-8",
+                    )
+                },
+            },
+            None => "",
+        };
+        let env_str: &str = match &env_region {
+            // SAFETY: the region holds `args.env_len` valid bytes staged from user space.
+            Some(region) => match core::str::from_utf8(unsafe {
+                core::slice::from_raw_parts(region.base_addr() as *const u8, args.env_len)
+            }) {
+                Ok(s) => s,
+                Err(_) => {
+                    return Error::new(
+                        ErrorCode::InvalidArgument,
+                        "execv environment string is not valid UTF-8",
+                    )
+                },
+            },
+            None => "",
+        };
+
+        if args_str.as_bytes().contains(&0) {
+            return Error::new(
+                ErrorCode::InvalidArgument,
+                "execv argument string contains NUL bytes",
+            );
+        }
+        if env_str.as_bytes().contains(&0) {
+            return Error::new(
+                ErrorCode::InvalidArgument,
+                "execv environment string contains NUL bytes",
+            );
+        }
+        // Build and commit the new image, streaming the ELF from the caller's address space. On
+        // failure the calling process is left untouched (the staging regions are released as they
+        // go out of scope).
+        let (next_pid, next_tid, from, to, user_tda): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+            Option<VirtualAddress>,
+        ) = match pm.do_execv(mm, pid, args.elf_ptr, args.elf_len, args_str, env_str) {
+            Ok(parts) => parts,
+            Err(e) => return e,
+        };
+
+        // The image has been replaced and committed. Release the staging regions now, because the
+        // context switch below never returns and would otherwise leak the frames. After this point
+        // `args_str` and `env_str` must not be used.
+        drop(args_region);
+        drop(env_region);
+
+        // SAFETY: `from` and `to` point to valid context information structures, the next thread
+        // identifier differs from the current one (forcing a hard switch into the new image), and
+        // the processor is running with interrupts disabled.
+        Self::switch(next_pid, next_tid, from, to, user_tda);
+
+        // SAFETY: Self::switch() switches into the new image and never returns to this frame: the
+        // outgoing thread has been retired as a zombie and is never resumed. Reaching this point
+        // indicates a critical bug and undefined behavior.
+        core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Stages `len` bytes from the calling process's user space into a freshly allocated,
+    /// physically contiguous, page-aligned region of kernel frames, returning the region. The
+    /// region's frames are released when it is dropped.
+    ///
+    /// # Parameters
+    ///
+    /// - `pm`: Process manager.
+    /// - `pid`: Identifier of the process whose user space is the source.
+    /// - `src`: Source address in the caller's user space.
+    /// - `len`: Number of bytes to stage. Must be non-zero.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the populated kernel region is returned. Upon failure, an error is returned.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on the global physical memory manager and copies
+    /// from user space. It is safe to call when the process manager and physical memory manager are
+    /// initialized and access to them is synchronized.
+    ///
+    unsafe fn stage_user_region(
+        pm: &mut ProcessManager,
+        pid: ProcessIdentifier,
+        src: VirtualAddress,
+        len: usize,
+    ) -> Result<KernelRegion, Error> {
+        if len == 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "zero-length staging region"));
+        }
+
+        // Number of page frames needed to hold `len` bytes.
+        let count: usize = len.div_ceil(PAGE_SIZE);
+
+        // Allocate the contiguous staging region from the page-frame allocator. The frames are
+        // released when `region` is dropped.
+        let region: KernelRegion = KernelRegion::new(count)?;
+
+        // Copy the bytes from the caller's user space into the staging region. The destination is a
+        // kernel-space (identity-mapped) address; the source is resolved through the caller's page
+        // tables. On failure, `region` is dropped, releasing the frames.
+        pm.vmcopy_from_user(pid, VirtualAddress::from_raw_value(region.base_addr()), src, len)?;
+
+        Ok(region)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Terminates the calling thread.
     ///
     /// # Parameters
@@ -351,6 +619,23 @@ impl ProcessManager {
             core::mem::take(&mut Self::get_mut().deferred_reap);
         for (pid, zombie) in deferred {
             Self::harvest_zombie_thread(pid, zombie);
+        }
+
+        // Reclaim the address spaces of images replaced by `execv()`. By the time this runs, the
+        // context switch into the new image has already loaded a different page directory, so the
+        // outgoing one is no longer the active CR3 and can be torn down safely.
+        let exec_vmems: Vec<Vmem> = core::mem::take(&mut Self::get_mut().deferred_exec_vmem);
+        for mut vmem in exec_vmems {
+            // Free the user frames backing the outgoing image before the address space is dropped:
+            // dropping a `Vmem` alone reclaims only its page-table structures, not the user frames
+            // they map.
+            if let Err(error) = vmem.clear_user_space() {
+                warn!(
+                    "reap_deferred(): failed to reclaim outgoing exec address space (error={:?})",
+                    error
+                );
+            }
+            drop(vmem);
         }
     }
 

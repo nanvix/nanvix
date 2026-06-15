@@ -173,6 +173,10 @@ pub struct ProcessManager {
     /// Detached-thread zombies whose reaping was deferred because their
     /// `ContextInformation` was still needed by an in-progress context switch.
     deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
+    /// Address spaces of images replaced by `execv()` whose reclamation was deferred because the
+    /// outgoing page directory was still the active one during the switch into the new image.
+    /// Drained by [`Self::reap_deferred`] once the switch has loaded the new page directory.
+    deferred_exec_vmem: Vec<Vmem>,
     /// Newly created processes whose creation has not yet been published as a scheduling event.
     /// Drained by the kernel main loop, where no reference to the process manager is held, so that
     /// subscribers can be woken safely. Bounded to [`config::kernel::MAX_PROCESSES`]: the
@@ -224,6 +228,7 @@ impl ProcessManager {
             live_count: 1,
             number_buffered_messages: 0,
             deferred_reap: Vec::new(),
+            deferred_exec_vmem: Vec::new(),
             pending_creations: VecDeque::new(),
             pending_terminations: VecDeque::new(),
         }
@@ -522,10 +527,6 @@ impl ProcessManager {
         args: &str,
         env: &str,
     ) -> Result<ProcessIdentifier, Error> {
-        unsafe extern "C" {
-            pub fn __leave_kernel_to_user_mode();
-        }
-
         trace!("args={:?}, env={:?}", args, env);
 
         // Refuse to create a new process when the system-wide live-process cap has been reached.
@@ -556,6 +557,94 @@ impl ProcessManager {
         let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
         let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
 
+        // Build the address space and main thread for the new image. All fallible work happens
+        // here; on failure the process manager state is left unchanged.
+        let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
+            mm,
+            &self.tm,
+            self.get_running().state().vmem(),
+            tid,
+            |mm, vmem| mm.load_elf(vmem, elf),
+            args,
+            env,
+            self.interrupt_capable,
+        )?;
+
+        //==============================================================
+        // NOTE: if we fail beyond this point we need to free page mappings.
+        //==============================================================
+
+        Ok(no_fail!(ProcessIdentifier, {
+            // Commit the next process and thread identifiers now that all fallible operations have succeeded.
+            self.next_pid = next_pid;
+            self.tm.commit_next_tid(next_tid);
+            self.live_count += 1;
+            let parent_pid: ProcessIdentifier = self.get_running().state().pid();
+            let process: RunnableProcess = RunnableProcess::new(pid, parent_pid, thread, vmem);
+
+            // Add process to the queue of ready processes.
+            self.ready.push_back(process);
+
+            // Record the creation so the kernel main loop can publish a process-creation
+            // scheduling event. Notifying subscribers here is unsafe because the process manager is
+            // mutably borrowed; deferring to the main loop avoids re-entrant access.
+            self.pending_creations
+                .push_back(ProcessCreationInfo::new(pid, parent_pid));
+
+            Ok(pid)
+        }))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds a fresh user address space and a ready main thread for a program image. This is the
+    /// shared core used by both [`Self::create_process`] (spawning a brand-new process) and
+    /// [`Self::do_execv`] (replacing the image of an existing process).
+    ///
+    /// The routine creates a new address space cloned from `template_vmem` (so that the kernel
+    /// mappings are inherited), loads the ELF image via the `load_elf` callback, installs the
+    /// argument and environment pages, reserves the initial user stack, and forges the
+    /// kernel/user execution context. All work is fallible and side-effect free with respect to
+    /// the process manager: on failure the freshly allocated address space is dropped and an error
+    /// is returned.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `tm`: Thread manager used to construct the main thread.
+    /// - `template_vmem`: Address space whose kernel mappings are cloned into the new one.
+    /// - `tid`: Thread identifier reserved for the new main thread.
+    /// - `load_elf`: Callback that loads the program image into the new address space, returning
+    ///   the entry point and the address past the last loaded segment. This indirection lets the
+    ///   caller choose the image source: a contiguous kernel blob (boot) or another process's
+    ///   address space (execv).
+    /// - `args`: Command line arguments (space-separated; no interior NUL bytes).
+    /// - `env`: Environment variables (space-separated; no interior NUL bytes).
+    /// - `enable_interrupts`: Whether the forged context should run with interrupts enabled.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the new address space and the ready main thread are returned. Otherwise, an
+    /// error is returned instead.
+    ///
+    #[allow(clippy::too_many_arguments)]
+    fn build_user_image<F>(
+        mm: &mut VirtMemoryManager,
+        tm: &ThreadManager,
+        template_vmem: &Vmem,
+        tid: ThreadIdentifier,
+        load_elf: F,
+        args: &str,
+        env: &str,
+        enable_interrupts: bool,
+    ) -> Result<(Vmem, ReadyThread), Error>
+    where
+        F: FnOnce(
+            &mut VirtMemoryManager,
+            &mut Vmem,
+        ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error>,
+    {
         // Strip leading and trailing spaces from arguments.
         let args: &str = args.trim();
 
@@ -580,130 +669,135 @@ impl ProcessManager {
         // env_len includes the null terminator that will be written to user space.
         let env_total_len: usize = env.len() + 1;
 
-        // Create a new memory address space for the process.
-        let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
+        // Create a new memory address space for the image, inheriting kernel mappings.
+        let mut vmem: Vmem = mm.new_vmem(template_vmem)?;
 
-        // Load the ELF file into the new address space.
-        let (entry, args_vaddr): (VirtualAddress, PageAligned<VirtualAddress>) =
-            mm.load_elf(&mut vmem, elf)?;
+        // Run the remaining fallible build steps. On failure, reclaim any user frames already
+        // mapped into `vmem` before returning: dropping the address space alone frees only its
+        // page-table structures, not the user frames their entries map, so a partially built
+        // image would otherwise leak every frame mapped so far.
+        // The closure is a stand-in for a `try` block (collect `?` early-returns so the error path
+        // can run cleanup); it is invoked exactly once.
+        #[allow(clippy::redundant_closure_call)]
+        let build_result: Result<ReadyThread, Error> = (|| -> Result<ReadyThread, Error> {
+            // Load the ELF image into the new address space via the caller-supplied loader.
+            let (entry, args_vaddr): (VirtualAddress, PageAligned<VirtualAddress>) =
+                load_elf(mm, &mut vmem)?;
 
-        // Allocate a user-space page, write command line arguments to it, and check for errors.
-        // The total length includes the null terminator written after the args bytes, and must fit
-        // entirely within a single page.
-        if args_total_len > PAGE_SIZE {
-            let reason: &str = "command line is too long";
-            error!("{reason} (cmdline.len={:?})", args_total_len);
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-        mm.alloc_upages(
-            &mut vmem,
-            args_vaddr,
-            AccessPermission::RDWR,
-            true,
-            1,
-            &mut Vec::with_capacity(1),
-        )?;
-        // Write args as a NUL-terminated string directly to user space.
-        Self::write_nul_terminated_to_user(&mut vmem, args_vaddr.into_inner(), args)?;
-        debug!(
-            "arguments written to user space (args_vaddr={:?}, args={:?})",
-            args_vaddr,
-            args.as_bytes()
-        );
+            // Allocate a user-space page, write command line arguments to it, and check for errors.
+            // The total length includes the null terminator written after the args bytes, and must fit
+            // entirely within a single page.
+            if args_total_len > PAGE_SIZE {
+                let reason: &str = "command line is too long";
+                error!("{reason} (cmdline.len={:?})", args_total_len);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+            mm.alloc_upages(
+                &mut vmem,
+                args_vaddr,
+                AccessPermission::RDWR,
+                true,
+                1,
+                &mut Vec::with_capacity(1),
+            )?;
+            // Write args as a NUL-terminated string directly to user space.
+            Self::write_nul_terminated_to_user(&mut vmem, args_vaddr.into_inner(), args)?;
+            debug!(
+                "arguments written to user space (args_vaddr={:?}, args={:?})",
+                args_vaddr,
+                args.as_bytes()
+            );
 
-        // Allocate another page for the environment variables and check for errors.
-        // The total length includes the null terminator and must fit within a single page.
-        if env_total_len > PAGE_SIZE {
-            let reason: &str = "environment variables are too long";
-            error!("{reason} (env.len={:?})", env_total_len);
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-        let envp_vaddr: PageAligned<VirtualAddress> = PageAligned::<VirtualAddress>::from_address(
-            VirtualAddress::new(args_vaddr.into_raw_value() + PAGE_SIZE),
-        )?;
-        mm.alloc_upages(
-            &mut vmem,
-            envp_vaddr,
-            AccessPermission::RDWR,
-            true,
-            1,
-            &mut Vec::with_capacity(1),
-        )?;
+            // Allocate another page for the environment variables and check for errors.
+            // The total length includes the null terminator and must fit within a single page.
+            if env_total_len > PAGE_SIZE {
+                let reason: &str = "environment variables are too long";
+                error!("{reason} (env.len={:?})", env_total_len);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+            let envp_vaddr: PageAligned<VirtualAddress> =
+                PageAligned::<VirtualAddress>::from_address(VirtualAddress::new(
+                    args_vaddr.into_raw_value() + PAGE_SIZE,
+                ))?;
+            mm.alloc_upages(
+                &mut vmem,
+                envp_vaddr,
+                AccessPermission::RDWR,
+                true,
+                1,
+                &mut Vec::with_capacity(1),
+            )?;
 
-        // Write env as a NUL-terminated string directly to user space.
-        Self::write_nul_terminated_to_user(&mut vmem, envp_vaddr.into_inner(), env)?;
-        debug!(
-            "environment variables written to user space (envp_vaddr={:?}, env={:?})",
-            envp_vaddr,
-            env.as_bytes()
-        );
+            // Write env as a NUL-terminated string directly to user space.
+            Self::write_nul_terminated_to_user(&mut vmem, envp_vaddr.into_inner(), env)?;
+            debug!(
+                "environment variables written to user space (envp_vaddr={:?}, env={:?})",
+                envp_vaddr,
+                env.as_bytes()
+            );
 
-        // Create a kernel context.
-        let user_stack: UserStack =
-            UserStack::new(PageAligned::from_raw_value(USER_STACK_TOP_RAW)?);
-        let user_fn: VirtualAddress = entry;
-        let argp: usize = args_vaddr.into_raw_value();
-        let envp: usize = envp_vaddr.into_raw_value();
+            // Create a kernel context.
+            let user_stack: UserStack =
+                UserStack::new(PageAligned::from_raw_value(USER_STACK_TOP_RAW)?);
+            let user_fn: VirtualAddress = entry;
+            let argp: usize = args_vaddr.into_raw_value();
+            let envp: usize = envp_vaddr.into_raw_value();
 
-        let args: ThreadCreateArgs = ThreadCreateArgs {
-            user_fn,
-            user_fn_arg0: argp,
-            user_fn_arg1: envp,
-            user_stack_base: user_stack.base().into_inner(),
-            user_stack_size: user_stack.size(),
-            user_tda: None, // The base address for the user-space thread data area the main thread is set by the user-space runtime.
-        };
+            let thread_args: ThreadCreateArgs = ThreadCreateArgs {
+                user_fn,
+                user_fn_arg0: argp,
+                user_fn_arg1: envp,
+                user_stack_base: user_stack.base().into_inner(),
+                user_stack_size: user_stack.size(),
+                user_tda: None, // The base address for the user-space thread data area the main thread is set by the user-space runtime.
+            };
 
-        let (kernel_stack, context): (KernelStack, ContextInformation) =
-            Self::forge_user_context(mm, &mut vmem, &args, self.interrupt_capable)?;
+            let (kernel_stack, context): (KernelStack, ContextInformation) =
+                Self::forge_user_context(mm, &mut vmem, &thread_args, enable_interrupts)?;
 
-        // Map only the minimum number of stack pages near the stack top (where ESP starts).
-        // Additional pages up to USER_STACK_SIZE are demand-paged on stack growth faults.
-        // NOTE: if we fail beyond this point we must unmap kernel pages from `vmem`, otherwise we
-        // will leak underlying pages.
-        let initial_stack_base: PageAligned<VirtualAddress> =
-            PageAligned::from_raw_value(user_stack.top().into_raw_value() - USER_STACK_MIN_SIZE)?;
-        let count = USER_STACK_MIN_SIZE / PAGE_SIZE;
-        mm.alloc_upages(
-            &mut vmem,
-            initial_stack_base,
-            AccessPermission::RDWR,
-            true,
-            count,
-            &mut Vec::with_capacity(count),
-        )?;
+            // Map only the minimum number of stack pages near the stack top (where ESP starts).
+            // Additional pages up to USER_STACK_SIZE are demand-paged on stack growth faults.
+            // NOTE: on failure beyond this point the error path must reclaim user pages from `vmem`, otherwise
+            // user frames would leak.
+            let initial_stack_base: PageAligned<VirtualAddress> = PageAligned::from_raw_value(
+                user_stack.top().into_raw_value() - USER_STACK_MIN_SIZE,
+            )?;
+            let count = USER_STACK_MIN_SIZE / PAGE_SIZE;
+            mm.alloc_upages(
+                &mut vmem,
+                initial_stack_base,
+                AccessPermission::RDWR,
+                true,
+                count,
+                &mut Vec::with_capacity(count),
+            )?;
 
-        //==============================================================
-        // NOTE: if we fail beyond this point we need to page mappings.
-        //==============================================================
-
-        Ok(no_fail!(ProcessIdentifier, {
-            let thread: ReadyThread = self.tm.create_thread(
+            // Construct the ready main thread. This is infallible.
+            let thread: ReadyThread = tm.create_thread(
                 tid,
                 Some(kernel_stack),
                 Some(user_stack),
-                args.user_tda,
+                thread_args.user_tda,
                 context,
             );
 
-            // Commit the next process and thread identifiers now that all fallible operations have succeeded.
-            self.next_pid = next_pid;
-            self.tm.commit_next_tid(next_tid);
-            self.live_count += 1;
-            let parent_pid: ProcessIdentifier = self.get_running().state().pid();
-            let process: RunnableProcess = RunnableProcess::new(pid, parent_pid, thread, vmem);
+            Ok(thread)
+        })();
 
-            // Add process to the queue of ready processes.
-            self.ready.push_back(process);
-
-            // Record the creation so the kernel main loop can publish a process-creation
-            // scheduling event. Notifying subscribers here is unsafe because the process manager is
-            // mutably borrowed; deferring to the main loop avoids re-entrant access.
-            self.pending_creations
-                .push_back(ProcessCreationInfo::new(pid, parent_pid));
-
-            Ok(pid)
-        }))
+        match build_result {
+            Ok(thread) => Ok((vmem, thread)),
+            Err(error) => {
+                // Reclaim any user frames already mapped into the partially built image before it
+                // is dropped, so a failed build does not leak frames.
+                if let Err(cleanup_error) = vmem.clear_user_space() {
+                    warn!(
+                        "build_user_image(): cleanup after build failure also failed \
+                         (error={cleanup_error:?})"
+                    );
+                }
+                Err(error)
+            },
+        }
     }
 
     ///
@@ -818,16 +912,39 @@ impl ProcessManager {
         // Clone caller's address space.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
 
-        // Share parent's user-space pages with the child using copy-on-write semantics:
-        // both address spaces transparently see the same data until either side writes,
-        // at which point the in-kernel page-fault handler allocates a private copy for
-        // the faulting side.
-        mm.link_user_pages(self.get_running_mut().state_mut().vmem_mut(), &mut vmem)?;
+        // Share the parent's user pages with the child (copy-on-write) and forge the child's
+        // initial kernel context. If any step fails, reclaim the user frames already linked into
+        // the child before returning: dropping the address space alone frees only its page-table
+        // structures, not the user frames their entries map (here, the parent frames whose
+        // refcounts were bumped by the copy-on-write link), so a partial duplication would leak.
+        // The closure is a stand-in for a `try` block (collect `?` early-returns so the error path
+        // can run cleanup); it is invoked exactly once.
+        #[allow(clippy::redundant_closure_call)]
+        let forge_result: Result<(KernelStack, ContextInformation), Error> = (|| {
+            // Share parent's user-space pages with the child using copy-on-write semantics:
+            // both address spaces transparently see the same data until either side writes,
+            // at which point the in-kernel page-fault handler allocates a private copy for
+            // the faulting side.
+            mm.link_user_pages(self.get_running_mut().state_mut().vmem_mut(), &mut vmem)?;
 
-        // Forge a kernel context that, on first dispatch, enters user mode at `user_fn` on the
-        // supplied user stack.
-        let (kernel_stack, context): (KernelStack, ContextInformation) =
-            Self::forge_user_context(mm, &mut vmem, args, self.interrupt_capable)?;
+            // Forge a kernel context that, on first dispatch, enters user mode at `user_fn` on the
+            // supplied user stack.
+            Self::forge_user_context(mm, &mut vmem, args, self.interrupt_capable)
+        })();
+
+        let (kernel_stack, context): (KernelStack, ContextInformation) = match forge_result {
+            Ok(parts) => parts,
+            Err(error) => {
+                // Reclaim any user frames already linked into the child before it is dropped.
+                if let Err(cleanup_error) = vmem.clear_user_space() {
+                    warn!(
+                        "duplicate_process(): cleanup after failure also failed \
+                         (error={cleanup_error:?})"
+                    );
+                }
+                return Err(error);
+            },
+        };
 
         //==============================================================
         // NOTE: if we fail beyond this point we leak page mappings.
@@ -1144,6 +1261,152 @@ impl ProcessManager {
         self.ready = ready;
 
         None
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the image of the calling (running) process with a new program, following POSIX
+    /// `execv()` semantics. The new address space and main thread are built from `elf`, `args`, and
+    /// `env`; on success the process keeps its identity but resumes execution at the new image's
+    /// entry point on a fresh thread.
+    ///
+    /// All fallible work (building the new address space and thread) is performed before any
+    /// observable change to the process manager, so a failure leaves the calling process intact.
+    /// On success the outgoing thread is retired as a zombie (its kernel stack reaped after the
+    /// switch) and the outgoing address space is queued for deferred reclamation, because it is
+    /// still the active page directory until the caller performs the context switch.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Memory manager to use.
+    /// - `pid`: Identifier of the calling process.
+    /// - `elf_base`: Virtual address of the ELF image within the calling process's address space.
+    /// - `elf_len`: Length of the ELF image in bytes.
+    /// - `args`: Command line arguments for the new image.
+    /// - `env`: Environment for the new image.
+    ///
+    /// # Returns
+    ///
+    /// On success, a tuple is returned containing:
+    /// - The process identifier of the image to run next (unchanged).
+    /// - The thread identifier of the new main thread.
+    /// - A pointer to the context information of the outgoing thread (the "from" side).
+    /// - A pointer to the context information of the new thread (the "to" side).
+    /// - An optional base address for the user-space thread data area of the new thread.
+    ///
+    /// On failure, an error is returned and the calling process is left unchanged.
+    ///
+    #[allow(clippy::type_complexity)]
+    fn do_execv(
+        &mut self,
+        mm: &mut VirtMemoryManager,
+        pid: ProcessIdentifier,
+        elf_base: VirtualAddress,
+        elf_len: usize,
+        args: &str,
+        env: &str,
+    ) -> Result<
+        (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+            Option<VirtualAddress>,
+        ),
+        Error,
+    > {
+        // Check the running thread's kernel stack guard watermark before doing surgery.
+        self.check_running_stack_guard();
+
+        // The caller must be the running process.
+        debug_assert!(
+            self.get_running().state().pid() == pid,
+            "execv() caller must be the running process"
+        );
+
+        // The kernel process must never execv.
+        if pid == ProcessIdentifier::KERNEL {
+            let reason: &str = "kernel process cannot execv";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+        }
+
+        // Collapsing sibling threads into the new image is not supported; require a single thread.
+        if !self.get_running().is_single_threaded() {
+            let reason: &str = "execv() is not supported for multithreaded processes";
+            error!("{reason} (pid={pid:?})");
+            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+        }
+
+        // Refuse to replace the image when the caller owns special resources that cannot be
+        // carried across an image replacement (mmio/pmio/events/buffered mailbox messages).
+        if self.get_running().state().has_special_resources() {
+            let reason: &str = "caller owns special resources (mmio/pmio/events/mailbox)";
+            error!("{reason} (pid={pid:?})");
+            return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
+        }
+
+        // Reserve a thread identifier for the new image's main thread.
+        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+
+        // Build the new address space and main thread, streaming the ELF image directly from the
+        // calling process's (still-active) address space. All fallible work happens here; on
+        // failure the running process is left untouched.
+        let src_vmem: &Vmem = self.get_running().state().vmem();
+        let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
+            mm,
+            &self.tm,
+            src_vmem,
+            tid,
+            |mm, dst_vmem| mm.load_elf_from_user(dst_vmem, src_vmem, elf_base, elf_len),
+            args,
+            env,
+            self.interrupt_capable,
+        )?;
+
+        //==============================================================
+        // Commit. Everything below is infallible.
+        //==============================================================
+
+        Ok(no_fail!(
+            (
+                ProcessIdentifier,
+                ThreadIdentifier,
+                *mut ContextInformation,
+                *mut ContextInformation,
+                Option<VirtualAddress>,
+            ),
+            {
+                // Swap the address space and running thread in place, retiring the outgoing
+                // thread.
+                let (old_vmem, old_zombie, from_ctx, to_ctx, user_tda): (
+                    Vmem,
+                    ZombieThread,
+                    *mut ContextInformation,
+                    *mut ContextInformation,
+                    Option<VirtualAddress>,
+                ) = self.get_running_mut().replace_image(vmem, thread);
+
+                // The new thread is now live; commit its reserved identifier.
+                self.tm.commit_next_tid(next_tid);
+
+                // The new image's main thread starts fresh, with no pending interrupt reason.
+                self.interrupt_reason = None;
+
+                // Defer reaping of the outgoing thread's kernel stack until after the switch (its
+                // context is still needed as the "from" side of the switch).
+                self.deferred_reap.push((pid, old_zombie));
+
+                // Defer reclamation of the outgoing address space until after the switch loads the
+                // new page directory (the outgoing one is still the active CR3 right now).
+                self.deferred_exec_vmem.push(old_vmem);
+
+                self.update_active_stack_guard();
+
+                Ok((pid, tid, from_ctx, to_ctx, user_tda))
+            }
+        ))
     }
 
     ///
@@ -2524,6 +2787,18 @@ impl ProcessManager {
 
             // Notify the thread manager that this thread has been reaped.
             self.tm.on_thread_reaped();
+        }
+
+        // Reclaim all remaining user frames of the dying process (code, data, heap, mmap, and any
+        // stack pages not unmapped above). Dropping `state` frees only the address space's
+        // page-table structures, not the user frames their entries map, so without this the
+        // process's resident frames would leak on exit.
+        if let Err(error) = state.vmem_mut().clear_user_space() {
+            warn!(
+                "harvest_zombies(): failed to reclaim user address space (pid={:?}, error={:?})",
+                state.pid(),
+                error
+            );
         }
 
         Ok(Some((state.pid(), status)))

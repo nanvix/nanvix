@@ -243,10 +243,15 @@ fn test_cow_resolution_creates_private_frame() -> bool {
     // show up as a frame-allocator inconsistency on subsequent runs.
     drop(uframe2);
 
-    // NOTE: dropping `parent` here does not free the private frame installed by
-    // `resolve_cow_at` — `PageTable` has no `Drop` impl that walks its PTEs. This is a
-    // pre-existing behavior independent of CoW; production processes release their frames
-    // through the explicit harvest/unmap path on exit.
+    // Reclaim the private frame installed by `resolve_cow_at` before dropping `parent`. Dropping
+    // an address space frees only its page-table structures, not the user frames their entries
+    // map, so user frames must be reclaimed explicitly first — exactly as production does on the
+    // harvest/exit path. The debug assertion in `Vmem::drop` enforces that no user pages remain
+    // mapped at drop time.
+    if let Err(e) = parent.clear_user_space() {
+        error!("clear_user_space failed during test teardown (error={e:?})");
+        return false;
+    }
     drop(parent);
 
     true
@@ -378,6 +383,13 @@ fn test_cow_resolution_fast_path_when_sole_owner() -> bool {
         return false;
     }
 
+    // Reclaim the user frame before dropping `parent`; see the teardown note in
+    // `test_cow_resolution_creates_private_frame`. The debug assertion in `Vmem::drop` requires
+    // that no user pages remain mapped at drop time.
+    if let Err(e) = parent.clear_user_space() {
+        error!("clear_user_space failed during test teardown (error={e:?})");
+        return false;
+    }
     drop(parent);
     true
 }
@@ -594,9 +606,18 @@ fn test_link_user_pages_errors_on_preexisting_child_overlap() -> bool {
         return false;
     }
 
-    // NOTE: as in `test_cow_resolution_creates_private_frame`, dropping `parent` and
-    // `child` here does not free the frames installed in their page tables. Production
-    // processes release their frames through the explicit harvest/unmap path on exit.
+    // Reclaim the frames installed in both address spaces before dropping them; as in
+    // `test_cow_resolution_creates_private_frame`, dropping an address space frees only its
+    // page-table structures, not the user frames their entries map. The debug assertion in
+    // `Vmem::drop` requires that no user pages remain mapped at drop time.
+    if let Err(e) = parent.clear_user_space() {
+        error!("clear_user_space(parent) failed during test teardown (error={e:?})");
+        return false;
+    }
+    if let Err(e) = child.clear_user_space() {
+        error!("clear_user_space(child) failed during test teardown (error={e:?})");
+        return false;
+    }
     drop(parent);
     drop(child);
 
@@ -818,10 +839,19 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
         },
     }
 
-    // NOTE: see the disposition comment on `test_link_user_pages_errors_on_preexisting_child_overlap`
-    // — dropping `parent` and `child` does not free the frames installed in their page
-    // tables, and the 254 extra references on frame_b deliberately remain to keep that
-    // frame's refcount saturated for the duration of the test.
+    // Reclaim the frames installed in both address spaces before dropping them (see the teardown
+    // note on `test_link_user_pages_errors_on_preexisting_child_overlap`). This releases each
+    // address space's own references; the 254 extra references on frame_b deliberately remain, so
+    // that frame stays allocated for the duration of the test. The debug assertion in `Vmem::drop`
+    // requires that no user pages remain mapped at drop time.
+    if let Err(e) = parent.clear_user_space() {
+        error!("clear_user_space(parent) failed during test teardown (error={e:?})");
+        return false;
+    }
+    if let Err(e) = child.clear_user_space() {
+        error!("clear_user_space(child) failed during test teardown (error={e:?})");
+        return false;
+    }
     drop(parent);
     drop(child);
 
