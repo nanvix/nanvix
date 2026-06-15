@@ -1,0 +1,70 @@
+Timestamp: 2026-06-15_16-40-06
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::frame
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `,`, `:`, or `}`, found `(`
+  --> src/kernel/src/hal/mem/types/address/frame.rs:78:41
+   |
+77 |         proof {
+   |         ----- while parsing this struct
+78 |             lemma_phys_view_is_spec_addr(physical_address);
+   |             ----------------------------^ expected one of `,`, `:`, or `}`
+   |             |
+   |             while parsing this struct field
+   |
+help: try naming a field
+   |
+78 |             lemma_phys_view_is_spec_addr: lemma_phys_view_is_spec_addr(physical_address);
+   |             +++++++++++++++++++++++++++++
+
+error: expected `;`, found `Ok`
+  --> src/kernel/src/hal/mem/types/address/frame.rs:79:10
+   |
+79 |         }
+   |          ^ help: add `;` here
+80 |         Ok(Self(PageAligned::from_address(physical_address)?))
+   |         -- unexpected token
+
+error: Misuse of #[verus_spec]
+  --> src/kernel/src/hal/mem/types/address/frame.rs:71:5
+   |
+71 |     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+   |     ^^^
+
+error[E0252]: the name `spec_addr` is defined multiple times
+  --> src/kernel/src/hal/mem/types/address/frame.proof.rs:24:5
+   |
+24 | use crate::hal::mem::spec_addr;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ `spec_addr` reimported here
+   |
+  ::: src/kernel/src/hal/mem/types/address/frame.spec.rs:27:5
+   |
+27 |     spec_addr,
+   |     --------- previous import of the value `spec_addr` here
+   |
+   = note: `spec_addr` must be defined only once in the value namespace of this module
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+   --> src/kernel/src/hal/mem/types/address/frame.rs:104:12
+    |
+104 |     pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+    |            ^^^^^^^^^^^^^^ not found in this scope
+
+Some errors have detailed explanations: E0252, E0425.
+For more information about an error, try `rustc --explain E0252`.
+error: could not compile `kernel` (bin "kernel") due to 5 previous errors

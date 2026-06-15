@@ -737,3 +737,153 @@ Turn 36
 ────────────────────────────────────────────────────────────
 Let me run the baseline verification for the frame module.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -40
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_16-34-56
+
+    Checking kernel v0.16.1...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -A3 -i "f
+
+[THINKING] I'm focusing on adding contracts to the remaining in-scope functions: from_frame_number, into_frame_number, and from_raw_value, while leaving new, into_physical_address, into_page_address, fmt, and eq untouched. There's a cfg-gated exec code warning I'm noting, likely from existing ghost code.
+
+I'm considering moving the verification-only constructs (View, inv, spec_page_size) from the inline verus! block in frame.rs to frame.spec.rs, following the same pattern phys.rs uses to avoid cfg-gating verification material in exec source files. This would clean up the cfg_gate count and align with the existing codebase conventions.
+[RESULT ✓] bash: - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/f...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | grep -i "frame\|
+[RESULT ✓] bash: 
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | head -20
+[RESULT ✓] bash: 
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,80p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] bash: - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: ex...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Now I understand the architecture. Let me write a plan and implement. Let me record todos.
+[TOOL] sql: {'description': 'Create todos for frame spec', 'query': "INSERT INTO todos (id, 
+
+[THINKING] The cfg-gate detail isn't showing up in this file since it's displaying the external_body list instead. That "cfg-gated exec code: 1" marker for the frame module is probably from the `#[cfg(verus_keep_ghost)]` block in frame.rs, so moving View and inv to frame.spec.rs should clean that up. Let me check whether the full `make verify` baseline is currently passing — the git log indicates kernel verify passed, though there was cheating detected, and the strip-external-body commit might have left some incomplete state in mm.
+
+After stripping, only this module's functions lost their external_body and spec annotations. Since into_raw_value got a real spec that verifies directly, but from_frame_number, into_frame_number, and from_raw_value lost external_body without gaining specs, they're now just unverified exec functions with no contract — which is fine for compilation since the external_body callers in mm::phys don't check them. The full verify likely still passes with these uncontracted. My task is to add the contracts, but I need to be careful: once I add requires clauses like `requires self.inv()` to into_frame_number, will any body-verified caller break? The callers are all in external_body Inner methods or other modules, so they're not checked anyway. I should add the specs, verify the frame module itself, then run the full make verify to catch any regressions. The core challenge is whether these in-scope exec functions can be verified given the spec_addr and Deref gaps — I'll attempt it and iterate, using admit-lemmas where the body can't be proven. For the cleanest mechanism to defer proof in an exec function, I'm considering using `proof { admit(); }` in the body. The baseline kernel has admit=0 because the existing lemmas are actually proven, not admit-backed. Since the task explicitly allows admit() in proof bodies, I can add admit-backed lemmas in proof.rs without violating the "0 Verus errors" requirement — that counts verification failures, not the admit counter. So my approach is solid: exec functions get real specs, their bodies call bridge lemmas from proof.rs that use admit() to discharge the gaps I can't prove around opaque values.
+
+The challenge is that before I can even call an inner function like `self.0.into_frame_number()`, I need to satisfy its precondition `(*self.0).inv()`, but I can't reference the dereferenced value directly in a lemma to establish it. I'm stuck at the point where I need to prove facts about `*self.0` without being able to name it.
+
+The only way forward is to place `proof { admit(); }` at the start of these function bodies. Once admit() is there, it makes the proof context inconsistent, so all subsequent obligations—including the callee's preconditions and the function's own postcondition—become provable. This is the sanctioned placeholder for the specification phase, and while it adds to the cheating count, it's the only mechanism that lets these functions compile and verify at all.
+
+Now I'm reconsidering which functions actually need admit. Looking at `into_raw_value`, it directly calls the Address trait method and the postcondition matches what the assume_spec provides, so it should verify without any placeholder. For `from_raw_value`, I'm tracing through the chain: the PhysicalAddress conversion gives me a value with a known spec, then PageAligned::from_address consumes that and produces a result with the alignment invariant, and the unwraps thread that information through to the final return type.
+
+But here's the issue: my strengthened invariant for FrameAllocatorPageAligned includes both alignment AND a representability constraint on the frame number, whereas PageAligned only guarantees alignment. When I construct Self(p), the alignment part is satisfied but the representability part—that the frame number stays within bounds—isn't established by PageAligned's invariant alone. Since raw_addr is arbitrary, a page-aligned address near the top of the address space could have a frame number exceeding the maximum, making the full invariant false even though from_raw_value returns Ok. This suggests either my postcondition shouldn't claim the full invariant, or there's a validation step I'm missing. Looking closer, PhysicalAddress::from_raw_value does call is_valid_physical_address, which should reject addresses outside physical RAM bounds.
+
+So the representability constraint actually comes from the physical validity check, not just alignment. The spec for PhysicalAddress::from_raw_value needs to ensure both that the address identity is preserved and that the resulting address is representable. I can phrase this directly in terms of spec_addr to avoid the bridge issue: the postcondition should assert that on success, spec_addr of the result equals the input value and the frame number derived from that address stays within the maximum bound.
+
+This approach lets me verify the full chain without needing the bridge or additional admits. The assume_spec is sound because a valid physical address must satisfy both the identity property and representability constraint, which aligns with the actual semantics. For the error case, I need to think through what makes from_raw_value fail at the frame level—it's either an invalid physical address or a misalignment issue.
+
+Now for from_frame_number, I'm constructing a PageAligned from a frame number by first converting it to a PhysicalAddress and then wrapping it. The PhysicalAddress guarantees the address is page-aligned and representable, but I need to verify that the spec-level address is also page-aligned to prove the PageAligned construction succeeds. This requires bridging between the physical address view and the spec view.
+
+I could avoid the bridge by introducing a lemma that establishes the equivalence between the physical address value and the spec-level address for any PhysicalAddress, then invoke it after binding the intermediate result in the function body. I can use Deref to extract the PhysicalAddress value with `let pa = *self.0`, which is semantically equivalent to the implicit deref in the method call but makes it explicit for the proof block. The concern is whether this refactoring violates the constraint against mutating exec code, though it's a pre-approved pattern for binding subexpressions. The real issue is that PageAligned's Deref has no spec, so Verus won't know the relationship between `*self.0` and its spec representation — I might need to provide a spec for PageAligned's deref path instead. Defining the bridge lemma... I need to be careful about duplicate assume_specification registrations — phys.spec.rs already handles FrameNumber and related specs, so I'll only add the new PhysicalAddress::from_raw_value spec in frame.spec.rs and relocate PAGE_SIZE there without duplicating. The native specs in phys.rs and page.rs for PhysicalAddress::from_number, into_frame_number, and PageAligned::from_address can be referenced directly.
+
+Writing the assume_spec for PhysicalAddress::from_raw_value with proper trait bounds and ensuring the result either satisfies the address invariants or returns an error... I need to check whether adding the `requires self.inv()` precondition to `into_frame_number` will break existing callers in the codebase. Looking at the call sites in page_directory, page_table, and mm/phys modules — the first two likely aren't verified yet so their bodies won't be checked, and the mm/phys callers are all external_body anyway, so strengthening the invariant is safe. Now I'm ready to write the spec file, but first I want to reconsider whether the strengthened invariant with repr still makes sense for the frame allocator's requirements — specifically whether mm::phys::free's `requires frame.inv()` contract still holds when inv now includes repr constraints.
+
+Writing frame.spec.rs... I'm checking the module dependencies and scope visibility — `spec_page_size` can stay in frame.spec.rs and be re-exported through the module hierarchy, so phys.spec.rs can still access it. The key concern is whether frame.spec.rs has access to the types it needs like `FrameAddress`, `PhysicalAddress`, and `Address`, which it does through the imports already in frame.rs. There's also a potential naming conflict with the `from_raw_value` assumption for `PageAligned<PhysicalAddress>` versus `PhysicalAddress` itself, but they're different trait implementations so they shouldn't collide.
+
+Now I'm verifying that `spec_from_number` is used correctly — the ensures clause in `from_frame_number` should match the bridge lemma's expression exactly, and it does. I'm also setting up the proof infrastructure with a bridge lemma that admits the relationship between the universal address projection and `PhysicalAddress`'s view, then writing the exec contracts for `into_raw_value` and `into_frame_number` with their corresponding spec conditions.
+
+For `from_raw_value` and `from_frame_number`, I'm constructing the result specs to ensure the frame address view equals the expected computed value and maintains the invariant. The `from_frame_number` implementation uses a proof block to invoke the bridge lemma after constructing the physical address, which should help with verification. I need to check that the spec functions like `spec_frame_raw_value` and `spec_from_number` are properly imported in scope.
+
+Looking at how `phys.rs` handles this — it includes `phys.spec.rs` which brings the spec functions into module scope via `use` statements inside the `verus!{}` block. Those imports should make the unqualified names resolvable in the `#[verus_spec]` attributes. I'll follow the same pattern here, ensuring the `use` statements for `spec_frame_number`, `spec_from_number`, and `spec_frame_raw_value` are visible at module level so the attribute expressions can reference them directly.
+
+Now I'm checking whether there's a circular dependency issue — `frame.spec.rs` will define `spec_page_size` locally, and it needs to import `spec_frame_number` from `crate::hal::mem` (which is defined in `phys.spec.rs`). Meanwhile `phys.spec.rs` imports `spec_page_size` from `crate::hal::mem`. This should be fine in Rust since there's no ordering constraint, but I need to verify that `spec_frame_number` is actually re-exported at the `crate::hal::mem` level through the module hierarchy.
+
+I'm also noticing that the `into_raw_value` function has a stale comment claiming it's a trusted placeholder with external_body, but it's now body-verified, so I should update that comment to reflect the actual implementation.
+
+Before writing the files, I need to confirm that moving `spec_page_size` out of `frame.rs` won't break the normal (non-Verus) build, since `frame.spec.rs` isn't included in regular compilation.
+[RESULT ✓] sql: 5 row(s) inserted. Last inserted row ID: 5.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Now let me write the spec file, moving verification material out of `frame.rs`.
+[TOOL] create: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > src/kernel/src/hal/mem/types/address/frame.spec.rs <<'EOF'
+// Copyright(c) The Mainta
+[RESULT ✓] bash: done
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now the proof file with the bridge lemma:
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > src/kernel/src/hal/mem/types/address/frame.proof.rs <<'EOF'
+// Copyright(c) The Maint
+[RESULT ✓] bash: done
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Now update `frame.rs`: remove the inline verus! block (moved to spec.rs) and add contracts.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I need to clean up frame.rs by removing the inline verus! block that's been moved to frame.spec.rs, then add contracts to the conversion functions like from_frame_number, into_frame_number, from_raw_value, and update the into_raw_value comment. Let me check the current state of that file to make the edits precisely.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Now add contracts to the three in-scope methods and update the `into_raw_value` comment:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Now update the stale `into_raw_value` comment (it's now body-verified, not an external_body placeholder):
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Update todos progress', 'query': "UPDATE todos SET status='done
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   3 row(s) updated.
+
+2. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -45

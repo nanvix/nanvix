@@ -1,4 +1,5 @@
     - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.proof.rs:30 lemma_phys_view_is_spec_addr: admit
     - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
     - mm/phys/frame.rs:137 alloc: external_body
     - mm/phys/frame.rs:210 alloc_contiguous: external_body
