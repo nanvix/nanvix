@@ -2,11 +2,12 @@
   "module_name": "phys-frame",
   "log_name": "nanvix-phys-phys-frame",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -56,7 +57,7 @@
     "caller-analysis": "a88bb8f92564135ed2166ddef5b51ec1a13decd3",
     "view-design": "24d769e3e45ea5e687e5a0edd7ced8846f7e3776",
     "specification": "4bc3f0396566ecae320821a43a083fda95774a4f",
-    "proving": "07acf2a0162b83ca21e83d82adee5d7e3eec7592"
+    "proving": "7113c95da32e540dc054472a74f8388d6618f239"
   },
   "phase_history": [
     {
@@ -153,6 +154,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "2a529edcd87067b1d16e2f622c63e0a26f1242ed",
+      "rollback_iter": 1
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "7113c95da32e540dc054472a74f8388d6618f239",
       "rollback_iter": 1
     }
   ],
