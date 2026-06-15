@@ -1,0 +1,84 @@
+Timestamp: 2026-06-15_12-25-12
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `kernel::hal::platform::microvm::is_valid_physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/kernel/src/hal/mem/types/address/phys.rs:53:13
+   |
+53 |         if !crate::hal::platform::is_valid_physical_address(addr) {
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           pub assume_specification [crate::hal::platform::microvm::is_valid_physical_address] (_0: sys::mm::VirtualAddress) -> bool;
+
+error: `arch::x86::mem::paging::frame::number::FrameNumber` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/hal/mem/types/address/phys.spec.rs:34:43
+    |
+ 34 |   pub uninterp spec fn spec_frame_raw_value(frame: FrameNumber) -> int;
+    |                                             ^^^^^^^^^^^^^^^^^^
+...
+ 86 |   pub assume_specification[ FrameNumber::into_raw_value ](frame: FrameNumber) -> (result: usize)
+    |                                                           ------------------
+ 87 |       ensures
+ 88 |           result as int == spec_frame_raw_value(frame),
+    |                                                 -----
+ 89 |           0 <= spec_frame_raw_value(frame) <= spec_max_frame_number(),
+    |                                     -----
+...
+ 93 |   pub assume_specification[ FrameNumber::from_raw_value ](value: usize) -> (result: Option<FrameNumber>)
+    |                                                                                     -------------------
+ 94 |       ensures
+ 95 |           match result {
+    |                 ------
+ 96 |               Some(f) => value as int <= spec_max_frame_number()
+    |               -------
+ 97 |                   && spec_frame_raw_value(f) == value as int,
+    |                                           -
+ 98 |               None => value as int > spec_max_frame_number(),
+    |               ----
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.rs:121:62
+    |
+121 |               result@ == spec_from_number(spec_frame_raw_value(frame)),
+    |                                                                -----
+122 |       )]
+123 |       pub fn from_number(frame: FrameNumber) -> Self {
+    |                          ------------------
+124 |           proof! { admit(); }
+125 |           let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+    |                             -----
+...
+136 |               spec_frame_raw_value(result) == spec_frame_number(self@),
+    |                                    ------
+137 |       )]
+138 |       pub fn into_frame_number(self) -> FrameNumber {
+    |  _______________________________________-----------_-
+139 | |         proof! { admit(); }
+140 | |         let raw_addr: usize = self.0.into_raw_value();
+141 | |         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
+142 | |         // Safety: the following unwrap is safe because a physical address has a valid frame number.
+143 | |         FrameNumber::from_raw_value(frame_number).unwrap()
+    | |         --------------------------------------------------
+144 | |     }
+    | |_____-
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExFrameNumber(arch::mem::paging::FrameNumber);
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

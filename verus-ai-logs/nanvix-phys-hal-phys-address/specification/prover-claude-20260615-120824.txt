@@ -983,3 +983,56 @@ The real issue might be something specific about how `verus_spec` generates comp
 Turn 51
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -45
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,60p'
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_mmio_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/phys.rs:94:19
+   |
+94 |     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+The difference is `self`: `into_frame_number(self)` is a method (works), while `from_mmio_address`/`from_number` are self-less associated functions. The codebase's self-less verus_spec functions (e.g. slab `from_raw_parts`) sit in a `#[verus_verify]` impl block. Let me revert the `Self` change and test adding `#[verus_verify]` to the impl:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I need to revert my change to the `Self(...)` constructor since that wasn't the issue, then look more carefully at what's actually different between the functions that are failing and the one that works—the problem seems to be in how the doc comments and attributes are structured around the function signatures. Both `from_number` and `into_frame_number` reference `spec_frame_raw_value`, so that's not the differentiator. The real issue might be that the `verus_spec` macro generates a reference to `from_mmio_address` as a free function somewhere, and that's causing the E0425 error during the verify build when the macro expands.
+
+Actually, I think I see it now — the distinction is whether the function has a `self` receiver. `into_frame_number` takes `self` (it's a method), while `from_mmio_address` and `from_number` are associated functions with no receiver. When the macro generates a wrapper for self-less associated functions, it might be using a bare-name call that fails to resolve, whereas methods work fine. The solution would be to wrap these self-less associated functions in a `#[verus_verify]` block on the impl itself, similar to how `from_raw_parts` in the slab code handles this.
+
+But adding `#[verus_verify]` to the entire impl block could pull in unspecced methods for verification, which might cause issues — like `from_frame_address` with its shift operations potentially failing verification. I need to figure out whether `#[verus_verify]` on an impl block only verifies methods that explicitly have `#[verus_spec]`, or if it tries to verify everything.
+
+The safest approach is to create a separate `#[verus_verify] impl PhysicalAddress` block containing just my three in-scope functions, leaving the other methods in the original unannotated impl. This way I'm only verifying what I'm supposed to touch, and splitting impl blocks is a benign structural change that doesn't alter behavior.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm weighing whether to annotate the entire impl block with `#[verus_verify]` and test if unmodified methods fail verification, or create a separate annotated impl block containing just the three functions I need to verify. Let me check how the slab implementation handles this to understand whether the attribute pulls in all methods or just the ones I specify.
+
+Actually, I realize the module-scoped verification means everything in the module gets checked, so adding `#[verus_verify]` to the impl would likely pull in those unverified methods and cause them to fail. The Function Coverage report already shows them as unverified, so I should just test Option A first—if it breaks, I'll switch to Option B with a separate impl block.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -40

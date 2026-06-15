@@ -46,6 +46,7 @@ pub struct PhysicalAddress(VirtualAddress);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
         // Delegate to the per-platform validator to support sparse physical memory layouts.
@@ -92,7 +93,7 @@ impl PhysicalAddress {
             },
     )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
-        Ok(PhysicalAddress(addr))
+        Ok(Self(addr))
     }
 
     pub fn into_virtual_address(self) -> VirtualAddress {
@@ -122,7 +123,7 @@ impl PhysicalAddress {
     pub fn from_number(frame: FrameNumber) -> Self {
         proof! { admit(); }
         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
-        PhysicalAddress(VirtualAddress::new(addr))
+        Self(VirtualAddress::new(addr))
     }
 
     // Total projection: yields the containing frame (`self@ / FRAME_SIZE`). The
