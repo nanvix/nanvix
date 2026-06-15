@@ -82,6 +82,7 @@ impl PageTableEntryFlags {
     ///
     /// A new [`PageTableEntryFlags`] with the given flags.
     ///
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pte_flags_new(
@@ -303,6 +304,7 @@ impl PageTableEntry {
     ///
     /// A [`PageTableEntry`].
     ///
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pte_new(flags@, frame@),
