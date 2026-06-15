@@ -571,3 +571,104 @@ Still CLEAN (6 verified, 0 errors). Now confirm no spec drift vs the pre-work ba
 - Functions removed: 0
 
 **✅ No contract drif...
+[RESULT ✓] bash: Crate     : bitmap
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+  70 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  verification: 70 verified, 0 errors (exit 0)
+  cheating: assume=0 ex...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+All crates verify (exit 0). The other crates' `CHEATING_DETECTED` are pre-existing TCB items in `tcb-allowed.md`; the `sys` module itself is CLEAN. The subsumed-ensures FAIL is now FIXED. Let me write the review and STOP file.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue && git --no-pager 
+
+[THINKING] Looking at the verification results across all the crates—bitmap, sys, nanvix-slab, bump-allocator, and kernel—they're all passing with exit 0, though some have pre-existing configuration gate issues and external body references that are already documented in the TCB allowlist. Now I'm examining what these "CHEATING_DETECTED" statuses actually represent.
+
+These are all flagged items from other crates with pre-existing TCB documentation, and they're all exiting cleanly. The sys crate itself is completely clean with no cheating detected. The cross-module regression test confirms that all verified modules pass and no new violations were introduced by this module. On the spec drift front, there's zero contract drift compared to the baseline—just three additive functions, which is fine.
+
+Everything's checking out now. That one FAIL about the subsumed addr_inv ensures is resolved, and all the other checklist items are passing. I need to write up the comprehensive turn_001_driver.md review and create the STOP file marking this as RESOLVED, then make sure the output directory is ready.
+[RESULT ✓] bash: 
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff src/libs/sys/src/sys/mm/address/mod.rs | head -40; echo "=== status ===
+
+[THINKING] I'm checking the git status since the diff output appears empty, even though the file was modified.
+[RESULT ✓] bash: === status ===
+ M verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue-reviewer-t001-claude-20260615-192626.jsonl
+ M verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue-reviewer-t001-claude-20260615-192626.txt
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && git check-ignore src/libs/sys/src/sys/mm/address/mod.rs; echo "exit=$?"; git ls-files --err
+
+[THINKING] I'm noticing that mod.rs isn't showing up in the git diff even though I made changes to it and the verification passed, which is puzzling. Let me check whether the file was already in this state at HEAD or if something else is going on with how git is tracking it.
+[RESULT ✓] view: 54.     // On success, the constructed address projects back to exactly the supplied
+55.     // raw value (the inverse of `into_raw_value`). On failure, the value was
+56.     // outside this type's domain and `Err(Error::BadAddress)` is returned.
+57.     // (`VirtualAddress` never fails; refinement ...
+[RESULT ✓] bash: exit=1
+src/libs/sys/src/sys/mm/address/mod.rs
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -4; echo "=== committed mod.rs ensures ==="; git --no-pager sh
+
+[THINKING] The file has my change applied correctly, and `git check-ignore` returned exit code 1 with no output, which means the file is NOT ignored. The file is tracked in git since `ls-files --error-unmatch` succeeded, but `git diff` shows no changes—I'm wondering if there's something about the git worktree setup or file tracking that's causing this discrepancy.
+
+Actually, I'm realizing the `make verify` process might be auto-committing changes. The commit messages like "[verus] verify PASS: sys::all" suggest the verification step creates commits automatically, which would explain why my working tree matches HEAD even though I made edits. Let me check the recent git log to see if a commit was made after I edited the file.
+[RESULT ✓] bash: 6b23082b1 [verus] verify PASS (cheating detected): kernel::all (47 verified, 0 errors, external_body=24 cfg_gate=6)
+bf6746e73 [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+fed70f8ca [verus] verify PASS (cheating detected): nanvix-slab::a...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+The `make verify` workflow auto-committed my fix (commit `619c665f9`), and HEAD now carries the corrected ensures. The fix is committed and verified. Now writing the full review and STOP file.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue/STOP
+
+[THINKING] The auto-commit during verification picked up my change, so it's already in HEAD and verified. Now I'm writing out the comprehensive review document that walks through each checklist item with evidence of what was fixed or passed, then I'll mark this as resolved.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue/turn_001_driver.md with 9641 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue/STOP with 1361 characters
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Final review complete. **Result: RESOLVED.**
+
+## Summary
+
+I walked the entire final-review checklist for `sys::mm::address::mod` (the `Address` trait), verifying each item with tool output rather than claims.
+
+**One genuine FAIL found and FIXED:**
+- *Specification → "No subsumed ensures"*: `from_raw_value`'s `Ok` arm had `spec_addr(&a) == raw_addr as int && addr_inv(&a)`. Since `raw_addr: usize`, `addr_inv(&a)` (`0 ≤ spec_addr ≤ usize::MAX`) is derivable from the first conjunct → strictly subsumed. **Fixed** by dropping `&& addr_inv(&a)` (mod.rs:64).
+
+**Evidence after fix:**
+- `make verify-sys` → 6 verified, 0 errors, CLEAN (all cheating counts 0)
+- `make verify` → every crate exit 0; other crates' TCB items are pre-existing and in `tcb-allowed.md`
+- `spec_drift` → 0 contract drift (additive only; no original guarantee weakened)
+- `ast_consistency` → consistent 0/0; `fn_coverage` → 0 source exec fns (declarations only)
+
+**Notable adjudication:** the prior consolidated review FAILed on `uninterp spec fn spec_addr`. I checked the actual `verus-constraints` Forbidden-Patterns table — `uninterp spec fn` is **not** on it, introduces no axiom (empty `mod.proof.rs`), reports CLEAN, and has verified in-tree precedent. It violates no item on this checklist, so it is not a blocker.
+
+All items PASS/FIXED. Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: 1784469e-feed-4741-be66-51cb552d705b
+Duration: 396.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/dialogue-reviewer-t001-claude-20260615-192626.jsonl
