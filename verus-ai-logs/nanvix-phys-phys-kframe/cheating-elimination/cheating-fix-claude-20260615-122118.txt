@@ -1,0 +1,344 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T12:21:18.295075
+Model: claude-opus-4.8
+Session: e9857615-f314-4ade-8efb-abeff55c9270
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+Hard cheating detected: external_body: 15 (14 on user fns), admit: 4. Read the detailed report at /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_report_1.md for exact locations. `admit()` and `assume()` must be replaced with real proofs. `trusted` and `external_body` on proof fns must be removed and the proof completed. Multi-line `limitation_assume` bodies must be reduced to a single-line proposition (per R20c: the VERUS-AI LIMITATION annotation only authorizes a single proposition; multi-line bodies are not approvable). `#[verifier::exec_allows_no_decreases_clause]` (R20p) must be removed and a real `decreases` clause provided so termination is proven. Follow all skills strictly (especially verus-constraints and proving-guide). Then re-run `make verify-kernel` to confirm verification passes.
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_report_1.md
+
+[THINKING] I need to look at the cheating report to see where exactly the issues are located.
+[RESULT ✓] view: 1. # Cheating Detection Report: kframe.rs
+2. 
+3. ## Summary: external_body: 15 (14 on user fns), admit: 4
+4. 
+5. ### external_body_fn
+6. - frame.rs:Line 1235
+7. - frame.rs:Line 1271
+8. - frame.rs:Line 1327
+9. - frame.rs:Line 1355
+10. - frame.rs:Line 1409
+11. - frame.rs:Line 1448
+12. - frame.rs:Line ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The scope has expanded to the whole `mm::phys` module. Let me investigate the actual cheating locations and relevant skills.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/kernel/src/mm/phys/ && echo "=== git branch ===" && git branch --sho
+
+[THINKING] The scope seems to have shifted unexpectedly — the task was originally focused on `kframe.rs`, but the cheating report is flagging issues across the entire `mm::phys` module including `frame.rs`, `manager.rs`, `mod.rs`, `upool.rs`, and `manager.proof.rs`. I'm trying to reconcile whether this expanded scope is intentional or if there's a mismatch between the task title "phys-kframe" and what's actually being reviewed. I need to verify whether these functions are actually listed in tcb-allowed.md, since the exception clause says they should be allowed if they're documented there. The cheating report is flagging them as hard cheating, but that contradicts what I understood about the ledgering system. Let me check the actual files and tcb-allowed.md to see if there's a mismatch between what's allowed and what's being reported.
+[RESULT ✓] bash: frame.proof.rs
+frame.rs
+frame.spec.rs
+kframe.proof.rs
+kframe.rs
+kframe.spec.rs
+manager.proof.rs
+manager.rs
+manager.spec.rs
+mod.proof.rs
+mod.rs
+mod.spec.rs
+test.rs
+upool.proof.rs
+upool.rs
+upool.spec.rs
+=== git branch ===
+verus-ai-prove-bottom-up
+=== recent commits ===
+f187362c4 [verus-ai] cheating-el...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm going to check the proving-guide and verus-constraints skills documentation, then examine where the actual cheating occurs.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+This is a large scope expansion to the whole `mm::phys` module. Let me map out every cheating item precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys && echo "=== external_body ===" && grep -rn "external_b
+
+[THINKING] I'm noticing there are four `admit` statements scattered through manager.proof.rs that defer proof obligations to later, and these aren't trivial—they're tied to ghost-token state. But this scope has expanded significantly from the original kframe task to now requiring cleanup of the entire module, which is a much larger undertaking than expected.
+
+Looking at the reviewer's feedback more carefully, they're distinguishing between different categories of violations: `admit` and `assume` need real proofs, `trusted` and `external_body` on proof functions must be removed entirely, and multi-line `limitation_assume` bodies need to be condensed. The four admits in manager.proof.rs are genuine blockers that were already there, but the question is whether they were actually in scope for this task or if this is a new expansion of requirements. The key insight is that the gate is now treating all these items as hard blockers, not ledgered exceptions. This suggests either the tcb-allowed.md doesn't cover these functions, or the verification strategy has shifted to require full elimination of external_body stubs in this module. I need to systematically check the actual files and understand what's truly required before proceeding with fixes.
+[RESULT ✓] bash: === external_body ===
+frame.rs:1235:#[verus_verify(external_body)]
+frame.rs:1264:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+frame.rs:1268:// runs; this is asserted as the `external_body` trust-boundary postcondition (the singleton's
+frame.rs:1271:#[veru...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Only `external_body` (15) and `admit` (4) actually exist — no `limitation_assume`, `exec_allows_no_decreases`, or `trusted`. Let me read the proving-guide skill and the relevant specs to understand what's provable.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls .github/skills/ 2>/dev/null; echo "=== proving-guide? ==="; find .github
+
+[THINKING] I'm identifying the actual instances of cheating in the codebase—there are fifteen cases of external_body on execution functions scattered across frame.rs, manager.rs, mod.rs, upool.rs, and mod.spec.rs, plus four admit violations in manager.proof.rs. Notably, there are no violations involving limitation_assume, exec_allows_no_decreases, or trusted annotations.
+
+The critical issue is that while these external_body violations are documented in tcb-allowed.md as acceptable cross-module dependencies pending module verification, the reviewer is treating all of them as hard cheating that must be eliminated immediately. This means I'd need to verify the entire mm::phys module bottom-up right now—a massive undertaking that goes against the original intent of tcb-allowed.md, which was to defer these proofs until each module gets formally verified. The admits are non-negotiable though; they're never allowed under any exception and must be removed regardless. `external_body` on proof functions must be removed entirely, while multi-line `limitation_assume` blocks need to collapse to single-line propositions, and the `exec_allows_no_decreases_clause` attribute must be stripped out. The headline frames all 15 instances as "Hard cheating," but the actual required actions specifically target `external_body` on proof functions—not exec functions—which creates ambiguity about whether the external_body on user functions actually needs removal or if they're just being reported. Given that tcb-allowed.md permits external_body on certain functions, I should verify whether these 14 instances on exec functions are legitimately allowed or if the gate is now treating them as violations regardless. It seems like this might be a new phase of review beyond the original kframe task completion.
+
+The four admits are the clearest mandate to address. These are deep semantic bridges—like `lemma_manager_attached` connecting the manager's view to the global phys view, or the frame allocation lemmas linking effects to ghost-token infrastructure. These aren't simple proofs; they encode trust boundaries that typically require actual token machinery and PCM infrastructure to discharge properly. They're deferred admits because the real proof depends on lower-layer infrastructure that hasn't been built yet.
+
+But I'm noticing something: `lemma_contig_no_overflow` at line 62 was already proven without an admit, so someone is progressively tackling these. Let me look at the spec definitions more carefully—maybe some of these lemmas are actually provable from the spec alone, just lazily admitted. I need to examine what `lemma_kernel_alloc_one` actually claims: it says for all `pre`, `post`, `addr` with `pre.wf()`, we have `pre.free_frames.contains(addr)` AND `post == pre.alloc_one(addr)`. But `post` and `addr` are universally quantified parameters, so this statement is false in general—`post` is arbitrary. That suggests the lemma as stated might be malformed or I'm misreading the quantification.
+
+Actually, I think I see it now: `lemma_kernel_alloc_one` is fundamentally an axiom encoding what the exec allocator guarantees, which can't be derived from pure spec alone. To eliminate the admit, I'd either need to restructure it to take the allocator state as a parameter, or refactor callers to use the `external_body` postconditions from `frame::alloc` directly instead of relying on this separate lemma. But that's a large refactor of `manager.rs`. This is a genuinely deep task, so I need to read the proving guide thoroughly, understand the relationship between these lemmas and their callers, and figure out which are provable versus which encode real trust boundaries. If I can't eliminate the admits, the phase fails—recording them in `verification_todo.md` doesn't help.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+=== proving-guide? ===
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . -iname "*proving-guide*" -o -iname "*verus-constraint*" -o -iname "*
+
+[THINKING] I need to search more broadly for the proving-guide and verus-constraints skills since they're not located in the .github/skills directory.
+[RESULT ✓] bash: 
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rl "escalation ladder\|VERUS-AI LIMITATION\|R20p\|R20c" --include="*.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md
+./verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+./verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_003_fixer.md
+./verus-ai-logs/nanvix-phys-virt-identity-map...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The cheating items belong to sibling modules (frame/manager/mod/upool) that have their own phases. Let me check their prior reports and whether ghost-token infrastructure exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== phys-manager logs ==="; ls verus-ai-logs/nanvix-phys-phys-manager
+
+[THINKING] I'm realizing the external_body items scattered across frame.rs, manager.rs, mod.rs, and upool.rs actually belong to different modules in the phys layer—not to phys-kframe where the report is focused. This distinction matters because it means the cheating instances are being attributed to the wrong module.
+
+Looking at the admit counts, they've shifted from 7 down to 4 between the earlier full-kernel check and this report, with the remaining 4 admits all appearing in manager.proof.rs. This suggests the phys-manager phase is now the active focus, even though the report file is sitting in the phys-kframe directory—which might just be where it was generated rather than where the actual work needs to happen.
+
+The core issue is whether these 4 admits and the external_body items can actually be eliminated. They seem to encode real trust boundaries around ghost token attachment and allocator effects, which would require the ghost-token infrastructure to be fully implemented in the codebase. If that infrastructure doesn't exist, these become irreducible axioms by design. But the reviewer's mandate is clear: admits must go, no exceptions. So I need to dig into the spec and proof files to understand whether the ghost-token framework is actually there and what it would take to leverage it for real proofs.
+[RESULT ✓] bash: === phys-manager logs ===
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+=== latest manager fix_report tail ===
+verus-ai-logs/nanvix-phys-phys-manage...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "tracked\|GhostToken\|tokenized_state_machine\|state_machine!\|::I
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:1222:static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
+src/kernel/src/mm/phys/frame.rs:1225:static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
+src/kernel/src/mm/phys/frame.rs:1230:// singleton storage (`INSTANCE: MaybeUninit<Inner>`), guarded by...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+No ghost-token/PCM infrastructure exists — just a `static mut MaybeUninit<Inner>` singleton. The admits encode singleton↔view attachment. Let me examine the actual contracts and callers to see what's reducible.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm realizing there's no actual ghost-token or state machine infrastructure here—the "INSTANCE" is just a static mutable global singleton. The ghost token attachment is purely conceptual with no tracked token type, which means lemmas like `lemma_manager_attached` that try to connect `m@` to `phys_view()` can't actually be proven since both are uninterpreted and there's no axiom linking them. This is a core architectural constraint that fundamentally limits what can be verified.
+
+The reviewer wants me to eliminate admits, but the current design—uninterpreted views plus static singletons without PCM or token machinery—makes these specific admits genuinely unprovable in pure Verus. Adding the ghost token framework would require a major architectural overhaul that's beyond the scope of a cheating-elimination pass. I need to examine each admit individually to see if there's a realistic path forward, whether that's reframing them as trust boundaries or reconsidering whether the underlying architecture itself needs to change to make these provable. I need to actually look at the code to make a real decision here—checking the external_body specs in frame.rs, the view definitions in manager.spec.rs, and tracing how these admitted lemmas are actually being called in manager.rs to see if any of them are truly redundant or can be folded into the external_body postconditions.
+[RESULT ✓] view: 1200.                 refcounts: old_self@.refcounts.union_prefer_right(
+1201.                     Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)),
+1202.             });
+1203.         }
+1204.         Ok(())
+1205.     }
+1206. }
+1207. 
+1208. //===========================================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me see how these admitted lemmas are called in manager.rs, and read the manager view/spec.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== lemma call sites ==="; grep -rn "lemma_manager_attached\|lemma_ke
+
+[THINKING] I'm seeing the architecture now—these external_body functions wrap a `static mut` singleton, where `instance()` materializes a mutable reference from uninitialized memory. The real problem is that Verus can't verify `static mut` access without ghost permissions like `PointsTo` or `PointsToRaw` to model the raw memory semantics.
+
+The reviewer is asking to eliminate all these external_body declarations, which essentially means verifying the global-singleton trust boundary itself. That would require restructuring the static into a verified cell using Verus's `vstd::cell` or `global_spec` machinery—a major rewrite that would break the existing exec code structure.
+
+Let me reread the actual requirements more carefully to understand what's literally being demanded. The 4 admits are actually axioms encoding exec/singleton behavior that can't be converted to real proofs — they assert relationships between arbitrary parameters that are logically false as standalone statements. For instance, the second lemma claims `post == pre.alloc_one(addr)` for arbitrary `post` and `addr`, which is false without additional constraints. These lemmas can only exist as admits because they're encoding invariants that depend on the execution model, not logical truths.
+
+The sound approach is to delete these axiom-lemmas entirely and restructure manager.rs to derive the needed facts directly from the external_body exec postconditions, which already guarantee the required properties like frame allocation. This is a significant refactor of a sibling module, which creates scope tension — the original task said not to touch unlisted functions, but eliminating these admits properly requires exactly that. I'm weighing whether the pragmatic path is to accept these as necessary axioms for now, or whether the reviewer's explicit mandate to fix them means I should bite the bullet and refactor manager.rs to use the legitimate exec-boundary postconditions instead.
+[RESULT ✓] bash: === lemma call sites ===
+src/kernel/src/mm/phys/manager.proof.rs:12:pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
+src/kernel/src/mm/phys/manager.proof.rs:27:pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+src/kernel/src/mm/phys/manager.proof.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me examine the manager's View definition and phys_view to see if the attachment can be made definitional rather than axiomatic.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== manager.spec.rs ==="; sed -n '1,80p' src/kernel/src/mm/phys/manag
+
+[THINKING] I see the architecture now—these trust boundaries for global singletons and external constants are all documented in tcb-allowed.md. The four admits in manager.rs are axiom-lemmas that connect execution results to the abstract view. I'm working through each admit to see if the lemmas can be derived from the external_body exec postconditions instead, starting with lemma_manager_attached which ensures the manager's view matches the physical frames view at those two call sites.
+
+The key insight is that if `instance()` already ensures `(*r)@ == phys_view().frames` and the manager's view is defined to be the frame instance view, maybe the connection is already there without needing the axiom. But since both PhysMemoryManager@ and phys_view() are uninterpreted, the axiom is the only bridge right now. The cleanest path forward would be to eliminate these admits by having manager.rs directly call the actual exec functions and rely on their postconditions, since those postconditions already express the singleton trust boundary. The tension is that frame::alloc's postcondition ensures the weaker property (allocated_frames.contains), while the lemma ensures something stronger. The real issue is that external_body can't easily reference old state for a global like phys_view() without tracked parameters, so the lemma exists precisely to thread the manager's own view before and after the operation. Folding the admits into external_body postconditions won't work cleanly here because there's no mechanism to express the full state transition in the contract itself — the lemma is doing work that the boundary can't express. So the plan would need to either introduce tracked globals or accept that these bridging lemmas are necessary to connect the manager's view to the frame operations. I'm wondering if I can restructure the manager's view to be defined as a function of the frame singleton's view instead of left uninterpreted—that way the attachment becomes provable by unfolding rather than requiring an axiom. I need to check whether PhysMemoryManager's View is currently uninterpreted or if it could be made definable.
+[RESULT ✓] bash: === manager.spec.rs ===
+verus! {
+
+use crate::hal::mem::spec_page_size;
+use crate::mm::phys::FrameAllocView;
+
+// `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+// on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== View for PhysMemoryManager ==="; grep -rn "View for PhysMemoryMan
+
+[THINKING] I need to locate where the View decorator is implemented for `PhysMemoryManager` and find the `phys_view()` function definition.
+[RESULT ✓] bash: === View for PhysMemoryManager ===
+src/kernel/src/mm/phys/frame.proof.rs:17:    closed spec fn view(&self) -> FrameAllocView {
+src/kernel/src/mm/phys/kframe.spec.rs:7:    closed spec fn view(&self) -> int {
+src/kernel/src/mm/phys/manager.rs:78:impl PhysMemoryManager {
+src/kernel/src/mm/phys/manager....
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.spec.rs
+[RESULT ✓] view: 83. //==================================================================================================
+84. 
+85. impl View for PhysMemoryManager {
+86.     type V = FrameAllocView;
+87. 
+88.     /// The manager brokers the global physical-frame partition. Its abstract state is exactly
+89.     /// tha...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm seeing that `PhysMemoryManager@` maps to `self.upool@`, which is an uninterpreted specification function that returns a `FrameAllocView`. Similarly, `phys_view()` is another uninterpreted spec function returning `PhysModView`. The `lemma_manager_attached` axiom asserts that `self.upool@` equals `phys_view().frames`, establishing the connection between the singleton and view attachment through these uninterpreted functions—which means the four admits are genuine axioms that can't be derived from anything else.
+
+Now I'm facing a critical decision. The reviewer wants these eliminated, but the architecture makes that impossible without introducing ghost-token infrastructure to link the singletons to the views—a massive restructuring that would require changes to the exec code and violate the ast-consistency constraint. I'm weighing three realistic paths: introducing ghost tokens (infeasible in this pass), making the views definitional (impossible since they're all uninterpreted with no readable ghost state), or accepting these as irreducible axioms and documenting them as trusted boundaries. The reviewer's gate apparently rejects the third option, so I need to attempt the strongest possible real proofs for each admit while documenting exactly why they're irreducible.
+
+But wait—I'm reconsidering whether I can relocate the trust to the external_body boundary on the exec functions, which the reviewer does allow. The key insight is that frame::alloc's external_body postcondition could be strengthened to express the full manager view transition, or I could create a trusted exec wrapper that performs the alloc and ensures the manager's view transition simultaneously, avoiding the need for the admit in the proof layer.
+
+This would require restructuring the manager module to add a wrapper method and change the alloc path, which is risky and touches exec code. Given the architectural constraints and the high cost of a deep refactor across multiple modules, I'm settling on a pragmatic approach: attempt to prove or eliminate each admit with exact error evidence, relocate trust to ledgered external_body boundaries where tractable and low-risk, and document genuinely stuck items with their evidence.
+
+But I'm reconsidering the actual intent here. These admits live in the phys-manager phase, which is separate from phys-kframe (already completed at commit f187362c4). The message might be misrouted, or it's asking me to tackle phys-manager now. Either way, I need to act without clarification. The admits are forbidden, so my best move is to try hard eliminating them by relocating trust to ledgered external_body exec boundaries—the exact pattern that worked in the kframe phase. Let me examine the manager.rs alloc paths in detail to see if I can make each exec layer carry the necessary facts.
+[RESULT ✓] view: 370.     #[verus_spec(result =>
+371.         requires
+372.             self.inv(),
+373.         ensures
+374.             final(self).inv(),
+375.             match result {
+376.                 Ok(kf) => {
+377.                     &&& old(self)@.free_frames.contains(kf@)
+378.                     &&& ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== phys-manager verification_todo / fix_report ==="; find verus-ai-l
+
+[THINKING] I'm working through the proof obligations for `alloc_kernel_frame`. The function needs to establish that when it succeeds, the returned frame was in the free list and the state updates correctly via `alloc_one`, while on failure the state remains unchanged. The implementation starts by capturing a ghost snapshot of the current state, then calls the external `frame::alloc` function which guarantees the allocated frame appears in the physical view's allocated frames set.
+
+The key insight I'm realizing is that `self` itself never gets mutated in the exec code — `frame::alloc` operates on a global singleton, not on the manager struct. Yet the postcondition requires `self@` to change according to `alloc_one`. This works because `self@` is an uninterpreted view attached to the global frame partition through an axiom, so even though the struct field `upool` isn't directly written, the abstract view `self@` reflects the global state change. The lemma `lemma_kernel_alloc_one` bridges this by asserting that the manager's abstract state after the global allocation matches the expected `alloc_one` transformation, leveraging the attachment between the view and the global partition.
+
+The real problem is that without modeling the global state as tracked ghost state that both `frame::alloc` and the manager's view can read from, these four admits are irreducible axioms. The sound solutions are either introducing a tracked global ghost permission that both sides update (major architectural work), or relocating the axiom to an external_body boundary as ledgered trust. The cleanest approach mirrors the `map_frame` pattern: add an external_body exec wrapper method to the manager that ensures the `self@` transition, converting the hard axiom into allowed ledgered external_body trust. This requires adding external_body methods to the manager and removing the admits, but it's an additive change to the exec code.
+
+However, this refactor touches multiple lemmas used across the bulk paths and is risky in scope. Looking at the actual usages—two in the user bulk paths, one in kernel alloc, one in contiguous alloc, and one in error restoration—I need to understand the full impact before committing to this strategy. The honest assessment is that these admits encode a global-singleton to abstract-view attachment that's fundamentally irreducible in pure Verus without ghost-token infrastructure, so the proper resolution likely defers them to a later proving phase.
+
+The two realistic options are converting these admits to ledgered external_body exec wrappers following the map_frame pattern, or building ghost-token infrastructure—but the latter is out of scope and violates consistency. Option 1 is the sanctioned path and aligns with kframe precedent, so I should pursue it incrementally with verification after each change. The key insight is that converting admit to external_body-on-exec is actually a net improvement because the reviewer distinguishes between external_body on proof functions (which must be removed) versus external_body on exec functions (which are the accepted trust boundary). The gate reports cheating globally but exits cleanly, so the real question is what "verification passes" actually means in this context.
+
+I'm overthinking this. The phys-kframe phase needs the 4 admits addressed, and the external_body on exec functions are already ledgered and acceptable per the bottom-up methodology. My decision is to eliminate the admits by relocating them to ledgered external_body exec wrappers using the map_frame pattern, verify the module after each change, and update tcb-allowed.md accordingly. The external_body-on-exec functions stay as ledgered since they're the accepted trust boundary and the reviewer's mandate targets proof-function external_body, of which there are none. Now I need to think through whether relocating an admit in the manager method via an exec call is actually sound.
+
+I'm sketching out a wrapper method that's marked external_body with a spec ensuring the view transition, where the exec body just calls frame::alloc(). This creates a legitimate ledgered trust boundary similar to instance(). Then alloc_kernel_frame would call this wrapper instead of using the inline allocation, and the postcondition follows because after the wrapper gives the updated self view and KernelFrame::new doesn't change self, the ensures clause holds. This pattern works and follows the sanctioned approach.
+
+Now I'm realizing this refactor is massive — it spans manager.rs, manager.proof.rs, manager.spec.rs, and tcb-allowed.md with high risk of breaking things. I need to check whether the phys-manager phase already completed its cheating-elimination and accepted these admits, because if so, re-doing this work here under a phys-kframe task would be wrong.
+[RESULT ✓] bash: === phys-manager verification_todo / fix_report ===
+=== search all verification_todo for these admits ===
+verus-ai-logs/nanvix-phys-arch-paging-mod/verification_todo.md
+verus-ai-logs/nanvix-phys-arch-x86-pde/verification_todo.md
+verus-ai-logs/nanvix-phys-bump-allocator/verification_todo.md
+verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== phys-kframe verification_todo ==="; cat verus-ai-logs/nanvix-phys
+
+[THINKING] I notice that phys-manager hasn't gone through the cheating-elimination phase yet since it lacks verification_todo and fix_report, but phys-frame and phys-kframe both have verification_todo entries. I need to examine what those verification_todo sections say about the admits in manager.proof.rs, which falls under phys-manager's domain.
+[RESULT ✓] bash: === phys-kframe verification_todo ===
+# Verification TODO — `mm::phys::kframe`
+
+Status of in-scope functions (`KernelFrame::new`, `KernelFrame::base`, `KernelFrame::drop`):
+**all three are fully verified in-body** (`make verify-kernel MODULE=mm::phys::kframe` →
+`3 verified, 0 errors`, `status: CLEAN...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+This is critical — a prior phase already deeply analyzed these exact 4 admits. The phys-frame `verification_todo.md` documents them as genuinely irreducible (uninterp↔uninterp axioms, or specs that are *false for the implementation* without ghost-token infrastructure). Let me verify this with concrete reproduction and check whether the root-cause manager specs can be safely corrected. First, who calls these manager functions?
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for f in alloc_kernel_frame alloc_many_kernel_frames alloc_user_frame alloc
+
+[THINKING] Looking at the verification_todo documentation for the phys-frame phase, I'm seeing that these four admits are marked as genuinely irreducible with detailed justifications. The first one about the manager attachment asserts that the physical view frames are both uninterpreted with no axioms available, making it an underivable external-bottom axiom that also conflicts with the manager allocation specs. The second one about kernel allocation is asserting something about the old state being equal to itself after applying an allocation operation, which appears to be cut off mid-explanation.
+
+The remaining two admits follow similar patterns — they're either asserting relationships between uninterpreted values with no derivation path, or they're making claims about the implementation's behavior that actually contradict what the code does. The verification_todo explicitly documents that these can only be resolved through human-approved axioms, tracked ghost tokens (which violate source-integrity rules), or by correcting the manager's external-top specs, which would require human review since they're unlisted functions. The key insight is that some of these admits encode specs that are fundamentally false for the actual implementation — wrapping them in external_body wouldn't help because the underlying manager specification itself doesn't match what the code actually does. The only real path forward is to delete these lemmas and fix the root cause: the manager specs themselves are inconsistent with what the implementation actually does. The verification_todo already identified that for #2, #3, and #4, the specs claim the manager mutates state (self.upool@) when the implementation doesn't — so correcting those specs to match reality is the sound fix, though it requires human review since they're external top-level specs.
+
+I recognize I can't unilaterally change the manager's public contract without risking breakage in other verified modules like kmod and virt, and the prior analysis explicitly flagged this as needing human review because it's a genuine architectural decision. So my responsible approach is to attempt each admit's elimination concretely, knowing that some may genuinely require those spec corrections that are beyond my scope to authorize. So the real issue is whether `self@` should represent just the user pool or the global partition. If it's the global partition (as the view design likely intends), then kernel allocations DO change it, which means the lemma and spec are correct but require ghost tokens to maintain coherence. If it's just the user pool, then the spec is wrong — kernel allocs shouldn't appear in `self@` at all, and the postcondition should just be `final(self)@ == old(self)@`. The decision hinges on what callers actually depend on and what the architectural intent is.
+
+The deeper problem is that `phys_view()` is defined as an uninterpreted constant function with no state, so it can't model a mutable partition — it returns the same value every time. This makes the specs fundamentally contradictory: you can't have both a fixed global view and have allocations change it. This is a design bug that needs either reworking `phys_view()` into a stateful token-based model (which violates the scope constraints) or changing the manager's public specs (which risks breaking callers and was deferred to human review).
+
+My approach is to concretely attempt eliminating each admit by deleting the lemma and trying to verify the caller, capturing the exact Verus errors as concrete evidence that the prior analysis is correct.  Then I'll document the genuine impossibility in a verification report and honestly report this as a blocker requiring architectural decision rather than fabricating an unsound workaround. Before concluding it's truly stuck, though, I should actually try to make progress on the most promising admit and check who calls those allocation functions to see if there's any safe path forward.
+[RESULT ✓] bash: === callers of alloc_kernel_frame ===
+src/kernel/src/mm/virt/manager.rs:217:                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+src/kernel/src/mm/virt/manager.rs:267:                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+src/kernel/src/mm/virt/manag...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+A prior phase (phys-frame) already produced a detailed analysis: these 4 admits are either uninterp↔uninterp axioms or specs that are *provably false for the implementation* without ghost-token infrastructure (which requires forbidden exec-signature changes). Let me reproduce the concrete failure to validate this, then decide. First, baseline the manager module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+
+[THINKING] I'm checking whether the callers in those modules are part of verified code that relies on the postconditions I'm fixing. Since mm/virt isn't verified yet, correcting the manager specs shouldn't break any existing proofs.
+
+The real tension here is that the current spec is provably false for the implementation—the manager view doesn't actually track kernel allocations since they bypass the pool—but the spec was written with the intent of tracking global partitions. Fixing it to match what the code actually does means changing the documented contract, which is a judgment call with real semantic implications. The reviewer wants me to eliminate the cheating, and I've been tasked with that, but this decision about what the spec should faithfully represent does belong with human review.
+
+I'm going to take a concrete approach: demonstrate the blocker by attempting to delete one of the admit-lemmas and showing the exact Verus failure, then document this evidence clearly. I won't introduce any unsound workarounds or rewrite the external-facing specs of verified functions without authorization. Instead, I'll hand off with the reproduction evidence and a clear explanation that these are genuine architectural blockers requiring human decision. The core issue is that trusting these contracts via external_body would mean accepting specs that are either provably false for the implementation or contradictory with other verified facts — which is actually unsound, potentially allowing the module to prove `false`. The admits at least isolate the unsoundness to flagged lemmas. So these four admits can't be soundly eliminated within the current scope; the real fix requires an architectural redesign of the spec (like reworking phys_view into a token model or correcting the external manager specs) that's explicitly out of scope. I should produce concrete evidence demonstrating this — starting with a reproduction showing the false-for-implementation behavior in at least one of the lemmas.
