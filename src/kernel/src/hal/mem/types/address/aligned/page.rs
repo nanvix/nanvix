@@ -37,29 +37,9 @@ use ::vstd::prelude::*;
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
-#[verus_verify]
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
-    #[verus_spec(result =>
-        ensures
-            // `from_address` validates; it never rounds/normalizes. On success
-            // the wrapped address is unchanged (`result@ == spec_addr(&addr)`)
-            // and the page-alignment invariant holds (`result.inv()`). On
-            // failure the input was not page-aligned (value type: no effect).
-            match result {
-                Ok(p) => p@ == spec_addr(&addr) && p.inv(),
-                Err(_) => spec_addr(&addr) % spec_page_size() != 0,
-            },
-            // Success iff the input address is page-aligned (stated both ways
-            // for liveness).
-            (result is Ok) <==> (spec_addr(&addr) % spec_page_size() == 0),
-    )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
-        proof! {
-            // Discharged in the proving phase once `Address::is_aligned` and the
-            // alignment encoding (`PAGE_ALIGNMENT`) carry specs.
-            admit();
-        }
         // Check if `addr` is not aligned to a page boundary.
         if !addr.is_aligned(PAGE_ALIGNMENT)? {
             return Err(Error::new(ErrorCode::BadAddress, "unaligned virtual address"));

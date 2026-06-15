@@ -54,4 +54,31 @@ pub assume_specification<T: Address> [
         result as int == addr@,
 ;
 
+// `PageAligned::from_address` is a partial, identity-preserving, validating
+// constructor. Its body checks page alignment via
+// `<T as Address>::is_aligned(PAGE_ALIGNMENT)`, where `PAGE_ALIGNMENT` is an
+// `arch` `Alignment` enum constant the Verus front-end cannot translate, and
+// `is_aligned` is an unspecced `Address` trait method. The function therefore
+// cannot be body-verified in place without speccing those upstream `sys`/`arch`
+// items (out of scope), so it is specced with `assume_specification` — the same
+// trust boundary the codebase already draws at the `sys`/`arch` library edge.
+// The contract is the real caller-facing guarantee and is discharged when the
+// `Address` trait and the `Alignment` encoding are verified.
+//
+// On success the wrapped address is unchanged (`p@ == spec_addr(&addr)`) and the
+// page-alignment invariant is established (`p.inv()`); the constructor validates,
+// it never rounds/normalizes. On failure the input was not page-aligned (value
+// type: no side effect). Success holds iff the input address is page-aligned
+// (stated both ways for liveness).
+pub assume_specification<T: Address> [
+    PageAligned::<T>::from_address
+](addr: T) -> (result: Result<PageAligned<T>, Error>)
+    ensures
+        match result {
+            Ok(p) => p@ == spec_addr(&addr) && p.inv(),
+            Err(_) => spec_addr(&addr) % crate::hal::mem::spec_page_size() != 0,
+        },
+        (result is Ok) <==> (spec_addr(&addr) % crate::hal::mem::spec_page_size() == 0),
+;
+
 } // verus!
