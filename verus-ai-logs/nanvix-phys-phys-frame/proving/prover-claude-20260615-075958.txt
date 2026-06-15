@@ -4268,3 +4268,38 @@ Turn 274
 Turn 275
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> src/kernel/src/mm/phys/frame.rs:352:37
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  compilation/setup error (verus did not run)
+...
+
+────────────────────────────────────────────────────────────
+Turn 276
+────────────────────────────────────────────────────────────
+Trigger inference error in the `frames` set definition. Let me view and fix:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm hitting a trigger inference error in the alloc_contiguous proof at frame.rs line 352, specifically in the Set::new closure where I'm defining the trigger. Let me examine the code around that line to understand what's going wrong.
+[RESULT ✓] view: 346.                     let frames = Set::new(|addr: int|
+347.                         exists|i: int| 0 <= i < count as int
+348.                             && addr == #[trigger] (base + i * spec_page_size()));
+349.                     assert(frames =~= frame_set(lo, hi)) by {
+350.                 ...
+
+────────────────────────────────────────────────────────────
+Turn 277
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to add a trigger annotation to the choose expression since the body condition references the computed address. The trigger should mark the expression `base + i * spec_page_size()` so the solver knows what drives the constraint.
+
+Actually, I'm realizing the real issue is that the contract's `frames` definition must match exactly for the `=~=` equivalence to work. The contract defines frames using `base@` (the dereferenced base address), so I need to prove that the contract's frames set equals the `frame_set(lo, hi)` that the lemma gives me. Once I establish that equivalence, the lemma's conclusion about `frame_set` will directly satisfy the postcondition's requirement about `frames`.
+
+I also need to fix the trigger annotations on the `choose` expressions—adding `#[trigger]` to the address computation in both the `i` and `j` chooses should help Verus's pattern matching.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 278
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

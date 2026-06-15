@@ -350,7 +350,7 @@ impl Inner {
                         assert forall|addr: int| frames.contains(addr) implies
                             #[trigger] frame_set(lo, hi).contains(addr) by {
                             let i = choose|i: int| 0 <= i < count as int
-                                && addr == base + i * spec_page_size();
+                                && addr == #[trigger] (base + i * spec_page_size());
                             assert(addr == (lo + i) * spec_page_size()) by (nonlinear_arith)
                                 requires base == lo * spec_page_size(),
                                     addr == base + i * spec_page_size();
@@ -359,7 +359,8 @@ impl Inner {
                         }
                         assert forall|addr: int| frame_set(lo, hi).contains(addr) implies
                             #[trigger] frames.contains(addr) by {
-                            let j = choose|j: int| lo <= j < hi && addr == frame_addr_of(j);
+                            let j = choose|j: int| lo <= j < hi
+                                && addr == #[trigger] frame_addr_of(j);
                             assert(addr == (lo + (j - lo)) * spec_page_size());
                             assert(addr == base + (j - lo) * spec_page_size()) by (nonlinear_arith)
                                 requires base == lo * spec_page_size(),
