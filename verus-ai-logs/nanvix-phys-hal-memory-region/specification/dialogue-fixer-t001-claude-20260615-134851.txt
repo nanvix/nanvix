@@ -717,3 +717,94 @@ Turn 41
 ────────────────────────────────────────────────────────────
 Build passes. Now the full `make verify` to check for cross-module regressions:
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify 2>&1 | tail -25
+[RESULT ✓] bash: note: verifying module hal::mem::types::region
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+  D...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+`make verify` exits 0, `admit=0`, no regressions (the 25 `external_body` are pre-existing TCB-allowed entries in other modules; the global "CHEATING_DETECTED" reflects that baseline, not my module). The `region` module is CLEAN and the `sys` crate re-verified fine. Let me confirm exact line numbers and write the fixer response:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== sys Address supertrait ==="; grep -n "Copy" src/libs/sys/src/sys/mm/address/mod.rs 
+
+[THINKING] The `make verify` command passed with no issues — the 25 external_body entries flagged as "CHEATING_DETECTED" are all pre-existing baseline entries from OTHER modules that are TCB-allowed, not new regressions. The region module itself is clean, and the external_body count matches what was there before, so there's no actual cheating to worry about.
+
+Now I'm pulling together the exact verify-kernel output summary and the specific line numbers of my changes to document in the turn_001_fixer.md response with a Result: FIXED status.
+[RESULT ✓] bash: === sys Address supertrait ===
+1:// Copyright(c) The Maintainers of Nanvix.
+=== region start body ===
+220:    pub fn start(&self) -> T {
+221:        self.start
+384:    pub fn start(&self) -> PageAligned<T> {
+=== git status ===
+ ...ialogue-fixer-t001-claude-20260615-134851.jsonl | 28 ++++++++++++++++...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "core::fmt::Debug + Clone + Copy" src/libs/sys/src/sys/mm/address/mod.rs; echo "=== r
+
+[THINKING] The git diff is only showing log file changes because the verify harness already auto-committed my source modifications, so I need to verify those changes are actually in HEAD and locate the Copy line number.
+[RESULT ✓] bash: 33:    Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord,
+=== recent commits ===
+ae540745c [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=25 cfg_gate=7)
+5d8f84134 [verus] verify PASS (cheating detected): bump-allocator::all (...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now writing the fixer response:
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue/turn_001_fixer.md with 4554 characters
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Let me do a final sanity check that the spec file is clean and the key state is correct:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== no leftover clone/extension experiments in spec.rs ==="; grep -nE "ExClone|ExAddres
+
+[THINKING] Let me verify the spec.rs file is clean and wrap up with a summary.
+[RESULT ✓] bash: === no leftover clone/extension experiments in spec.rs ===
+CLEAN (none)
+
+=== admit anywhere in region files? ===
+NONE (good)
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Done. **Result: FIXED.**
+
+## Summary
+
+The reviewer's literal mechanism (`assume_specification` on generic `<T as Clone>::clone`) does **not compile** — Verus rejects generic trait-method specs, and the cited `into_raw_value` precedent works only because its `Self` is a concrete type constructor, not a bare `T`. I proved this with 4 distinct failed approaches (all exact errors recorded in the fixer doc).
+
+I removed the `admit()` by **eliminating the obligation at its root** instead of trusting it:
+
+- **`src/libs/sys/.../address/mod.rs:33`** — added `Copy` to the `Address` supertrait. Every implementor (`VirtualAddress`, `PhysicalAddress`, `PageAligned<T>`, `PageTableAligned<T>`) already derives `Copy`; no `dyn Address` exists, so it's safe.
+- **`src/kernel/src/hal/mem/types/region.rs:221`** — changed `MemoryRegion::start` from `self.start.clone()` to a `Copy` field read `self.start`. With `T: Copy`, a field read is identity in Verus (`result == self.start`), so the unchanged `ensures` discharges by congruence — no clone law, no `admit()`.
+- **`region.spec.rs`** — removed the broken experiments.
+
+Verification:
+- `make verify-kernel` (region module): **5 verified, 0 errors, admit=0, status CLEAN**; no `region.* admit` line.
+- `make verify` (all modules): **exit 0, admit=0**, `sys` re-verified clean, no regressions.
+- `./z build -- all`: **OK** (dual compilation intact).
+
+Response written to `turn_001_fixer.md`.
+
+
+=== Session End ===
+Session: 5a10b5aa-3097-4868-a59b-12dc4710e782
+Duration: 1262.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/specification/dialogue-fixer-t001-claude-20260615-134851.jsonl
