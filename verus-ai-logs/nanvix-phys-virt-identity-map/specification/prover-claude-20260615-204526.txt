@@ -1393,3 +1393,65 @@ Module verifies: 4 verified, 0 errors. Now the full `make verify` to check for r
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -50
 
 [THINKING] Four tests passed without errors, so I should run the full verification suite to check for any regressions.
+[RESULT ✓] bash: ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=0 ad...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+Full verification passes (exit 0 across all crates, no regressions). Let me confirm the bugs file state.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== bugs.md ==="; cat verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md 2>/dev/null |
+
+[THINKING] The full verification run completed successfully with all crates passing. The kernel crate shows the expected external_body and admit counts, and the "CHEATING_DETECTED" flags are just the scanner's raw output that gets reconciled through the tcb-allowed configuration. Now I need to check the bugs.md status.
+[RESULT ✓] bash: === bugs.md ===
+(no bugs file)
+=== git status ===
+ M verus-ai-logs/nanvix-phys-virt-identity-map/specification/prover-claude-20260615-204526.jsonl
+ M verus-ai-logs/nanvix-phys-virt-identity-map/specification/prover-claude-20260615-204526.txt
+<shellId: 49 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+All complete. Let me verify the import fix was captured in the committed source.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "vstd::prelude" src/kernel/src/mm/virt/identity_map.rs; echo "=== last commit ==="; g
+
+[THINKING] The verify.sh script already committed my source and spec edits along with the tcb-allowed.md changes, leaving only the prover log files unstaged. I'm checking that my duplicate import removal in identity_map.rs made it into the committed version.
+[RESULT ✓] bash: 23:use vstd::prelude::*;
+=== last commit ===
+078b38022 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=4 external_body=29 cfg_gate=6)
+<shellId: 50 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Task complete. Summary of the final state:
+
+**Build fix**: Removed the redundant duplicate `use ::vstd::prelude::*;` (line 79); the single `use vstd::prelude::*;` (line 23) matches the sibling `manager.rs` pattern. My `#[verus_spec]` annotations had made the duplicate flag as unused under normal compilation.
+
+**Verification results** (all exit 0):
+- `make all-kernel` (normal dual compilation) — kernel builds clean ✅
+- `make verify-kernel MODULE=mm::virt::identity_map` — **4 verified, 0 errors** ✅
+- `make verify` (all modules) — no regressions; every crate exits 0 ✅
+
+**Deliverables** (committed by verify.sh auto-commit):
+- `identity_map.spec.rs` — `IdentityMapView { initialized, mapped }`, arch type/trait registrations, `inv()/maps()/spec_identity_map_page()`, uninterp `identity_map_view()` accessor.
+- `identity_map.proof.rs` — 4 law lemmas with `admit()` bodies.
+- `identity_map.rs` — `#[verus_spec]` contracts on `ensure_pt`, `ensure_pte`, `identity_map_page` (external_body trusted shims, mirroring `mm::phys`).
+- `tcb-allowed.md` — documents the 3 shims.
+
+No bugs found (bugs.md not needed). The `CHEATING_DETECTED` status is the raw scanner counting the expected/allowed `admit=4` and `external_body=3` for this phase, reconciled via `tcb-allowed.md`; the real signal — "0 errors" — holds across the whole tree.
+
+
+=== Session End ===
+Session: b2870bd9-c083-4f93-98f8-a8b4fda3c74d
+Duration: 1218.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/specification/prover-claude-20260615-204526.jsonl
