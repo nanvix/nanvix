@@ -249,3 +249,370 @@ Now let me run the verification. This may take a while.
 316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
 318:  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_DIR)
 572:	@echo...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but cheating check flags `cfg_gate=1`. Let me look at the detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+
+[THINKING] The verification completed successfully, but one cheating flag was raised for cfg_gate. I need to check the cheating-detail.txt file to locate where this cfg_gate issue occurred.
+[RESULT ✓] bash: 
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "--- file size ---"; wc -l verus-ai-logs/verify-sys/verus-logs/cheating-detail.t
+[RESULT ✓] bash: --- file size ---
+0 verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+--- content (cat -A) ---
+--- ls logs ---
+total 612
+drwxrwxr-x 1 ruize ruize 8900 Jun 15 10:49 .
+drwxrwxr-x 1 ruize ruize   20 Jun 13 23:26 ..
+-rw-rw-r-- 1 ruize ruize    0 Jun 15 10:49 cheating-detail.txt
+-rw-rw-r-- 1 ruize ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+The detail file is empty but summary reports `cfg_gate=1`. Let me check how `verify.sh` detects cfg-gating.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg_gate\|cfg-gate\|cfg_gated\|cheating-detail\|cfg(" scripts/verify.sh | he
+
+[THINKING] The detail file appears to be empty even though the summary indicates cfg_gate=1, which likely means it's being overwritten or only captures specific patterns. I need to look at the verify.sh script to see how cfg_gate is actually computed and what patterns it's detecting—it seems to correspond to attributes like `#[cfg(verus_keep_ghost)]` or `#[cfg(target_pointer_width = "32")]`.
+
+Looking at the cfg usages in virt.rs, I see several instances: the first two are on include statements for verification material which should be allowed, one is on a compile-time assertion, and another is on an impl block. I need to check the verify.sh script to understand which of these is being flagged as cfg_gate.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+`cfg_gate` only counts `verus_keep_ghost`-based cfgs (not `target_pointer_width`), and it scans the **whole sys crate**, not just virt.rs. Let me find the offending line.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg.*verus_keep_ghost\|cfg_attr.*verus_keep_ghost" src/libs/sys/src/ 
+
+[THINKING] The cfg_gate detection specifically targets `#[cfg(verus_keep_ghost)]`, `#[cfg(not(verus_keep_ghost))]`, and `#[cfg_attr(...verus_keep_ghost...)]` attributes, so other cfg conditions like `#[cfg(target_pointer_width = "32")]` don't get counted. In virt.rs, lines 9 and 11 both have `#[cfg(verus_keep_ghost)]` applied to include! statements.
+
+Since the scan covers the entire sys crate rather than just virt.rs, that count of 1 could be coming from a different file. I need to search through the whole crate to find which verus_keep_ghost cfg gates aren't being exempted.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/alignmen...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/alignment.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //==================================================================================================
+150. 
+151. #[cfg(verus_keep_ghost)]
+152. ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+virt.rs's cfg gates are only on `include!` (exempted). The `cfg_gate=1` comes from `alignment.rs:151` — a `#[cfg(verus_keep_ghost)] verus! {}` block of pure **spec** functions, which is out of scope for sys-virt-address. Let me check the remaining checklist tooling (ast-consistency, spec-drift) and run cross-module + build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls scripts/common/ 2>/dev/null; echo "=== ast/drift scripts ==="; find scripts -iname
+
+[THINKING] I'm noticing that the `#[cfg(verus_keep_ghost)]` gate in alignment.rs at line 151 is applied to `verus! {`, which isn't in the exemption list, so it gets counted as a cfg_gate. But alignment.rs isn't the target file—virt.rs is—so I need to reconsider the scope of what I'm checking here. Within virt.rs itself, the cfg gates are only on `include!` statements which are exempted, so the target module actually passes the "zero cfg-gated exec code" check. The global count of 1 comes from alignment.rs, which is out of scope — and that's a `verus! {}` block containing only spec functions, not executable code, so it's a false positive from the detector's incomplete exemption list rather than a real violation. I'm working through the checklist systematically now. Items 1-4 and 6 all pass cleanly with zero violations. For item 5 on cfg-gated exec code, the global flag comes from alignment.rs which is out of scope, and it only gates a pure-spec verus block that's ghost-only, so that should pass too. Items 8 and 9 are straightforward passes. Now I need to check whether the ast-consistency and spec-drift-check skills are available in the project, and then run the cross-module verification and build commands to complete the remaining checklist items.
+[RESULT ✓] bash: logging.sh
+utils.sh
+=== ast/drift scripts ===
+=== grep VERUS REWRITE in virt ===
+=== coverage unverified head ===
+# Unverified exec functions: 253/255
+  as_u32
+  ok
+  to_ne_bytes
+  from_ne_bytes
+  from
+  from
+  from
+  from
+  from
+  into_raw
+  new
+  id
+  event
+  is_interrupt
+  is_exception
+  to_ne_by...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+No dedicated ast/drift scripts in `scripts/`. Let me check the verus-ai dir for those skills and review what changed in virt.rs via git.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "=== skills there ==="; find 
+
+[THINKING] I'm noticing that the ast-consistency and spec-drift-check skills referenced in the checklist aren't in the main project skills list, so they might be located in the verus-ai-exp directory or require manual verification. I need to search through the verus-ai directory to find where these skills are defined or if the command placeholders are configured elsewhere.
+
+For the AST consistency check specifically, I'm thinking about whether the `#[verus_spec]` and `#[verus_verify]` macros in virt.rs preserve the executable semantics—since these macros are designed to be transparent to exec code and there are no `external_body` rewrites, the AST should remain consistent. I'll check the git diff to see what actually changed in virt.rs during the speccing process to confirm this.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== skills there ===
+...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Found the scripts. Let me read the skill docs to learn invocation.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && echo "=== ast-consistency SKILL ==="; cat docs/skills/ast-consistency/SKILL.md 2
+
+[THINKING] I've located the scripts and need to check the skill documentation to understand how to run the ast_consistency.py and spec_drift.py tools properly.
+[RESULT ✓] bash: === ast-consistency SKILL ===
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `veru...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me run the AST consistency and spec drift checkers.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch --show-current; echo "=== branches ==="; git --no-pager branch 
+
+[THINKING] I need to run the AST consistency check on virt.rs against the base version, so I'm looking for the original file before the verus annotations were added. Let me check the git branches and find the right base reference to compare against.
+[RESULT ✓] bash: verus-ai-prove
+=== branches ===
+  dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+=== first commit touching virt.rs (original) ===
+34...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for ref in dev exp; do echo "=== $ref ==="; git --no-pager log --oneline -1 $ref -- s
+
+[THINKING] I need to figure out where the verus annotations were introduced by checking the base reference, which is probably `dev` or `exp`. The original version without verus should be on `dev`, so I'll run the ast_consistency check against that base ref and verify the file exists there.
+[RESULT ✓] bash: === dev ===
+8edb45f46 [libs] B: Checked arithmetic in align_up()
+file exists on dev
+=== exp ===
+de24f6057 [kernel] E: Verify kpool::Inner and frame::Inner
+file exists on exp
+=== merge-base with dev ===
+7e180a4a49ab761925f623e5a355b7973960527d
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST and spec-drift checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== AST vs dev ==="; python3 /home/r
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === AST vs dev ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign    ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+AST check reports 3 MISMATCH (`align_down`, `align_up`, `from_raw_value`) and 1 EXTRA (`clone_address`). Let me inspect the actual diffs to see if these are real exec changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; for fn in "VirtualAddress::align_up" "Virt
+
+[THINKING] The AST consistency reports are showing mismatches in `align_down`, `align_up`, `from_raw_value`, and an extra `clone_address` in the verus branch when compared against `dev`, but I'm wondering if these are actual execution changes or just artifacts from comparing against a different base version since `dev` has "Checked arithmetic in align_up()". I need to check the actual diffs and find the correct merge-base to determine if these are real issues.
+[RESULT ✓] bash: ###### VirtualAddress::align_up ######
+## VirtualAddress::align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,4 @@
+-    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+-        mm::align_up(self.0, align).map(VirtualAddress::new)
++    fn align_up(&self, align: Alignment) -> Re...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The MISMATCH is a name-collision artifact: there are two `align_up`/`align_down`/`from_raw_value` (inherent `impl` vs `impl Address` trait), so the checker pairs them wrongly. And `dev` has diverged. I must compare against the true pre-verus parent on this branch. Let me find it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== commits on verus-ai-prove touchi
+
+[THINKING] Ah, I see the issue now — the checker is getting confused because there are multiple functions with the same names across different impl blocks. There's an inherent `align_up` that returns `Option<Self>` and a trait impl `align_up` that returns `Result<Self, Error>`, plus duplicate `align_down` and `from_raw_value` methods. The "MISMATCH" errors are actually just the checker accidentally comparing the inherent implementation against the trait implementation due to the name collision, not real discrepancies in the verus code.
+
+For `clone_address` being marked as extra in verus, I need to check whether it was actually added to the `Address` trait itself or if it's a real addition. The real question is whether the exec code has actually stayed unchanged since verus annotations were introduced on this branch — comparing against `dev` is throwing me off because that branch has diverged separately. I should find the exact commit where verus annotations first landed on this branch and diff the exec code against its parent to see what's genuinely changed.
+[RESULT ✓] bash: === commits on verus-ai-prove touching file (not merge-base ancestry) ===
+26902c59f [verus] verify PASS (cheating detected): sys::all (6 verified, 0 errors, cfg_gate=1)
+bc7af9fac [verus] verify PASS: sys::sys::mm::address::virt (2 verified, 0 errors)
+073083d73 [verus] verify FAIL: sys::sys::mm::addr...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The real base is the merge-base, not `dev`. The only genuine exec addition flagged is `clone_address`. Let me determine whether it was added during verus work or pre-existing (e.g., a required trait method).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== which commit added clone_address
+
+[THINKING] Looking at the textual diff between dev and HEAD, I can see the exec changes involve adding verification imports and annotations like `#[verus_verify(external_derive)]` on the struct and `#[verus_spec(...)]` on specific methods, which are transparent to the executable code. The impl block for `VirtualAddress` has also been split into two separate blocks.
+
+The key issue is the new `fn clone_address(&self)` function added to the `Address` impl — this is flagged as EXTRA_IN_VERUS and I need to determine whether it's a legitimate trait requirement or an exec addition introduced by the verus work. The comparison base matters here: `dev` is a parallel branch, not the pre-verus baseline, so I should compare HEAD's exec against the actual merge-base at `7e180a4a4` to properly assess whether `clone_address` was added before verus work started or during the verification speccing phase.
+[RESULT ✓] bash: === which commit added clone_address ===
+40a4c4b60 [verus] verify PASS (cheating detected): kernel::all (59 verified, 0 errors, admit=26 external_body=14 cfg_gate=15)
+=== is clone_address in merge-base version? ===
+NOT in merge-base
+=== Address trait def ===
+src/libs/sys/src/sys/mm/address/mod.rs:36...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+`clone_address` was added in commit `40a4c4b60` (a **kernel**-verification commit, before sys-virt-address work started) because the `Address` trait gained a required `clone_address` method. So it's out of scope for sys-virt-address. The proper AST base is the commit before the sys-virt-address phase. Let me re-run against that.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== AST vs 40a4c4b60 (pre-sys-virt p
+
+[THINKING] Looking at the git history, `clone_address` was introduced in commit `40a4c4b60` as part of the verus verification work. It's a required method on the `Address` trait with no default implementation, so when it was added, the implementation in virt.rs had to provide it. I'm checking whether this method was added to the trait during the verus work itself.
+
+The key insight is that `clone_address` was added during kernel verification work (kernel::all), which happened before the sys-virt-address verification started. So this exec-level change was made for a different module's verification, not for the current sys-virt-address scope I'm reviewing. The AST consistency checker flags it as EXTRA_IN_VERUS, but since it predates this review's target work, I need to determine whether it's a pre-approved deviation or if it should be restored.
+
+The real question is what baseline to use for AST consistency. The name-collision mismatches (align_up, align_down, from_raw_value) are false positives from the checker pairing inherent and trait methods. But `clone_address` is a genuine exec addition that belongs to the kernel verification scope, not sys-virt-address. I should compare against the commit right before sys-virt-address work began on this file to get an accurate picture of what actually changed in this review's scope.
+[RESULT ✓] bash: === AST vs 40a4c4b60 (pre-sys-virt phase) ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+Vir...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Now `clone_address` and `from_raw_value` MATCH. Only `align_up`/`align_down` still MISMATCH. Let me confirm these are the name-collision artifacts (inherent vs trait method).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; for fn in "VirtualAddress::align_up" "Virt
+
+[THINKING] Against the correct base commit, `clone_address` and `from_raw_value` are now matching as expected, but `align_up` and `align_down` still show mismatches due to name collisions between the inherent and trait implementations. Let me check the actual diffs to confirm this.
+[RESULT ✓] bash: ###### VirtualAddress::align_up (base 40a4c4b60) ######
+## VirtualAddress::align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,4 @@
+-    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+-        mm::align_up(self.0, align).map(VirtualAddress::new)
++    fn align_up(&self, align:...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && f=src/libs/sys/src/sys/mm/address/virt.rs; echo "=== align_up occurrences in HEAD ===
+
+[THINKING] Now I see the real issue—`align_down` is matching correctly against the base, but `align_up` has a collision where the tool is pairing the inherent method (returning `Option<Self>`) with the trait method (returning `Result<Self, Error>`). These are actually two different methods that happen to share the same name, so the name-based matching is conflating them. Let me check if both versions of `align_up` are actually present in the source code.
+[RESULT ✓] bash: === align_up occurrences in HEAD ===
+90:    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+199:    fn align_up(&self, align: Alignment) -> Result<Self, Error> {
+=== align_up occurrences in base 40a4c4b60 ===
+74:    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+183:    fn ali...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Confirmed: both `align_up` methods exist unchanged in base and HEAD; `git diff` shows zero changes. The MISMATCH is a name-collision false positive (the checker pairs the inherent `align_up -> Option` against the trait `align_up -> Result`). Real exec is unchanged. Now spec-drift and cross-module checks.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '1,60p' docs/skills/spec-drift-check/SKILL.md 2>/dev/null
+
+[THINKING] Both `align_up` methods exist in the codebase—one as an inherent implementation and another as a trait method—and the git diff confirms there are no actual changes to either implementation. The AST checker's mismatch is a false positive from incorrectly pairing the inherent version with the trait version.
+
+Now I need to run the spec drift checker and then verify cross-module regression and the build.
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name "pipeline_state.json" -not -path "*/target/*" 2>/dev/null | head; echo "
+
+[THINKING] I'm running spec_drift to check for specification drift, starting from the baseline SHA at the beginning of the cheating-elimination phase. I need to locate the phase start commit where the sys-virt-address proving ended, then examine the specs — the virt.spec.rs file appears empty, so the actual specifications are defined inline within virt.rs using the verus_spec annotation. Let me find the pipeline state to get the exact baseline.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json
+...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Spec drift: **PASS** (0 contract drift). Now cross-module regression and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | grep -iE "Crate|Exit code|cheating:|status:|error|Summ
+
+[THINKING] The spec drift check passed with no contract drift, which is good. Now I need to run the full cross-module regression with `make verify` across all crates and then build, checking that everything passes verification and compiles with zero errors and warnings. I'm aware that `make verify` includes the kernel verification which has 26 admits, so that's expected.
