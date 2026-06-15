@@ -587,3 +587,14 @@ Files restored to HEAD. Now let me run the full `make verify-kernel` to confirm 
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -iE "exit cod
 
 [THINKING] Now I'm running the module verification again to confirm the baseline is restored, then executing the full kernel verification across the entire crate to check for any regressions before writing up the report.
+[RESULT ✓] bash: process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name kernel --edition=2021 src/kernel/src/kmain.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin --emit=dep-info,metadata -C opt-level=3 -C embed...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+The restore is clean but verification still panics — likely a stale incremental-compilation artifact from my reproducer. Let me check the actual error and clean the incremental cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -iE "panicked
+
+[THINKING] The build still failed with a panic even after restoring the files to HEAD, and the cheating counts reverted to their original values, which suggests the issue isn't with the source code itself. I'm wondering if the incremental compilation cache got corrupted from my earlier failed attempt — the cache might be holding onto stale state from when the code was broken, causing the panic to persist even though the files are now clean.
+
+Let me think through this more carefully. The original baseline run was cached and passed, but when I made my edit it forced a recompilation and panicked. Now after restoring, it's recompiling again and still panicking, which is odd since the impl shouldn't be marked verified anymore. This really points to a stale incremental artifact. I should clean the cache and rebuild from scratch to see if that resolves it, and then check whether the panic is actually the same one or something different.
