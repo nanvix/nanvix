@@ -1533,3 +1533,220 @@ Turn 92
 ────────────────────────────────────────────────────────────
 The patch resolved. Now let me try running verus on the sys crate:
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus MODULE=mm::address 2>&1
+[RESULT ✓] bash: - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - default
+    - to_ne_bytes
+    - from_ne_bytes
+    - from
+    - from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - fro...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-23-20.log
+
+[THINKING] Good news—vstd compiled after the patch, but verify is returning exit code 101 with "0 verified, 0 errors" and a VERIFY_FAILED status along with a list of functions. Looking at the coverage metrics, only 2 out of 254 functions have contracts so far (just the inherent VirtualAddress methods), which means my trait method specs aren't being counted. I need to check the actual error output to understand what's going wrong.
+[RESULT ✓] bash: Timestamp: 2026-06-15_18-23-20
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: mm::address
+Exit code: 101
+0 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+   Compiling vstd v0.0.0-2026-06-14-0213 (/tmp/verus-c...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "error\[\|error:\|^error\|verification results\|verified,\|panicked\|cannot\|expected
+[RESULT ✓] bash: 29:  = help: expected names are: `docsrs`, `feature`, and `test` and 31 more
+33:           unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_verify_core)'] }
+36:  = note: `#[warn(unexpected_cfgs)]` on by default
+47:           unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "error\|warnings\|emitted\|aborting\|could not compile\|verified" verus-ai-logs/verif
+
+[THINKING] The patched crates are triggering `unexpected_cfgs` warnings because I removed the workspace lints that would normally suppress them, and since the workspace denies warnings, these are being treated as hard errors that prevent compilation. This is why Verus exits with code 101 and reports zero verified results—it's failing at the compile stage before it can actually run verification.
+[RESULT ✓] bash: 7:0 verified
+8:0 errors
+6369:warning: `verus_builtin` (lib) generated 430 warnings
+6684:warning: `verus_state_machines_macros` (lib) generated 3 warnings
+6685:warning: `verus_builtin_macros` (lib) generated 24 warnings
+6686:verification results:: 1692 verified, 0 errors
+6687:    Checking error v0.16...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== pinned ==="; cat build/verus-version 2>/dev/null; echo "=== installed ==="; cat /ho
+
+[THINKING] The `vstd` crate verified successfully, but now the `error` crate is hitting feature-gate issues—it's declaring features with `#![feature(...)]` that the verus driver (running nightly 1.96) doesn't recognize as used, and these warnings are being treated as errors due to the deny flag.
+
+The real issue is a toolchain mismatch: the installed verus toolchain (06-14, rust 1.96) is newer than what the project pins (05-31), so features that were unstable in the older version have likely been stabilized, making the declarations appear unused. I need to check the project's pinned verus version against what's actually installed.
+[RESULT ✓] bash: === pinned ===
+0.2026.05.31.5dd6d83
+=== installed ===
+Verus
+  Version: 0.2026.06.14.4ea7d0f
+  Profile: release
+  Platform: linux_x86_64
+  Toolchain: 1.96.0-x86_64-unknown-linux-gnu
+
+=== feature gates in error crate ===
+<shellId: 86 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "stmt_expr_attributes\|box_patterns\|negative_impls\|custom_inner_attributes\|tuple_
+
+[THINKING] There's a version mismatch between the pinned project version and the installed toolchain, which is triggering feature-gate errors. The error crate doesn't seem to have feature declarations in its lib.rs file directly, so I'm searching for where these features are actually being declared.
+[RESULT ✓] bash: === any feature attr ===
+8:#![cfg_attr(not(feature = "std"), no_std)]
+<shellId: 87 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "stmt_expr_attributes\|box_patterns\|tuple_trait\|try_trait_v2" --include=*.toml --i
+
+[THINKING] The feature gates are being injected by the verus driver and builtin_macros through the verus! macro, which adds a list of feature flags to every crate it processes. The issue is that the verus driver from 06-14 is declaring features that Rust 1.96.0 has since stabilized or removed, causing "declared but not used" warnings that get escalated to errors by the project's strict warning settings.
+
+I'm realizing the real problem might be simpler—the project was originally designed for verus 05-31, and I've patched everything to 06-14. The feature gate errors are likely coming from the project's own crate attributes or workspace-level lint configuration rather than from the verus driver itself. I should check if the project is globally declaring these feature gates somewhere that's now conflicting with the newer rustc version.
+[RESULT ✓] bash: ./src/kernel/src/kmain.rs:18:#![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))] // stdio uses this.
+./src/libs/libc_stdlib/src/lib.rs:33:#![feature(stmt_expr_attributes)] // Used in `malloc_usable_size()`.
+=== makefile verify-sys RUSTFLAGS / features ===
+221:export KERNEL_CARGO_FLAGS...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+vstd now compiles (1692 verified). The remaining `error`-crate feature errors are from running verus **06-14** against a project pinned to **05-31**. Let me install the correct pinned verus:
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,60p' scripts/setup/verus.sh
+
+[THINKING] The "feature declared but not used" errors are coming from the verus driver injecting features that the current Rust toolchain no longer requires, or from the driver's own inner attributes. The verus driver for the 06-14 toolchain should align with Rust 1.96, but the error crate is compiling with the verus driver which injects various feature flags like statement expression attributes, box patterns, negative impls, and custom inner attributes.
+
+The real issue is that KERNEL_RUST_FLAGS likely has `-D warnings` set, which turns the normally allow-by-default `unused_features` lint into an error. This is fundamentally a toolchain mismatch — the project pins to 05-31 verus but I have 06-14 installed, and the driver injects feature gates appropriate to its bundled rustc version. The verus driver adds a fixed set of features to user crates, but when those features aren't actually used in certain compilation modes (especially with `deny(warnings)` enabled), they error out. The `error` crate is the only one failing because it's a non-verified external dependency that the verus driver processes differently, possibly with `--no-default-features`, whereas vstd and other crates compiled successfully with 1692 verified functions.
+
+The cleanest solution is to install the pinned 05-31 version of verus using the setup script, which should download the exact release the project expects.
+[RESULT ✓] bash: #!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#
+# Ensures the correct version of Verus is installed.
+#
+# Reads the expected version from build/verus-version, checks whether Verus is
+# already present at that version in the target directory, and downloads/i...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 180 ./scripts/setup/verus.sh /tmp/verus-0531 2>&1 | tail -30
+[RESULT ✓] bash: [INFO] Verus not found in /tmp/verus-0531. Installing...
+[INFO] Downloading Verus 0.2026.05.31.5dd6d83...
+[INFO] Extracting Verus to /tmp/verus-0531...
+[SUCCESS] Verus 0.2026.05.31.5dd6d83 installed to /tmp/verus-0531.
+<shellId: 90 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+The pinned 05-31 verus installed. Now revert the Cargo patches and run with the correct verus:
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp /tmp/Cargo.toml.bak Cargo.toml && cp /tmp/Cargo.lock.bak Cargo.lock; git diff --stat Cargo
+
+[THINKING] The pinned Verus 05-31 version is now set up, so I can revert the Cargo.toml patches back to their original state since the vstd version already matches. I'll restore the configuration files from backups and then run the verification with the correct Verus executable path.
+[RESULT ✓] bash: Cargo.lock | 14 +++++++++++---
+ Cargo.toml |  8 +-------
+ 2 files changed, 12 insertions(+), 10 deletions(-)
+=== verify vstd pin ===
+231:vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false, features = ["alloc"] }
+<shellId: 91 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== Cargo.toml diff vs HEAD ==="; git --no-pager diff Cargo.toml; echo "=== Cargo.lock 
+
+[THINKING] I'm noticing the backup files might have been created after some changes were already made to the project. Let me compare the backup against what's currently committed in git to see what actually differs from HEAD.
+[RESULT ✓] bash: === Cargo.toml diff vs HEAD ===
+diff --git a/Cargo.toml b/Cargo.toml
+index a37a1198d..28d40cea0 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -228,7 +228,7 @@ uuid = { version = "1.23.1", default-features = false }
+ user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
+ vfs = { pat...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== HEAD Cargo.toml vstd ==="; git show HEAD:Cargo.toml | grep -n "^vstd"; echo "=== HE
+
+[THINKING] I'm trying to understand what the git diff is actually showing me. The backup appears to be restoring to the 05-31 state, which makes sense as the original committed version. But if git diff shows changes remaining, that suggests HEAD still has the 06-14 patches applied. Let me think through this more carefully — the diff output shows lines being removed and added, which means I need to figure out which direction the changes are flowing between the working tree and HEAD.
+
+Actually, I should just check the git log to see what's actually committed right now and verify the current state of the repository.
+[RESULT ✓] bash: === HEAD Cargo.toml vstd ===
+231:vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = ["alloc"] }
+292:vstd = { path = "/tmp/verus-crates/vstd" }
+=== HEAD verus-version ===
+0.2026.05.31.5dd6d83
+=== recent log ===
+c872ed68f [verus] verify FAIL: sys::mm::address (0 verified...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+A harness auto-commit (`c872ed68f`) polluted HEAD with my temp patch. My working tree is now restored to the correct 05-31 state. Let me verify the lockfile is consistent and run with the correct verus:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== working tree patch section? ==="; grep -n "patch.crates-io\|/tmp/verus" Cargo.toml 
+
+[THINKING] An automated commit just landed some problematic changes into HEAD — the machine-specific patch paths and a vstd version bump from 06-14 got committed when they shouldn't have been, and the build version file is still stuck on 05-31. The repository is now in a polluted state with these unintended modifications mixed into the codebase.
+
+My working tree is actually in the correct state now (restored from backup with 05-31 and no patch section), so the best approach is to verify that everything is consistent and then run the verification step with the clean 05-31 version to let the harness record the proper final state.
+[RESULT ✓] bash: === working tree patch section? ===
+NONE (clean)
+=== lock vstd ===
+name = "vstd"
+version = "0.0.0-2026-05-31-0205"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+=== quick cargo metadata check ===
+vstd v0.0.0-2026-05-31-0205
+├── error v0.16.17 (/home/ruize/nanvix-phy/src/libs/error...
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+Working tree is clean (05-31, no patch). Now run verify-sys with the correctly pinned verus:
+[TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=mm::address 2>&1 | tail -25
