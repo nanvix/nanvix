@@ -701,3 +701,190 @@ With `external_body` and no spec, `init`'s ensures clause becomes trivially true
 Turn 39
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "verification:
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors (partial verification with `--verify-*`)
+  Global: assume=0 external_body=11 admit=27 trusted=0 cfg_gate=13
+  verification: 47 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=11 admit=27 trusted=0 no_decreases=0 cfg_gate=13
+  status: CHEATI...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+47 verified, 0 errors — admits are the only issue now. Let me see the admit breakdown.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "admit" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>
+
+[THINKING] The code compiles now with 47 verified checks but the proof checker is flagging cheating because of `admit()` calls scattered throughout the Inner methods and wrapper functions in the proof modules. I'm going through frame.rs to identify which admits fall within my scope—there are eight in the Inner methods themselves (alloc, alloc_contiguous, free, share, refcount, book, is_covered, alloc_range) plus additional ones in the free wrappers.
+
+Let me trace through the exact breakdown to understand where all 27 admits are coming from, then start tackling the simplest one first—Inner::is_covered seems like a good candidate to prove properly.
+[RESULT ✓] bash: 1:    - mm/phys/frame.rs:136 alloc: admit
+2:    - mm/phys/frame.rs:213 alloc_contiguous: admit
+3:    - mm/phys/frame.rs:298 free: admit
+4:    - mm/phys/frame.rs:379 share: admit
+5:    - mm/phys/frame.rs:442 refcount: admit
+6:    - mm/phys/frame.rs:497 book: admit
+7:    - mm/phys/frame.rs:535 is_cove...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Let me find the PageAligned specs (into_frame_number, inv, view) and FrameNumber::into_raw_value.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; find src -path "*page_aligned*" -o -name "*.rs" | xargs grep -ln "struct Page
+
+[THINKING] I'm looking at the 14 admits scattered through frame.rs—8 of them are in the Inner methods that I need to prove, and 6 are the free wrapper functions at the boundary. I'll tackle the Inner methods first, starting with the simplest ones and removing admits iteratively as I verify each piece. Let me begin with `Inner::is_covered` and work through the logic.
+
+The method checks if a physical address falls within the bitmap by converting it to a frame number and comparing against the bitmap size. The postcondition states the result should be true if and only if the address exists in either the allocated or free frames set. I need to trace how the physical address converts to a frame number—`into_frame_number` gives me the frame index, then `into_raw_value` extracts it as a usize. So the frame number equals the physical address divided by the page size. The postcondition then requires me to show this frame index is set in the bitmap if and only if the address belongs to either the allocated or free frames collection.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+===
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "into_frame_number\|fn inv\|fn view\|into_raw_value\|verus_spec\|requ
+[RESULT ✓] bash: 42:    #[verus_spec(ret =>
+43:        ensures
+64:    fn into_raw_value(self) -> usize {
+65:        self.0.into_raw_value()
+202:        PageAligned::from_address(PhysicalAddress::from_raw_value(self.into_raw_value())?)
+224:    closed spec fn view(&self) -> int
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "fn into_frame_number" src/kernel/src/hal/ ; echo "===page.rs 30-70=
+
+[THINKING] `PageAligned<T>` uses `Deref` to delegate method calls to the underlying type, so when I call `.into_frame_number()` on a `PageAligned<PhysicalAddress>`, it's actually calling the method on `PhysicalAddress` itself. The kernel's frame specification confirms this with an assume_specification for the deref operation.
+
+But there's a problem: `into_frame_number` takes `self` by value, which means it consumes the value. Deref only gives me a reference (`&Target`), so I can't move out of it. I need to check how the actual code handles this — maybe there's an `into_frame_number` method defined on `PageAligned` itself, or the body resolves it differently. Let me search the hal codebase for how `into_frame_number` is actually being used.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:146:    pub fn into_frame_number(self) -> FrameNumber {
+src/kernel/src/hal/mem/types/address/phys.rs:165:    pub fn into_frame_number(self) -> FrameNumber {
+===page.rs 30-70===
+
+//==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] I'm working through how `PageAligned<PhysicalAddress>::into_frame_number` would work—since `PageAligned` implements `Deref` with `PhysicalAddress` as the target, calling `into_frame_number()` on a `PageAligned` instance should deref to the underlying `PhysicalAddress` and invoke its method.
+
+The key issue is that `into_frame_number` takes `self` by value, which normally wouldn't work through a deref coercion, but if `PhysicalAddress` is `Copy`, then dereferencing creates a copy that can be moved. The spec requires `PhysicalAddress::inv()` to hold—which means `spec_frame_number(self@) <= spec_max_frame_number()`—so I need to verify that `PageAligned<PhysicalAddress>::inv` actually guarantees this for the dereferenced value.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. 
+5. // Success condition for the validating constructor, stated purely on the abstract
+6. // address value. `from_address` validates, it does NOT normalize: success requires the
+7. // *input* to already be page-aligned.
+8. pub open spec fn s...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+The `into_frame_number` precondition needs the frame-number bound. Let me check PhysicalAddress::into_frame_number's actual spec.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm working through the invariant requirements for converting a physical address to a frame number. The PageAligned type requires that addresses be aligned to the page size, which means the physical address modulo page size equals zero. When converting to a frame number, there's an additional constraint that the frame number must not exceed the maximum allowed value, which translates to the physical address divided by page size being within bounds.
+
+The issue is that the alignment invariant alone doesn't guarantee the frame number bound — a huge physical address could be page-aligned but still overflow the frame number range. With `admit()` in the original code, the precondition was vacuously satisfied since the entire proof context became false. Now I need to figure out where this frame number bound actually comes from, whether it's hidden in some other invariant or if there's a genuine gap in the verification.
+[RESULT ✓] view: 100.     ///
+101.     /// # Return Values
+102.     ///
+103.     /// Upon success, a physical address associated with the given memory-mapped I/O address is
+104.     /// returned. Upon failure, an error is returned instead.
+105.     ///
+106.     /// # Safety
+107.     ///
+108.     /// Behavior is unde...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Let me check `FrameNumber::spec_max()` to understand the frame-number bound.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "spec_max\|spec fn spec_max\|fn from_raw_value\|fn into_raw_value\|M
+
+[THINKING] The issue is that `PhysicalAddress::into_frame_number` needs a precondition that the frame number stays within bounds, but `is_covered` only guarantees page alignment, not the actual frame number bound. Removing `admit()` from `Inner::is_covered` would break the proof chain since that bound wouldn't be derivable from the page alignment alone.
+
+Let me reconsider what's actually happening here. When `phys_addr.into_frame_number()` is called, it needs `spec_frame_number((*phys_addr)@) <= spec_max_frame_number()`. The question is whether this is provable from what we know about `phys_addr`. If `spec_max_frame_number()` is defined as something like `usize::MAX / PAGE_SIZE`, and `phys_addr@` is bounded by `usize::MAX` (since it's backed by a usize), then dividing by page size should keep us within bounds. But I need to verify whether the spec actually captures that `phys_addr@` is bounded by `usize::MAX` without relying on an explicit invariant.
+[RESULT ✓] bash: ===find FrameNumber def===
+src/libs/arch/src/x86/mem/paging/frame/number.rs
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // View
+5. //==================================================================================================
+6. 
+7. impl View for FrameNumber {
+8.     type V = int;
+9. 
+10.  ...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "type_invariant\|fn view\|closed spec\|MAX_ADDRESS\|fn inv" src/kerne
+
+[THINKING] The `into_frame_number` conversion requires the physical address to be at most `MAX_ADDRESS / FRAME_SIZE - 1`, but when `is_covered` receives an arbitrary page-aligned physical address with no upper bound constraint, there's no way to satisfy this precondition in the general case.
+
+This seems like a spec problem — the requires clause for `phys_addr.inv()` is too weak — but I can't strengthen it because adding a precondition would restrict callers, which counts as weakening per the task definition. The top-level spec is fixed and can't be modified. So I'm stuck trying to prove the precondition from what I have: either `PhysicalAddress`'s view is implicitly bounded somehow, or `MAX_ADDRESS` has a specific relationship to `usize::MAX` that makes this work. Maybe there's a different `into_frame_number` implementation for `FrameAddress` that has a weaker precondition, or maybe I need to reconsider whether the postcondition actually holds. Let me trace through the logic: if `is_covered` returns true, then `frame_number < num_bits`, which means `phys_addr@/PS < num_bits`. Since `phys_addr` is page-aligned, I can express it as `frame_number * PS`, so there exists an index `i = frame_number` in the valid range where `phys_addr@` aligns with that frame. Now I need to check whether the postcondition about `covers` is actually satisfied given what the bitmap contains.
+
+If `is_covered` returns false, then `frame_number >= num_bits`, which should contradict the `covers` predicate because any valid frame index must be less than `num_bits`. The key issue is that the proof requires `frame_number == spec_frame_number(phys_addr@)`, which depends on the precondition of `into_frame_number` being satisfied—specifically that `spec_frame_number(phys_addr@) <= spec_max_frame_number()`. Without this, I can't even call `into_frame_number`. Maybe `PhysicalAddress` has a type invariant that bounds its value.
+
+Looking at the spec, `inv()` is defined but not marked as a type invariant, so there's no automatic bound. This means either the `is_covered` spec is missing a precondition (but it's marked do-not-modify), or there's another way to establish the bound. The `admit()` might be there precisely because this bound isn't provided, but the task requires removing it without weakening the spec. Let me check whether `PageAligned<PhysicalAddress>` has its own `into_frame_number` method or if it relies on the underlying `PhysicalAddress` implementation—which would require the invariant. Alternatively, maybe the bound follows from how `MAX_ADDRESS` relates to `FRAME_SIZE` and the address space itself.
+[RESULT ✓] bash: 146:        // `use_type_invariant` on `arch`'s `FrameNumber` is unsupported ("missing type invariant
+307:    closed spec fn view(&self) -> int
+===MAX_ADDRESS and FRAME_SIZE in arch===
+src/libs/arch/src/x86/mem/constants.rs:50:pub const PAGE_SIZE: usize = 4096;
+src/libs/arch/src/x86/mem/constants.rs...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+MAX_ADDRESS is usize::MAX. Let me empirically test by removing the admit from `Inner::is_covered` to see the exact proof obligation.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the math on frame number calculations with address space constraints. Since the maximum address is `usize::MAX`, the maximum frame number would be `usize::MAX / 4096 - 1`. For a physical address to produce a valid frame number, I need to ensure that dividing it by 4096 doesn't exceed this limit, which means the physical address itself must stay within `usize::MAX`.
+
+The problem is that even with `phys_addr <= usize::MAX`, addresses in the very top frame could still violate the precondition when divided by 4096 due to the boundary case. This suggests that the `Inner::is_covered` specification, which only requires alignment, isn't sufficient to guarantee the preconditions needed for `into_frame_number`. I'm realizing that proving these inner methods might actually require the address bound, which isn't currently in the precondition. Let me check whether `PageAligned` has its own `into_frame_number` implementation through a trait or blanket impl, or if it always routes through `PhysicalAddress`. Let me just remove the admit and run the verifier to see what the actual error is.
+[RESULT ✓] view: 535.     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+536.         proof! { admit(); }
+537.         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+538.         frame_number < self.bitmap.number_of_bits()
+539.     }
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "impl.*Deref.*PageAligned\|type Target\|Deref for PageAligned\|fn de
+
+[THINKING] I need to trace through the `into_frame_number()` method to see what it resolves to for `PageAligned`, checking its `Deref` implementation and the deref target to understand the method binding.
+[RESULT ✓] bash: 171:impl<T: Address> Deref for PageAligned<T> {
+172:    type Target = T;
+174:    fn deref(&self) -> &Self::Target {
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Let me empirically test. I'll remove the admit from `is_covered` and verify to see the exact obligation.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm tracing through the dereferencing and type conversion here—when `phys_addr` is dereferenced through `PageAligned`, it gives us a `PhysicalAddress`, and since that type implements `Copy`, calling `into_frame_number()` by value just copies the dereferenced value. The deref contract ensures the copied value matches the original address.
+
+Now I need to verify that the precondition `spec_frame_number(phys_addr@) <= spec_max_frame_number()` holds, but it's not in the requires clause. Rather than keep guessing, I should test empirically by removing the `admit` from `is_covered` and running verification to see what obligation actually arises. Before burning a long verification run though, let me think through whether this bound might already be derivable from the invariants—the internal invariant bounds frame addresses for covered frames, but `phys_addr` is arbitrary, so that doesn't help. I'll just remove the `admit` and test.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|fail|fr
