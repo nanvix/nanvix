@@ -290,3 +290,17 @@ Module: arch-paging-table
 [2026-06-15 13:57:46] Running final comprehensive review...
 [2026-06-15 13:57:46] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 14:11:24]   ↳ review done in 13m38s (exit=0)
+[2026-06-15 14:11:24] [FINAL REVIEW] Result: UNKNOWN (0/5)
+[2026-06-15 14:11:24] [CHEATING-GATE] 3 external_body site(s) honored from approved plan
+[2026-06-15 14:11:24] [FINAL REVIEW] Cheating report: limitation_assume: 1 (approved)
+[2026-06-15 14:11:24] [FINAL REVIEW] Done (13m38s)
+
+============================================================
+PIPELINE FINISHED: arch-paging-table (some phases need work)
+  ✅ proving                   dialogue-RESOLVED        11m03s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         6m57s (1 dialogue turns)
+  ❌ final-review              UNKNOWN                  13m38s
+  ──────────────────────────────────────────────────────────
+  Total: 49m22s
+============================================================
+[2026-06-15 14:11:24] [USAGE] Summary: 14 calls, 0 tokens, 1h51m02s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/usage_summary.json
