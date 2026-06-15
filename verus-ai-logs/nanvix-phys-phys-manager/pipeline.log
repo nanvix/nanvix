@@ -266,3 +266,10 @@ See turn_001_driver.md for full evidence.
 [2026-06-15 14:30:52] [CHEATING] ❌ Hard cheating detected (attempt 1), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/cheating_report_1.md
 [2026-06-15 14:30:52] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 14:47:05]   ↳ cheating-fix done in 16m12s (exit=0)
+[2026-06-15 14:47:05] [CHEATING-GATE] 3 external_body site(s) honored from approved plan
+[2026-06-15 14:47:05] [CHEATING-GATE] FAIL: 11 unapproved external_body site(s): frame.rs:1235 (fn instance), frame.rs:1327 (fn alloc), frame.rs:1355 (fn alloc_contiguous), frame.rs:1409 (fn free), frame.rs:1448 (fn book) ... (+6 more)
+[2026-06-15 14:47:05] [CHEATING] limitation_assume: 4 (approved), external_body: 11 (10 on user fns)
+[2026-06-15 14:47:05] [CHEATING] ✅ No admit/assume/trusted/proof-fn-external-body/multiline-limitation found
+[2026-06-15 14:47:05] ✅ cheating-elimination: PASS (0/0)
+[2026-06-15 14:47:05] [GATE] Running build: make build
+[2026-06-15 14:47:05] [GATE] Running verify: make verify
