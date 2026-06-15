@@ -186,3 +186,114 @@ Turn 2
 [THINKING] I need to verify the changes myself and check whether converting `spec_max_frame_number()` from an uninterpreted spec function to a concrete one with `usize::MAX as int / spec_page_size() - 1` is actually strengthening or weakening the spec. Let me run spec_drift to confirm this, and I also need to look into a potential issue with `from_mmio_address`.
 
 The postcondition ensures that if we get an Ok result, the returned value matches the input address and satisfies the invariant. Since `r.inv()` requires `spec_frame_number(self@) <= spec_max_frame_number()`, and we already have `r@ == addr@` with the precondition `spec_frame_number(addr@) <= spec_max_frame_number()`, the invariant is derivable. Now I'll run verify-kernel and spec_drift to validate everything.
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== admit/own-fn lines mentioning phys ==="; grep -in "phys" verus-ai-logs/verify-ker
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/src/hal
+
+[THINKING] I'm noticing the `admit` flag is now set to 0, but the status still shows CHEATING_DETECTED from the external body check. Let me verify that the physical module actually went through verification rather than using a stale cached version, and I need to confirm the verification log shows 4 verified entries for the phys module.
+[RESULT ✓] bash: === admit/own-fn lines mentioning phys ===
+=== external_body=25 are all external? grep phys.rs ===
+<shellId: 0 completed with exit code 1>
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 3
+- **Contract drift (⚠ review required): 2**
+  - Ensures removed: 0
+  - Requires added: 2
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each item below is a potential sp...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "FrameNumber\|FRAME_SHIFT\|FRAME_SIZE\b\|MAX_ADDRESS" src/ ext/ 2>/dev/null | grep
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -path ./target -prune -o -name "*.rs" -print 2>/dev/null | xargs grep -ln "struct Fr
+
+[THINKING] I'm checking that phys.rs has no admits or external_body, and spec_drift only shows additions with no removals. But there's a critical change to `spec_max_frame_number()` — it's been converted from an uninterpreted spec function to a concrete one that computes `usize::MAX as int / spec_page_size() - 1`, which is a substantial modification to a spec function in the view-design domain that I need to reconcile with what the documentation says about frame numbering.
+
+The real concern is whether this concrete interpretation is sound — does the arch crate's `FrameNumber::MAX` actually equal `usize::MAX / FRAME_SIZE - 1`? This is a load-bearing assumption now, and if it's wrong, the spec could be unsound or misaligned with the actual arch type. I also need to verify that the `into_raw_value` and `from_raw_value` specs that reference `spec_max_frame_number()` remain consistent with the real arch definition. Let me look up the arch crate's FrameNumber definition to validate this.
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/cpuid.rs:36:    pub const MAX_ADDRESSABLE_IDS_SHIFT: u32 = 16;
+src/libs/arch/src/x86/cpu/cpuid.rs:38:    pub const MAX_ADDRESSABLE_IDS_MASK: u32 = 0xFF << Self::MAX_ADDRESSABLE_IDS_SHIFT;
+src/libs/arch/src/x86/cpu/cpuid.rs:227:    ((ebx & EbxFeature::MAX_ADDRESSABLE_IDS_MAS...
+[RESULT ✓] bash: ./src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs
+./src/kernel/src/mm/phys/frame.rs
+./src/libs/arch/src/x86/cpu/eflags.rs
+./src/libs/arch/src/x86/mem/paging/frame/number.rs
+./src/libs/arch/src/x86/mem/paging/flags.rs
+./src/libs/arch/src/x86/mem/paging/pde.rs
+./src/libs/arch/src/x86/mem/paging/p...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "PAGE_SHIFT\|PAGE_SIZE" src/libs/arch/src/x86/mem/constants.rs | head; echo "=== nu
+
+[THINKING] I'm verifying the fixer's interpretation against the actual source code, checking how `FrameNumber::MAX` is calculated from the memory constants and frame size definitions.
+[RESULT ✓] bash: 38:/// Log2 PAGE_SIZE
+40:pub const PAGE_SHIFT: usize = 12;
+47:pub const PAGE_SIZE: usize = 4096;
+48:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+55:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+76:pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
+97:pub const FRAME_SHIFT: u...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -i "verified\|error" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_12-46-05.
+
+[THINKING] I'm verifying the fixer's core assumptions against the architecture source code—checking that frame number bounds, bit shift calculations, and frame size constants all align correctly with the underlying implementation.
+
+The `from_raw_value` function correctly returns `None` when the value exceeds the maximum, matching the assume_spec, and `into_raw_value` properly returns the raw value. The assume_specs accurately reflect the actual architecture behavior.
+
+I'm also reconsidering whether changing `spec_max_frame_number()` from uninterpreted to a concrete spec function violates the spec_drift rules—it doesn't, since this is a strengthening (making an uninterpreted constant explicit) grounded in real architecture, and it's necessary for the no-overflow proof. The view_design documentation already established what this constant should be, so making it explicit is consistent with the original intent.
+
+Now I'm walking through the full checklist to confirm all three exec target functions are covered and the build passes, then double-checking whether the alignment and invariant properties in `from_number` are subsumed by the primary spec constraint or if they add independent value. I'm convinced the alignment and invariant ensures are genuinely needed for the caller—they're not trivially derivable and directly enable downstream proofs, so they shouldn't be flagged as subsumed. Now I need to verify the build actually compiles and confirm that the three target functions have proper contracts in the verified set.
+[RESULT ✓] bash: === module-scoped fresh run to confirm not stale-cached ===
+<shellId: 5 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -c "phys" verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt; echo "--- ph
+
+[THINKING] The coverage-unverified.txt file no longer contains those specific fields for phys, so I need to verify they're actually gone and not just cached—I'll run a fresh module-scoped verify to get the current state.
+[RESULT ✓] bash: 9
+--- phys lines in unverified ---
+exit:1
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep "phys" verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+[RESULT ✓] bash: physical_address
+  physical_address
+  into_physical_address
+  into_physical_address
+  virt_to_phys
+  is_valid_physical_address
+  is_valid_physical_region
+  max_physical_address
+  is_physical_region
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/hal/mem/types/address/phys.rs && make verify-kernel MODULE=hal::mem::t
+
+[THINKING] The "phys" matches are unrelated functions from other modules, so our three target functions aren't showing up in the unverified list—that's good confirmation they're already verified with contracts. I should run a fresh module verification to rule out any stale caching and get an accurate count of verified functions.
