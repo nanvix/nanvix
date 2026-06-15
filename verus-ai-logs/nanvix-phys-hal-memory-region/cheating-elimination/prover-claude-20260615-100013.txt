@@ -179,3 +179,57 @@ Module `hal::mem::types::region` is already CLEAN: assume=0, admit=0, external_b
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/region.rs src/kernel/src/hal/mem/types/region.spec
 
 [THINKING] The module checks out as clean with no cheating detected—the four functions in scope already have contracts that verify correctly. I'm confirming the verification actually passed with exit status CLEAN, though the external counts for external_body and admit are tracked globally elsewhere, not within this module itself. The other modules with cheating issues are listed in tcb-allowed.md and out of scope, so I just need to verify that the hal-memory-region module itself is actually clean. Let me force a fresh verification run to confirm the proofs hold rather than relying on the cached result.
+[RESULT ✓] bash: - cache_policy
+    - set_cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - new
+    - new_mmio
+    - from_memory_region
+    - name
+    - typ
+    - perm
+    - cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - fmt
+    - from_virtual_memory_region
+
+=== Summary ===
+  verification: 5 verified,...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+5 verified, 0 errors. The module proofs hold. Let me confirm none of the global cheating items are in scope (region files), then verify the full crate hasn't regressed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== region-related cheating items? ==="; grep -i "region" verus-ai-logs/verify-
+
+[THINKING] All 5 functions in the module check out with their contracts verified and no issues found. Now I need to cross-reference the cheating-detail.txt file to make sure none of the external bodies or admitted items overlap with this region module.
+[RESULT ✓] bash: === region-related cheating items? ===
+    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+=== sample of detail ===
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/p...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All cheating items are in other modules (mm/phys, mm/virt) — none in `hal/mem/types/region`. Now let me check AST consistency against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== region.rs diff vs verus-ai-prove ==="; git diff verus-ai-prove -- src/kerne
+
+[THINKING] All the cheating code is isolated in the physical and virtual memory modules, while the region module is completely clean with all four target functions verified. Now I'm checking whether the AST has changed by comparing against the base branch to confirm there are no execution code modifications.
+[RESULT ✓] bash: === region.rs diff vs verus-ai-prove ===
+=== spec diff ===
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Zero diff against base — the module files are unchanged and already verify cleanly with all 4 target functions proven and zero cheating in scope. This means AST consistency is trivially preserved. Let me run a full kernel verify to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel 2>&1 | tail -15
+
+[THINKING] The module is already in a clean state with no differences from the base branch and zero verification issues, so there's nothing to eliminate. I should run the full crate verification to make sure there are no regressions.
