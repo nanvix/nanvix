@@ -892,3 +892,55 @@ DEFAULT DIR OK
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-sys 2>&1 | tail -60; echo "VERIFY_EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] rg: VirtualAddress as Address>::into_raw_value|assume_specification
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs:15:// the existing `sys`/`arch` `assume_specification` boundaries the codebase
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs:36:// `assume_specification`s below. Its internals are not modeled (`extern...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysicalAddress — Specifications
+5. //
+6. // A `PhysicalAddress` abstracts to a single mathematical integer: the raw
+7. // physical address (`PhysicalAddress@ : int`, defined by the `View` impl in
+8. // `ph...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification PASS (exit 0, CLEAN, no cheating, 2 functions with contracts = `new` + inherent `from_raw_value`). Now `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1500 make build 2>&1 | tail -40; echo "BUILD_EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+BUILD_EXIT=0
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`make build` has no recipe. Let me find the actual build target (the project uses `./z`).
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | grep -iE "all|build|kernel|compile" | head; echo "--
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running build verification
+[TOOL] bash: cd /home/ruize/nanvix-phy
+run() { echo "--- $1 ---"; shift; "$@"; code=$?; echo "[exit:$code]"; }
+run "make verify-sys" 
+[RESULT ✓] report_intent: Intent logged
