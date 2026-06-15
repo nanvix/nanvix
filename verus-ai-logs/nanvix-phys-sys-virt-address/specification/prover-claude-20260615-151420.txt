@@ -1583,3 +1583,17 @@ sys is CLEAN (6 verified, 0 errors). Now let me run the full `make verify` to ch
 [THINKING] The verification passed cleanly with 6 verified items and no errors, and I've got 2 functions with contracts now. I'm running the full verification suite across all the crates to make sure nothing regressed, then I need to check whether that kernel CHEATING_DETECTED status was already there in the baseline.
 
 Looking at the git history, the kernel had those external_body counts (25 of them) before my changes, and my edits to phys.spec.rs only removed an assume_specification and updated comments—nothing that would affect the cheating metrics. So this is the kernel's normal baseline, not something I introduced. Let me run the full make verify and see how it goes.
+[RESULT ✓] bash: Checking raw-array v0.16.17 (/home/ruize/nanvix-phy/src/libs/raw-array)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy/src/libs/bitmap)
+verification results:: 70 verified, 0 errors
+  verification: 70 verified, 0 errors (exit 0)
+  status: CHEATING_DET...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+All crates verify with 0 errors (bitmap 70, slab 35, sys 6, kernel 43). The CHEATING_DETECTED statuses are pre-existing TCB external_body items, not regressions. Let me confirm the overall exit code and that `make build` (dual compilation) still works.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify >/tmp/verify_full.log 2>&1; echo "make verify exit: $?"; echo "=== errors? ==="; 
+
+[THINKING] All the crates are verifying cleanly with zero errors across the board, and the CHEATING_DETECTED statuses I'm seeing are pre-existing baseline issues from external_body TCB items, not regressions introduced by my changes.
