@@ -1,0 +1,437 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T15:14:20.083749
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/sys/src/sys/mm/address/virt.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`VirtualAddress::into_raw_value`, `VirtualAddress::from_raw_value`, `VirtualAddress::new`, `VirtualAddress`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md
+Source file: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+Spec file:  /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs
+Verus command: make verify-sys
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-sys` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and context files to understand the methodology and requirements.
+[TOOL] skill: spec-design
+[TOOL] report_intent: Reading skills and context
+
+[THINKING] I'm going to start by reading through the skills and context files to understand what I'm working with.
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The Verus skills aren't in the skill system. Let me find them in the filesystem.
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai -maxdepth 3 -iname "*.md" | grep -iE "skill|spec-design|verus-constraints|verific
+[TOOL] bash: ls -la /home/ruize/verus-ai-exp/verus-ai/ ; echo "---scripts---"; ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | head -
+
+[THINKING] I need to look for the skill files in the scripts/verus-ai directory since they're being referenced differently than expected.
+[RESULT ✓] bash: total 388
+drwxrwxr-x 1 ruize ruize    624 Jun 13 22:36 .
+drwxrwxr-x 1 ruize ruize    744 Jun  4 02:23 ..
+drwxrwxr-x 1 ruize ruize    114 Apr  8 20:48 .argusbot
+drwxrwxr-x 1 ruize ruize     26 Apr  4 04:26 .copilot
+drwxrwxr-x 1 ruize ruize    260 Jun 15 14:01 .git
+drwxrwxr-x 1 ruize ruize     58 Apr ...
+[RESULT ✓] bash: 
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai; grep -rl "Exec Binding Rules\|spec-design\|verus-constraints" --include="*.md" . 2
+
+[THINKING] I need to track down where these skills are defined—they could be in the verus-ai repository's GitHub configuration, documentation, or in the prompts file itself. Let me search more systematically across those locations.
+[RESULT ✓] bash: ./docs/skills/ast-consistency/SKILL.md
+./docs/skills/bug-reporting/SKILL.md
+./docs/skills/proving-guide/SKILL.md
+./docs/skills/review-methodology/SKILL.md
+./docs/skills/spec-design/SKILL.md
+./docs/skills/verus-constraints/SKILL.md
+./target-systems/nanvix/verus-ai-logs/kernel-src-mm-kheap/exec-fideli...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; ls; echo "======"; for d in spec-design verus-constraints bug-reportin
+[RESULT ✓] bash: Output too large to read at once (39.8 KB). Saved to: /tmp/copilot-tool-output-1781507685827-tz3wse.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507685827-tz3wse.txt
+[RESULT ✓] view: File too large to read at once (39.8 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507685827-tz3wse.txt
+[RESULT ✓] view: 1. ast-consistency
+2. body-removal
+3. bug-reporting
+4. caller-analysis
+5. crate-analysis
+6. proof-extraction
+7. proof-minimization
+8. property-analysis
+9. proving-guide
+10. review-methodology
+11. spec-design
+12. spec-drift-check
+13. tcb-plan
+14. verification-order
+15. verus-constraints
+16. verus-set...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507685827-tz3wse.txt
+[RESULT ✓] view: 280.    - Error postconditions (ensures, Err case): state preservation, failure condition in abstract terms
+281. 
+282. 2. **Safety** — What must never happen?
+283.    - Bounds, disjointness, uniqueness, conservation, injectivity, ordering, monotonicity
+284. 
+285. 3. **Liveness** — What good things m...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507685827-tz3wse.txt
+[RESULT ✓] view: 520. ```
+521. 
+522. **`verus! { }` blocks** are still used for:
+523. - `spec fn` and `proof fn` definitions (in `.spec.rs` and `.proof.rs`)
+524. - Type-level specs (`broadcast`, `impl View`, etc.)
+525. 
+526. Key benefit: exec function signatures stay unmodified — the original `fn`
+527. signature is ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me read the remaining skills and the project context files in parallel.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; for d in verification-order spec-completeness view-design verus-syntax
+
+[THINKING] I need to go through the remaining skills and check the task context files to understand what I'm working with.
+[RESULT ✓] bash: ##### verification-order #####
+---
+name: verification-order
+description: "Determine function-level verification order within a module using the verification plan. Use at the start of proving to know which function to verify first and how to sequence work."
+---
+
+# Verification Order
+
+## Purpose
+
+When...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now let me read the task-specific context: caller analysis, view design, source file, and existing spec/proof files.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===== caller_analysis ====="; cat verus-ai-logs/nanvix-phys-sys-virt-address/caller_ana
+
+[THINKING] I'm reviewing the task-specific context files including the caller analysis, view design, source file, and specification documents to understand the verification requirements and allowed components.
+[RESULT ✓] bash: Output too large to read at once (21.8 KB). Saved to: /tmp/copilot-tool-output-1781507711513-azsbeh.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507711513-azsbeh.txt
+[RESULT ✓] view: File too large to read at once (21.8 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507711513-azsbeh.txt
+[RESULT ✓] view: 1. ===== caller_analysis =====
+2. # Caller Analysis: `mm::address::virt` (`VirtualAddress`)
+3. 
+4. ## Script Output
+5. 
+6. See raw LSP caller-finding output: `/tmp/virt_callers.txt`
+7. (generated by `find_callers_lsp.py` against `src/libs/sys/src/sys/mm/address/virt.rs`,
+8. project dir `/home/ruize/...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781507711513-azsbeh.txt
+[RESULT ✓] view: 230.     // `open`: callers performing address arithmetic and round-trips need to see
+231.     // that `self@` is a representable usize (so e.g. `into_raw_value` can return
+232.     // it, and reconstructions stay in range). The fact must be unfoldable in
+233.     // their proofs, not hidden.
+234.  ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me read the source file and existing spec/proof files.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I need to examine the source file and review the existing specification and proof files, then look over the verification plan and what's allowed in the TCB.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now let me look at the existing spec/proof files and a sibling already-verified module (phys) to follow established patterns.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/; echo "===== virt.spec.rs ====="; cat virt.spec.rs; echo "===
+
+[THINKING] I should examine the existing spec and proof files, then look at how a similar verified module like phys.rs is structured to understand the pattern I need to follow.
+[RESULT ✓] bash: ===== virt.spec.rs =====
+verus! { } // verus!
+===== virt.proof.rs =====
+verus! { } // verus!
+===== ls =====
+total 20
+drwxrwxr-x 1 ruize ruize   76 Jun 15 15:09 .
+drwxrwxr-x 1 ruize ruize   82 Jun 15 00:16 ..
+-rw-rw-r-- 1 ruize ruize 3282 Jun 15 14:07 mod.rs
+-rw-rw-r-- 1 ruize ruize   21 Jun 15 15:09...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me check sibling modules for established patterns (especially phys address and the Address trait).
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls src/libs/sys/src/sys/mm/address/; echo "=== find non-trivial spec.rs in sys ==="; for f in
+
+[THINKING] I'm checking if there's an existing verified sibling module in the same directory to use as a reference pattern, and looking for any .spec.rs files with actual content to understand the structure.
+[RESULT ✓] bash: mod.rs
+virt.proof.rs
+virt.rs
+virt.spec.rs
+=== find non-trivial spec.rs in sys ===
+0  src/libs/sys/src/sys/mm/address/virt.spec.rs
+=== mod.rs (Address trait) ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==========================================================...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Let me check the verus-syntax GUIDE for trait method spec patterns, and check the TCB allowed list and verification plan.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax; sed -n '1,400p' GUIDE.md 2>/dev/null | grep -niA 40 "trai
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== tcb-allowed ==="; cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -60; echo "==
+
+[THINKING] I'm starting to verify the `Address` trait which is marked for verification, and I notice the trait methods don't have any specifications attached. The tricky part is figuring out how to attach specs to trait method implementations—I need to consider which methods are in scope, like the trait's `into_raw_value`, the inherent `from_raw_value`, `new`, and the type itself.
+
+The challenge is that if I add specs to the trait declaration in mod.rs, it affects all implementors of that trait, which could be problematic if other types like `PhysicalAddress` exist elsewhere. In Verus, trait method specs go on the trait declaration, and implementations must satisfy that contract, but I can't add extra ensures beyond what the trait declares. Since `into_raw_value` returns `usize` and I want to specify `ensures result as int == self@`, I'd need the trait to support `View` generically, which it doesn't currently require.
+
+The cleaner approach is to add the spec directly on the impl method for `VirtualAddress` rather than modifying the trait declaration. In Verus, when calling through a concrete type like `VirtualAddress`, the impl-level spec is visible to callers via static dispatch, so this should work. However, Verus traditionally requires impl methods to match the trait's spec exactly, though there's been work on supporting specialized trait impl specs.
+
+Let me check the project's guide and examples to see how trait method specs are typically handled here, and review what the view design actually expects for these contracts.
+[RESULT ✓] bash: 153:- Not supported on trait implementations (error: "method `spec_f` is not
+154:  a member of trait")
+155-
+156----
+157-
+158:## Trait Function Specs
+159-
+160-```rust
+161:trait MyTrait {
+162-    #[verus_spec(r =>
+163-        requires
+164-            0 <= i < 10,
+165-            0 <= j < 10,
+166-     ...
+[RESULT ✓] bash: === tcb-allowed ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verification
+
+[THINKING] The trait-level spec for `into_raw_value` would need `Self: View<V=int>` as a bound, but that constraint would ripple through to all implementors of the `Address` trait, which isn't ideal since not every implementation necessarily satisfies that view requirement.
+
+I should check whether Verus allows adding `ensures` clauses on trait impl methods beyond what the trait declares—the documentation mentioned limitations on adding new spec functions to trait implementations, but that's different from extending the contract of an existing method. Let me look at the verification plan and function order to see what's actually expected for `into_raw_value`.
+[RESULT ✓] bash: No matching modules found.
+Available modules:
+=== try other module name ===
+['target', 'entries', 'total_modules', 'cycles_broken', 'steps']
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 -c "
+import json; d=json.load(open('verus-ai-logs/verification-plan.json'))
+print('ta
+[RESULT ✓] bash: target src/kernel/src/mm/phys/frame.rs
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The plan targets a different file. I'll use the given order. Let me check the verify command and the Makefile.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "verify-sys|verify-kernel|^verify|verify:" Makefile 2>/dev/null | head; echo "=== ma
+
+[THINKING] The verification plan is for a different file, so I need to determine the ordering myself based on dependencies. Looking at the functions, `new` is the leaf with no internal calls, `from_raw_value` depends on `new`, and `into_raw_value` is also a leaf, so the order should be `new`, `from_raw_value`, `into_raw_value`, then `VirtualAddress`.
+
+For the trait method spec issue, I'm realizing that `into_raw_value` is a trait method, and adding a meaningful spec visible to callers would require putting it on the trait declaration in mod.rs. But that would need a `View` bound on the trait itself, which is a significant change affecting all implementors across modules. Since the task says not to touch unlisted functions and the trait declaration is in a different module, I should check whether Verus allows adding `ensures` on the trait impl method in virt.rs without modifying the trait declaration.
+
+The key insight is that when callers invoke `into_raw_value` on a concrete `VirtualAddress`, Verus uses the trait method's spec from the declaration, not the impl. So the impl spec must match the declaration's. Given this complexity, the best approach is to empirically test whether Verus allows `#[verus_spec]` on the impl method and then run verify to see what works.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+=== makefile snippet ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '580,660p' Makefile
+[RESULT ✓] bash: @echo "  PROFILER        yes, no"
+	@echo "  MAKE_NO_PRINT   yes, no"
+
+# Verifies all Verus-annotated crates.
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+
+# Ensures the correct Verus version is installed before verification.
+# When VE...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me establish a baseline by running `make verify-sys` first.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "VERUS_EXECUTABLE_DIR=$VERUS_EXECUTABLE_DIR"; grep -nE "VERUS_EXECUTABLE_DIR|VERUS_AI_DI
+
+[THINKING] I need to verify that VERUS_EXECUTABLE_DIR is configured, then run a baseline system verification to see where things stand.
+[RESULT ✓] bash: VERUS_EXECUTABLE_DIR=
+298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+314:# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+31...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls /home/ruize/toolchain/verus/ 2>/dev/null | head; echo "---"; make verify-sys 2>&1 | tail -
