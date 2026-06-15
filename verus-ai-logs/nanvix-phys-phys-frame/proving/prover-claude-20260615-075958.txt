@@ -5316,3 +5316,67 @@ The fix is straightforward: I'll remove the `pub` keyword from my helper lemmas�
 Turn 354
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.rs:1047:9
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1085:25
+    ::: src/kernel/src/mm/phys/frame.proof.rs:904:9
+error: assertion failed
+    --> src/kernel/src/mm/phys/frame.rs:1086:32
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+   --...
+
+────────────────────────────────────────────────────────────
+Turn 355
+────────────────────────────────────────────────────────────
+Pre-loop pure facts (`region@.start/ps == lo`, etc.) aren't carried into loop bodies. Let me add them to both loop invariants:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "lo == start_frame_number as int," src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Compilation is now working with 81 verified items, but I'm hitting two issues in frame.rs: a precondition failure on the lemma_region_frames_eq call where the high boundary calculation doesn't match what's expected, and an assertion failure checking that the frames match the computed frame set. Let me examine what's happening at line 1085.
+
+I'm realizing the core issue: I proved facts like `(region@.start+region@.size)/ps == hi` before the loop, but Verus doesn't automatically carry pure facts across loop boundaries—only what's in the loop invariant survives. Since lo, hi, and region@ are all immutable and ghost, I need to figure out whether Verus retains these pure facts or if I need to explicitly add them to the invariant.
+
+The safest approach is to add those division equalities directly to both loop invariants so they're available when I call `lemma_region_frames_eq`.  After the booking loop completes, the invariant still holds, so the assertions in the final `Ok` block will have access to these facts. Let me locate both invariants and add them.
+[RESULT ✓] bash: 1049:                lo == start_frame_number as int,
+1128:                lo == start_frame_number as int,
+<shellId: 176 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 356
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1047.         #[cfg_attr(verus_keep_ghost, verus_spec(
+1048.             invariant
+1049.                 lo == start_frame_number as int,
+1050.                 hi == end_frame_number as int,
+1051.                 lo <= index <= hi,
+1052.                 self.inv(),
+1053.                 self.bitmap@...
+
+────────────────────────────────────────────────────────────
+Turn 357
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 358
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1128.         #[cfg_attr(verus_keep_ghost, verus_spec(
+1129.             invariant
+1130.                 lo == start_frame_number as int,
+1131.                 hi == end_frame_number as int,
+1132.                 lo <= index <= hi,
+1133.                 self.bitmap.inv(),
+1134.                 self....
+
+────────────────────────────────────────────────────────────
+Turn 359
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 360
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(

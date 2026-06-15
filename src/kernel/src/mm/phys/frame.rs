@@ -1048,6 +1048,8 @@ impl Inner {
             invariant
                 lo == start_frame_number as int,
                 hi == end_frame_number as int,
+                region@.start / spec_page_size() == lo,
+                (region@.start + region@.size) / spec_page_size() == hi,
                 lo <= index <= hi,
                 self.inv(),
                 self.bitmap@.num_bits == old_self.bitmap@.num_bits,
@@ -1127,6 +1129,8 @@ impl Inner {
             invariant
                 lo == start_frame_number as int,
                 hi == end_frame_number as int,
+                region@.start / spec_page_size() == lo,
+                (region@.start + region@.size) / spec_page_size() == hi,
                 lo <= index <= hi,
                 self.bitmap.inv(),
                 self.bitmap@.num_bits == old_self.bitmap@.num_bits,
