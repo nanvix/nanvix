@@ -1,0 +1,36 @@
+Timestamp: 2026-06-15_17-33-37
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: disallowed: field expression for an opaque datatype
+  --> src/kernel/src/mm/phys/upool.spec.rs:56:9
+   |
+56 |           self.addr.inv()
+   |           ^^^^^^^^^ this field expression is disallowed because of datatype opaqueness
+   |
+  ::: src/kernel/src/mm/phys/upool.rs:34:1
+   |
+34 | / pub struct UserFrame {
+35 | |     /// Frame address.
+36 | |     addr: FrameAddress,
+37 | | }
+   | |_- Verus treats this datatype as 'opaque' outside `kernel::mm::phys::upool` (note that Verus always considers the most restrictive field for determining this)
+   |
+   = help: note that because this is a pub open spec function, this field expression must be well-formed everywhere, which is wider than `kernel::mm::phys::upool`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
