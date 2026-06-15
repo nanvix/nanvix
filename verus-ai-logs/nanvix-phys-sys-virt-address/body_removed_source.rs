@@ -22,7 +22,6 @@ use crate::{
         Alignment,
     },
 };
-use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -44,7 +43,12 @@ pub struct VirtualAddress(usize);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl VirtualAddress {
+    #[verus_spec(result =>
+        ensures
+            result@ == value as int,
+    )]
     pub const fn new(value: usize) -> Self { ... }
 
     ///
@@ -56,8 +60,14 @@ impl VirtualAddress {
     ///
     /// - `raw_addr`: The raw value.
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == raw_addr as int,
+    )]
     pub fn from_raw_value(raw_addr: usize) -> Self { ... }
+}
 
+impl VirtualAddress {
     ///
     /// # Description
     ///
