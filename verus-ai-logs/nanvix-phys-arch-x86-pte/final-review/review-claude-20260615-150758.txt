@@ -356,3 +356,82 @@ Now let me run verification to establish ground truth, then launch the sub-agent
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-arch 2>&1 | tail -40
 
 [THINKING] Now I'm running the architecture verification to get a baseline with the actual specifications in place.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating detail ===" && cat verus-ai-logs/verify-arch/verus-logs/cheating-d
+
+[THINKING] The verify-arch check passed and is cached. Looking at the crate-wide external_body count of 3, I need to trace where these are coming from—table.rs has read and write, and there's a lemma_entry_roundtrip in the allowed list that's proof-only. Let me verify the cheating-detail output to make sure none of these violations are in pte.rs.
+[RESULT ✓] bash: === cheating detail ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+verify-arch passed (0 errors). pte module has zero cheating. Let me run build and full verify while launching the review agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make build 2>&1 | tail -15
+
+[THINKING] I'm seeing three external_body items across the crate (invlpg, table::read, table::write), and there's some discrepancy between the summary count and the detailed breakdown—the summary shows assume=0 but the details list an assume at table.proof.rs:16. Either way, these are all outside the scope of what I'm looking for since they're not pte-related.
+
+Let me verify whether invlpg is actually listed in tcb-allowed.md, though it's technically out of scope for this pte module review. The key point is that for the pte module itself, I've confirmed external_body=0, so there's no compliance issue there. The two cfg(verus_keep_ghost) directives in pte.rs are just include! macros for spec and proof files, which is a standard pattern and allowed by the checklist.
+
+I'll kick off make build and make verify in the background now, and I'll instruct the sub-agents to skip running make themselves to avoid cargo lock contention—they can still run lightweight analysis scripts like spec_drift and ast_consistency checks.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: buildsh completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^build\|^all:\|^.PHONY" Makefile | head; echo "--- z help ---"; grep -n "bui
+
+[THINKING] I'm looking for the build target—the checklist mentions `make build`, but that doesn't seem to exist, so I need to figure out what the actual build command is.
+[RESULT ✓] bash: 377:.PHONY: update-sysroot-link
+392:.PHONY: dump-sccache-stats
+411:all: all-nanvix
+513:.PHONY: release-generate-manifest
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+590:.PHONY: ensure-verus
+859:.PHONY: all-test-kernel-ramfs clean-test-kernel-ramfs
+899:.PHONY: standalone-images standalone...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null
+
+[THINKING] The build command is actually `./z build` rather than `make build`, which is just a no-op. Since the verus verification already compiles the arch crate, I should run the full `make verify` for cross-module regression testing instead of building the entire kernel image.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Build is `./z build -- all`. Let me run it and the full cross-module verify in parallel while I launch the review sub-agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 ./z build -- all 2>&1 | tail -20
+[RESULT ✓] bash: Standalone images built successfully.
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profile-time standalone microvm" -p nanvix-bench
+   Compiling uservm v0.16.17 (/home/ruize/nanvix-phy-specs/src/uservm)
+   Compiling nanvix-sandbox v0.16.17 (/home/ruize/na...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Build succeeded. Now the full cross-module verify, then launch agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 2400 make verify 2>&1 | tail -45
