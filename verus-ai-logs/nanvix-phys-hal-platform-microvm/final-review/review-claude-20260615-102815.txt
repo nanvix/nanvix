@@ -401,3 +401,139 @@ Now let me start the long-running verification builds in the background while la
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "START verify-kernel"; timeout 1800 make verify-kernel 2>&1 | tail -60; echo "EXIT
 
 [THINKING] I'm kicking off the long-running verification processes in the background—the full kernel verification, build, and cross-module regression checks—while simultaneously starting the sub-agent reviews to parallelize the work.
+[RESULT ✓] bash: START verify-kernel
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1350:21
+     |
+1350 |                     frames.contains(addr) by {
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> sr...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== cheating detail ==="; cat verus-ai-logs/verify-kernel/verus-logs/cheating-det
+
+[THINKING] The verify-kernel check passed, but the overall kernel scan shows external_body=19 and admit=12 violations across various modules like mm/phys/frame. Since my scope is only the gva_to_gpa function in the microvm module, I need to confirm those violations aren't in my code—and they're not. The cheating-detail.txt file should clarify the exact locations of these issues.
+[RESULT ✓] bash: === cheating detail ===
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/phys/frame.rs:1502 alloc: external_body
+    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1553 free_count: external_body
+    - mm/phys...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+verify-kernel passed (exit 0). All 12 admit / 19 external_body are in **other modules** (`mm/phys`, `mm/virt`) — none in microvm. Let me run `make build` and launch the two review sub-agents in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "START build"; timeout 1800 make build 2>&1 | tail -25; echo "EXIT=${PIPESTATUS[0]
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] I see that the admit and external_body counts are actually in other modules like `mm/phys` and `mm/virt`, not in the microvm module itself. Since the review is scoped to the microvm module, which has zero of each of these metrics, I should report those zero counts in the output format even though the larger codebase has higher numbers elsewhere.
+
+The admits in other modules are part of their own separate verification efforts, not blockers for this microvm review. And the 19 external_body instances are all documented in tcb-allowed.md across various functions like frame initialization, kframe creation, and memory pool operations, so they're accounted for and not a concern for this scope.
+
+The microvm module itself is completely clean with zero admits, assumes, and external_body violations. Now I need to run the build and cross-module regression checks to confirm everything passes.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: START build
+make: Nothing to be done for 'build'.
+EXIT=0
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+While sub-agents run, let me verify the `make build` behavior and check available targets.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -nE "^[a-zA-Z_-]+:" Makefile 2>/dev/null | head -40; echo "=== build skill ==="; f
+
+[THINKING] The `make build` command isn't producing output because the target either has no recipe or is already up to date. Let me look at the Makefile to see what the actual build target is, since the checklist mentions `make build` but the build skill references `./z build` instead.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and key files, then work through each review task systematically.
+[TOOL] report_intent: Reading skills and key files
+[TOOL] bash: find /home/ruize/nanvix-phy-specs/.github/skills -name SKILL.md 2>/dev/null; echo "---"; ls /home/ruize/nanvix-phy-specs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.spec.rs
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus! {
+
+// The MicroVM platform's guest-virtual -> guest-physical translation map.
+//
+// MicroVM runs the guest identity-mapped, so the abstract map is the identity
+// over the entire usize address space. This is a platform-level invariant (the
+// VMM maps GVA == GPA), NOT an implementation artifa...
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/.github/skills/benchmarking/SKILL.md
+/home/ruize/nanvix-phy-specs/.github/skills/ci-cd-pipeline/SKILL.md
+/home/ruize/nanvix-phy-specs/.github/skills/coding-standards/SKILL.md
+/home/ruize/nanvix-phy-specs/.github/skills/daemon-development/SKILL.md
+/home/ruize/nanvix-phy-s...
+[RESULT ✓] bash: verus! { } // verus!
+<shellId: 14 completed with exit code 0>
+[RESULT ✓] view: 400. /// # Returns
+401. ///
+402. /// The base address of the boot kernel stack guard page.
+403. ///
+404. #[cfg(all(debug_assertions, feature = "exception-stack-guard"))]
+405. pub fn get_kstack_guard_base() -> usize {
+406.     unsafe extern "C" {
+407.         static kstack_guard: u8;
+408.     }
+409. ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing microvm verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find .github/skills -name SKILL.md | sort && ls -1 src/kernel/src/hal/platform/microv
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: .github/skills/benchmarking/SKILL.md
+.github/skills/build/SKILL.md
+.github/skills/ci-cd-pipeline/SKILL.md
+.github/skills/coding-standards/SKILL.md
+.github/skills/daemon-development/SKILL.md
+.github/skills/gdb-debugging/SKILL.md
+.github/skills/kernel-development/SKILL.md
+.github/skills/library-develo...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+`make build` isn't a real target here (build happens via `verify-kernel`, which compiled successfully). Let me run the cross-module regression `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "START verify"; timeout 2400 make verify 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[
+
+[THINKING] The Makefile uses `all` as the build target rather than `make build`, and verify-kernel already compiled the kernel during the dev profile build, so that step is covered. Running `make verify` will execute verification across all VERUS_CRATES plus verify-kernel for a full cross-module regression check, though it may take a while with caching in place.
+[TOOL] rg: spec-design|verus-constraints|ast-consistency|bug-reporting|spec-drift-check|spec-completeness
+[TOOL] glob: **/{spec-design,verus-constraints,ast-consistency,bug-reporting,spec-drift-check,spec-completeness}/SKILL.md
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
