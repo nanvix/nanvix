@@ -279,3 +279,4 @@ Module: arch-paging-table
 [2026-06-15 13:40:12] [CHEATING] external_body: 4 (4 on user fns, 1 on proof fns)
 [2026-06-15 13:40:12] [CHEATING] ❌ Hard cheating detected (attempt 1), report: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/cheating_report_1.md
 [2026-06-15 13:40:12] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 13:57:37]   ↳ cheating-fix done in 17m25s (exit=0)
