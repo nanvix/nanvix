@@ -2,23 +2,52 @@
   "module_name": "arch-frame-number",
   "log_name": "nanvix-phys-arch-frame-number",
   "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 105.2,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "37a13cb1-1924-4a5e-ac81-f5ca8a4ea24f",
   "completed": false,
   "base_branch": "verus-ai/sys-address-mod",
   "verus_branch": "verus-ai/arch-frame-number",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "f01a3a9a114f45bd8a011d8ae29175d1378c68a8"
+  },
   "phase_start_shas": {
-    "caller-analysis": "7ec15f58a1f13c1d6f93e36287918dc243a288e3"
+    "caller-analysis": "7ec15f58a1f13c1d6f93e36287918dc243a288e3",
+    "view-design": "f01a3a9a114f45bd8a011d8ae29175d1378c68a8"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "7ec15f58a1f13c1d6f93e36287918dc243a288e3",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "f01a3a9a114f45bd8a011d8ae29175d1378c68a8",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "f01a3a9a114f45bd8a011d8ae29175d1378c68a8",
       "rollback_iter": 0
     }
   ],

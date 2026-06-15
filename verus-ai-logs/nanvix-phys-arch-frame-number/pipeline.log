@@ -21,3 +21,11 @@ Module: arch-frame-number
 [2026-06-15 19:33:03] [PROVER] Running caller-analysis...
 [2026-06-15 19:33:03] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 19:34:48]   ↳ prover done in 1m45s (exit=0)
+[2026-06-15 19:34:48] [PHASE] caller-analysis: no-review (1m45s)
+[2026-06-15 19:34:48] ✅ caller-analysis: PASS (0/0)
+[2026-06-15 19:34:48] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: arch-frame-number
+============================================================
