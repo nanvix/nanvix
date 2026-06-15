@@ -390,3 +390,88 @@ Turn 14
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | grep -iE "error|fail|warning|verified|exit code|status
 
 [THINKING] The build passed cleanly with no warnings. Now I need to run the full cross-module regression check as specified in the checklist, though it might take a while since it includes the kernel. Let me proceed with `make verify` and see if it's cached, using a longer timeout to be safe.
+[RESULT ✓] bash: note: verifying module sys::mm::address
+note: verifying module sys::mm::address::virt
+verification results:: 0 verified, 0 errors
+verification results:: 70 verified, 0 errors
+  70 verified
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+===...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All crates verify with 0 errors (sys=70, arch=48, kernel=96, etc.). Other crates' cheating counts belong to other modules, not address. Let me confirm the remaining items: VERUS REWRITE comments and any claimed Verus limitation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== VERUS REWRITE in address ===" && grep -rn "VERUS REWRITE" src/libs/sys/src/
+
+[THINKING] All crates are passing verification with zero errors across the board. The cross-module regression test confirms this — sys, bump-allocator, arch, and kernel all report successful verification with no issues. The cheating counts I'm seeing in other modules like external_body, admit, and cfg_gate are pre-existing and belong to those modules' own TCBs, not something the address module needs to address. For the address module itself, all the metrics are clean: no assumptions, no external bodies, no admits.
+
+Now I'm checking the checklist items — verifying that all modules pass (which they do), and then looking for any VERUS REWRITE comments in the address module to see if there are minimal rewrites. I'm also confirming whether there are any verus-unsupported claims that would need isolated reproducers, but since external_body is zero for this module, I shouldn't find any verus-unsupported documentation.
+[RESULT ✓] bash: === VERUS REWRITE in address ===
+exit=1
+=== verus-unsupported for address ===
+dialogue
+dialogue-reviewer-t001-claude-20260615-114712.jsonl
+dialogue-reviewer-t001-claude-20260615-114712.txt
+prover-claude-20260615-113944.jsonl
+prover-claude-20260615-113944.txt
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+No VERUS REWRITE comments and no Verus-limitation claims (external_body=0) — those items are N/A. Let me do a final strict check for any compiler warnings in the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 300 make check 2>&1 | grep -iE '"level":"warning"|warning:' | head; echo "war
+
+[THINKING] Looking at the diff more carefully, I notice there are no VERUS REWRITE comments or verus-unsupported claims in this section, so those don't apply here. I'm also checking the timeline of when certain contracts were added — the `from_raw_value` contract and `spec_addr_is_aligned` appear in the proving phase, but I need to verify whether they were part of the specification initially or added later. The baseline commit marks the very start of the analysis pipeline for this module, so I'm tracing back through the changes to understand the sequence.
+
+The specs were actually introduced during the specification phase, not the proving phase. The most recent proving phase only removed the `use ::vstd::prelude::*;` import. Looking at the current specs for the various methods — `from_raw_value`, `into_raw_value`, `clone_address`, `is_aligned`, and the virtual address variants — they all appear appropriately strong and well-specified in terms of their view semantics. The `VirtualAddress` view is marked as closed, which means external callers can't directly see the underlying representation, but the contracts are still meaningful relative to each other since they're stated in terms of the view itself. This design choice came from the specification phase, not a proving-phase weakening, so it's not something I need to challenge here.
+
+All the checklist items pass: no specs were weakened, zero admits and external_body calls in the address module, no assume statements, no cfg-gated executable code in the address module itself, and the full verification suite runs cleanly with no errors or warnings. I'll document this as resolved.
+[RESULT ✓] bash: warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+warnings_exit=0
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Only warning is a third-party dependency future-compat notice (`proc-macro-error2`), unrelated to the address module — pre-existing and out of scope. All checklist items PASS. Let me write the review and STOP file.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/turn_001_driver.md
+
+[THINKING] The warning from the third-party dependency is just a future-compat issue unrelated to the address module or proving task, so everything checks out. Now I'm writing up the review file and marking this as resolved.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/turn_001_driver.md with 3702 characters
+[RESULT ✓] bash: 
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Review complete. All 10 checklist items **PASS** with tool-backed evidence.
+
+**Verdict: RESOLVED**
+
+Key findings for `sys::mm::address`:
+- **No spec drift**: `is_aligned` was refactored to `open spec fn spec_addr_is_aligned` with a definitionally-identical body (not weaker); `from_raw_value` gained a contract (strengthened). Proving-phase-only delta = removing one duplicate `use` import.
+- **Cheating audit**: `admit=0, external_body=0, assume=0, cfg_gate=0` for the module. The crate-wide `cfg_gate=1` flagged by `make verify-sys` is in `alignment.rs:151` — a different module, out of scope.
+- **No external_body/assume/admit**, so TCB-list and Verus-limitation-reproducer items are N/A.
+- **No exec rewrites** (no `VERUS REWRITE` comments).
+- **Cross-module regression** (`make verify`): all crates 0 errors (sys=70, arch=48, kernel=96, etc.).
+- **Build**: `make verify-sys` exit 0; `make check` success, only an unrelated third-party dep warning.
+
+Wrote review to `turn_001_driver.md` and `STOP` = `RESOLVED`.
+
+
+=== Session End ===
+Session: a660602f-6fca-4cb7-bfa1-62c0607a10e4
+Duration: 291.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/dialogue-reviewer-t001-claude-20260615-114712.jsonl
