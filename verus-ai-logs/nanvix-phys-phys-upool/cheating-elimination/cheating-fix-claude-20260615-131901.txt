@@ -643,3 +643,16 @@ Let me do a final confirmation run and verify the committed state is consistent.
 [THINKING] Let me step back and reconsider whether new and alloc are truly irreducible by getting a fresh perspective on my soundness argument.
 
 The core issue is whether the view can be shared between new and alloc without introducing unsoundness. My reasoning hinges on three key constraints: the view must be shared, alloc's transition requires the view to depend on mutable self-state, and the struct can only have `_private: ()` without breaking the non-Verus build. Since I can't add a ghost field to track the partition state, the view either becomes uninterpretable on self (making new unprovable) or a global constant (making alloc unsound). I'm confident this reasoning is solid—the struct can't hold a duplicate of the real allocator state without violating space complexity and execution semantics. Let me run the final verification to confirm everything passes and lock in the state.
+[RESULT ✓] bash: ⚠️  external_body: 14
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: external_body
+    - frame.rs:1479 a...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 200 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "^  verificati
