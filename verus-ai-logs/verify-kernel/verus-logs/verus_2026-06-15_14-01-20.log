@@ -1,0 +1,41 @@
+Timestamp: 2026-06-15_14-01-20
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: duplicate method core::clone::Clone::clone `core::clone::Clone`
+  --> src/kernel/src/hal/mem/types/region.spec.rs:44:1
+   |
+44 | / pub trait ExCloneAddr: Sized {
+45 | |     type ExternalTraitSpecificationFor: Clone;
+46 | |
+47 | |     spec fn clone_view(&self) -> int;
+...  |
+52 | |     ;
+53 | | }
+   | |_^ specification declared via `external_trait_specification`
+   |
+  ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/clone.rs:7:1
+   |
+ 7 | / pub trait ExClone: Sized {
+ 8 | |     type ExternalTraitSpecificationFor: core::clone::Clone;
+ 9 | |
+10 | |     fn clone(&self) -> Self;
+11 | | }
+   | |_^ specification declared via `external_trait_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

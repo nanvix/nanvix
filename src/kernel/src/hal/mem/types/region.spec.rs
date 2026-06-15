@@ -42,11 +42,13 @@ use crate::hal::mem::spec_addr;
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(CloneAddrSpec via CloneAddrSpecImpl)]
 pub trait ExCloneAddr: Sized {
-    type ExternalTraitSpecificationFor: Clone + Address;
+    type ExternalTraitSpecificationFor: Clone;
+
+    spec fn clone_view(&self) -> int;
 
     fn clone(&self) -> (result: Self)
         ensures
-            spec_addr(&result) == spec_addr(self),
+            result.clone_view() == self.clone_view(),
     ;
 }
 

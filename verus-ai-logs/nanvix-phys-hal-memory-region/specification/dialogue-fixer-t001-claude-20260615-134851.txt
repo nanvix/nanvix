@@ -435,3 +435,30 @@ Let me try the external_trait_extension approach to be thorough and document eve
 Turn 23
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|extensio
+[RESULT ✓] bash: error[E0277]: the trait bound `Self: sys::mm::Address` is not satisfied
+   |             required by a bound introduced by this call
+note: required by a bound in `hal::mem::types::address::aligned::page::spec_addr`
+   |                                   ^^^^^^^ required by this bound in `spec_addr`
+...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Same `Self: Address` wall. The free `spec_addr<T: Address>` can never be referenced in a proxy because no proxy mechanism grants `Self: Address`. Let me test whether the `external_trait_extension` even *compiles* using a proxy-declared spec method (no `spec_addr`), to know if that building block is viable:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+
+[THINKING] The issue is that `spec_addr` requires `Self: Address`, but the proxy type doesn't satisfy this bound—the proxy's `Self` is only constrained by the proxy's supertraits like `Sized`, not `Address`. Even though the associated type `ExternalTraitSpecificationFor` is bounded by `Clone + Address`, that doesn't grant the bound to `Self` itself, which is what's needed here.
+
+I've hit this wall from every angle: `assume_specification` fails because it's a generic trait method, `external_trait_specification` fails with E0277 whether `Address` is a supertrait or not, and `external_trait_extension` also fails. The real solution is that Verus only allows `Self: Address` when the proxy declares its own spec method—like how the `ExPartialOrd` example works with `partial_cmp_spec` as a proxy-declared method. So I need to create a proxy spec method `clone_view(&self) -> int` and bridge it to `spec_addr`.
+
+But here's the catch: the reviewer explicitly requires the ensures to stay as `spec_addr(&result) == self@.start`. If I switch to using `clone_view` instead, I'm changing the abstraction entirely, which weakens the connection to the rest of the system and violates the requirement that the ensures remain exactly as strong.
+
+What if I redefine `spec_addr` itself in page.spec.rs from an uninterpreted function to an open function that delegates to `clone_view`? That way `spec_addr` and `clone_view` become the same thing, the clone law applies automatically, and all existing callers still use the same `spec_addr`. The downside is this touches page.spec.rs, which is outside the region module scope, and I'd need to re-verify the page module and anything using `spec_addr`. But the real question is whether it's semantically correct to define `spec_addr` as equivalent to `clone_view` — are they actually the same concept?
+
+Looking at how `spec_addr` is used in `into_raw_value`, it seems like the definition would hold abstractly, though it's a risky change to verify. Instead, let me test whether the extension mechanism itself works by trying to add a proxy spec method to the Clone trait extension without touching `spec_addr` at all — just to see if the compilation works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|extensio
