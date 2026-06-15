@@ -193,3 +193,92 @@ Turn 3
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -40
 
 [THINKING] Running module-scoped verification for the region module in the hal memory types namespace.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=25 admit=0 trusted=0 cfg_gate=7
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unverifi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Module is CLEAN — no cheating in `hal::mem::types::region`, and all 4 in-scope functions verify. The global `external_body=25 cfg_gate=7` matches the prior baseline (all in other modules). Let me confirm none of those are in-scope and check AST consistency.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i "regio
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff --stat verus-ai/hal-phys-address -- src/kernel/src/hal/mem/types/region.rs src/ker
+
+[THINKING] The module verification shows no cheating detected in the in-scope functions, and the global variables flagged are all TCB-allowed, so the module itself is clean. But the task requires eliminating all cheating to make verify-kernel pass cleanly, so I need to check whether those external globals are actually acceptable or if they need to be addressed.
+[RESULT ✓] bash: - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
+   ...
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/region.proof.rs |   1 +
+ src/kernel/src/hal/mem/types/region.rs       |  87 ++++++++----------
+ src/kernel/src/hal/mem/types/region.spec.rs  | 128 +++++++++++++++++++++++++++
+ 3 files changed, 164 insertions(+), 52 deletions(-)
+---current diff to working tree---
+ .../pro...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+No in-scope cheating. Let me verify the AST consistency — check whether exec code (not specs/contracts) changed versus the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff verus-ai/hal-phys-address -- src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] I'm realizing the grep search for "region" picked up matches from other files like page.rs and frame.rs that aren't actually in the region.rs file I'm looking for. Let me verify whether there are any entries specifically from hal/mem/types/region.rs in the results.
+
+Now I need to check the diff against the base branch to see what changed in region.rs, particularly focusing on whether the executable code semantics were altered or if only the contracts were added in the START commit.
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/mem/types/region.rs b/src/kernel/src/hal/mem/types/region.rs
+index ebbcfbef2..e5ab7666b 100644
+--- a/src/kernel/src/hal/mem/types/region.rs
++++ b/src/kernel/src/hal/mem/types/region.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //===================================================...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+One exec-code change: `MemoryRegion::start` went from `self.start.clone()` to `self.start`. I need to verify `Address: Copy` (so semantics/complexity are preserved) and that this is required by Verus.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "trait Address" src/kernel/src/hal/mem/ ; echo "---"; grep -rn "pub trait Address"
+
+[THINKING] Looking at this change to `MemoryRegion::start`, I'm checking whether removing the `.clone()` call is valid—the field read now returns `T` by copy instead of cloning it, which should work fine since `Address` implements `Copy`. The postcondition still holds because the spec behavior remains the same.
+
+The key insight is that Verus can't verify the postcondition with `.clone()` unless there's a spec for `Clone::clone` that preserves `spec_addr`, but with `Copy`, it's just a direct field read so the identity is immediate. This change is actually required for Verus to prove the postcondition, and since `T: Copy`, the semantics are identical—both operations are O(1) and produce the same result.
+[RESULT ✓] bash: ---
+src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 25. 
+26. //==================================================================================================
+27. // Traits
+28. //==================================================================================================
+29. 
+30. #[verus_verify]
+31. pub trait Address
+32. where
+33.     Self: ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+`Address: Copy` — so `self.start` is semantically identical to `self.start.clone()` (Copy types guarantee clone==copy), same O(1) time/space. Let me get concrete evidence that the change is Verus-required by reverting and re-verifying.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/hal/mem/types/region.rs /tmp/region.rs.bak && sed -i 's/        self.star
+
+[THINKING] For `Address: Copy`, using `self.start` directly is semantically identical to `self.start.clone()` since Copy types guarantee clone equals copy, both with O(1) complexity. Verus requires this change because calling `clone()` on a generic `T: Address` doesn't preserve the `spec_addr` specification, whereas the direct field copy maintains identity semantics.
+
+Let me verify this is actually necessary by testing whether reverting to `.clone()` causes a verification failure, which would give concrete evidence that the change is required rather than just a stylistic preference.
+[RESULT ✓] bash: 221:        self.start.clone()
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|fail|v
