@@ -494,3 +494,21 @@ Turn 22
 Looking at the fingerprint mechanism, it seems cargo-verus rebuilds and syncs vstd into the verus directory whenever it detects a mismatch, which would explain why those files got touched during my run. The core problem is the version mismatch: vstd is pinned to 2026-05-31 in Cargo.lock, but the toolchain has verus 2026-06-14, and neither matches what vstd expects to compile against. The gate passed earlier at 18:58:26, so either it was using a cached vstd built by a compatible verus, or the toolchain state was different then—I need to check whether toolchain/verus was already at 2026-06-14 at that point.
 
 Actually, the timestamps suggest the verus install was updated to 2026-06-14 at 18:59:17, right after the gate passed. So the environment changed between the successful gate run and my attempt. Rather than trying to fix the toolchain version mismatch, let me just re-run verify-sys now and see if vstd gets rebuilt correctly with the current setup.
+[RESULT ✓] bash: error: expected generics to match: 
+        expected 
+        found bool
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+105 | atomic_...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 280 make verify-bitmap 2>&1 | tail -25
+
+[THINKING] There's a version mismatch between verus (2026-06-14) and vstd (2026-05-31) causing the compilation to fail, even though the older verus version passed the gate earlier. I need to find if there's a compatible vstd version for the newer verus build.
+
+Let me also run the bitmap verification to see if this is a broader environment issue or specific to the sys crate changes.
