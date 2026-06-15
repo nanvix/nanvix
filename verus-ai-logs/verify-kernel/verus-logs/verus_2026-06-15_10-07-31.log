@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_10-07-31
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+30 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Blocking waiting for file lock on package cache
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:851:9
+    |
+851 |         lemma_free_count(inner);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.proof.rs:95:9
+    |
+ 95 |         inner.bitmap@.num_bits >= 0,
+    |         --------------------------- failed precondition
+
+verification results:: 30 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
