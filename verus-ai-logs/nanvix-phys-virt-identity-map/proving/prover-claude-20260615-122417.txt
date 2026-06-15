@@ -344,3 +344,184 @@ Let me run a baseline verification for the module (with admits in place).
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -40
 
 [THINKING] Running the baseline verification for this module.
+[RESULT ✓] bash: |
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.22s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::virt::ide...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Baseline passes. Now let me examine the dependency contracts that the proofs must use. Let me find the arch paging spec files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find src/libs/arch -name "*.spec.rs" | head; echo "=== table ==="; sed -n '1,200p' sr
+
+[THINKING] The baseline test passes with three admits in scope, so now I'm examining the dependency contracts for the various table and page directory methods to understand what specs are available for operations like reading, writing, address lookups, and presence checks.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+src/libs/arch/src/x86/mem/paging/table.spec.rs
+src/libs/arch/src/x86/mem/paging/pde.spec.rs
+src/libs/arch/src/x86/mem/paging/pte.spec.rs
+src/libs/arch/src/x86/mem/paging/mod.spec.rs
+=== table ===
+verus! {
+
+//======================================...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verus_spec\|fn read\|fn write\|fn from_address\|fn pd_index\|fn pt_index\|fn
+
+[THINKING] I need to examine the table specification for the exec contracts like `read`, `write`, `from_address`, `pd_index`, and `pt_index` in the table.rs file where they're marked with `#[verus_spec]`.
+[RESULT ✓] bash: 33:    #[verus_spec(result =>
+38:    #[verus_spec(result =>
+65:    #[verus_spec(result =>
+72:    pub const fn new(index: usize) -> Option<Self> {
+85:    #[verus_spec(result =>
+101:#[verus_spec(result =>
+106:pub const fn pd_index(vaddr: usize) -> TableIndex {
+119:#[verus_spec(result =>
+124:pub const ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] view: 95. 
+96. //==================================================================================================
+97. // Virtual Address Index Extraction
+98. //==================================================================================================
+99. 
+100. /// Extracts the PD index (bits 22-...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+ensure_pt may be tractable. Let me examine `frame_address`, `alloc_as`, and the pde/pte/allocator specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== pde.rs verus_spec ==="; grep -n "verus_spec\|fn frame_address\|fn is_presen
+
+[THINKING] I'm working through the dependency contracts for the page table operations. The `read` function has a built-in precondition from the TableIndex type that ensures the index stays within bounds, and it returns the result of a spec table read at that address. The `write` operation requires the index to be valid but doesn't guarantee anything about what gets written. I'm also tracking how `pd_index` and `pt_index` work, though that thought got cut off.
+
+The real challenge is that `identity_map_view()` is an uninterpreted function with no parameters—it's a fixed constant value. The exec functions' postconditions reference this view directly, but there's no connection between the page table writes and the view itself. So to prove something like `ensure_pte` guarantees that `identity_map_view().mapped` contains a particular page, I'd need the view's invariant plus some axiom that forces the mapped region to include that page. But since `identity_map_view()` is uninterpreted and parameterless, it returns the same value every time—there's no "before" and "after" state. This means I need to derive the postcondition directly from the precondition `identity_map_view().inv()` alone, which seems impossible without additional constraints.
+
+The design mentions that cross-call transitions should be realized through a ghost token in the proving phase, but I'm stuck on how to materialize that token without modifying signatures or adding external_body helpers. Maybe the proof requires an axiom I'm supposed to write, but axioms are typically avoided.
+
+Actually, rethinking this: `identity_map_view()` is an uninterpreted spec function that returns some fixed but unknown value. That means I can't prove `identity_map_view().mapped.contains(P)` is true without additional facts — and those facts would need to come from somewhere, either the dependency specs or an assumption. But the dependency specs don't connect to `identity_map_view()` at all; they only reference `spec_table_read` and `spec_table_word`. So there's a fundamental disconnect between the abstract identity map and the concrete page table memory ghost state.
+
+Given the constraints — can't weaken the spec, can't add external_body, can't use assume/admit — the spec as written seems genuinely unprovable. I need to figure out what the intended solution actually is.
+
+One possibility: maybe `identity_map_view()` should be a defined spec function that reads from `spec_table_word` rather than uninterpreted. But `spec_table_word` is also uninterpreted, and the `write` function doesn't have ensures that update it, so that doesn't help either. This feels like a deferred ghost-token problem that would normally require real permission infrastructure.
+
+Let me step back and try removing the admit from `ensure_pt` to see what Verus actually complains about. The ensures are `identity_map_view().inv()` and `spec_is_page_aligned(pt_paddr as int)`. The `.inv()` parts should hold trivially since `identity_map_view()` is constant and already in the requires. The remaining obligation is proving `spec_is_page_aligned` for either `pde.frame_address()` or `slot.as_ptr() as usize`.
+
+I need to check whether the pde and allocator specs guarantee alignment — if they do, `ensure_pt` might actually be provable without the admit.
+[RESULT ✓] bash: === pde.rs verus_spec ===
+84:    #[verus_spec(result =>
+85:        ensures
+97:    pub fn new(
+129:    #[verus_spec(result =>
+130:        ensures result == self@.present,
+132:    pub fn is_present(&self) -> bool {
+308:    #[verus_spec(result =>
+309:        ensures
+313:    pub fn new(flags: PageDirect...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[RESULT ✓] view: 300.     /// - `flags`: The flags.
+301.     /// - `frame`: The frame number.
+302.     ///
+303.     /// # Returns
+304.     ///
+305.     /// A [`PageDirectoryEntry`].
+306.     ///
+307.     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+308.     #[verus_spec(result =>
+309.      ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== spec_page_size def ==="; grep -rn "spec_page_size\|FRAME_SIZE\b" src/kernel
+
+[THINKING] I'm checking whether `FRAME_SIZE` matches `spec_page_size()` since `frame_address()` guarantees frame-aligned results, and I need to verify this relationship holds for page alignment. Let me look up where `spec_page_size` is defined in the memory module and trace through the allocator logic.
+[RESULT ✓] bash: === spec_page_size def ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:6:// that lets `from_address` relate `is_aligned(PAGE_ALIGNMENT)` to `spec_page_size()`.
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:9:        ::sys::mm::spec_align_value(result) == spec_page_size(),
+s...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "PAGE_TABLE_ALLOCATOR\|alloc_as\|fn alloc\|verus_spec\|assume_specification\|
+[RESULT ✓] bash: 86:// PAGE_TABLE_ALLOCATOR.
+99:/// SAFETY: PAGE_TABLE_ALLOCATOR is a global allocator that exclusively manages PAGE_TABLE_STORAGE.
+101:pub static PAGE_TABLE_ALLOCATOR: FixedSizeBumpAllocator<
+=== .spec.rs? ===
+<shellId: 19 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/page_table_allocator.rs
+[RESULT ✓] view: 80. };
+81. 
+82. /// Storage provider for page-table allocator slots.
+83. pub struct PageTableBss;
+84. 
+85. // SAFETY: PAGE_TABLE_STORAGE is a stable static backing region exclusively managed by
+86. // PAGE_TABLE_ALLOCATOR.
+87. unsafe impl BssStorage for PageTableBss {
+88.     const NUM_UNITS: usize ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn alloc_as\|fn alloc\b\|verus_spec\|ensures\|requires\|bump_view\|spec_\|as
+
+[THINKING] I need to examine the `alloc_as` specification for the bump allocator.
+[RESULT ✓] bash: 68://! assert_ne!(slot_a.as_ptr(), slot_b.as_ptr());
+74://! let typed: &mut [u32; 16] = unsafe { uninit.assume_init_mut() };
+126:#[verus_spec(result =>
+127:    ensures
+200:    #[verus_spec(result =>
+201:        ensures
+272:    #[verus_spec(result =>
+273:        requires bump_view(self).inv(),
+274:  ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs
+[RESULT ✓] view: 260.     ///
+261.     /// - [`BumpAllocError::Exhausted`] if storage capacity is exhausted.
+262.     /// - [`BumpAllocError::Overflow`] if internal arithmetic overflows.
+263.     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
+264.     /// - [`BumpAllocError::Misaligne...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Let me empirically test. I'll remove the admit from `ensure_pt` first and see what Verus actually reports.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm checking that `alloc_as` guarantees proper alignment—the slot address must be divisible by the page size alignment requirement—and it requires the bump view's invariant to hold. After allocation succeeds, the code converts the uninitialized memory to a mutable reference and then gets the pointer from the slot.
+
+But here's the core issue: I need to prove that `assume_init_mut` and `as_ptr` preserve the address relationship between the MaybeUninit wrapper and the actual slot pointer, which is getting quite involved. More critically, `ensure_pt` itself needs `bump_view(PAGE_TABLE_ALLOCATOR).inv()` to call `alloc_as`, but there's no precondition that establishes this invariant—only `identity_map_view().inv()` is available. These are completely separate ghost abstractions with no connection between them, so the proof genuinely can't go through without either strengthening the preconditions or giving `identity_map_view()` a concrete definition that ties it to the underlying page table memory and allocator state. The core issue is that `ensure_pte` can't prove the mapped-contains property because `V` is just an arbitrary constant with no connection to what the code actually does. Even if I could prove the alignment properties, the spec fundamentally requires linking the page-table writes to updates in `V.mapped`, but the TCB design explicitly forbids `write` from having a contents ensures for soundness reasons. So the ghost token that was supposed to bridge this gap in the proving phase can't be realized without changing function signatures, which violates the constraints. This creates a genuine impasse where the spec as written is unprovable. I should just remove the admit() and run verification to see what errors actually come up—that'll show me exactly what's provable versus what needs more work.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -A40 "error\
