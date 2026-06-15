@@ -1,0 +1,36 @@
+Timestamp: 2026-06-15_18-32-33
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=29
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=25
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: duplicate specification for `kernel::mm::virt::PageTableStorage`
+  --> src/kernel/src/mm/virt/mod.rs:52:1
+   |
+52 | / pub enum PageTableStorage {
+53 | |     /// Boot-time BSS-backed storage, allocated via `PAGE_TABLE_ALLOCATOR`.
+54 | |     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
+55 | |     /// Runtime storage backed by a kernel page from the page pool.
+56 | |     KernelPage(KernelPage),
+57 | | }
+   | |_^ declared here (and not marked as `external`)
+   |
+  ::: src/kernel/src/mm/virt/vmem.spec.rs:81:1
+   |
+81 |   pub struct ExPageTableStorage(PageTableStorage);
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ specification declared via `external_type_specification`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

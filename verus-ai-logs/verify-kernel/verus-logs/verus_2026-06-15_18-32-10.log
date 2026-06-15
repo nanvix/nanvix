@@ -1,0 +1,42 @@
+Timestamp: 2026-06-15_18-32-10
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=29
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=25
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: cannot find attribute `verus_verify` in this scope
+  --> src/kernel/src/mm/virt/mod.rs:49:30
+   |
+49 | #[cfg_attr(verus_keep_ghost, verus_verify)]
+   |                              ^^^^^^^^^^^^
+   |
+help: consider importing this attribute macro
+   |
+15 + use vstd::prelude::verus_verify;
+   |
+
+error: cannot find attribute `verus_verify` in this scope
+  --> src/kernel/src/mm/virt/mod.rs:83:30
+   |
+83 | #[cfg_attr(verus_keep_ghost, verus_verify)]
+   |                              ^^^^^^^^^^^^
+   |
+help: consider importing this attribute macro
+   |
+15 + use vstd::prelude::verus_verify;
+   |
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

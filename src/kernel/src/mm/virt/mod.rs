@@ -32,6 +32,8 @@ use ::core::ops::{
     Deref,
     DerefMut,
 };
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
 
 //==================================================================================================
 // Exports
@@ -46,6 +48,7 @@ pub use vmem::Vmem;
 // Structures and Enums
 //==================================================================================================
 
+#[cfg_attr(verus_keep_ghost, verus_verify)]
 pub enum PageTableStorage {
     /// Boot-time BSS-backed storage, allocated via `PAGE_TABLE_ALLOCATOR`.
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
@@ -79,6 +82,7 @@ impl DerefMut for PageTableStorage {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_verify)]
 pub enum PageDirectoryStorage {
     /// Boot-time BSS-backed storage, allocated via `PAGE_TABLE_ALLOCATOR`.
     Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),

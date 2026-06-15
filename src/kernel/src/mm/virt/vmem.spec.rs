@@ -74,14 +74,6 @@ pub struct ExPageTable<T: core::ops::DerefMut<Target = [PteWord]>>(PageTable<T>)
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
-pub struct ExPageDirectoryStorage(PageDirectoryStorage);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExPageTableStorage(PageTableStorage);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
 pub struct ExPageDirectoryEntry(PageDirectoryEntry);
 
 #[verifier::external_type_specification]
@@ -161,8 +153,13 @@ pub open spec fn user_end() -> nat {
 }
 
 /// Size of valid guest physical memory (`config::kernel::MEMORY_SIZE`).
+///
+/// Modeled as a literal (mirroring `page_size`/`user_base`/`user_end` above)
+/// because the generated `config::kernel::MEMORY_SIZE` const is not reachable
+/// from spec context. Kept in sync with the build-time configuration
+/// (`src/libs/config/build.rs`, currently 128 MiB).
 pub open spec fn phys_mem_size() -> nat {
-    ::config::kernel::MEMORY_SIZE as nat
+    0x800_0000
 }
 
 //==================================================================================================

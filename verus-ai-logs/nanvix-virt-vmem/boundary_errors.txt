@@ -1,0 +1,96 @@
+error: `alloc::collections::linked_list::IterMut` is not supported 
+error: `alloc::collections::linked_list::Iter` is not supported 
+error: `alloc::collections::linked_list::impl&%10%default%position` is not supported 
+error: `alloc::collections::linked_list::impl&%10::next` is not supported 
+error: `alloc::collections::linked_list::impl&%15::next` is not supported 
+error: `alloc::collections::linked_list::impl&%7::new` is not supported 
+error: `alloc::collections::linked_list::impl&%8::iter_mut` is not supported 
+error: `alloc::collections::linked_list::impl&%8::iter` is not supported 
+error: `alloc::collections::linked_list::impl&%8::pop_front` is not supported 
+error: `alloc::collections::linked_list::impl&%8::push_back` is not supported 
+error: `alloc::collections::linked_list::impl&%8::push_front` is not supported 
+error: `alloc::collections::linked_list::impl&%8::remove` is not supported 
+error: `arch::x86::cpu::cr3::Cr3Register` is not supported 
+error: `arch::x86::cpu::cr3::PageLevelCacheDisableFlag` is not supported 
+error: `arch::x86::cpu::cr3::PageLevelWriteThroughFlag` is not supported 
+error: `arch::x86::cpu::cr3::PagingStructureBaseAddress` is not supported 
+error: `arch::x86::cpu::cr3::impl&%2::new` is not supported 
+error: `arch::x86::mem::constants::PAGE_ALIGNMENT` is not supported 
+error: `arch::x86::mem::constants::PAGE_SIZE` is not supported 
+error: `arch::x86::mem::constants::PGTAB_ALIGNMENT` is not supported 
+error: `arch::x86::mem::paging::frame::number::FrameNumber` is not supported 
+error: `arch::x86::mem::paging::pde::impl&%1::is_present` is not supported 
+error: `arch::x86::mem::paging::pte::impl&%1::frame_address` is not supported 
+error: `arch::x86::mem::paging::pte::impl&%1::frame_number` is not supported 
+error: `arch::x86::mem::paging::pte::impl&%1::is_cow` is not supported 
+error: `bump_allocator::BumpAllocError` is not supported 
+error: `bump_allocator::FixedSizeBumpAllocator` is not supported 
+error: `bump_allocator::impl&%1::alloc_as` is not supported 
+error: `config::kernel::MEMORY_SIZE` is not supported 
+error: `core::cell::RefMut` is not supported 
+error: `core::cell::Ref` is not supported 
+error: `core::cell::impl&%30::new` is not supported 
+error: `core::cell::impl&%31::borrow_mut` is not supported 
+error: `core::cell::impl&%31::borrow` is not supported 
+error: `core::cell::impl&%46::deref` is not supported 
+error: `core::cell::impl&%54::deref` is not supported 
+error: `core::cell::impl&%55::deref_mut` is not supported 
+error: `core::mem::drop` is not supported 
+error: `sys::sys::config::memory_layout::USER_BASE` is not supported 
+error: `sys::sys::config::memory_layout::USER_END` is not supported 
+error: `sys::sys::mm::access::impl&%11::RDWR` is not supported 
+error: `sys::sys::mm::address::virt::impl&%0::align_down` is not supported 
+error: `sys::sys::mm::address::virt::impl&%0::checked_add` is not supported 
+error: `sys::sys::mm::address::virt::impl&%0::new` is not supported 
+error: `sys::sys::mm::address::virt::impl&%1::into_raw_value` is not supported 
+error: `sys::sys::mm::alignment::Alignment` is not supported 
+error: `sys::sys::mm::alignment::align_down` is not supported 
+error: `type_safe::utils::usize_to_const_ptr` is not supported 
+error: `type_safe::utils::usize_to_mut_ptr` is not supported 
+error: `verus_builtin::impl&%5::assume_new` is not supported 
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::load_page_directory` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::map` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::read_pde` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::unmap` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::ctrl` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::is_page_present` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::iter_present_ptes` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::lookup` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::map` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::mark_cow` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::nmapped` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::read_pte_at` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::unmap` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::unmark_cow` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_inner` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::aligned::pgtab::PageTableAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::from_frame_number` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::page::PageAddress::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::page::PageTableAddress::eq` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::page::PageTableAddress::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::page::PageTableAddress::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::mem::types::address::pd::PageDirectoryAddress::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::platform::microvm::is_valid_physical_region` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::hal::platform::microvm::virt_to_phys` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::alloc_user_frame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::get_mut` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::phys::upool::UserFrame::address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::phys::upool::UserFrame::leak` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::phys::upool::UserFrame::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::phys::upool::UserFrame::refcount` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::virt::identity_map::init` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::virt::identity_map::memcpy` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::virt::identity_map::memset` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::virt::identity_map::sync_kernel_pdes` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use function `kernel::mm::virt::kpage::KernelPage::frame_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: cannot use type `kernel::mm::virt::page_table_allocator::PageTableBss` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: could not compile `kernel` (bin "kernel") due to 95 previous errors
