@@ -67,7 +67,15 @@ impl FrameAddress {
             spec_frame_raw_value(result) == spec_frame_number(self@),
     )]
     pub fn into_frame_number(self) -> FrameNumber {
-        self.0.into_frame_number()
+        // VERUS DEVIATION (pre-approved: `f(complex_expr)` -> `let x = complex_expr; f(x)`):
+        // the inner physical address (reached via `Deref`) is bound to a local so
+        // the bridge lemma can relate its universal `spec_addr` projection (equal
+        // to `self@`) to its `View` (consumed by `PhysicalAddress::into_frame_number`).
+        let physical_address: PhysicalAddress = *self.0;
+        proof! {
+            lemma_phys_view_is_spec_addr(physical_address);
+        }
+        physical_address.into_frame_number()
     }
 
     ///

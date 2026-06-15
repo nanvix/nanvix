@@ -1004,3 +1004,35 @@ Now add the `#[verus_verify]` impl block for the self-less constructors after th
 Turn 59
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42
+[RESULT ✓] bash: |
+70 |         self.0.into_frame_number()
+   |         ^^^^^^
+   |
+   = help: The following declaration may resolve this error:
+           pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as core::ops::Deref>::crate::deref] (_0: &crate::hal::mem::types::ad...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Progress — now I need a `Deref` spec for `PageAligned`. Let me add it and bind the deref explicitly in `into_frame_number`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+[THINKING] The remaining issue is that Verus needs an explicit specification for the `Deref::deref` method on `PageAligned<T>` — the error message even hints at what the spec should look like, so I need to add that assumption to move forward. Defining the deref specification... have `spec_addr(d) == self.0@` from the deref spec, and I need to connect that to `(*d)@`. The bridge lemma says `spec_addr(&pa) == pa@` for any PhysicalAddress pa, so applying it to `*d` gives `spec_addr(d) == (*d)@`. Combining these: `(*d)@ == spec_addr(d) == self.0@ == self@`, which is exactly what I need for the into_frame_number call to verify.
+
+To make this work in code, I'm restructuring into_frame_number to bind the dereferenced value explicitly, then invoke the bridge lemma on that binding so Verus can connect the spec views properly. I'm reconsidering whether I even need to rewrite `into_frame_number` at all—if I just add the deref assume_spec with the address relationship, the original code might work as-is since Verus should handle the spec function congruence over equal values. The key question is whether the original auto-deref call will have access to the necessary invariant facts without explicit binding.
+
+Actually, the cleanest approach is to rewrite `into_frame_number` with an explicit let binding for the dereferenced `PhysicalAddress`, which makes everything nameable for the bridge lemma. I'll add the deref assume_spec to frame.spec.rs and use the full qualified path for `Deref::deref` since frame.rs doesn't currently import it.
+
+Writing the deref specification...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42

@@ -114,4 +114,19 @@ pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](
         },
 ;
 
+// `<PageAligned<T> as Deref>::deref` is the auto-deref that resolves
+// `self.0.into_frame_number()` to `PhysicalAddress::into_frame_number`. It is a
+// trait-impl method of the external `core::ops::Deref` trait, below this
+// module's verification boundary, specced here as a trust boundary. It is pure
+// projection: the borrowed inner address has the same abstract value as the
+// wrapper (`spec_addr(result) == addr@`). Stated through the universal
+// `spec_addr` projection rather than `result@`, because a bare `T: Address`
+// carries no `View<V = int>` bound (mirrors `page.spec.rs`).
+pub assume_specification<T: Address> [
+    <PageAligned<T> as ::core::ops::Deref>::deref
+](addr: &PageAligned<T>) -> (result: &T)
+    ensures
+        spec_addr(result) == addr@,
+;
+
 } // verus!

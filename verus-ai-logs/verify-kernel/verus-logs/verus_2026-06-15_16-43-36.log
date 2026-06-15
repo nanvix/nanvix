@@ -1,0 +1,30 @@
+Timestamp: 2026-06-15_16-43-36
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::frame
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: assume_specification requires function type signature to match `kernel::hal::mem::types::address::aligned::page::PageAligned::deref` exactly 
+             assume_specification provided: `for<T> for<'_> (&hal::mem::types::address::aligned::page::PageAligned<T>) -> &T`
+             expected:                      `for<T> for<'_> (&hal::mem::types::address::aligned::page::PageAligned<T>) -> &<hal::mem::types::address::aligned::page::PageAligned<T> as core::ops::Deref>::Target`
+   --> src/kernel/src/hal/mem/types/address/frame.spec.rs:125:1
+    |
+125 | / pub assume_specification<T: Address> [
+126 | |     <PageAligned<T> as ::core::ops::Deref>::deref
+127 | | ](addr: &PageAligned<T>) -> (result: &T)
+    | |_______________________________________^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
