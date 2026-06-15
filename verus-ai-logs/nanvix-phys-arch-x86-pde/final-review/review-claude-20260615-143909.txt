@@ -1383,3 +1383,14 @@ I independently verified each task with tools (not your summary):
 
 **Only finding (non-blocking):** comment uses prefix `VERUS REWRITE` vs codified `VERUS DEVIATION` — nomenclature nit, no impact.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && cargo clean -p arch >/dev/null 2>&1 || true && set -o pipefail && make verify-arch VE
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : arch
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/libs/arch/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --targ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/arch/src/x86/mem/paging/pde.rs && set -o pipefail && make verify-arch 
