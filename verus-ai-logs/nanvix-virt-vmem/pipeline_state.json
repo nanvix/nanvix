@@ -2,10 +2,11 @@
   "module_name": "vmem",
   "log_name": "nanvix-virt-vmem",
   "source_path": "/home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs",
-  "current_phase": "view-design",
-  "current_phase_idx": 1,
+  "current_phase": "specification",
+  "current_phase_idx": 2,
   "completed_phases": [
-    "caller-analysis"
+    "caller-analysis",
+    "view-design"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -18,6 +19,17 @@
       "review_file": null,
       "duration_s": 262.8,
       "review_rounds": 0
+    },
+    "view-design": {
+      "phase": "view-design",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 313.0,
+      "review_rounds": 0
     }
   },
   "prover_session_id": "876d5025-7422-4e82-b9f5-16891d5a5405",
@@ -25,11 +37,13 @@
   "base_branch": "virt-mm-ai-spec",
   "verus_branch": "virt-mm-ai-spec",
   "phase_boundary_shas": {
-    "caller-analysis": "99d7845f8c534ecf1516e3db8c80d2d98976c71d"
+    "caller-analysis": "99d7845f8c534ecf1516e3db8c80d2d98976c71d",
+    "view-design": "509e129decb603196481543dfbe9db0986da22b4"
   },
   "phase_start_shas": {
     "caller-analysis": "fc684771448191782cffe96d94e58be6a33c9d86",
-    "view-design": "99d7845f8c534ecf1516e3db8c80d2d98976c71d"
+    "view-design": "99d7845f8c534ecf1516e3db8c80d2d98976c71d",
+    "specification": "509e129decb603196481543dfbe9db0986da22b4"
   },
   "phase_history": [
     {
@@ -48,6 +62,18 @@
       "phase": "view-design",
       "event": "start",
       "sha": "99d7845f8c534ecf1516e3db8c80d2d98976c71d",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "end",
+      "sha": "509e129decb603196481543dfbe9db0986da22b4",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "509e129decb603196481543dfbe9db0986da22b4",
       "rollback_iter": 0
     }
   ],
