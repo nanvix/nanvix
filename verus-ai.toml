@@ -2,10 +2,10 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/kernel/src/hal/platform/microvm/mod.rs`
+background = """File: `src/libs/sys/src/sys/mm/address/virt.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`gva_to_gpa`
+`VirtualAddress::into_raw_value`, `VirtualAddress::from_raw_value`, `VirtualAddress::new`, `VirtualAddress`
 
 
 Hard rules:
