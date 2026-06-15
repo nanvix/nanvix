@@ -3128,3 +3128,92 @@ Turn 197
 Turn 198
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: verification results:: 72 verified, 0 errors (partial verification with `--verify-*`)
+error[E0080]: evaluation panicked: does not have the expected size
+   --> src/kernel/src/mm/phys/frame.proof.rs:1:1
+For more information about this error, try `rustc --explain E0080`.
+error: could not compile `kern...
+
+────────────────────────────────────────────────────────────
+Turn 199
+────────────────────────────────────────────────────────────
+Verification passed (72 verified) but the `global size_of usize == 8` triggers a compile-time size check that fails — the verification target may be 32-bit. Let me check the default TARGET:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "TARGET\s*?=\|TARGET :=\|TARGET ?=\|^TARGET\|export TARGET\|TARGET.*x
+
+[THINKING] The verification succeeded, but there's a non-Verus compilation error where a static assertion about `usize` being 8 bytes is failing during const evaluation—suggesting that in this particular build, `usize` isn't actually 8 bytes, which is causing the panic.
+
+I'm realizing the verify-kernel might be compiling for a 32-bit target like x86 instead of x86_64 by default, which would make `usize` 4 bytes and cause the global size check to fail. I need to check what the default TARGET is set to in the Makefile.
+[RESULT ✓] bash: 11:export TARGET ?= x86
+100:export TARGETS_DIR   := $(BUILD_DIR)/targets
+217:export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
+222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+348:ifneq ($(TARGET),x86_64)
+577:	@echo "  TARGET          x86, x86_64...
+
+────────────────────────────────────────────────────────────
+Turn 200
+────────────────────────────────────────────────────────────
+The default TARGET is `x86` (32-bit)! My `global size_of usize == 8` is wrong for that. Let me remove it and check what target verification actually uses:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I just realized the default target is 32-bit x86, not 64-bit, which means usize is only 4 bytes and my assumption about the allocation bound being valid for 64-bit is completely wrong. On 32-bit systems, usize::MAX is 2^32-1, so the spec_max calculation becomes 1048574, and the index could reach up to 1048575, which breaks my earlier reasoning.
+
+The critical issue is that the top frame at index 1048575 has a base address of 0xFFFFF000, which is still within the valid address range on 32-bit, but its frame number exceeds spec_max. This means from_raw_value genuinely returns None on the default verification target, and when the allocator hands out this top frame, the conversion fails and alloc returns an out-of-memory error even though memory was already allocated—this is a real bug that violates the contract and corrupts state.
+
+I need to figure out how this reserved top-of-memory frame issue is actually handled elsewhere in the codebase. I'm working through the math on the frame address bounds. If the bitmap covers exactly 2^20 frames (the entire 4GB address space), then the maximum allocatable index would be 1048575, which corresponds to frame address 0xFFFFF000. This is technically representable within a 32-bit address space, so it's a valid state according to the invariant. The constraint is tight: the bitmap can cover all of 4GB, but only if it's precisely sized that way. So the core issue is that the contract requires `alloc` to fail only when out of memory, but on 32-bit systems the implementation can fail because the top frame index is unrepresentable as a `FrameNumber`. Without strengthening the invariant to guarantee the bitmap doesn't cover that top frame, the proof becomes impossible—the None branch can't be proven unreachable while still satisfying the spec's requirement that `free_frames` be empty on failure. What if I bypass FrameNumber entirely and construct FrameAddress directly from the raw address? That would avoid the spec_max bound, but FrameAddress::from_raw_value still has a fallible path through PhysicalAddress and PageAligned that I can't prove succeeds on 32-bit. The original code used `into_frame_number()` everywhere with an `admit()` proof, so this unprovable failure case was never actually proven — that's the real challenge here.
+
+Looking at the constraints more carefully: on 32-bit, the bitmap's num_bits < u32::MAX combined with the frame address bound gives me idx <= usize::MAX/4096, which is still one past spec_max. The only way to make this work is if the top frame is never allocatable — that would need to be enforced at initialization time, which is out of scope. Alternatively, if FrameNumber::MAX itself were defined as MAX_ADDRESS/FRAME_SIZE instead of minus one, then spec_max would align perfectly with the derived bound, making from_raw_value provably succeed. But changing that constant is also out of scope.
+
+Actually, I'm realizing FrameNumber::MAX might be computed incorrectly. For a 2^32-byte address space, there are 2^20 total frames numbered 0 through 2^20-1, so the max should be 2^20-1. But the current formula does (usize::MAX / FRAME_SIZE) - 1, which gives (2^20-1) - 1 = 2^20-2 — that's one too small. I'm realizing this might be a cross-compilation issue — the verification might be intended for x86_64 while the kernel builds for 32-bit, which would explain why my symbolic usize assertions are failing and why the frame number calculation doesn't align. Let me check what the actual verification target is and whether Verus is treating usize as a 64-bit or 32-bit type. I'm working through the constraints on `num_bits` more carefully. The bitmap length is bounded by the slice length (at most `isize::MAX`), and combined with the frame address constraint, `num_bits` can't exceed 2^20. This means the index can reach `spec_max+1`, making the None branch genuinely reachable for the top-of-memory frame — it's a real correctness issue at the code/spec boundary that the contract can't express.
+
+The summary claimed `alloc` isn't blocked by this bound issue, possibly because it assumed 64-bit semantics where the constraint would be provable, but the verification target defaults to 32-bit. I need to figure out whether the summary's reasoning holds or if there's a gap in the approach.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 201
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "TARGET\|verify-kernel\|x86_64\|x86" scripts/verify.sh 2>/dev/null |
+[RESULT ✓] bash: ==== makefile verify-kernel ====
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+<shellId: 117 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 202
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/Makefile
+[RESULT ✓] view: 624. verify-kernel: ensure-verus
+625. 	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+626. 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+627. 	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+628. 	VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)" \
+629. 	$(VERUS_AI_VERIFY_SCRIPT) --...
+
+────────────────────────────────────────────────────────────
+Turn 203
+────────────────────────────────────────────────────────────
+Verification compiles for the 32-bit kernel target. Let me determine what word size Verus actually assumes by default for this target:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '160,180p' src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The verify-kernel build targets 32-bit x86 with usize being 4 bytes, but when I check the assertion `usize::MAX as int == 2^64-1`, it fails — which suggests Verus is treating usize symbolically rather than respecting the actual target architecture's size constraints.
+
+The global directive made verification pass (72 verified) by forcing 64-bit SMT reasoning, but then the actual const-eval compilation failed the size check against the real 32-bit target. So the core question is whether Verus defaults to 64-bit semantics or respects the target's word size — I need to test with the 32-bit value directly.
+
+This matters because if verification genuinely assumes 32-bit, then the edge case where `idx` could equal `spec_max+1` becomes real and reachable, making the unprovable `None` branch a genuine spec violation. On 32-bit, `spec_max+1 = (2^32-1)/4096 = 2^20-1`, so `num_bits` would need to exceed that threshold for the bug to trigger.
+[RESULT ✓] bash: let idx = frame_number as int;
+            assert(0 <= idx < old_self.bitmap@.num_bits);
+            assert(!old_self.bitmap@.set_bits.contains(idx));
+            assert(self.bitmap@.set_bits == old_self.bitmap@.set_bits.insert(idx));
+            assert(self.bitmap@.num_bits == old_self.bitmap@.num_...
+
+────────────────────────────────────────────────────────────
+Turn 204
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 205
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

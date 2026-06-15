@@ -5,12 +5,6 @@ use crate::hal::mem::spec_page_size;
 use vstd::map::*;
 use vstd::set::*;
 
-// The kernel targets x86_64, where `usize` is 8 bytes (`MAX_ADDRESS == usize::MAX == 2^64 - 1`).
-// Encoding the target word size lets the verifier discharge frame-number representability bounds
-// (e.g. that a bitmap index, capped below `u32::MAX`, is always a valid frame number). This is a
-// crate-global fact and weakens no specification.
-global size_of usize == 8;
-
 /// Helper: convert a bitmap index to a frame (physical) address.
 pub open spec fn frame_addr_of(i: int) -> int {
     i * spec_page_size()
