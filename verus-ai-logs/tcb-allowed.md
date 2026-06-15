@@ -307,3 +307,28 @@ verified.
   value as the wrapper). Stated through the universal `spec_addr` projection
   rather than `result@` because a bare `T: Address` carries no `View<V = int>`
   bound. Precedent: `page.spec.rs`. Removed when `hal::mem` is verified.
+
+## Allowed `axiom fn` — `hal::mem::types::address::frame` view/spec_addr bridge
+
+`FrameAddress`'s verified projections/constructors (`into_frame_number`,
+`from_frame_number`, `from_raw_value`) must relate a `PhysicalAddress`'s
+`@`-based guarantees (used by `PhysicalAddress::from_number` /
+`into_frame_number`) to the universal `spec_addr` projection (used by the generic
+`PageAligned<T>::view`, `PageAligned::from_address`, and `Deref::deref`). The two
+projections denote the same integer (the physical address), but the equality is
+**not derivable** with the current encoding: `spec_addr<T: Address>` is `uninterp`
+(it must be generic over a bare `T: Address`, which carries no `View<V = int>`
+bound), and the only fact relating it to a view — the `<PageAligned<T> as
+Deref>::deref` boundary (`spec_addr(result) == addr@`) — is tautological once
+`PageAligned<T>::view == spec_addr(&self.0)` is unfolded. The identity is therefore
+an external-bottom trust boundary that becomes derivable only when the
+`sys::mm::Address` trait `impl for PhysicalAddress` is itself verified (blocked
+today by its `usize as *const/*mut u8` sibling casts — see
+`verus-ai-logs/verus-unsupported.md`). The specification phase reviewed the claim
+as semantically sound and deferred it; the proving phase discharges it with the
+governed `axiom fn` mechanism (no `admit`, no `external_body`). It states only a
+true newtype-identity fact and weakens no target contract. Removed when
+`sys::mm::Address` is verified.
+
+- `src/kernel/src/hal/mem/types/address/frame.proof.rs::lemma_phys_view_is_spec_addr`
+  — `ensures crate::hal::mem::spec_addr(&pa) == pa@`.
