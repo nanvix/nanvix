@@ -723,3 +723,52 @@ Let me test the fn-pointer hypothesis by temporarily replacing the `.map(Virtual
 Turn 46
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -15
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sys` (lib) due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/setup error (veru...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Not the fn-pointer. Let me revert and check whether `const fn` is the issue (region.rs has const fn with verus_spec).
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp /tmp/virt.rs.bak src/libs/sys/src/sys/mm/address/virt.rs; echo "reverted"; echo "=== regio
+
+[THINKING] The error persists even with the closure, so it's not the function pointer issue. Let me revert that change and investigate what's actually different. The `new` function fails with verus_spec while `from_number` in phys.rs works fine, so I need to figure out what distinguishes them. The main difference I'm seeing is that `new` is a `const fn` while `from_number` is a regular function — let me check if that's the culprit by looking at how region.rs handles const functions with verus_spec.
+[RESULT ✓] bash: reverted
+=== region.rs const fn + verus_spec ===
+83-    /// - `cache_enabled`: If `true`, enables caching for the page (PCD=0).
+84-    ///
+85-    /// # Returns
+86-    ///
+87-    /// A new [`MmioCachePolicy`] instance.
+88-    ///
+89:    pub const fn new(write_through: bool, cache_enabled: bool) -> Se...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Still failing. Let me test whether `const` is the culprit — temporarily make `new` non-const (diagnosis only), keeping only its spec.
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=src/libs/sys/src/sys/mm/address/virt.rs
+# remove from_raw_value spec
+python3 - <<'PY'
+impor
+
+[THINKING] The `const fn` in region.rs lacks the verus_spec annotation, making it the likely culprit since const fn with verus_spec hasn't been demonstrated to work elsewhere. I reverted to the backup file, but that version had all three specs applied—the state right after I initially got those two errors on new and from_raw_value.
+
+Now I'm testing the const fn hypothesis by temporarily removing the const qualifier to see if it verifies, though I can't keep it that way since const context callers depend on it. But here's the thing: both new (const) and from_raw_value (non-const) failed in the first run, so const alone isn't the issue. The real pattern I'm noticing is that new and from_raw_value are defined in the inherent impl block and are called by out-of-scope functions that aren't specced but are in verus-checked code—when align_up uses them as closures, verus needs their specs to be available.
+
+The key insight is that new and from_raw_value both reference result.inv() in their ensures clauses, while into_raw_value only uses self@ and doesn't call inv(). Even though inv() is defined in the included spec file at the top of virt.rs, maybe there's an ordering or scoping issue with how the macro generates the spec companion function. Let me systematically test by isolating from_raw_value alone, then testing new as non-const, to narrow down what's actually causing the verification failure.
+[RESULT ✓] bash: done
+53:    pub fn new(value: usize) -> Self {
+66:    pub fn from_raw_value(raw_addr: usize) -> Self {
+176:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+248:    fn into_raw_value(self) -> usize {
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -12

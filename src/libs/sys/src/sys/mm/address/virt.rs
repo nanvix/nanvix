@@ -50,7 +50,7 @@ impl VirtualAddress {
             result@ == value as int,
             result.inv(),
     )]
-    pub const fn new(value: usize) -> Self {
+    pub fn new(value: usize) -> Self {
         Self(value)
     }
 
@@ -83,7 +83,7 @@ impl VirtualAddress {
     /// instead.
     ///
     pub fn align_up(&self, align: Alignment) -> Option<Self> {
-        mm::align_up(self.0, align).map(|v| VirtualAddress::new(v))
+        mm::align_up(self.0, align).map(VirtualAddress::new)
     }
 
     ///
