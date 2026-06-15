@@ -638,3 +638,98 @@ Full kernel: 0 errors. Now full-workspace verify for regressions.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify 2>&1 | tail -20
 
 [THINKING] The kernel verification passed with no errors and my module is clean, though there are a few admits in the physical memory section that are out of scope. Now I should run a full workspace verification to make sure nothing else broke.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=16 admit=7 trusted=0 no_decreases=0 cfg_gate=13
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  56/1026 exec functions ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Both pass (0 errors, no regressions). Now let me update the deliverable reports with the new counts (admit 5→4) and finalize the analysis.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && wc -l verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.
+
+[THINKING] The `make verify` command appears to be running cached checks across all crates without recompilation, and since the exit code is clean with no errors, there are no regressions to worry about. Now I'm down to four remaining admits in mm::phys that are all blocked by the missing §8 ghost-token attachment, so I need to update that next.
+
+Let me pull up the current fix_report.md and verification_todo.md files to document the progress and finalize the status.
+[RESULT ✓] bash: 125 verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+  140 verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+  265 total
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] view: 1. # Cheating Elimination Report: phys-frame (module `mm::phys`)
+2. 
+3. Scope: `src/kernel/src/mm/phys/` — the cheating gate is module-wide.
+4. Module verification: `make verify-kernel MODULE=mm::phys`.
+5. Baseline branch: `verus-ai-prove-bottom-up`. Allowlist: `verus-ai-logs/tcb-allowed.md`.
+6. 
+7....
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now let me update the report to reflect bulk_ok's actual elimination (5→4):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Now update the "Remaining admits" section (now 4) and the closing sections:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now update verification_todo.md to remove the resolved bulk_ok and reflect the 4 remaining:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+[RESULT ✓] view: 1. # Verification TODOs — `mm::phys` cheating-gate blockers
+2. 
+3. ## Gate blockers: 5 `admit()` in `manager.proof.rs`
+4. 
+5. These are the only cheating-gate blockers. Root cause: `phys_view()` is `uninterp`
+6. (a single fixed ghost constant) yet models the **mutable, shared** global frame partitio...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Let me update the session plan status and confirm final git/verification state.
+[TOOL] edit: /home/ruize/.copilot/session-state/14b90c09-2f67-4587-8773-6218c4a98c78/plan.md
+
+[THINKING] I need to update the plan.md file with the current status and verify everything is properly committed, then check the git state to confirm the pipeline auto-committed the changes.
+[RESULT ✓] edit: File /home/ruize/.copilot/session-state/14b90c09-2f67-4587-8773-6218c4a98c78/plan.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add -A && git status --short | head && echo "=== admits in module ===" 

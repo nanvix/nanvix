@@ -1,12 +1,18 @@
 # Verification TODOs — `mm::phys` cheating-gate blockers
 
-## Gate blockers: 5 `admit()` in `manager.proof.rs`
+## Gate blockers: 4 `admit()` in `manager.proof.rs`
 
 These are the only cheating-gate blockers. Root cause: `phys_view()` is `uninterp`
 (a single fixed ghost constant) yet models the **mutable, shared** global frame partition.
 The §8 ghost-token attachment (`view_design.md`) that would make this coherent needs
 `tracked` ghost state threaded through exec signatures/structs, which the source-integrity
-rules forbid. Eliminated 5 of the original 10 admits (see `cheating-elimination/fix_report.md`).
+rules forbid. Eliminated 6 of the original 10 admits (see `cheating-elimination/fix_report.md`);
+`lemma_user_bulk_ok` was the most recent, closed with a real loop-invariant proof.
+
+All four below assert `post == f(pre)` for an *arbitrary* `post` (or an `uninterp` view), so
+they are unprovable as standalone lemmas — and, unlike `lemma_user_bulk_ok`, they remain
+unprovable when inlined at the call site, because `self.upool@` structurally does not track the
+operation in question.
 
 - **`lemma_manager_attached`** — `m@ == phys_view().frames`.
   Both `Upool::view`/`PhysMemoryManager::view` and `phys_view()` are `uninterp` with no axioms
@@ -24,8 +30,9 @@ rules forbid. Eliminated 5 of the original 10 admits (see `cheating-elimination/
   never mutates `self.upool`, so the implementation has `final(self)@ == old(self)@`. The lemma
   asserts `old(self)@ == old(self)@.alloc_one(addr)` — **false for the implementation**.
   **Unblock:** correct the external-top `alloc_kernel_frame` spec to a frame-preserving
-  `self@` transition + express the allocation via `phys_view()` (do-not-weaken — needs human
-  review), OR record kernel allocations in `self` (semantically wrong; exec change).
+  `self@` transition + express the allocation via `phys_view()` (do-not-weaken / unlisted
+  function — needs human review), OR record kernel allocations in `self` (semantically wrong;
+  exec change).
 
 - **`lemma_kernel_alloc_contiguous`** — same root cause as `lemma_kernel_alloc_one`, bulk
   kernel path (`alloc_many_kernel_frames`). Asserts a `self@` `book_all(..)` transition the
@@ -34,26 +41,19 @@ rules forbid. Eliminated 5 of the original 10 admits (see `cheating-elimination/
 - **`lemma_user_bulk_err_restored`** — `m@ == pre` after `frames.clear()`. The K successful
   `self.upool.alloc()` calls advanced `self.upool@` by K `alloc_one`s; `clear()` drops the
   `UserFrame`s whose `Drop` calls the **global** `frame::free()`, which does not roll back
-  `self.upool@`. The pool-view restoration the lemma claims is not performed — **false for the
-  implementation** without modeling `Drop`'s global effect and reconciling it with the pool view.
-  **Unblock:** §8 ghost token making the pool view reflect global frees, or a Drop-effect spec.
+  `self.upool@`. The new strengthened loop invariant on `alloc_many_user_frames` now *proves*
+  `self@ == g_old.book_all(user_addr_set(frames@))` with a non-empty set on the error path,
+  which **directly contradicts** `m@ == pre` — demonstrating the error-path manager spec
+  (`final(self)@ == old(self)@`) is **false for the implementation** without modeling `Drop`'s
+  global `frame::free()` effect and reconciling it with the pool view.
+  **Unblock:** §8 ghost token making the pool view reflect global frees, or a Drop-effect spec,
+  or correcting the (unlisted) `alloc_many_user_frames` error-path external-top spec.
 
-- **`lemma_user_bulk_ok`** — *provable, deprioritized (moot).* TRUE after a completed loop.
-  **Proof recipe** (for a follow-up; closes this gap but leaves the function blocked by the two
-  admits above):
-  1. Add to `alloc_many_user_frames`'s loop a strengthened invariant:
-     `self@ == g_old.book_all(user_addr_set(frames@))`,
-     `frames@.len() == <iterations>` (bind the range index),
-     `user_addr_set(frames@).len() == frames@.len()`,
-     `forall a in user_addr_set(frames@): g_old.free_frames.contains(a)`.
-  2. Helper lemma (clean, unconditional, Set/Map extensionality):
-     `book_all(s).alloc_one(a) == book_all(s.insert(a))`
-     (allocated: `union(s).insert(a) =~= union(s.insert(a))`; free: `difference` analog;
-     refcounts: `union_prefer_right(map(s)).insert(a,1) =~= union_prefer_right(map(s.insert(a)))`).
-  3. Helper: `user_addr_set(frames.push(uf)) =~= user_addr_set(frames).insert(uf@)`.
-  4. Distinctness: each `uf@` ∈ `self@.free_frames = g_old.free \ prev_set`, so `uf@ ∉ prev_set`
-     → `len` grows by exactly 1; at loop exit `frames@.len() == count`.
-  Then replace both `lemma_user_bulk_ok(..)` call sites with the (now-established) invariant facts.
+### Resolved this session
+- **`lemma_user_bulk_ok`** — *eliminated.* Deleted the lemma and re-derived its facts inline as
+  strengthened loop invariants on `alloc_many_user_frames`, using two new pure-spec helpers
+  (`lemma_book_all_alloc_one`, `lemma_user_addr_set_push`) plus `lemma_book_all_empty` /
+  `lemma_user_addr_set_empty` for the base case. Verified: 85 verified, 0 errors.
 
 ---
 
