@@ -2,23 +2,52 @@
   "module_name": "hal-frame-address",
   "log_name": "nanvix-phys-hal-frame-address",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 137.1,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "d5983052-c7d8-4131-b090-640fff7bc510",
   "completed": false,
   "base_branch": "verus-ai/sys-virt-address",
   "verus_branch": "verus-ai/hal-frame-address",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "e66d3b542ff717242b9da1f0af15e5985be12ea8"
+  },
   "phase_start_shas": {
-    "caller-analysis": "b5ef4dd3bf27dc3d5ebc1594cdfb6c85e36c4e20"
+    "caller-analysis": "b5ef4dd3bf27dc3d5ebc1594cdfb6c85e36c4e20",
+    "view-design": "e66d3b542ff717242b9da1f0af15e5985be12ea8"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "b5ef4dd3bf27dc3d5ebc1594cdfb6c85e36c4e20",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
       "rollback_iter": 0
     }
   ],
