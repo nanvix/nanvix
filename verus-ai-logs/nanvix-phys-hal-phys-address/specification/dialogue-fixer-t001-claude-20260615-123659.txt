@@ -373,3 +373,64 @@ Turn 21
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "error|
+[RESULT ✓] bash: error: expected identifier, found keyword `let`
+error: expected one of `,`, `:`, or `}`, found `)`
+error: expected one of `,`, `:`, or `}`, found `)`
+error: expected one of `,`, `:`, or `}`, found `>=`
+error: expected one of `,`, `:`, or `}`, found `<=`
+error: expected one of `,`, `:`, or `}`, found...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Parse errors — I used `proof {` but in `#[verus_spec]` exec context it must be the `proof!{ }` macro. Let me check existing multi-statement proof macro usage:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "proof!" src/kernel/src/mm/phys/*.rs src/kernel/src/hal/mem/**/*.rs 2>/dev/null | 
+
+[THINKING] The issue is that `proof { ... }` syntax doesn't work in `#[verus_spec]` attribute macros outside of `verus!{}` blocks—I need to use the `proof!{ ... }` macro instead for these exec functions.
+
+Now I'm checking whether the `assert(...) by (nonlinear_arith) requires ...;` syntax is actually supported inside `proof!` macro blocks, or if I need a different approach. Let me search the codebase for examples of how asserts with `by` clauses are used within proof! blocks in .rs files.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:760:    proof! {
+src/kernel/src/mm/phys/frame.rs:810:    proof! {
+src/kernel/src/mm/phys/frame.rs:860:    proof! {
+src/kernel/src/mm/phys/frame.rs:960:    proof! {
+src/kernel/src/mm/phys/frame.rs:1001:    proof! {
+src/kernel/src/mm/phys/frame.rs:1041:    proof! {
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 755.         },
+756. )]
+757. pub(super) fn alloc() -> Result<FrameAddress, Error> {
+758.     let r = instance();
+759.     let res = r.alloc();
+760.     proof! {
+761.         auth.v.frames = (*r)@;
+762.     }
+763.     res
+764. }
+765. 
+766. /// # Description
+767. ///
+768. /// Allocates `count` physica...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+I need `proof!{ }` (macro form). Let me fix all three blocks:
+[TOOL] bash: cd /home/ruize/nanvix-phy && perl -0pi -e 's/        proof \{\n            \/\/ No-overflow/        proof! {\n          
+
+[THINKING] I see the issue now—I need to use `proof!` with the exclamation mark, not just `proof`. Let me check whether `assert` statements with `by` clauses and `let` bindings are actually supported inside `proof!{}` blocks, since the examples I've seen so far only show simple assignments. I should look for actual usage patterns in the kernel or in `.proof.rs` files to understand what's allowed.
+
+The `assert(...) by (nonlinear_arith) requires ...;` syntax is standard Verus, and since `proof!` takes Verus syntax, it should work inside the macro. Ghost `let` bindings should also be fine. I'll go ahead and change all three `proof {` blocks to `proof! {` in my edits—there are two in `from_number` and one in `into_frame_number`.
+[RESULT ✓] bash: 158:        proof! {
+177:        proof! {
+197:        proof! {
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "error|

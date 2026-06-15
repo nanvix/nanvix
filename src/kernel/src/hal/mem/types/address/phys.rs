@@ -155,7 +155,7 @@ impl PhysicalAddress {
     pub fn from_number(frame: FrameNumber) -> Self {
         let frame_raw: usize = frame.into_raw_value();
         let page_size: usize = mem::FRAME_SIZE;
-        proof {
+        proof! {
             // No-overflow: `frame_raw * page_size <= usize::MAX`. With
             // `frame_raw <= usize::MAX / page_size - 1` and `page_size > 0`, the
             // product stays within `usize`.
@@ -174,7 +174,7 @@ impl PhysicalAddress {
             ;
         }
         let addr: usize = frame_raw * page_size;
-        proof {
+        proof! {
             // Alignment and invariant follow from `(fr * p) / p == fr <= MAX`.
             lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
             lemma_div_by_multiple(spec_frame_raw_value(frame), spec_page_size());
@@ -194,7 +194,7 @@ impl PhysicalAddress {
     pub fn into_frame_number(self) -> FrameNumber {
         let raw_addr: usize = self.0.into_raw_value();
         let shift: usize = mem::FRAME_SHIFT;
-        proof {
+        proof! {
             // `raw_addr >> shift == raw_addr / 2^shift == self@ / spec_page_size()`,
             // which `self.inv()` bounds by `spec_max_frame_number()`, so the index
             // is representable and `from_raw_value(..).unwrap()` is total.
