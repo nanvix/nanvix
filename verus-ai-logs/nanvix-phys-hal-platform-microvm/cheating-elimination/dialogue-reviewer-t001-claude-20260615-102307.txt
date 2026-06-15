@@ -189,3 +189,346 @@ Turn 2
 /h...
 [RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs:427:        result as int == spec_gva_to_gpa(gva as int),
 /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs:430:pub fn gva_to_gpa(gva: usize) -> usize {
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm/mod.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/hal/platform/microvm && echo "== files ==" && ls && echo "== admit counts
+
+[THINKING] Looking at the summary metrics, there are some notable red flags with admit=12, external_body=19, and cfg_gate=19 showing up as significant indicators. But I'm second-guessing whether the verus-ai detector is counting these the same way — my grep search for admit and external_body in the mod.rs file didn't actually turn up anything, just cfg-related lines, so I need to double-check my search.
+
+If those counts aren't in mod.rs itself, they must be coming from the submodules like start.rs, start16.rs, or pvclock. But the scope restriction says only gva_to_gpa is in scope and I shouldn't touch unlisted functions, so I need to figure out whether the cheating detector is scanning the whole module path or just the in-scope function. Let me look at the actual gva_to_gpa function and check what's in the submodules to understand what's really happening here.
+[RESULT ✓] view: 404. #[cfg(all(debug_assertions, feature = "exception-stack-guard"))]
+405. pub fn get_kstack_guard_base() -> usize {
+406.     unsafe extern "C" {
+407.         static kstack_guard: u8;
+408.     }
+409.     // Safety: The `kstack_guard` symbol is defined in `start.rs` as a BSS-resident symbol
+410.     ...
+[RESULT ✓] bash: == files ==
+mod.proof.rs
+mod.rs
+mod.spec.rs
+pvclock.rs
+start.rs
+start16.rs
+== admit counts per file ==
+== external_body ==
+== assume ==
+<shellId: 2 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -60 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-23-33.log 2>/dev/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_AI_VERIFY_SCRIPT\s*[:=]" Makefile; echo "---"; grep -rn "cheating\|ext
+
+[THINKING] The verify summary is reporting counts that don't match what I'm seeing in the module files—there are no admit, external_body, or cfg_gate statements anywhere, yet the summary shows admit=12, external_body=19, cfg_gate=19. This suggests the cheating detector is counting across the entire kernel crate rather than just this specific module, so I need to check the log file to understand how the detector actually tallies these metrics.
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.rs:452:50
+    |
+452 |                         assert forall|addr: int| frames.contains(addr) implies
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/f...
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+---
+scripts/verify.sh:3:# Generic Verus verification script with cheating detection and git tracking.
+scripts/verify.sh:103:# Determine verification mode and source directory for cheating detection.
+scripts/verify.sh:292:# --- Helper: ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+
+[THINKING] The cheating scan covers a broader directory than just the module files themselves, so I need to check verify.sh to see exactly which directory gets scanned. But the real focus here is understanding how the microvm module eliminates cheating through its gva_to_gpa scope function.
+[RESULT ✓] view: 100. fi
+101. 
+102. # ==============================================================================
+103. # Determine verification mode and source directory for cheating detection.
+104. # ==============================================================================
+105. 
+106. TIMESTAMP="$(date '+%Y-...
+[RESULT ✓] view: 290. CHEATING_DIR="${CRATE_SRC_DIR:-.}"
+291. 
+292. # --- Helper: run cheating detection on a directory, print JSON ---
+293. run_cheating_scan() {
+294.     local scan_dir="$1"
+295.     VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
+296. import sys, os, json
+297. sys.path.insert(0,...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_AI_DIR\s*[:=]\|VERUS_AI_DIR=" scripts/verify.sh Makefile | head; echo 
+
+[THINKING] The cheating scan covered the entire kernel crate and came back clean, but for this review I'm focusing specifically on the microvm module. The function I need to examine is gva_to_g.
+
+Let me check if the microvm module itself is clean—my earlier greps showed zero violations in mod.rs, pvclock.rs, start.rs, and start16.rs. The checklist mentions cfg-gated exec code should be eliminated, allowing only imports, derives, debug assertions, and logging. There are many feature-gated sections in the module, but these are legitimate platform features like whp, pit, and smp, not cheating mechanisms to hide code from verification. The real concern would be cfg gates specifically designed to hide executable code from Verus, not these pre-existing feature gates. I need to run a detailed scan on just the microvm module directory to see exactly which functions or code sections the detector flags.
+[RESULT ✓] bash: scripts/verify.sh:285:# VERUS_AI_DIR: where guardrails.py and tree-sitter-verus/ live.
+scripts/verify.sh:288:VERUS_AI_DIR="${VERUS_AI_DIR:-$(dirname "$SCRIPT_DIR")}"
+scripts/verify.sh:295:    VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
+scripts/verify.sh:339:    VERUS_AI_DIR="$...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && VAD=$(dirname "$(pwd)/scripts"); echo "VERUS_AI_DIR guess: $(dirname "$PWD/scripts")"
+[RESULT ✓] bash: VERUS_AI_DIR guess: /home/ruize/nanvix-phy-specs
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+--- run detail scan on microvm module ---
+local guardrails? False
+<shellId: 6 completed ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '610,635p' Makefile; echo "=== VERUS_AI_DIR def ==="; grep -n "VERUS_AI_DIR" M
+
+[THINKING] I'm wondering how the scan actually works if VERUS_AI_DIR defaults to the project root but guardrails.py isn't located there—maybe it's being set as an environment variable elsewhere. Let me check the Makefile around lines 619 and 627 to see if that's where it gets configured.
+[RESULT ✓] bash: # Pattern rule for verifying individual crates.
+# Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
+$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@true
+else
+	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+	VERUS_AI_DIR...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/verus-ai-exp/verus-ai/guardrails.py 2>/dev/null && echo OK
+MOD=src/ker
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/guardrails.py
+OK
+start16.rs ext 0 admit 0 assume 0 trusted 0 nodec 0
+mod.rs ext 0 admit 0 assume 0 trusted 0 nodec 0
+pvclock.rs ext 0 admit 0 assume 0 trusted 0 nodec 0
+start.rs ext 0 admit 0 assume 0 trusted 0 nodec 0
+mod.proof.rs ext 0 admit 0 assume 0 trusted 0 n...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg_gate\|cfg_gated\|cfg-gate" scripts/verify.sh
+
+[THINKING] The microvm module is completely clean with no external bodies, admits, assumes, or trusted code—all those counts come from other modules like the frame handler that aren't relevant here. Now I'm checking whether the cfg-gate concern is actually an issue by looking for any cfg-gated code that might hide unsafe execution from Verus verification.
+
+The cfg gates in the module are all legitimate platform configuration flags (whp, pit, smp, stdio), not verification-dodging patterns. The spec and proof files use standard cfg gating which is expected for verify-only code. The real question is whether the detector's cfg_gate count of 19 includes any actual executable code that's being hidden, or if it's just counting the legitimate configuration gates. I need to understand how the detector computes cfg_gate and whether the in-scope function gva_to_gpa is affected by any of this gating.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+576:        [[ $MOD_CFG_GATE -gt 0 ]] && ec...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/kernel/src/hal/pl
+
+[THINKING] The `cfg_gate` counter tracks specifically the `verus_keep_ghost` configuration gates—those that hide executable code from Verus—rather than other feature gates like whp, pit, or smp. Lines 9 and 11 in the module use `#[cfg(verus_keep_ghost)]` but target `include!` macros, which the counter skips, so they don't contribute to the count. I need to verify the module-scoped result by running the count directly on that directory, since the earlier global run showed `cfg_gate=19` but I didn't capture the module-specific cheating detection output.
+[RESULT ✓] bash: module cfg_gate count = 0
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -5 -- src/kernel/src/hal/platform/microvm/ 2>/dev/null; 
+
+[THINKING] The cfg_gate module count is at zero. I need to verify the verification passed with a clean status and zero exit code, then run through the AST consistency and spec-drift checks from the checklist. First I should identify the build command and cross-module regression command, which reference some template variables like the build command, verus command for all modules, spec drift command, and the TCB allowed file located at verus-ai-logs/tcb-allow.
+
+Now I'm working through the key checklist items for eliminating cheating in this module. I've already confirmed zero admits, assumes, trusted declarations, exec_allows_no_decreases clauses, cfg-gated exec code, and external_body violations outside the TCB. I still need to run the AST consistency check and spec-drift check, verify there are VERUS REWRITE comments on any exec rewrites, and run the cross-module regression with make verify-kernel across all modules. Let me check the git diff to see what actually changed and whether any specs were weakened.
+[RESULT ✓] bash: 194b299b8 [verus] verify PASS: kernel::hal::platform::microvm (1 verified, 0 errors)
+b899eda4e [verus-ai] caller-analysis START: hal-platform-microvm
+f7f9a80a7 [kernel] E: Move boot stack to .data seciton
+b52e0c915 [kernel] E: Introduce NFRAMES constant
+f7ecbec1a [uservm] E: Decouple initrd command ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff: caller-analysis START -> verify PASS for module ==="; git --no-pager 
+
+[THINKING] The module's already committed, so there's no working-tree changes to review. I need to examine what the verification commit actually changed compared to its parent to see what rewrites were applied during the cheating elimination process.
+[RESULT ✓] bash: === diff: caller-analysis START -> verify PASS for module ===
+diff --git a/src/kernel/src/hal/platform/microvm/mod.rs b/src/kernel/src/hal/platform/microvm/mod.rs
+index ae0db8d09..54ec56558 100644
+--- a/src/kernel/src/hal/platform/microvm/mod.rs
++++ b/src/kernel/src/hal/platform/microvm/mod.rs
+@@ -4...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== tcb-allowed.md ==="; cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -4
+
+[THINKING] The change is straightforward—I've added a spec function for the identity mapping and attached a Verus spec contract to the main function, while leaving the executable body untouched, so no exec rewrites are needed. Next I'll run the AST consistency check.
+
+For spec drift, the original spec file was empty, so adding a spec function with an ensures contract is purely a strengthening—no existing guarantees were weakened. That passes. Now I need to run the full cross-module verification with `make verify-kernel`, check the build for warnings, and verify the AST consistency. Let me look at the tcb-allowed file and the relevant skill commands to run these checks efficiently.
+[RESULT ✓] bash: === tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` single...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null | head -40; echo "=== ast/drift scripts ==="; ls /home/ruize/verus-ai-
+
+[THINKING] The ast-consistency and spec-drift checks aren't available locally—they're part of the verus-ai tooling. Since the module has no external body, tcb-allowed doesn't apply. The gva_to_gpa function's execution body stayed the same, with only a contract attribute and spec function added, so AST consistency is preserved trivially. Let me verify there are no execution rewrites by checking the full diff.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== ast/drift scripts...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== ast_consistency.py usage ==="; sed -n '1,40p' /home/ruize/verus-ai-exp/veru
+[RESULT ✓] bash: === ast_consistency.py usage ===
+Usage (subcommands):
+import argparse
+=== spec_drift.py usage ===
+Usage:
+import argparse
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '1,30p' /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py; echo "##### SPEC DRIFT #####"; sed -n '1,30
+[RESULT ✓] bash: #!/usr/bin/env python3
+
+"""
+AST consistency checker and per-function diff generator for Verus verification.
+
+Compares executable code between an original Rust source file and its
+Verus-verified counterpart using tree-sitter AST hashing.  Ghost, proof,
+and spec annotations are stripped before compari...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref b899e
+
+[THINKING] I'm checking AST consistency between the original source and the Verus-verified version using git's base reference to compare against the baseline commit, since the exec body remained unchanged. For this module, the Verus-verified file is actually the original Rust file itself.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+disable_interrupts                       MATCH                                
+do_shutdown                              MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+
+[THINKING] The AST consistency check passed, so all functions match correctly. Now I'm running the spec drift analysis using git-diff to compare the module before and after the changes, checking against the baseline empty spec to confirm that adding the spec function and ensures clause represents a strengthening rather than a weakening of the specification.
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 2
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 1
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+=== also spec file ===
+# Spec ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^build:\|^all:\|build-kernel\|cargo build\|KERNEL_CARGO" Makefile | head; ec
+
+[THINKING] The spec drift check passed with no contract drift. Now I need to run the full kernel verification across all modules to catch any cross-module regressions, and make sure the build completes with zero errors and warnings. Let me find the build command from the checklist to run it.
+[RESULT ✓] bash: 221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+265:export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -25
+
+[THINKING] I'm going to run the full cross-module verification without specifying a module, then follow up with the kernel build. Let me start the comprehensive verification first and run them sequentially to give each enough time to complete.
