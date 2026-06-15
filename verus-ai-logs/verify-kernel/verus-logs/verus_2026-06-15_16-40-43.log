@@ -1,0 +1,44 @@
+Timestamp: 2026-06-15_16-40-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::frame
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_frame_number` in this scope
+  --> src/kernel/src/hal/mem/types/address/frame.rs:71:12
+   |
+71 |     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+   |            ^^^^^^^^^^^^^^^^^
+   |
+  ::: src/kernel/src/hal/mem/types/address/phys.spec.rs:65:1
+   |
+65 | pub open spec fn spec_frame_number(addr_view: int) -> int {
+   | --------------------------------------------------------- similarly named function `spec_frame_number` defined here
+   |
+help: a function with a similar name exists
+   |
+71 -     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+71 +     pub fn spec_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+   |
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+   --> src/kernel/src/hal/mem/types/address/frame.rs:104:12
+    |
+104 |     pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+    |            ^^^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

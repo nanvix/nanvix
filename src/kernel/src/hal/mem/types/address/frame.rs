@@ -74,7 +74,7 @@ impl FrameAddress {
         // its universal `spec_addr` projection (consumed by `PageAligned::from_address`)
         // to its `View` (guaranteed by `PhysicalAddress::from_number`).
         let physical_address: PhysicalAddress = PhysicalAddress::from_number(frame_number);
-        proof {
+        proof! {
             lemma_phys_view_is_spec_addr(physical_address);
         }
         Ok(Self(PageAligned::from_address(physical_address)?))

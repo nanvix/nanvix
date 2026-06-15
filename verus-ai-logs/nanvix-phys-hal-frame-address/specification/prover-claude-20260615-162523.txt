@@ -887,3 +887,50 @@ Turn 48
 Turn 49
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -45
+[RESULT ✓] bash: |     --------- previous import of the value `spec_addr` here
+   |
+   = note: `spec_addr` must be defined only once in the value namespace of this module
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+   --> src/kernel/src/hal/mem/types/address/frame.rs:104:12
+    |
+104 |     pub...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/error\[/,/^$/p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_16-40-06.l
+
+[THINKING] I'm seeing a duplicate import issue where `spec_addr` is being imported in both the spec.rs and proof.rs files, which then get included in the same frame.rs module. Since both files use `spec_addr` in different lemmas, I only need one import statement — I'll remove the duplicate from one of them.
+
+The second error about `from_raw_value` not being found is puzzling since it's pointing at the definition line itself. This might be a cascading issue from the duplicate import breaking macro expansion, or the `assume_specification` on `<PhysicalAddress as Address>::from_raw_value` is creating a conflict. I need to check the full error output to understand what's happening.
+[RESULT ✓] bash: error[E0252]: the name `spec_addr` is defined multiple times
+  --> src/kernel/src/hal/mem/types/address/frame.proof.rs:24:5
+   |
+24 | use crate::hal::mem::spec_addr;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ `spec_addr` reimported here
+   |
+  ::: src/kernel/src/hal/mem/types/address/frame.spec.rs:27:5
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Two fixes: `proof!` needs the bang, and `spec_addr` is double-imported.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm seeing a parsing error in the proof block syntax — the compiler is treating `proof { }` as a struct literal rather than recognizing it as a valid proof construct within the execution body, which is causing the unexpected token error on line 20.
+
+Looking at the phys.rs file, I can see the correct syntax uses `proof! { }` with a bang operator, not just `proof { }`. I need to update frame.rs to use `proof! {` instead. Additionally, there's a duplicate import of `spec_addr` in the proof file that should be removed, and I'll need to qualify the reference to `spec_addr` in the lemma's ensures clause instead. Once I fix the proof macro syntax and clean up the import, the cascading errors around `from_raw_value` and the `#[verus_spec]` misuse should resolve.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -45

@@ -21,15 +21,13 @@
 
 verus! {
 
-use crate::hal::mem::spec_addr;
-
 // Bridge: for any `PhysicalAddress`, the universal `spec_addr` projection
 // coincides with its `View`. Used by `FrameAddress::from_frame_number` to carry
 // `PhysicalAddress::from_number`'s `@`-based guarantee across
 // `PageAligned::from_address`'s `spec_addr`-based contract.
 pub proof fn lemma_phys_view_is_spec_addr(pa: PhysicalAddress)
     ensures
-        spec_addr(&pa) == pa@,
+        crate::hal::mem::spec_addr(&pa) == pa@,
 {
     admit();
 }
