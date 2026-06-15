@@ -69,3 +69,21 @@ All 17 specification-phase checklist items PASS with concrete evidence
 - Two Err(_) => true arms (new_vmem, alloc_kpage) are complete, not lazy: those
   functions have no mutable-state params and no view-modeled error-path output.
 [2026-06-15 19:58:24] [DIALOGUE] specification ended after 1 turns: RESOLVED (313s)
+[2026-06-15 19:58:24] [PHASE] specification: dialogue-RESOLVED (31m01s)
+[2026-06-15 19:58:24] [SPEC DRIFT] (within specification) Comparing d7c5a1a2 → 8f0978d6
+[2026-06-15 19:58:24] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 19:58:24] [TOPLEVEL DRIFT] No verification-plan.json — skipping
+[2026-06-15 19:58:24] ✅ specification: PASS (0/0)
+[2026-06-15 19:58:24] [GATE] Running build: make build
+[2026-06-15 19:58:24] [GATE] Running verify: make verify
+[2026-06-15 19:58:29] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PIPELINE COMPLETE: manager
+  ✅ caller-analysis           no-review                 2m25s
+  ✅ view-design               no-review                 6m22s
+  ✅ specification             dialogue-RESOLVED        31m01s (1 dialogue turns)
+  ──────────────────────────────────────────────────────────
+  Total: 39m55s
+============================================================
+[2026-06-15 19:58:29] [USAGE] Summary: 4 calls, 0 tokens, 39m49s total → /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-manager/usage_summary.json
