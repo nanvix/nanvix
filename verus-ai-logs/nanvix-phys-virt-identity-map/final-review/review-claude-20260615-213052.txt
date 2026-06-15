@@ -552,3 +552,10 @@ Now I'm going to kick off both the build and verify processes in the background 
 ────────────────────────────────────────────────────────────
 Turn 19
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^build:|^build-kernel:" Makefile | head
+[RESULT ✓] bash: 
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
