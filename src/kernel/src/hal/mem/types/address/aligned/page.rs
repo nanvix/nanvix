@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("page.spec.rs");
 #[cfg(verus_keep_ghost)]

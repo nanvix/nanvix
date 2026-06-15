@@ -1815,3 +1815,279 @@ Turn 106
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
 
 [THINKING] The `inv()` method in `from_address` now properly resolves to the spec function defined in page.rs, which can access `spec_page_size()` through the block's use statement. Let me run the verifier again to see if this resolves the issues.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  0/17 exec functions have contracts.
+  Unverified functions:
+    - from_address
+    - into_inner
+    - into_raw_value
+    - from_raw_value
+    - align_up
+    - align_down
+    - is_aligned
+    - max_addr
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+Verus now runs with **0 errors** (exit 0). Both contracts accepted. Let me examine the cheating-check detail to confirm my changes don't add new violations vs. baseline:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -B2 -A20 "Cheating Pattern Check" /tmp/verify5.log | head -30; echo "=== detail ==="; ca
+
+[THINKING] Verus verification runs cleanly with 0 errors and both assume_specifications accepted, though coverage shows 0/17 since assume_specification doesn't count toward coverage metrics. The status flags CHEATING_DETECTED due to pre-existing external_body and cfg_gate counts from other modules in the baseline.
+
+I'm noticing that assume_specification might not be counted as "assume" in the cheating metric — my assume=0 matches the baseline, suggesting these specifications are treated separately from assume() calls. Let me check the cheating-detail file to confirm whether my two assume_specifications are even being flagged, since the core requirement is 0 Verus errors, which I've achieved, and coverage is secondary to having meaningful specs that align with the caller_analysis expectations.
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=23 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  0/17 exec ...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+Verus runs with **0 errors**. The cheating check shows my module adds nothing new (`assume=0 external_body=23 admit=0` — identical to baseline globals from other modules; `assume_specification` is not flagged). Coverage shows 0/17 because the metric counts `#[verus_spec]` annotations, not `assume_specification` — but both in-scope functions genuinely cannot be body-verified in place (trait-method → Verus panic; `from_address` → untranslatable arch const), so `assume_specification` is the correct, precedent-backed mechanism.
+
+Now validate dual compilation (normal build) and full verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- check-kernel 2>&1 | python3 -c "
+import sys,json
+errs=0;warns=0
+for 
+
+[THINKING] The cheating check shows only the cfg_gate include flagged (which was already in the baseline), while my two assume_specifications aren't marked as cheating since that's a legitimate specification mechanism. The global metrics match what I'm seeing in the baseline — assume=0, external_body=23, admit=0, cfg_gate=9.
+
+The "CHEATING_DETECTED" status is entirely from pre-existing patterns in other modules like frame.rs and manager.rs, not from my changes. For coverage, the 0/17 reflects a real limitation: into_raw_value can't use #[verus_spec] because it's a trait method that would panic in Verus, and from_address references untranslatable PAGE_ALIGNMENT, so both must use assume_specification instead. These are the correct mechanisms given the constraints, and the specs themselves cover all the caller expectations.
+
+I should document these assume_specifications in tcb-allowed.md to match the project's pattern (like kframe's existing entries), record the Verus panic limitation in bugs.md, and verify that make verify and make build both pass without regressions. Let me also check if there's any way to work around the PAGE_ALIGNMENT issue to get a real #[verus_spec] body for stronger coverage.
+
+Since PAGE_ALIGNMENT is in the arch module outside my scope, I can't modify it directly, and there's no way to reference it in a verified body without hitting the Verus translation limitation. I'll accept assume_specification for both functions as a sound and complete solution for this phase.
+
+Now I need to run the build and verification checks—starting with check-kernel to ensure my cfg-gated changes don't break dual compilation, then make verify to confirm no regressions.
+[RESULT ✓] bash: ERROR: unused import: `::vstd::prelude::*`
+RAW: error: could not compile `kernel` (bin "kernel") due to 1 previous error
+RAW: [ERROR] Build failed.
+TOTAL errors=1 warnings=0
+done
+<shellId: ck completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+Normal build has 1 error: unused `::vstd::prelude::*` (under `--deny=warnings`). Let me check if this is pre-existing or caused by my change:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== diff vs clean backup ==="; diff /tmp/page.rs.clean.bak src/kernel/src/hal/mem/types
+
+[THINKING] The normal build is failing because of an unused import error—there are two conflicting import statements for vstd::prelude in page.rs, and since the erased build doesn't actually use those items, the compiler is treating the warning as an error due to the deny-warnings flag. I'm checking whether this error existed in the baseline version.
+[RESULT ✓] bash: === diff vs clean backup ===
+212c212
+< impl<T: Address + View<V = int>> View for PageAligned<T>
+---
+> impl<T: Address> View for PageAligned<T>
+218c218
+<         self.0@
+---
+>         spec_addr(&self.0)
+222c222
+< impl<T: Address + View<V = int>> PageAligned<T>
+---
+> impl<T: Address> PageAligned<T>
+==...
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+My page.rs changes are entirely inside the cfg-gated block; the vstd imports (lines 8, 30) are unchanged. Let me confirm whether this unused-import error is pre-existing by checking the clean baseline:
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp src/kernel/src/hal/mem/types/address/aligned/page.rs /tmp/page.rs.work; cp src/kernel/src/
+
+[THINKING] I'm puzzled about why the normal build is failing with an unused import error when my changes to page.rs only touched the View/inv bound and body in a cfg-gated block, leaving those vstd imports untouched. This suggests either the clean baseline also had this issue but wasn't actually tested, or something subtle shifted between versions. Let me trace back whether the baseline's normal build was actually passing before.
+
+The key insight is that in normal build mode, the entire bottom verus!{} block containing the View impl is cfg-gated out, so the vstd imports at the top of the file aren't used by anything in the non-gated code—just the Address trait from crate::hal::mem. If the baseline had both vstd imports unchanged, then baseline's normal build should've also failed with the same unused import error, unless `make build` uses different compiler flags than `check-kernel` and doesn't enforce the warnings-as-errors setting.
+
+The real question is whether my changes actually caused this or if it's a pre-existing condition—since my modifications are entirely within the cfg-gated block and the imports are unchanged. The verus proc-macro attributes on the struct might expand differently in normal vs. verus mode, potentially using vstd in ways that aren't visible in the source. I should test the clean baseline against check-kernel to see if the error already existed there.
+[RESULT ✓] bash: restored clean baseline
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// PageAligned<T> — Specifications
+//
+<shellId: 65 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- check-kernel 2>&1 | python3 -c "
+import sys,json
+errs=0
+for line in 
+
+[THINKING] I need to verify what's actually in the backup file I created at the start of this session — it contains the failing version with the doc header, not the original empty verus! block, so I need a true baseline to compare against.
+
+For the check-kernel test though, page.spec.rs doesn't matter since it's cfg-gated and only included under verus_keep_ghost, so the normal build only depends on page.rs. Since I've already restored the clean page.rs, I should run check-kernel against that baseline now.
+[RESULT ✓] bash: ERROR: unused import: `::vstd::prelude::*`
+RAW: error: could not compile `kernel` (bin "kernel") due to 1 previous error
+TOTAL errors=1
+done-baseline
+<shellId: ckb completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+Confirmed: the unused-import error is **pre-existing at baseline** (the `check-kernel` target uses `--deny=warnings`). Not caused by my changes. Let me restore my work and test the actual build target (`all-kernel`):
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp /tmp/page.rs.work src/kernel/src/hal/mem/types/address/aligned/page.rs; cp /tmp/page.spec.
+
+[THINKING] The unused import error is actually a pre-existing issue in the baseline, not something my changes introduced. The `check-kernel` target uses `--deny=warnings` which catches it, but the main build target probably doesn't enforce that same strictness. Since the task is really about verifying that `make build` still works with dual compilation, I should test against the actual `all-kernel` target instead of relying on `check-kernel`.
+[RESULT ✓] bash: restored work
+10
+<shellId: 66 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "all-kernel:" build/make/kernel.mk; sed -n '10,25p' build/make/kernel.mk
+[RESULT ✓] bash: 10:all-kernel: init
+all-kernel: init
+	$(KERNEL_CARGO_BUILD_CMD) $(KERNEL_CARGO_FEATURES) -p kernel
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-kernel/$(BUILD_MODE)/kernel.elf $(BINARIES_DIR)/kernel.elf
+ifeq ($(PROFILER),yes)
+	# Strip .debug_* but keep .symtab for guest profiler symbol resolution.
+	# See src...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- all-kernel 2>&1 | tail -20; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+Both build targets deny warnings. This unused-import exists at baseline too — but the task says baseline build works, so my `/tmp/page.rs.clean.bak` may not be the true committed original. Let me check git:
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager status --short src/kernel/src/hal/mem/types/address/aligned/; echo "=== git di
+
+[THINKING] The real build also rejects warnings and fails on that same unused import at line 30, which I've confirmed happens at baseline too when running check-kernel. This creates a puzzle: if the baseline is supposed to have a working `make build`, either the repo is in a mid-development state with this pre-existing issue, or there's something about the verus_keep_ mechanism I'm missing.
+
+I should check the actual git diff for page.rs to see what the truly committed original state is, since my backup might not reflect the actual baseline.
+[RESULT ✓] bash: === git diff page.rs (committed vs working) imports area ===
+<shellId: 68 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager status --short | head; echo "=== is page.rs tracked? ==="; git ls-files src/ke
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-page-aligned/specification/prover-claude-20260615-103331.jsonl
+ M verus-ai-logs/nanvix-phys-hal-page-aligned/specification/prover-claude-20260615-103331.txt
+=== is page.rs tracked? ===
+src/kernel/src/hal/mem/types/address/aligned/mod.rs
+src/kernel/src/hal/mem/types/ad...
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+The pipeline auto-commits each verify run (last commit is my passing state). The double vstd import looks suspicious. Let me find the pre-verus original page.rs to understand the baseline build state:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== commits touching page.rs ==="; git --no-pager log --oneline -- src/kernel/src/hal/m
+
+[THINKING] Ah, so `git status` shows page.rs isn't modified, which means my changes were already committed — the verify pipeline must have auto-committed them after running. That explains why the working directory appears clean even though I made edits.
+
+Now I'm realizing the real problem: line 30 has `use ::vstd::prelude::*;` which is flagged as unused in the normal build, but it's a duplicate of line 8's `use vstd::prelude::*;`. Rust only complains about the second import because the first one satisfies the requirement. The question is whether this double import was in the original repo before the verus work started, or if it's something I need to clean up to make `make build` pass.
+
+Let me trace back through the git history to find where this duplicate came from and whether the original page.rs had it.
+[RESULT ✓] bash: === commits touching page.rs ===
+68e6eb877 [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page (0 verified, 0 errors, external_body=23 cfg_gate=9)
+319df2020 [verus] verify FAIL: kernel::hal::mem::types::address::aligned::page (0 verified, compilation/setup error ...
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== page.rs imports at e84329e0b (caller-analysis START, pre-spec) ==="; git --no-pager
+[RESULT ✓] bash: === page.rs imports at e84329e0b (caller-analysis START, pre-spec) ===
+8:use vstd::prelude::*;
+10:include!("page.spec.rs");
+12:include!("page.proof.rs");
+14:use crate::hal::mem::{
+21:use ::arch::mem::PAGE_ALIGNMENT;
+22:use ::core::ops::Deref;
+23:use ::sys::{
+30:use ::vstd::prelude::*;
+210:use crate:...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+The double vstd import is pre-existing scaffolding. Since my changes are entirely in the cfg-gated block (erased in normal build), normal-build behavior is identical with/without my changes — I already confirmed the clean baseline fails identically. Let me verify the pre-verus original to understand if this is a scaffolding regression I should fix:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== de24f6057 (pre-verus) page.rs vstd imports ==="; git --no-pager show de24f6057:src/
+
+[THINKING] The double vstd import at lines 8 and 30 was already present in the pre-spec commit, so it's not something I introduced—it's part of the original scaffolding. This raises the question of whether the normal build ever actually worked with this page.rs file, since the duplicate import would trigger the warnings-as-errors flag unless the first import was somehow being used in the normal build path by non-cfg-gated code.
+
+The verus proc-macros like `#[verus_verify]` are always expanded regardless of build mode, but they erase ghost content when not in verus mode, so the attribute on the struct would just expand to the derives in a normal build. The most straightforward explanation is probably that the baseline at e84329e0b also fails the normal build for this file, meaning the repo's verus-WIP state was never clean for this particular file in the first place. So the normal build fails identically whether my changes are there or not, since I only modified cfg-gated code that gets erased during normal compilation. I've already verified this by testing the baseline version and getting the same unused import error. The question is whether this failure exists at an even earlier commit before the verus scaffolding introduced the duplicate import on line 30, or if it's been present since the verus setup was added.
+[RESULT ✓] bash: === de24f6057 (pre-verus) page.rs vstd imports ===
+24:use ::vstd::prelude::*;
+30:#[verus_verify(external_derive)]
+201:#[cfg(verus_keep_ghost)]
+202:verus! {
+EXIT=0
+<shellId: 72 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+At the pre-verus commit there was a **single** `use ::vstd::prelude::*;`. The verus-task scaffolding added a duplicate (`use vstd::prelude::*;` at line 8), which breaks the normal build under `-D warnings`. This is scaffolding coupled to my task, and the task requires dual compilation to work. Removing the redundant import that rustc flags:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] At commit de24f6057, page.rs had just one vstd import on line 24 (`use ::vstd::prelude::*;`), and the file already contained some verus scaffolding with `#[verus_verify(external_derive)]` and a cfg-gated verus block. The second import (`use vstd::prelude::*;` at line 8) was introduced later in the commit history.
+
+During the verus spec scaffolding phase, the skeleton setup added the cfg-gated include! lines and a duplicate `use vstd::prelude::*;` at line 8, which created the unused-import error in the normal build. Since the original single import at line 24 must have been used in the normal build (otherwise de24f6057 wouldn't have compiled), adding the duplicate makes one of them unused. The fix is to remove the duplicate that the scaffolding added—the one at line 8 without the leading `::`. The verus build tolerates the duplicate import while the normal build flags it as an error under `-D warnings`. Since a single import worked at the earlier commit, I need to remove one of them — the compiler marks line 30 as unused, meaning line 8 is the one being utilized. Removing line 30 leaves line 8 to satisfy both builds, since it's already providing the necessary vstd::prelude symbols for the verus_verify expansion and the cfg-gated code. I'm deciding between removing line 8 (the scaffolding-added import) or line 30 (the original), and I think removing line 8 makes more sense since it restores the baseline state that was known to work. The cfg-gated includes don't depend on import order, so keeping just line 30 should satisfy both the normal and verus builds. Let me remove line 8 and re-test both to confirm they pass. I'll remove line 30 (`use ::vstd::prelude::*;`) since that's what rustc flagged as redundant, and both imports resolve identically anyway. Then I'll test both the Rust and Verus builds to confirm everything still works.
+[RESULT ✓] view: 7. 
+8. use vstd::prelude::*;
+9. #[cfg(verus_keep_ghost)]
+10. include!("page.spec.rs");
+11. #[cfg(verus_keep_ghost)]
+12. include!("page.proof.rs");
+13. 
+14. use crate::hal::mem::{
+15.     types::address::{
+16.         PhysicalAddress,
+17.         VirtualAddress,
+18.     },
+19.     Address,
+20. };
+21....
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I see the issue now — line 8 imports the prelude to support the cfg-gated includes that need the `verus!` macro, while line 30 is the original prelude import. In a normal build, both are present and rustc complains about the duplicate, but line 8 is actually necessary for those conditional includes to work.
+
+The key question is whether removing line 8 and keeping line 30 would still allow the verus build to resolve types like `View` and `Address` that the included files depend on — since those includes get textually inserted and have their own `verus!` blocks that reference those types.
+
+Since line 30 is a module-level glob import of `vstd::prelude`, it stays in scope for everything in the file, including the included content. So removing line 8 (the scaffolding-added duplicate) should work fine for both builds. That restores the original single import state from the known-good commit.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- all-kernel 2>&1 | tail -12; echo "EXIT=${PIPESTATUS[0]}"
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+Normal build passes now. Let me re-confirm the verus build still passes after the import change:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
+
+[THINKING] The build is working now after fixing the duplicate import issue. I need to verify that the verus build still passes when I remove that import line to make sure it wasn't actually needed for the cfg-gated includes.
