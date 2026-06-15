@@ -969,3 +969,33 @@ The Inner specs are strong and complete. Now let me view the wrapper (free-funct
 ────────────────────────────────────────────────────────────
 Turn 14
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Specs look strong. Now let me start the verification (long-running) in the background and read the caller analysis + bugs while it runs.
+[TOOL] report_intent: Running verification and reading docs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys 2>&1 | tee verus-ai-logs/nanvix-phys-phys-frame/fi
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: verifymod>
+[RESULT ✓] bash: # Caller Analysis: `mm::phys::frame`
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+(raw `find_callers_lsp.py` report).
+
+Key facts from the script:
+
+- **Crate:** `kernel`. **Depended on by:** none — every caller is intra-crate.
+- All public free functions are `...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
