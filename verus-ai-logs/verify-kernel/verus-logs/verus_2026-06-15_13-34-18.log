@@ -1,0 +1,53 @@
+Timestamp: 2026-06-15_13-34-18
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=8
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0599]: the method `view` exists for reference `&hal::mem::types::region::MemoryRegion<T>`, but its trait bounds were not satisfied
+   --> src/kernel/src/hal/mem/types/region.rs:218:34
+    |
+146 | pub struct MemoryRegion<T: Address> {
+    | ----------------------------------- doesn't satisfy `_: View`
+...
+218 |             result as int == self@.size,
+    |                                  ^ method cannot be called on `&hal::mem::types::region::MemoryRegion<T>` due to unsatisfied trait bounds
+    |
+note: the following trait bounds were not satisfied:
+      `<T as vstd::string::View>::V = vstd::prelude::int`
+      `T: vstd::string::View`
+   --> src/kernel/src/hal/mem/types/region.rs:471:19
+    |
+471 | impl<T: Address + View<V = int>> View for MemoryRegion<T>
+    |                   ^^^^^^^^^^^^^  ----     ---------------
+    |                   |    |
+    |                   |    unsatisfied trait bound introduced here
+    |                   unsatisfied trait bound introduced here
+    = note: the following trait bounds were not satisfied:
+            `hal::mem::types::region::MemoryRegion<T>: vstd::string::View`
+            which is required by `&hal::mem::types::region::MemoryRegion<T>: vstd::string::View`
+note: the trait `vstd::string::View` must be implemented
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/view.rs:10:1
+    |
+ 10 | pub trait View {
+    | ^^^^^^^^^^^^^^
+help: consider restricting the type parameters to satisfy the trait bounds
+    |
+146 | pub struct MemoryRegion<T: Address> where <T as vstd::string::View>::V = vstd::prelude::int, T: vstd::string::View {
+    |                                     ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

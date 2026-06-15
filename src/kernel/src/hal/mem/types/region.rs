@@ -213,6 +213,10 @@ impl<T: Address> MemoryRegion<T> {
     }
 
     /// Returns the size of the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.size,
+    )]
     pub fn size(&self) -> usize {
         self.size
     }
