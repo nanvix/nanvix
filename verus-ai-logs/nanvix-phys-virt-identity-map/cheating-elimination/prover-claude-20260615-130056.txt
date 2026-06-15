@@ -657,3 +657,76 @@ Module clean. Now the task requires `make verify` across the full crate suite to
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 3000 make verify 2>&1 | tail -50
 
 [THINKING] The module verification passed with 6 verified and no errors, with only the 3 TCB-allowed external bodies in scope. Now I'm running the full verification suite across all crates to check for any regressions.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rhE "Exit code|errors$|status:" verus-ai-logs/verify-*/verus-logs/verus_2026-06
+
+[THINKING] All the verification checks are passing—the kernel crate and architecture modules are exiting cleanly, and the pre-existing cheating flags in out-of-scope modules are expected and documented in the TCB list. I'm confirming that the overall make verify command completed successfully with no regressions across any of the sub-crates.
+[RESULT ✓] bash: Exit code: 0
+=== quick check all verify dirs latest exit ===
+verify-arch: Exit code: 0
+verify-bitmap: Exit code: 0
+verify-bump-allocator: Exit code: 0
+verify-nanvix-slab: Exit code: 0
+verify-sys: Exit code: 0
+verify-kernel: Exit code: 0
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+All crates verify exit 0 — no regressions. Now let me write the fix report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/; ls verus-ai-log
+
+[THINKING] All the crates are passing verification with no regressions. The verification-todo.md from the proving phase already documents the three external_body functions as TCB-sanctioned exceptions, and since there are no admit/assume statements in scope, there are no proof gaps blocking the gate. I'll update the verification_todo.md file now. Looking at the before and after counts, I've eliminated one assume_specification (the as_ptr function) while keeping the three TCB-allowed external_body functions and the remaining assume_specification for FixedSizeBumpAllocator::new. Now I'll create the fix_report.md in the cheating-elimination directory to document this progress.
+[RESULT ✓] bash: prover-claude-20260615-130056.jsonl
+prover-claude-20260615-130056.txt
+no underscore todo (hyphen version exists)
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md with 6473 characters
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating-elimination work for `mm::virt::identity_map`:
+
+**Findings:** All in-scope cheating was already TCB-sanctioned (3 `external_body` functions + `ExPageTableBss`, all listed in `tcb-allowed.md`). The proof file already had real lemma bodies (no `admit`/`assume`). The proving phase had documented these 3 functions as irreducibly blocked under the hard rules (deferred `mm::virt` permission token, contents-free `Table::write`, unspecified atomic).
+
+**Eliminated:**
+- Removed the dead `assume_specification` for `<[T]>::as_ptr` — it only existed to translate `ensure_pt`'s body, which is now `external_body` (so untranslated). Verified safe crate-wide.
+- Fixed 2 stale comments (proof + spec headers) that falsely claimed `admit()` placeholders.
+
+**Kept (sanctioned, not blockers):** 3 TCB `external_body` functions, `ExPageTableBss`, and the `FixedSizeBumpAllocator::new` `assume_specification` (required by the out-of-scope `#[verus_verify]` static; a not-yet-verified-callee placeholder the gate doesn't count).
+
+**Verification:**
+- Module: `6 verified, 0 errors` (exit 0)
+- Full `make verify`: all crates exit 0, no regressions
+- Exec source byte-identical to base `verus-ai-prove` → zero AST mismatches
+
+**Counts:** admit 0→0, assume 0→0, external_body 3→3 (TCB), assume_specification 2→1, cfg-gated exec 0→0.
+
+**Result: PASS** — zero non-TCB cheating, zero `admit`/`assume`, zero proof gaps. Report at `verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md`.
+
+[THINKING] The report is complete and I've verified that the exec source matches the base as requested. Now I'll wrap this up with a concise summary for the user.
+
+
+=== Session End ===
+Session: c22e964e-fdb5-4a13-8c08-b8f5bf7c8828
+Duration: 511.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/prover-claude-20260615-130056.jsonl
