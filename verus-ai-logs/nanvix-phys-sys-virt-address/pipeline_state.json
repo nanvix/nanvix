@@ -2,23 +2,52 @@
   "module_name": "sys-virt-address",
   "log_name": "nanvix-phys-sys-virt-address",
   "source_path": "/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 126.3,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "2b327774-9d02-4a90-bd5e-4e6f4abae331",
   "completed": false,
   "base_branch": "verus-ai/hal-platform-microvm",
   "verus_branch": "verus-ai/sys-virt-address",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "366921ffd81cb66dac7a97e1b3423d7ebb900a4b"
+  },
   "phase_start_shas": {
-    "caller-analysis": "114ada83b8af6301f5bd49aa1fa8d6569dd1e2e6"
+    "caller-analysis": "114ada83b8af6301f5bd49aa1fa8d6569dd1e2e6",
+    "view-design": "366921ffd81cb66dac7a97e1b3423d7ebb900a4b"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "114ada83b8af6301f5bd49aa1fa8d6569dd1e2e6",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "366921ffd81cb66dac7a97e1b3423d7ebb900a4b",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "366921ffd81cb66dac7a97e1b3423d7ebb900a4b",
       "rollback_iter": 0
     }
   ],
