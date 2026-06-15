@@ -201,3 +201,14 @@ Turn 17
 ────────────────────────────────────────────────────────────
 Now confirm kframe is still CLEAN and commit the docs.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+[RESULT ✓] bash: ✅ No cheating detected in module mm::phys::kframe.
+  Unverified functions:
+  status: CLEAN
+=== source tree (non-docs) ===
+(no source changes)
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add verus-ai-logs/ && git commit -q -m "docs(phys-kframe): pass-3 cheat
