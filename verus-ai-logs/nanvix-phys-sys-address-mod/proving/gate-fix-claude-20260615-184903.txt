@@ -134,3 +134,183 @@ The gate run at 18:48:55 is failing on bitmap with a fresh vstd recompile, but m
 
 Before I decide whether to fix this, I should check the troubleshooting guide for known solutions to this vstd incompatibility, then re-run `make verify-sys` and `make verify-bitmap` to confirm the current state.
 [RESULT ✓] skill: Skill "troubleshooting" loaded successfully. Follow the instructions in the skill context.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/254 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus di...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now `verify-sys` fails identically — the previously-cached vstd was evicted, and fresh `vstd 0.0.0-2026-05-31-0205` compilation fails against Verus toolchain `0.2026.06.14`. This is an environment/toolchain mismatch unrelated to my module (no source changes were made). Let me investigate the correct vstd for this toolchain.
+[TOOL] report_intent: Investigating vstd/toolchain mismatch
+[TOOL] bash: ls /home/ruize/toolchain/verus/ 2>/dev/null; echo "=== vstd in toolchain ==="; find /home/ruize/toolchain/verus -maxdept
+
+[THINKING] The vstd registry version `0.0.0-2026-05-31-0205` won't compile with the current Verus toolchain `0.2026.06.14`, which appears to be a pre-existing toolchain incompatibility rather than something I introduced. But this is strange because `make verify-sys` was passing cleanly earlier at 18:42.
+
+The cache must have been invalidated between then and now — likely when the gate's `make verify` run at 18:48 tried to build vstd and failed, potentially corrupting the previously-good cached artifact. The real issue is the version mismatch: the workspace pins vstd to `0.0.0-2026-05-31-0205`, but the toolchain is from June 14th. I need to check if there's a matching vstd version available in the registry or if the Verus toolchain ships with its own vstd source that I should be using instead.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+version.txt
+verus
+verus-root
+vstd
+vstd.vir
+z3
+=== vstd in toolchain ===
+/home/ruize/toolchain/verus/vstd
+/home/ruize/toolc...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/toolchain/verus/version.txt 2>/dev/null; echo "=== version.json ==="; cat /home/ruize/toolchain/verus/ve
+[RESULT ✓] bash: 0.2026.06.14.4ea7d0f=== version.json ===
+{
+  "verus": {
+    "profile": "release",
+    "version": "0.2026.06.14.4ea7d0f",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "toolchain": "1.96.0-x86_64-unknown-linux-gnu",
+    "commit": "4ea7d0ffa4a15763ef9107d5d0141265b931aeb5"
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The toolchain is Verus `0.2026.06.14`, but the workspace pins `vstd =0.0.0-2026-05-31-0205` — an older vstd whose `std_specs/atomic.rs` doesn't compile with this newer Verus. The kernel target forces vstd to rebuild from source via `-Z build-std`, exposing the mismatch. Let me check whether a matching vstd version exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -5 -- Cargo.toml; echo "=== when was vstd version last changed ==="; git 
+
+[THINKING] The toolchain includes vstd version `0.2026.06.14`, but the workspace's Cargo.toml is pinned to an older vstd (`0.0.0-2026-05-31-0205`) that won't compile with the newer toolchain. I need to align the workspace vstd with what the toolchain provides, though updating Cargo.toml is a workspace-wide change outside my module's scope.
+
+When the `-Z build-std` flag rebuilds std for the custom kernel target, vstd must be recompiled from source since the prebuilt libvstd.rlib is for the host, not the kernel target. The cached vstd artifact from the earlier successful build at 18:42 was likely compiled with a compatible toolchain version, so it remained valid even after the toolchain updated to `0.2026.06.14`. But something in the gate run at 18:48 must have invalidated that cache or forced a fresh compilation, which now fails against the incompatible vstd version.
+
+The real issue is that vstd `0.0.0-2026-05-31-0205` doesn't compile with the newer `0.2026.06.14` toolchain — specifically, the `ExAtomic` newtype in vstd's atomic specs uses an older Verus macro syntax that the newer toolchain rejects. The proper fix is to bump the vstd dependency in `Cargo.toml` to match the toolchain version, like `0.0.0-2026-06-14-...`, assuming that version exists on crates.io. This is really an environment configuration issue unrelated to my changes in the address module, but since the gate requires `make verify` to pass, I need to align the vstd version.
+[RESULT ✓] bash: 70a9ec9d0 [verus] verify FAIL: sys::mm::address (0 verified, compilation/setup error (verus did not run))
+c872ed68f [verus] verify FAIL: sys::mm::address (0 verified, 0 errors)
+1726865ac Merge branch 'dev' into verify-phys2-update
+849a21ab9 Nanvix 0.16.17
+7b7029e7b Nanvix 0.16.16
+=== when was vstd v...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git show 70a9ec9d0 --stat | head -40; echo "======= Cargo.toml diff ======="; git show 70a9
+
+[THINKING] I'm noticing a recent commit that updated the vstd version to `2026-05-31-0205` with a verification failure related to a compilation error in the sys::mm::address module — looks like an automated pipeline made this change. Let me check what actually changed in the Cargo.toml for that commit.
+[RESULT ✓] bash: commit 70a9ec9d02c6357c9fd51158555efd1f878b1356
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 18:25:51 2026 +0800
+
+    [verus] verify FAIL: sys::mm::address (0 verified, compilation/setup error (verus did not run))
+
+ Cargo.lock                                         |  14 +-
+ Cargo.toml...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Found the root cause. A prior automated commit (`70a9ec9d0`) corrupted `Cargo.toml`: it downgraded `vstd` from `=0.0.0-2026-06-14-0213` (matching the toolchain `0.2026.06.14`) to the incompatible `=0.0.0-2026-05-31-0205`, and **removed** the `[patch.crates-io]` section redirecting vstd/builtin to the local toolchain-matched sources. Let me verify the patch sources exist and check the prior-good state.
+[TOOL] bash: ls -la /tmp/verus-crates/ 2>/dev/null && echo "=== vstd version there ===" && grep -m1 version /tmp/verus-crates/vstd/Ca
+
+[THINKING] I see the issue now—an earlier commit accidentally downgraded vstd to an older, incompatible version and removed the patch configuration that pointed to the local modified crates, breaking the build.
+
+The fix is straightforward: revert the Cargo.toml to restore the correct vstd version matching the toolchain and reinstate the `[patch.crates-io]` section redirecting to the local patched sources. I should verify that `/tmp/verus-crates/` actually contains those patched sources before proceeding.
+[RESULT ✓] bash: total 272
+drwxrwxr-x    6 ruize ruize   4096 Jun 15 18:22 .
+drwxrwxrwt 2517 root  root  253952 Jun 15 18:50 ..
+drwxr-xr-x    3 ruize ruize   4096 Jun 15 18:22 builtin
+drwxr-xr-x    3 ruize ruize   4096 Jun 15 18:22 builtin_macros
+drwxr-xr-x    3 ruize ruize   4096 Jun 15 18:23 state_machines_macros
+...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Confirmed: `/tmp/verus-crates/vstd` is version `0.0.0-2026-06-14-0213`, matching the toolchain. The bad commit removed the `[patch.crates-io]` redirect and downgraded the pin. I'll restore both `Cargo.toml` and `Cargo.lock` to the pre-corruption state.
+[TOOL] report_intent: Restoring correct vstd config
+[TOOL] bash: cd /home/ruize/nanvix-phy && git checkout 70a9ec9d0^ -- Cargo.toml Cargo.lock && echo "=== restored ===" && grep -n "vst
+
+[THINKING] I see the issue now — the local patched vstd at `/tmp/verus-crates/vstd` is version `0.0.0-2026-06-14-0213` matching the toolchain, but the Cargo.toml lost its `[patch.crates-io]` redirection and downgraded the version, forcing the build to pull an incompatible vstd from the registry. I need to restore the Cargo.toml by reverting the vstd version back to `=0.0.0-2026-06-14-0213` and re-adding the patch configuration.
+
+Since the bad commit modified both Cargo.toml and Cargo.lock, I'll restore both files to their pre-commit state with a targeted checkout. This is a configuration bug tied to the toolchain, not a spec issue, so I'll document it in bugs.md as an auto-fixable environment problem.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === restored ===
+231:vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = ["alloc"] }
+292:vstd = { path = "/tmp/verus-crates/vstd" }
+---patch---
+[patch.crates-io]
+vstd = { path = "/tmp/verus-crates/vstd" }
+verus_builtin = { path = "/tmp/verus-crates/builtin" }
+verus_buil...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Config restored. Now let me record the bug and re-run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md 2>/dev/null && echo EXISTS || echo "no
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md
+EXISTS
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md
+[RESULT ✓] view: 1. # Bugs — `sys::mm::address` (Address trait)
+2. 
+3. Specification phase for `is_aligned`, `into_raw_value`, `from_raw_value`.
+4. 
+5. ## Code bugs
+6. 
+7. **None found.** The three in-scope `Address` trait methods are declarations
+8. (no bodies); their specs verify cleanly. `make verify-sys` and `ma...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The existing bugs.md "Environment notes" reference an older `0.2026.05.31` setup, but the **active** toolchain is now `0.2026.06.14` (Makefile: "Using Verus installation at /home/ruize/toolchain/verus") with matching local vstd at `/tmp/verus-crates`. Let me confirm the pinned version file and run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat build/verus-version 2>/dev/null; echo "==="; grep -rn "VERUS_EXECUTABLE_DIR\|VERUS_VERS
+
+[THINKING] I'm noticing a discrepancy between what the bugs.md file documents and what I actually found. The notes claim the project pins Verus `0.2026.05.31` with a matching vstd version, and that the newer local install can't compile the pinned vstd—but that's the opposite of what I discovered. Let me work through what the actual situation is here.
+
+The current environment has Verus `0.2026.06.14` installed at `/home/ruize/toolchain/verus`, with a matching vstd `0.0.0-2026-06-14-0213` in `/tmp/verus-crates`. The pre-bad-commit Cargo.toml was correctly pinned to that vstd version and used a patch directive pointing to the local crates directory. Somewhere between when bugs.md was written and now, the environment was updated to use the newer toolchain, but commit `70a9ec9d0` reverted the Cargo.toml back to the older vstd version and removed the patch—likely because an automated process saw the stale bugs.md note and "fixed" it, actually breaking the working configuration.
+
+Since the Makefile is actively using the `0.2026.06.14` toolchain, the correct setup is what I just restored: vstd `2026-06-14-0213` with the patch pointing to `/tmp/verus-crates`. Now I should check the `build/verus-version` file to confirm the toolchain version.
+[RESULT ✓] bash: 0.2026.05.31.5dd6d83
+===
+298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+314:# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+318:  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_DIR)
+572:	@e...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`build/verus-version` pins `0.2026.05.31`, but the installed toolchain that `make verify` actually invokes is `0.2026.06.14` — so the matching vstd is the `2026-06-14-0213` local patch I restored. Let me verify empirically.
+[TOOL] report_intent: Running verify-sys with restored config
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -25
+
+[THINKING] There's a version mismatch between the pinned version file (`0.2026.05.31.5dd6d83`) and the active toolchain (`0.2026.06.14`), and since `make verify` uses the installed toolchain, vstd needs to match that newer version for things to work correctly.
+
+My restored Cargo.toml pins vstd to `2026-06-14-0213` with a patch pointing to `/tmp/verus-crates`, which should be compatible with the active `0.2026.06.14` toolchain. The real test is whether `make verify` passes now—it'll recompile vstd from the patched source and verify compatibility. Let me start by running `verify-sys` first.
+[RESULT ✓] report_intent: Intent logged
