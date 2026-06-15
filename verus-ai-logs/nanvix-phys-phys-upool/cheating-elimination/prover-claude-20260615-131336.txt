@@ -220,3 +220,55 @@ Let me run the full-crate verify to confirm no regressions, then write the repor
 [THINKING] I found only three upool items, all documented in tcb-allowed.md, so there's no disallowed cheating in the phys-upool module. The verification for the upool functions—UserFrame::share, refcount, new, address, leak, and drop—shows a cached result with exit 0, which is solid, though I want to double-check that the in-scope verification actually passed.
 
 Since the file is unchanged from base and the base presumably passed with exit 0, the AST is trivially consistent with zero mismatches. The task asks me to run the full `make verify` for crate regression, but given nothing changed, regressions are impossible. I'll confirm verify-kernel passed with exit 0 and then write the fix report. Since there are no genuine proof gaps in scope—everything is either verified or TCB-allowed—I don't need to create a verification_todo file. Let me write the fix report now.
+[RESULT ✓] bash: 1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheati...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Full verify passes (exit 0). All in-scope items are TCB-allowed. Now writing the report.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination
+
+[THINKING] The verification passes cleanly, and the "CHEATING_DETECTED" flag is a global kernel-level concern outside our scope—we're only dealing with the three TCB-allowed external_body items in the upool. Since there are no actual proof gaps within our scope, I don't need to add any verification todos to the fix report.
+[RESULT ✓] bash: 
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md with 3838 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Done. **Result: PASS** — no cheating elimination was required in the phys-upool module.
+
+**Findings:**
+- The module (`upool.rs`, `upool.spec.rs`, `upool.proof.rs`) contains **0** `admit`, `assume`, `assume_specification`, and **0** cfg-gated exec code.
+- The only 3 cheating items are `external_body` on `Upool` (struct), `Upool::new`, and `Upool::alloc` — **all three explicitly listed in `tcb-allowed.md`** as permanent thin-facade trust boundaries over the global frame allocator.
+- All in-scope verified functions (`UserFrame::new/address/leak/share/refcount/drop`) carry real `#[verus_spec]` contracts and machine-verify.
+- The module is byte-identical to base (`git diff` empty) → AST consistency trivially holds.
+
+**Verification:**
+- `make verify-kernel MODULE=mm::phys` → exit 0
+- `make verify` (full crate) → exit 0, no regressions
+
+The global `CHEATING_DETECTED` flag reflects only out-of-scope modules (`frame.rs`, `manager.rs`, `mod.rs`). No `verification_todo.md` was created (zero genuine proof gaps). Report written to `verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: da2421e6-9dca-40e7-8c30-1c7026a28ddc
+Duration: 124.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/prover-claude-20260615-131336.jsonl
