@@ -649,3 +649,31 @@ Module `mm::phys` now has 0 admit. Let me confirm the full cheating breakdown an
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | sed -n '/Cheating Pat
 
 [THINKING] I'm checking the module-specific cheating detection for mm::phys and confirming that the admit count is zero at the module level, with the global admit=3 coming from other modules like identity_map. The external_body count of 18 is expected since those entries are all listed in the tcb-allowed list, which explains why the CHEATING_DETECTED status appears.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 18
+    ⚠️  cfg-gated exec code: 11
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: externa...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+All 18 external_body in `mm::phys` are TCB-listed; 0 admit, 0 assume in-module. Now run the full `make verify` to confirm no regressions elsewhere.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-phys-manager/bugs.md 2>/dev/null | head -40; 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make verify 2>&1 | tail -25
+
+[THINKING] I've verified that all 18 external functions in the mm::phys module are now properly TCB-listed across the various files—frame.rs, manager.proof.rs, manager.rs, mod.rs, mod.spec.rs, and upool.rs—with no remaining admits or assumes to address.
+
+The annotation gaps I found (init and kernel_watermark missing the external_body attribute) were setup issues rather than code logic bugs, so they don't warrant entries in the bug report. Now I'm running the full verification suite to ensure there are no regressions.
+[RESULT ✓] bash: # Bugs — Nanvix phys manager
+
+## Observations (record-only; validated in the proving phase)
+
+### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+
+`alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+`alloc_many_kernel_frames` has no such guard and unconditi...
