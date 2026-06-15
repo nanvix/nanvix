@@ -1,0 +1,57 @@
+Timestamp: 2026-06-15_13-52-31
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0277]: the trait bound `Self: sys::mm::Address` is not satisfied
+  --> src/kernel/src/hal/mem/types/region.spec.rs:48:23
+   |
+48 |             spec_addr(&result) == spec_addr(self),
+   |             --------- ^^^^^^^ the trait `sys::mm::Address` is not implemented for `Self`
+   |             |
+   |             required by a bound introduced by this call
+   |
+note: required by a bound in `hal::mem::types::address::aligned::page::spec_addr`
+  --> src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:31:35
+   |
+31 | pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int;
+   |                                   ^^^^^^^ required by this bound in `spec_addr`
+help: consider further restricting `Self`
+   |
+46 |     fn clone(&self) -> (result: Self where Self: sys::mm::Address)
+   |                                      ++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `Self: sys::mm::Address` is not satisfied
+  --> src/kernel/src/hal/mem/types/region.spec.rs:48:45
+   |
+48 |             spec_addr(&result) == spec_addr(self),
+   |                                   --------- ^^^^ the trait `sys::mm::Address` is not implemented for `Self`
+   |                                   |
+   |                                   required by a bound introduced by this call
+   |
+note: required by a bound in `hal::mem::types::address::aligned::page::spec_addr`
+  --> src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:31:35
+   |
+31 | pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int;
+   |                                   ^^^^^^^ required by this bound in `spec_addr`
+help: consider further restricting `Self`
+   |
+46 |     fn clone(&self) -> (result: Self where Self: sys::mm::Address)
+   |                                      ++++++++++++++++++++++++++++
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

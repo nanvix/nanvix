@@ -70,3 +70,113 @@ Now add the clone `assume_specification` to `region.spec.rs`:
 Turn 3
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|warning|
+[RESULT ✓] bash: error: assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead
+40 | pub assume_specification<T: Address>[ <T as Clone>::clone ](addr: &T) -> (result: T)
+error: could not compile `kernel` (bin "kernel") due to 1 previ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+The reviewer's exact suggested form is rejected by Verus (generic trait method). Let me investigate how the codebase handles clone specs and what alternatives exist.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== existing clone specs / external_trait_specification in repo ==="; grep -rn "externa
+
+[THINKING] Verus won't accept `assume_specification` on generic trait methods, and the suggested form using `<T as Clone>::clone` gets rejected since it's still a trait method. I'm considering alternatives like using `external_trait_specification` on the `Clone` trait itself, though that would be complex and affect all clone operations, or finding a way to sidestep the generic constraint altogether.
+
+The core issue is that `spec_addr` can't see through the `clone()` call — I need to prove that `spec_addr(&self.start.clone()) == spec_addr(&self.start)`. Rather than fighting the generic, I should search the codebase to see if there's already a pattern for handling clone specifications on address types, or check whether vstd provides a built-in spec for clone that I can leverage.
+[RESULT ✓] bash: === existing clone specs / external_trait_specification in repo ===
+src/kernel/src/hal/mem/types/region.spec.rs:30:// `<T as Clone>::clone` for the `Address` family is value-preserving (the
+src/kernel/src/hal/mem/types/region.spec.rs:40:pub assume_specification<T: Address>[ <T as Clone>::clone ](add...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The error confirms `assume_specification` rejects a bare type-parameter `Self`. vstd's clone specs are all for concrete types. Let me examine vstd's `ExClone` external trait spec and how Verus's `external_trait_specification` works.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,75p' /home/ruize/.cargo/registry/src/*/vstd-*/std_specs/clone.rs
+
+[THINKING] I see that `assume_specification` only works with concrete types like `<bool as Clone>::clone` or `<[T;N] as Clone>::clone`, not with generic type parameters like `<T as Clone>::clone`. The vstd examples use concrete types too—like `<BTreeSet<K,A> as Clone>::clone`—where the outer type is concrete even though it has generic parameters.
+
+For the `Address` trait problem, I'm considering a few paths: using `external_trait_specification` to define a spec for `Clone` globally (though that's complex and affects all clone calls), or reconsidering whether the `Address` trait itself should handle the cloning relationship somehow. But since `start()` uses the standard `Clone::clone`, not a method on `Address`, that's tricky. I'm wondering if there's a pattern in how Verus handles external trait specifications for standard library traits like `Clone`.
+[RESULT ✓] bash: use super::super::prelude::*;
+use core::clone::Clone;
+
+verus! {
+
+#[verifier::external_trait_specification]
+pub trait ExClone: Sized {
+    type ExternalTraitSpecificationFor: core::clone::Clone;
+
+    fn clone(&self) -> Self;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExCopy: Clone {
+    t...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+vstd provides `ExClone` (global, no value spec) and concrete `assume_specification`s. A generic `<T as Clone>::clone` spec is impossible. Let me check vstd's `cloned` predicate and how the `Address` trait could carry the guarantee.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== cloned predicate ==="; grep -rn "spec fn cloned\|pub.*cloned\b\|fn cloned" /home/ru
+
+[THINKING] The issue is that `vstd` provides `ExClone` for concrete types with value-preserving guarantees, but I can't apply `assume_specification` to a bare generic `T: Address` since Verus doesn't allow generic trait method specs. The `Address` trait itself doesn't guarantee anything about `Clone` behavior, so I need to add a `clone` specification directly to the trait definition.
+
+I'm considering whether I can use `external_trait_specification` to add clone semantics to `Address`, but that won't work since `Clone::clone` isn't an `Address` method. The real insight is that `spec_addr` is uninterpreted, so `spec_addr(&self.start)` and `spec_addr(&self.start.clone())` are completely unrelated without an explicit fact connecting them—which is exactly what the `start()` accessor's ensures obligation creates. I'm exploring whether I can use `external_trait_specification` on `Clone` itself to provide the needed spec. I'm realizing that `external_trait_specification` on the `Address` trait itself is the right approach — I can add an ensures clause to the Clone method that all implementations must satisfy, guaranteeing that cloning preserves `spec_addr`.
+[RESULT ✓] bash: === cloned predicate ===
+/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/pervasive.rs:416:pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
+/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/pervasive...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '405,435p' /home/ruize/.cargo/registry/src/*/vstd-*/pervasive.rs
+
+[THINKING] Looking at vstd's `cloned` definition, it's probably just checking equality on the View or using `call_ensures`. But that doesn't help with `spec_addr` either. The real issue is that I need to express "cloning preserves spec_addr" for a generic `T: Address`, and Verus won't let me use `assume_specification` on generic trait methods. The solution is to put this constraint somewhere else in the specification.
+
+I could try `external_trait_specification` for `Clone`, but that's global and can't reference `spec_addr`. The only way to reference `spec_addr` is through something parameterized by `T: Address`. Maybe I don't actually need `spec_addr` at all — I could go back to using the `View` of T directly, like the original code did before I changed it. I need to check what guarantees `ExClone` actually provides through its `cloned()` method and how the clone result gets constrained in the vstd pervasive module.
+[RESULT ✓] bash: final(self)@ == old(self)@.update(i as int, *old(value)),
+            *final(value) == old(self)@.index(i as int),
+    {
+        core::mem::swap(&mut self[i], value);
+    }
+}
+
+/// Predicate indicating `b` could be the result of calling `a.clone()`
+///
+/// It is usually recommended to use [`cloned`] ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+`call_ensures(T::clone, ...)` gives no value guarantee for generic `T`. Let me check whether the codebase already solves "clone preserves address view" anywhere, and how `Address` is specced in verified modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== external_trait_specification for Address anywhere ==="; grep -rn "external_trait_sp
+
+[THINKING] The issue is that `T::clone` has postcondition semantics, but the default implementation doesn't guarantee anything about preserving `spec_addr` for a generic type. The real solution is to add this constraint at the `Address` trait level itself, since I can't reference `spec_addr` through an external trait specification of `Clone`.
+
+But modifying the `Address` trait in the `sys` crate feels risky given it's used everywhere. Let me step back and reconsider whether I actually need `clone` at all — maybe the contract for `MemoryRegion::start` can be expressed differently. For the concrete address types in use, `clone` is just a trivial field copy, so there might be a way to make this provable without touching the trait. Verus is explicitly telling me that `assume_specification` can't handle generic trait method specs and to use `external_trait_specification` instead, but that won't help here since I can't reference `spec_addr` in that context either. The key insight is that an `external_trait_specification` for the `Address` trait could potentially list the inherited `clone` method and attach an ensures clause to it that references `spec_addr`, which would give me the preservation property I need without modifying the trait itself.
+
+But I'm uncertain whether Verus allows specifying a supertrait method in the subtrait's external spec, so I should look at how the existing verified modules in this codebase handle cloning addresses — checking `frame.rs` and `kframe.rs` for any patterns or existing solutions that might already address this problem.
+[RESULT ✓] bash: === external_trait_specification for Address anywhere ===
+src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+
+=== how Address trait methods get specs (verus_spec in trait) ===
+
+=== .clone() in verified kernel exec bodies ===
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The key insight: `<PageAligned<T> as Address>::into_raw_value` works because `Self` is a concrete type constructor; `<T as Clone>::clone` fails because `Self` is a bare type parameter. The clone-preservation is fundamentally an `Address`-trait property. Let me try `external_trait_specification` on `Address` (declared in the kernel crate where `spec_addr` lives), listing the inherited `clone`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+
+[THINKING] I'm realizing there's no existing pattern for this, and the `Address` trait in the sys crate doesn't have any specs yet. The cleanest approach would be to attach the spec directly to the trait itself, but there's a crate layering problem since `Address` lives in sys while `spec_addr` is defined in the kernel crate.
+
+Within the kernel crate, I need to find an alternative to `admit()` that Verus will accept. The `external_trait_specification` approach for `Clone` won't work because it conflicts with vstd's existing `ExClone` and can't reference `spec_addr` anyway. But here's the key insight: `spec_addr` takes a reference `&T`, so when cloning `self.start`, the reference to the cloned result is different from the reference to the original—without a clone law, they're unrelated. Maybe I can reformulate `MemoryRegion::start`'s contract using a `cloned` predicate instead. Trying different syntax variants to see if Verus will accept an external trait specification that includes clone with a spec_addr ensures clause, since the standard assume_specification approach keeps getting rejected for generic trait methods. The real issue is that `into_raw_value` works because it's specified on a concrete type constructor like `PageAligned<T>`, whereas `clone` fails because it's on a bare type parameter `T`. I can't spec clone for a bare `T`, but I do need to clone `T` values like `self.start`. The proper solution is to express clone-preservation as a property of the `Address` trait itself using an external trait specification, which means declaring it in the kernel crate where `spec_addr` lives.
+
+Let me just try the `ExAddress` approach with clone and see if it works empirically.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|warning|

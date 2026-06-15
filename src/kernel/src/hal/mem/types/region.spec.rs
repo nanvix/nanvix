@@ -27,20 +27,27 @@ verus! {
 use crate::hal::mem::spec_page_size;
 use crate::hal::mem::spec_addr;
 
-// `<T as Clone>::clone` for the `Address` family is value-preserving (the
-// address newtypes wrap a plain integer, so cloning copies the abstract
-// address). `MemoryRegion::start` returns `self.start.clone()`; without this
-// fact Verus cannot relate `spec_addr(&clone)` to `spec_addr(&orig)` because
-// `spec_addr` is `uninterp`. `Clone` is an external (std) trait whose impl for
-// each `T: Address` lives outside the verification scope, so the fact is drawn
-// at the library edge with `assume_specification`, mirroring the
-// `<PageAligned<T> as Address>::into_raw_value` trust boundary in
-// `page.spec.rs`. The obligation it stands in for — `<T as Address>` clone is
-// newtype identity — is discharged when the `Address` family is verified.
-pub assume_specification<T: Address>[ <T as Clone>::clone ](addr: &T) -> (result: T)
-    ensures
-        spec_addr(&result) == spec_addr(addr),
-;
+// Clone is value-preserving for the `Address` family: every address type is a
+// newtype over a plain integer, so cloning copies the abstract address. This
+// fact is what `MemoryRegion::start` (`self.start.clone()`) needs to discharge
+// `spec_addr(&result) == self@.start`. It cannot be stated with
+// `assume_specification` because the cloned receiver is a bare type parameter
+// (`<T as Clone>::clone` — Verus rejects generic trait-method specs). It is
+// therefore attached to the `Address` trait via `external_trait_specification`,
+// the Verus-sanctioned mechanism for adding a spec to a trait method that all
+// implementers honor (declared here in the kernel crate so it can reference the
+// crate-local `spec_addr`). `Address: Clone` (supertrait), so `clone` is in the
+// trait's method surface. External impls are trusted; verified impls must prove
+// it — discharged when the `Address` family is verified.
+#[verifier::external_trait_specification]
+pub trait ExAddressClone: Sized {
+    type ExternalTraitSpecificationFor: Address;
+
+    fn clone(&self) -> (result: Self)
+        ensures
+            spec_addr(&result) == spec_addr(self),
+    ;
+}
 
 // Abstract value of a memory region: the geometry `(start, size)` (in bytes,
 // as mathematical integers) plus the three metadata tags callers observe.
