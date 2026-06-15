@@ -1693,3 +1693,62 @@ Now let me run verification to validate the `is_covered` approach:
 [THINKING] I'm hitting a verification issue with the frame address lemma — when I assert that `allocated_frames` contains a physical address, Verus needs to instantiate an existential quantifier with the specific frame number, but it's not automatically connecting that the frame number I'm using is the witness that satisfies the condition.
 
 I also need to verify that `pa == ps * frame_number` follows from the fundamental division-modulo lemma, which requires having `pa % ps == 0` and `frame_number == pa / ps` in scope as preconditions. Let me run the verification on just the `is_covered` method to see if these constraints resolve, then check the overall module status.
+[RESULT ✓] bash: - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attached: admit
+    - manager.proof.rs:21 lemma_free_count_bounded: admit
+    - manager.proof.rs:36 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:49 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:71 lemma_c...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "error\[" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_08-
+
+[THINKING] The Verus compiler failed to run with an exit code of 101, which indicates a compilation error. Let me look at what the actual error message is.
+[RESULT ✓] bash: ---- error context ----
+8:compilation/setup error (verus did not run)
+20:error: expected one of `:`, `;`, `=`, `@`, or `|`, found `pa`
+26:error: expected `;`
+32:error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+<shellId: 61 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '18,32p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_08-28
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error: expected one of `:`, `;`, `=`, `@`, or `|`, found `pa`
+   --> src/kernel/src/mm/phys/frame.rs:536:19
+    |
+536 |         let ghost pa: int = phys_addr@;
+    |                   ^^ expected one...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "let ghost\|proof_decl\|Ghost::\|let tracked\|ghost " src/kernel/src
+
+[THINKING] I'm realizing that ghost variable syntax works differently in attribute-style Verus compared to inside a `verus!` block, so I can't use `let ghost pa: int = ...` here. I need to either use a different macro like `proof_decl!` or find a way to work around the ghost binding altogether by passing the physical address indirectly instead. I need to look at how ghost variables are declared in the non-spec Rust files to understand the right syntax for this context.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.rs:416:                proof_decl! {
+src/libs/bitmap/src/lib.rs:417:                    let ghost start_before_inner: usize = start;
+src/libs/bitmap/src/lib.rs:419:                    let ghost checked_before: int = start as int;
+src/libs/bitmap/src/lib.rs:451:               ...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm restructuring the code to capture the physical address as a ghost value before consuming it, using the proof declaration pattern to extract the integer representation.
+
+Now I'm working through the verification logic — the ghost binding `pa` captures the snapshot of `phys_addr@` at declaration time, and after `into_raw_value()` consumes the value, the postcondition establishes that `raw as int` equals that same snapshot. Since `pa` holds the captured value and the postcondition references the consumed value's mathematical equivalent, Verus should transitively know that `pa == raw as int`, allowing me to use both in the proof block to establish the frame number calculation.
+
+I also need to ensure the proof block has access to the invariants from `phys_addr.inv()` — specifically that `pa >= 0` (since it's derived from a `usize`) and `pa % spec_page_size() == 0` (from the precondition). I'll add explicit assertions to help Verus connect these properties through the equality chain.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|is_cover
