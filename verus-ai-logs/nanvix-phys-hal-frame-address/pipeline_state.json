@@ -30,6 +30,17 @@
       "review_file": null,
       "duration_s": 188.3,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 1859.7,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "b3e74a41-6a46-4d50-9751-487c7615aaee",
@@ -38,7 +49,8 @@
   "verus_branch": "verus-ai/hal-frame-address",
   "phase_boundary_shas": {
     "caller-analysis": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
-    "view-design": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26"
+    "view-design": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26",
+    "specification": "3cb637383670132b13736a84026460b3ff7994bb"
   },
   "phase_start_shas": {
     "caller-analysis": "b5ef4dd3bf27dc3d5ebc1594cdfb6c85e36c4e20",
@@ -74,6 +86,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "3cb637383670132b13736a84026460b3ff7994bb",
       "rollback_iter": 0
     }
   ],
