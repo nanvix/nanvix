@@ -1566,3 +1566,20 @@ Now let me run the full verification suite. First `make verify-sys`, then check 
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -iE "error|verified|coverage:|status:|verification:|cheating:" | 
 
 [THINKING] The proof.rs file can stay empty since no lemmas are needed for the verification. Let me run through the full verification pipeline—verify-sys first to make sure the comment addition didn't break anything, then verify all, and finally build.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  6 verified
+  0 errors
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  cove...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+sys is CLEAN (6 verified, 0 errors). Now let me run the full `make verify` to check for regressions across all crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | grep -iE "Checking|error\[|could not compile|verification results::|status
+
+[THINKING] The verification passed cleanly with 6 verified items and no errors, and I've got 2 functions with contracts now. I'm running the full verification suite across all the crates to make sure nothing regressed, then I need to check whether that kernel CHEATING_DETECTED status was already there in the baseline.
+
+Looking at the git history, the kernel had those external_body counts (25 of them) before my changes, and my edits to phys.spec.rs only removed an assume_specification and updated comments—nothing that would affect the cheating metrics. So this is the kernel's normal baseline, not something I introduced. Let me run the full make verify and see how it goes.
