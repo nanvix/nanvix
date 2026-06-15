@@ -694,3 +694,24 @@ Turn 43
 Actually, I realize `into_raw_value()` already calls `use_type_invariant` internally and guarantees `0 <= self@ <= spec_max()` in its postcondition. So instead of calling it directly, I can restructure `from_number` to call `into_raw_value()` first, bind the result to a variable, then invoke the lemma — that way the bound is already established in the context when the lemma needs it.
 
 The original code structure keeps `into_raw_value()` inline in the multiplication, which is semantically identical since it has no side effects. But I'm wondering if I can avoid reordering the exec code and instead fix the lemma to derive the bound differently. The real blocker might be that `use_type_invariant(frame)` fails with a cross-crate visibility error, not the proof logic itself.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: Verus Internal Error: missing type invariant function
+   --> src/kernel/src/hal/mem/types/address/phys.rs:144:32
+    |
+144 |             use_type_invariant(frame);
+    |                                ^^^^^
+
+error: could not c...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The type invariant function isn't accessible across crates, so I need to rely on `into_raw_value`'s guarantees instead. I'll revert the exec proof block change and restructure the code to bind the raw value first before reordering.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E 

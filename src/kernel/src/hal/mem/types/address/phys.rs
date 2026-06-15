@@ -140,11 +140,11 @@ impl PhysicalAddress {
             result@ == spec_from_number(spec_frame_raw_value(frame)),
     )]
     pub fn from_number(frame: FrameNumber) -> Self {
+        let addr_raw: usize = frame.into_raw_value();
         proof! {
-            use_type_invariant(frame);
             lemma_from_number_no_overflow(frame);
         }
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+        let addr: usize = addr_raw * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
