@@ -1051,3 +1051,46 @@ Turn 63
 Turn 64
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42
+[RESULT ✓] bash: ...
+112 |                   && spec_frame_number(spec_addr(&r)) <= spec_max_frame_number(),
+    |                                        ------------- may be part of cycle (node 2 of 3 in cycle): application of a function to some type arguments, which may depend on other trait implementations to sat...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '/--- Full output ---/,$p' verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_1
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: found a cyclic self-reference in a definition, which may result in nontermination
+   --> src/kernel/src/hal/mem/types/address/frame.spec.rs:106:1
+    |
+106 | / pub assume_specification[ <PhysicalAddress as Ad...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+The cyclic reference comes from `spec_addr` on `PhysicalAddress` inside a spec for a `PhysicalAddress` `Address`-impl method. Let me use the `View` (`r@`) instead and bridge in the body.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+[THINKING] I'm seeing a cyclic dependency issue in Verus where the `from_raw_value` method in the Address implementation for PhysicalAddress references a generic `spec_addr` function, which itself requires the Address trait to be implemented for PhysicalAddress—creating a circular dependency that Verus is catching. The cycle forms because the implementation being verified depends on itself through the specification function.
+
+To break the cycle, I could avoid calling `spec_addr` directly in the `from_raw_value` specification and instead use PhysicalAddress's View projection (`r@`) instead, which relies on the View trait rather than the Address trait. Then I'd need to establish a bridge between the two representations—proving that `spec_addr(&r) == r@`—which I can invoke as a lemma within the method body to connect the two formulations without creating the circular dependency. The deref assume_spec uses spec_addr generically on PageAligned<T>, which shouldn't create a cycle since it's not tied to a specific Address impl like the PhysicalAddress case was. I'll update from_raw_value to use the View directly in its assume_spec and rewrite the body to bind the intermediate value and call the bridge lemma.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I need to correct the file path for the from_raw_value edit—it should be in frame.rs, not frame.spec.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42

@@ -96,20 +96,24 @@ impl FrameAddress {
 // `::arch::mem::PAGE_SIZE` (above).
 //
 // On success it validates and wraps without rounding: the abstract address
-// equals the raw value (`spec_addr(&r) == value`) and the validated address has
-// a representable frame number (`spec_frame_number(..) <= spec_max_frame_number()`,
+// equals the raw value (`r@ == value`) and the validated address has a
+// representable frame number (`spec_frame_number(r@) <= spec_max_frame_number()`,
 // i.e. it lies within physical memory). On failure (`value` is not a valid
 // physical address) no address is produced; the dynamic validity predicate is
 // platform-specific, so the failure condition is left unconstrained —
-// `from_raw_value`'s sole caller only branches on `Ok`/`Err`. Removed when
-// `hal::mem` is verified.
+// `from_raw_value`'s sole caller only branches on `Ok`/`Err`. Stated through
+// `PhysicalAddress`'s `View` (`r@`) rather than the universal `spec_addr` to
+// avoid a definitional cycle (`spec_addr<PhysicalAddress>` would depend back on
+// the very `impl Address for PhysicalAddress` this method belongs to);
+// `FrameAddress::from_raw_value` bridges `r@` to `spec_addr` in its body.
+// Removed when `hal::mem` is verified.
 pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](
     value: usize,
 ) -> (result: Result<PhysicalAddress, ::sys::error::Error>)
     ensures
         match result {
-            Ok(r) => spec_addr(&r) == value as int
-                && spec_frame_number(spec_addr(&r)) <= spec_max_frame_number(),
+            Ok(r) => r@ == value as int
+                && spec_frame_number(r@) <= spec_max_frame_number(),
             Err(_) => true,
         },
 ;
