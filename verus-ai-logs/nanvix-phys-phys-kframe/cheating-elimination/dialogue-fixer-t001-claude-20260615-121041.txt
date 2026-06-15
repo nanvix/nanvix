@@ -367,3 +367,87 @@ We're working directly on the base branch; verify.sh auto-commits. The build err
 [THINKING] I'm realizing the issue—we're working directly on the base branch, so `git diff` against HEAD shows nothing since HEAD is already on that branch. I need to compare against an earlier commit like `2020a04be` to see what's actually changed. The real test is checking if the current kframe.rs matches the baseline for AST consistency.
 
 Let me verify the current state of kframe.rs and spec.rs to make sure they're clean, and confirm the cheating gate shows no issues. The module is already verified with no errors or cheating detected. The only remaining build error is a pre-existing warning in manager.rs that's outside my scope, so I'll document that as an unrelated failure. Now I need to run a full kernel verification to check for any regressions, then write up the summary.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=15 admit=7 trusted=0 no_decreases=0 cfg_gate=12
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  56/1027 exec functions ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Full kernel exit 0 (cached). Global cheating counts are all outside kframe (bottom-up siblings ledgered in tcb-allowed.md). Let me confirm zero cheating items are in kframe itself.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== kframe items in cheating-detail ==="; grep -i "kframe" verus-ai-l
+
+[THINKING] The kernel verification is cached and passing. The global cheating counts I'm seeing (external_body=15, admit=7, cfg_gate=12) are all from other modules being verified, not from my kframe module which came back clean with no issues detected. I'm now checking the detailed cheating log to confirm none of those flagged items belong to kframe.
+[RESULT ✓] bash: === kframe items in cheating-detail ===
+exit: 0
+=== map_frame external_body? (should be none) ===
+102:// less. Kept outside Verus (no `#[verus_verify]`); carries no `external_body`.
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+All clean. Now write the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue/turn_001_fixer.md
+
+[THINKING] The cheating-detail module is clean with no kframe items. I'm documenting the error evidence for option A, which includes the unsupported constant type macro error, the PageAligned::from_raw_value external that needs assume_specification, and the uninterpreted private identity_map_view issue, then writing up the turn_001_fixer response.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue/turn_001_fixer.md with 6131 characters
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me verify final source state and clean up temp backups.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec has assume_specification ==="; grep -n "assume_specification
+
+[THINKING] I need to clean up the temporary backups in /tmp and verify that both kframe.rs and kframe.spec.rs are in their correct final state, making sure the spec file still contains the assume_specification.
+[RESULT ✓] bash: === spec has assume_specification ===
+25:// Trusted exec-boundary contract for the [`KernelFrame::map_frame`] helper. `map_frame` performs
+34:pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress) -> Result<(), Error>;
+=== new body ===
+    pub(super) fn new(base: FrameAddress) -> Res...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+All in place. Let me commit the ledger and doc changes (source was auto-committed by verify.sh).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git status --porcelain | grep -v "dialogue-fixer-t001"; echo "=== add + com
+
+[THINKING] The main deliverable for this turn is done, so now I need to handle the git commits. The verify.sh script should auto-commit source changes, but I need to manually commit tcb-allowed.md and turn_001_fixer.md. Let me check what's currently uncommitted in git status.
+[RESULT ✓] bash: ?? verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue/turn_001_fixer.md
+=== add + commit ===
+9f21d791c [verus-ai] cheating-elimination fixer t1: ledger map_frame trusted contract; remove stale KernelFrame::new entry
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Done. Fixed the reviewer's Turn 1 issue.
+
+## Summary
+
+The reviewer flagged an untracked trusted contract (`assume_specification[ KernelFrame::map_frame ]`) and a stale `KernelFrame::new` `external_body` ledger entry. I took the **sanctioned option B**:
+
+**Changes:**
+- `verus-ai-logs/tcb-allowed.md`: removed the stale `KernelFrame::new` entry; added a ledger entry for `KernelFrame::map_frame` (empty `assume_specification` at the `mm::virt` boundary, removed when `mm::virt` is verified); broadened the section header to cover both `external_body` and `assume_specification`.
+- `kframe.rs`: added a `// VERUS REWRITE:` comment at the `map_frame` extraction site documenting why re-inlining is impossible.
+
+**Option A proven impossible** (3 exact Verus errors captured): the `error!` macro fails with "Unsupported constant type"; `PageAligned::from_raw_value` is external (needs its own spec); and `identity_map_page`'s precondition `identity_map_view().inv()` is `uninterp` and lives in a private, non-re-exported module — not even nameable from `mm::phys`.
+
+**Verification:** `mm::phys::kframe` → 3 verified, 0 errors, **CLEAN** (no cheating items in module). Full kernel verify exit 0. The only `check-kernel` error is the pre-existing `manager.rs:245` warning, byte-identical on base and in a file I didn't touch.
+
+Result: **FIXED**.
+
+
+=== Session End ===
+Session: e9857615-f314-4ade-8efb-abeff55c9270
+Duration: 299.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue-fixer-t001-claude-20260615-121041.jsonl
