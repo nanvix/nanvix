@@ -297,3 +297,64 @@ Turn 9
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/hal/mem/types/address/phys.rs && make verify-kernel MODULE=hal::mem::t
 
 [THINKING] The "phys" matches are unrelated functions from other modules, so our three target functions aren't showing up in the unverified list—that's good confirmation they're already verified with contracts. I should run a fresh module verification to rule out any stale caching and get an accurate count of verified functions.
+[RESULT ✓] bash: verification results:: 4 verified, 0 errors (partial verification with `--verify-*`)
+  4 verified
+  0 errors
+  Global: assume=0 external_body=25 admit=0 trusted=0 cfg_gate=10
+  Unverified functions:
+  verification: 4 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=25 admit=0 trusted=0...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All in-scope checks pass. Now confirming the erased (non-Verus) build compiles.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 500 ./z build 2>&1 | tail -15
+
+[THINKING] The module verification shows 4 verified with no errors, and the CHEATING_DETECTED status is coming from external dependencies outside the current scope—specifically from other modules like frame.rs that are being type-checked. But I'm realizing the global cheating check spans the entire kernel, so those external references might be pulling in flagged code from elsewhere.
+
+For phys.rs specifically, there are no external_body violations in the in-scope functions. The ExFrameNumber struct is just the standard pattern for registering an external architecture type as a trust boundary, which is allowed. Now I need to run the build to confirm everything compiles cleanly.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.08s
+cp -f --preserve /home/ruize/nanvix-phy/target/debug/mkimage /home/ruize/nanvix-phy/bin/mkimage.elf
+Standalone images built successfully.
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profil...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "spec_max_frame_number" src/kernel/src/ | grep -v "address/phys"; echo "exit:$? (e
+
+[THINKING] The build is complete and all checklist items are passing. I'm doing a final verification of the remaining items—function coverage is at 16/16 with all in-scope functions having contracts, and I'm confirming the caller coverage for functions like from_number and into_frame_number with their respective invariants and postconditions. Once this is done, I'll write up the turn_002_driver.md documentation and mark this as resolved. I need to verify that `spec_max_frame_number` isn't redefined or used inconsistently across other modules.
+[RESULT ✓] bash: exit:1 (empty=module-local)
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+`spec_max_frame_number` is module-local — no cross-module coupling. All evidence gathered. Writing the review and resolving.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/turn_002_driver.md with 4646 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**. All three FAIL items from turn 1 are FIXED, verified independently:
+
+**FIX-1 (admits):** Fresh, non-cached `make verify-kernel MODULE=...phys` → `4 verified, 0 errors, admit=0` (was `admit=2`). No `external_body` on any in-scope phys function (confirmed via `cheating-detail.txt`).
+
+**FIX-2 (`from_number` caller-usable):** Now ensures `result@ % spec_page_size()==0` and `result.inv()`, proven via vstd div/mod lemmas. I verified the fixer's grounding of `spec_max_frame_number()` against actual arch source (`number.rs:29`, `constants.rs`): `FrameNumber::MAX = usize::MAX/FRAME_SIZE-1`, `pow2(12)=4096` — all true facts, not invented assumptions. It's module-local (no cross-module coupling).
+
+**FIX-3 (tautological error):** `Err(_) => true` replaced by `result is Ok` + identity/`inv()` on `Ok`.
+
+**Cross-cutting:** `spec_drift` shows additions-only (no weakening); `make verify-kernel` (all modules) exit 0; `./z build` → `[OK]`.
+
+All 17 checklist items PASS/FIXED. Created `STOP` with `RESOLVED`.
+
+
+=== Session End ===
+Session: a90c9052-952f-46d0-b147-c0eb570b71eb
+Duration: 165.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue-reviewer-t002-claude-20260615-124545.jsonl
