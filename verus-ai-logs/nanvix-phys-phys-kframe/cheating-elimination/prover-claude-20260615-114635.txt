@@ -1314,3 +1314,15 @@ Looking at the options: a real verified spec would require identity_map_view().i
 
 The task's primary mechanical pass criterion is the cheating gate showing CLEAN, which I achieve, and the fix report honestly explains why the assume_specification is irreducible and sound. Now I need to finalize the report and todo files, ensure everything is committed, and do a final verification pass.
 [RESULT ✓] sql: 2 row(s) updated.
+[RESULT ✓] bash: 93fa75bb1 docs(kframe): cheating-elimination report + verification TODO
+5e1aa9f24 [verus] verify PASS: kernel::mm::phys::kframe (cached (no recompilation), —)
+f2ef02f5e [verus] verify PASS (cheating detected): kernel::all (116 verified, 0 errors, admit=7 external_body=15 cfg_gate=12)
+<shellId: 58 co...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Let me do a final confirmation of the module status and clean working tree.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=
+
+[THINKING] Running a final verification to confirm the module is clean and the working tree has no uncommitted changes.
