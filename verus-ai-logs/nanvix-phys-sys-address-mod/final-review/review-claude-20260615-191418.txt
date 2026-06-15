@@ -892,3 +892,95 @@ Turn 6
 7. // The single universal property every constructible valu...
 [RESULT ✓] view: 1. verus! { } // verus!
 2. 
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus-pinned-0531.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus-pinned-0531:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compil...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== build/verus-version ===" && cat build/verus-version 2>/dev/null; echo; echo "=== 
+[RESULT ✓] bash: === build/verus-version ===
+0.2026.05.31.5dd6d83
+
+=== toolchain symlink ===
+total 0
+drwxrwxr-x 1 ruize ruize  170 Jun 15 19:15 .
+drwxr-x--- 1 ruize ruize 3450 Jun 15 18:23 ..
+drwxr-xr-x 1 ruize ruize  450 Jun 15 19:15 verus
+drwxr-xr-x 1 ruize ruize  450 Jun 15 18:43 verus-06.14-active-bak
+drwxr-xr-x...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 340. }
+341. 
+342. } // end verus!
+343. 
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd ~/toolchain && echo "=== pinned 0531 version ===" && ./verus-pinned-0531/verus --version 2>&1 | head -4; echo; echo "
+[RESULT ✓] bash: === pinned 0531 version ===
+Verus
+  Version: 0.2026.05.31.5dd6d83
+  Profile: release
+  Platform: linux_x86_64
+
+=== is verus a symlink? ===
+(not a symlink, real dir)
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Restoring pinned toolchain
+[TOOL] bash: cd ~/toolchain && mv verus verus-06.14-clobber-bak2 && ln -s verus-pinned-0531 verus && echo "=== now ===" && readlink v
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === now ===
+verus-pinned-0531
+Verus
+  Version: 0.2026.05.31.5dd6d83
+  Profile: release
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && rg -n "VERUS REWRITE|VERUS DEVIATION|VERUS BUG FIX" src/libs/sys/src/sys/mm/address src/lib
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'PY'
+import re, pathlib
+files = [
+ 'src/libs/sys/src/sys/mm/address/mod.rs',
+ '
+[TOOL] bash: cd /home/ruize/nanvix-phy && find src/libs/sys/src/sys/mm/address -maxdepth 1 -type f | sort
+[RESULT ✓] bash: 
+<shellId: 30 completed with exit code 0>
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.proof.rs
+src/libs/sys/src/sys/mm/address/mod.rs
+src/libs/sys/src/sys/mm/address/mod.spec.rs
+src/libs/sys/src/sys/mm/address/virt.proof.rs
+src/libs/sys/src/sys/mm/address/virt.rs
+src/libs/sys/src/sys/mm/address/virt.spec.rs
+<shellId: 32 completed with exit code 0>
+[RESULT ✓] bash: [target_mod_files]
+admit=0
+assume=0
+external_body=0
+assume_specification=0
+cfg_attr=0
+cfg=2
+  src/libs/sys/src/sys/mm/address/mod.rs:9: #[cfg(verus_keep_ghost)]
+  src/libs/sys/src/sys/mm/address/mod.rs:11: #[cfg(verus_keep_ghost)]
+uninterp=1
+  src/libs/sys/src/sys/mm/address/mod.spec.rs:41: pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-sys 2>&1 | tail -35
