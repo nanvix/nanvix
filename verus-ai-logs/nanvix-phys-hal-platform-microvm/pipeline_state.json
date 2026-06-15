@@ -2,11 +2,12 @@
   "module_name": "hal-platform-microvm",
   "log_name": "nanvix-phys-hal-platform-microvm",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "5b0379853300830015c683dc213bc0dab81de185",
     "view-design": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
-    "specification": "d9580512007a4cf08140f60a52eebf24e3c98fa8"
+    "specification": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
+    "proving": "25275ea30bc8770592c2421a737deadde3ce0440"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "32d61724c06b162ac3a543f83d09f8ca5cf4a4d2",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "25275ea30bc8770592c2421a737deadde3ce0440",
       "rollback_iter": 0
     }
   ],
