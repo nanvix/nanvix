@@ -44,11 +44,19 @@ pub struct VirtualAddress(usize);
 // Implementations
 //==================================================================================================
 
+// Verification-target constructors. They live in a dedicated `#[verus_verify]`
+// impl block so that the self-less associated functions `new` / `from_raw_value`
+// resolve under verification (Verus requires an enclosing `#[verus_verify]` impl
+// for self-less associated functions); the out-of-scope methods below are left in
+// a plain impl block, untouched and outside the verification scope.
+#[verus_verify]
 impl VirtualAddress {
     #[verus_spec(result =>
-        ensures true,
+        ensures
+            result@ == value as int,
+            result.inv(),
     )]
-    pub fn mk_new(value: usize) -> Self {
+    pub const fn new(value: usize) -> Self {
         Self(value)
     }
 
@@ -61,10 +69,17 @@ impl VirtualAddress {
     ///
     /// - `raw_addr`: The raw value.
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == raw_addr as int,
+            result.inv(),
+    )]
     pub fn from_raw_value(raw_addr: usize) -> Self {
-        VirtualAddress::mk_new(raw_addr)
+        VirtualAddress::new(raw_addr)
     }
+}
 
+impl VirtualAddress {
     ///
     /// # Description
     ///
@@ -81,7 +96,7 @@ impl VirtualAddress {
     /// instead.
     ///
     pub fn align_up(&self, align: Alignment) -> Option<Self> {
-        mm::align_up(self.0, align).map(VirtualAddress::mk_new)
+        mm::align_up(self.0, align).map(VirtualAddress::new)
     }
 
     ///
@@ -99,7 +114,7 @@ impl VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     pub fn align_down(&self, align: Alignment) -> Self {
-        VirtualAddress::mk_new(mm::align_down(self.0, align))
+        VirtualAddress::new(mm::align_down(self.0, align))
     }
 
     ///
@@ -243,6 +258,10 @@ impl Address for VirtualAddress {
         usize::MAX
     }
 
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
     fn into_raw_value(self) -> usize {
         self.0
     }
@@ -266,7 +285,7 @@ impl ::core::ops::Add<usize> for VirtualAddress {
     type Output = Self;
 
     fn add(self, rhs: usize) -> Self::Output {
-        VirtualAddress::mk_new(self.0 + rhs)
+        VirtualAddress::new(self.0 + rhs)
     }
 }
 
@@ -278,7 +297,7 @@ impl ::core::ops::AddAssign<usize> for VirtualAddress {
 
 impl From<u32> for VirtualAddress {
     fn from(value: u32) -> Self {
-        VirtualAddress::mk_new(value as usize)
+        VirtualAddress::new(value as usize)
     }
 }
 

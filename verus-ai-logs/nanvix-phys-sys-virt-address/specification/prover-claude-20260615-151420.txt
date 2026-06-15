@@ -932,3 +932,282 @@ f="src/libs
 Let me try using the nightly toolchain that Verus itself uses to expand the macros. I could run `cargo +<toolchain> rustc` with the `verus_keep_ghost` cfg flag and make sure the proc-macro dependency is available. The proc macros are built against Verus's custom rustc, which makes this tricky. But stepping back—the real issue is why `new` specifically fails. The `verus_spec` macro likely generates an inner function or wraps the body in a way that moves the original code into a nested context, and if `new` is a common name, the macro might be generating a companion spec function or attaching requires/ensures through a generated item that calls `new`, causing a scope issue.
 
 Let me test this by renaming `new` to `new2` temporarily to see if the problem is the name itself colliding with something the macro generates. If `new2` works, I've found the culprit.
+[RESULT ✓] bash: 51:    pub fn mk_new(value: usize) -> Self {
+65:        VirtualAddress::mk_new(raw_addr)
+84:        mm::align_up(self.0, align).map(VirtualAddress::mk_new)
+102:        VirtualAddress::mk_new(mm::align_down(self.0, align))
+269:        VirtualAddress::mk_new(self.0 + rhs)
+281:        VirtualAddress::m...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Renaming doesn't help — the macro emits an unqualified self-reference. Let me restore the original and obtain the actual macro expansion to understand the generated code.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git checkout src/libs/sys/src/sys/mm/address/virt.rs; echo "restored"; 
+# re-add spec.rs inv 
+
+[THINKING] Renaming the function didn't fix it, so the issue isn't the name itself—the macro is generating an unqualified reference to the function that can't be resolved in this impl block context. This works fine in phys.rs, so there's something subtly different about how I'm setting it up. Let me restore the file and carefully match the exact pattern from phys.rs, comparing everything token by token to find what's different.
+
+Actually, I should just expand the macro directly to see what's being generated. Let me get the cargo-verus expansion output to understand exactly what code the macro is producing and why it can't find the function reference.
+[RESULT ✓] bash: Updated 0 paths from the index
+restored
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verus_spec\|mk_new\|fn new" src/libs/sys/src/sys/mm/address/virt.rs | head; echo "==
+
+[THINKING] I'm trying to understand what git checkout actually did—it says zero paths were updated, but I had edits to virt.rs. Let me check the actual git status to see if those files are even tracked or if they're already clean.
+[RESULT ✓] bash: 48:    #[verus_spec(result =>
+51:    pub fn mk_new(value: usize) -> Self {
+65:        VirtualAddress::mk_new(raw_addr)
+84:        mm::align_up(self.0, align).map(VirtualAddress::mk_new)
+102:        VirtualAddress::mk_new(mm::align_down(self.0, align))
+269:        VirtualAddress::mk_new(self.0 + rhs)...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git check-ignore src/libs/sys/src/sys/mm/address/virt.rs src/libs/sys/src/sys/mm/address/virt
+
+[THINKING] I'm realizing that virt.rs isn't showing up in git status as modified, which means it's either being ignored or not tracked at all. But the file still contains my edits with mk_new, so git checkout didn't actually revert it—it just reported updating zero paths. This suggests virt.rs is gitignored, which would explain why the changes persist even though git thinks nothing changed.
+[RESULT ✓] bash: exit: 1
+src/libs/sys/src/sys/mm/address/virt.rs
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff HEAD -- src/libs/sys/src/sys/mm/address/virt.rs | head -20; echo "=== dif
+
+[THINKING] The file virt.rs is tracked and not ignored, yet `git checkout` didn't restore it and `git status` doesn't show it as modified—which suggests git thinks it's unmodified even though it contains new code. I'm wondering if there's a worktree or index issue, so I should check `git diff` to see what's actually happening.
+[RESULT ✓] bash: === diff exit ===
+quiet exit: 0
+=== is there a separate worktree/submodule? ===
+/home/ruize/nanvix-phy
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -la src/libs/sys/src/sys/mm/address/virt.rs; echo "=== readlink chain ==="; readlink -f sr
+
+[THINKING] Git diff is showing nothing even though the working file contains `mk_new`, which suggests either the file git is tracking differs from what I'm reading, or `src/libs/sys` might be a submodule with its own repository. Let me check `.gitmodules` and verify the repository root to understand what's actually being tracked.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 8236 Jun 15 15:23 src/libs/sys/src/sys/mm/address/virt.rs
+=== readlink chain ===
+/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+=== is src/libs/sys a symlink? ===
+drwxrwxr-x 1 ruize ruize  26 Jun 15 00:16 sys
+drwxrwxr-x 1 ruize ruize  26 Apr 20 20:42 sysalloc...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "working hash:"; git hash-object src/libs/sys/src/sys/mm/address/virt.rs; echo "HEAD has
+
+[THINKING] The file exists and has content, but git diff shows no changes, which suggests the version in HEAD already matches. I'm wondering if `src/libs/sys` might be a nested git repository with its own `.git` directory, though git ls-files found the file from the top-level repo. Let me verify the actual git object hash against the file's content to understand what's happening.
+[RESULT ✓] bash: working hash:
+63144cdb50e447c25f9cf8fb5d29515fe455c2dc
+HEAD hash:
+63144cdb50e447c25f9cf8fb5d29515fe455c2dc
+index hash:
+100644 63144cdb50e447c25f9cf8fb5d29515fe455c2dc 0	src/libs/sys/src/sys/mm/address/virt.rs
+=== nested git? ===
+no nested .git
+<shellId: 49 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+The working file matches HEAD — my edits got committed somewhere. Let me check the git log to find the true original.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager log --oneline -15 -- src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] The working directory matches HEAD, which means my changes to virt.rs with the mk_new version were already committed—likely by the session setup or earlier work. Since the checkout showed "Updated 0 paths," it confirms the working tree and HEAD are in sync, so git HEAD already contains the modified virt.rs with mk_new and the verus_spec.
+
+I need to check the git log to figure out what actually happened and get back to the true original state.
+[RESULT ✓] bash: 26f78dd3b [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
+a6a340332 [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
+f1c00dd23 [verus] verify FAIL: sys::all (0 verified, compilation/setup error (verus did not run))
+8bb0f3...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+The verify harness auto-commits each run. The pristine original is at `f23a530ae`. Let me restore virt.rs from there.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== virt.rs at f23a530ae (imports + new) ==="; git --no-pager show f23a530ae:src/libs/s
+
+[THINKING] I see there's an auto-commit system that's been capturing my diagnostic changes, so I need to go back to the original state before those edits. The pristine version is at commit f23a530ae, right before the verification failures started. Let me restore virt.rs from that commit and check what the original code looks like.
+[RESULT ✓] bash: === virt.rs at f23a530ae (imports + new) ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==============================================================...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; git checkout f23a530ae -- src/libs/sys/src/sys/mm/address/virt.rs src/libs/sys/src/sys/mm/add
+[RESULT ✓] bash: restored pristine
+48:    pub const fn new(value: usize) -> Self {
+spec.rs:
+verus! { } // verus!
+<shellId: 52 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+Now let me obtain the actual macro expansion to understand the generated reference. Let me find the rustc the verus toolchain uses.
+[TOOL] bash: cd /home/ruize/nanvix-phy; head -50 scripts/verify.sh | grep -nE "RUSTC|toolchain|rustup|cargo|verus" ; echo "=== cargo-
+
+[THINKING] I've got a clean baseline now. The core issue is that `#[verus_spec]` on the `new` function fails with "cannot find function new", while `from_number` in phys.rs works fine. To understand what's happening under the hood, I need to see the actual macro expansion—so I'll add `verus_spec` to `new` and run cargo with the expansion flag using the verus toolchain to see what the macro is generating.
+
+But wait, I'm realizing the `verus_spec` macro is a proc-macro that's always active when the crate compiles with the `verus_keep_ghost` cfg, and it's provided by vstd. Since the sys crate depends on vstd, even a normal cargo build would process the macro. The key difference might be that phys.rs's `from_number` isn't used as a function pointer, while virt's `new` is being passed to `.map(VirtualAddress::new)`. I thought I ruled that out with the closure test, but let me reconsider—when I changed the map to use a closure instead, it still failed, so the fn-pointer usage might not be the culprit after all.
+
+Actually, maybe the issue is about constructing a tuple struct with a private field inside the verus context. Both `from_number` and `new` do this with `Self(...)`, so the pattern should be identical. Let me try to get the actual macro expansion to see what's happening. I need to find the right rustc version that cargo-verus uses and run it with the expansion flag, or I could just verify whether phys.rs is actually passing right now—maybe it's also failing and I've been chasing a false reference. Let me look more carefully at the verus_builtin_macros source or the guide to understand the macro mechanics better.
+[RESULT ✓] bash: 7:#   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+9:# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+12:# Extra environment variables for custom cargo invocations:
+13:#   CARGO_CHANNEL          Rust toolchain channel (e.g., "nightly-2025-12-08").
+14:#   VERUS_EXTRA_C...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+Let me check whether phys.rs's impl blocks have special annotations, and confirm phys verification actually passes currently.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== phys.rs impl headers ==="; grep -nE "^impl|verus_verify|#\[verus" src/kernel/src/ha
+
+[THINKING] I need to look more carefully at what's actually different between these two files — maybe there's something in the surrounding context that matters. The error about the missing `new` function is pointing to the function name itself, and I'm realizing that Verus's `#[verus_spec]` attribute macro rewrites functions by generating a hidden companion function with a derived name and placing the ensures clause in it. This works fine for methods, but for free functions there might be something different happening.
+
+Let me think about this differently: in phys.rs, the working functions like `from_number` and `from_mmio_address` all take parameters, and `new` also takes a parameter but still fails. Yet `into_raw_value` works and takes `self`. The real question is whether phys.rs's `from_number` is actually compiling successfully or if it's also broken — if the whole module is failing verification, that would suggest this is a broader issue with the repo itself. I should check whether the kernel currently verifies at all and look at the full implementation of `from_number` to see if there's a workaround I'm missing.
+
+The macro expansion under `verus_spec` might be generating a path like `crate::...::new(...)` or using a broadcast/assoc reference, so I need to either examine the verus_builtin_macros source directly or check if there's a requirement like marking the impl block itself with `#[verus_verify]`. Let me compare the impl block headers between phys.rs and virt.rs to see if one has annotations the other lacks.
+[RESULT ✓] bash: === phys.rs impl headers ===
+42:#[verus_verify(external_derive)]
+50:impl PhysicalAddress {
+91:// Verification-target methods. They live in a dedicated `#[verus_verify]` impl
+94:// `#[verus_verify]` impl to resolve), while the untouched constructors above are
+96:#[verus_verify]
+97:impl PhysicalAddres...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+Found it! phys.rs puts verus_spec methods in a **dedicated `#[verus_verify]` impl block**. Let me read that comment.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] So phys.rs actually has two separate impl blocks for PhysicalAddress — one at line 50 with the basic constructors that aren't marked for verification, and another starting at line 96 that's wrapped in `#[verus_verify]` containing the methods that need formal verification like from_mmio_address and from_number. There's a comment explaining this split, keeping the verification targets isolated from the untouched constructors.
+
+The key insight is that `#[verus_spec]` methods must live inside an impl block annotated with `#[verus_verify]`. Since virt.rs's impl VirtualAddress at line 47 doesn't have that annotation, the verus_spec macro on the new method fails. I need to look at the full comment to understand the exact structure required.
+[RESULT ✓] view: 88.     }
+89. }
+90. 
+91. // Verification-target methods. They live in a dedicated `#[verus_verify]` impl
+92. // block so that only the in-scope functions are checked (the self-less
+93. // associated functions `from_mmio_address` / `from_number` require an enclosing
+94. // `#[verus_verify]` impl to r...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+The pattern is clear: self-less associated functions need an enclosing `#[verus_verify]` impl. Let me see how phys.rs handles the `Address` trait impl (its `into_raw_value` analog).
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '205,322p' src/kernel/src/hal/mem/types/address/phys.rs | grep -nE "verus|impl|fn |int
+
+[THINKING] I see the issue now — I need to create a separate `#[verus_verify] impl VirtualAddress` block specifically for the `new` and inherent `from_raw_value` functions, while leaving the existing impl block (which contains `new`, `from_raw_value`, and `align_up`) untouched. This way the self-less functions get the verification attribute they need without disrupting the other code.
+
+The key question is whether adding `#[verus_verify]` to the entire existing impl block would work, but that would force Verus to verify methods like `align_up` and `checked_add` that use closures and checked arithmetic — they'd need explicit specs, which goes beyond the scope. The split approach mirrors what `phys.rs` does and keeps the changes minimal.
+
+For `from_raw_value`, moving it to a separate `#[verus_verify]` impl block doesn't break anything since the method path stays the same. Now I need to figure out whether the trait impl for `into_raw_value` also needs `#[verus_verify]` or if it can stay untouched.
+
+Looking back at my first attempt, `into_raw_value`'s spec compiled without errors even though the impl block wasn't marked `#[verus_verify]`. Since it takes `self`, it doesn't have the same issue as self-less associated functions. But I'm not sure if the spec was actually *verified* or just compiled — I need to check how phys.rs handles the Address trait impl and whether it marks that impl block for verification.
+[RESULT ✓] bash: 2:            // is representable and `from_raw_value(..).unwrap()` is total.
+7:        FrameNumber::from_raw_value(frame_number).unwrap()
+11:impl Address for PhysicalAddress {
+26:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+27:        Self::from_virtual_address(VirtualAddress::from_...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+phys.rs doesn't spec `into_raw_value` at all. Let me search the whole codebase for how trait-impl methods get specs, to find the accepted pattern for `into_raw_value`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== verus_spec inside 'impl Trait for' blocks ==="; for f in $(grep -rln "verus_spec" s
+
+[THINKING] I'm noticing that `PhysicalAddress::into_raw_value` in phys.rs lacks any verification annotations, meaning it's completely unspecified. However, my task explicitly requires me to spec `VirtualAddress::into_raw_value` as a trait method with 102 callers, and the view design already provides the contract `ensures result as int == self@`, so I need to implement this specification.
+
+The challenge is figuring out how to properly annotate a trait method implementation. Since `into_raw_value` takes `self`, I can add `#[verus_spec]` directly to it, but I'm uncertain whether that alone ensures it gets verified or if I also need `#[verus_verify]` on the entire `impl Address for VirtualAddress` block. The problem with annotating the whole block is that it contains other methods like `as_ptr` and `as_mut_ptr` that involve pointer casts and are out of scope—verifying them could introduce errors. I'm also realizing that the trait itself declares `into_raw_value` with no spec in mod.rs, so I need to consider how the implementation spec interacts with the trait declaration. I'm realizing the core issue: if `into_raw_value` has no spec at the trait level, then concrete callers like those in phys.rs can't rely on its behavior for their own proofs—they'd need to use `admit()` or some workaround. But if I spec it only on the impl for `VirtualAddress`, Verus won't expose that spec to callers using the concrete type. The real question is whether Verus allows an impl to provide a stronger spec that concrete-type callers can actually see and use, or if trait-level specs are the only way to make guarantees visible across the codebase.
+
+The safest path forward is to add the spec directly to the `Address` trait declaration in mod.rs, which would require adding a `View` supertrait bound—but that's a significant change that could ripple through kernel verification. So I should first try the impl-level approach with `#[verus_verify]` and `#[verus_spec]` to see if it actually works for this module, then check whether `make verify` still passes before committing to a trait-level change.
+
+Let me search the codebase for examples of trait methods with `verus_spec` to understand the accepted pattern.
+[RESULT ✓] bash: === verus_spec inside 'impl Trait for' blocks ===
+src/kernel/src/mm/phys/kframe.rs:177: impl Drop for KernelFrame { -> spec at 178
+src/kernel/src/mm/phys/upool.rs:203: impl Drop for UserFrame { -> spec at 204
+=== trait method specs on declarations (mod.rs style) ===
+src/kernel/src/hal/mem/types/addr...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nB3 -A6 "verus_spec\|into_raw_value\|fn from_raw_value\|^impl\|trait" src/kernel/src/ha
+
+[THINKING] I'm noticing that verus_spec only has trait-impl examples for `Drop`, so there's no clear pattern for speccing custom trait method implementations directly. Given the complications, I should reconsider whether a trait-level spec is actually necessary here, or if there's a simpler approach the project expects. Let me check how frame.rs handles trait method specs at the declaration level and see how `FrameNumber::from_raw_value` and `into_raw_value` are actually specced there.
+[RESULT ✓] bash: 38-        result == spec_page_size(),
+39-;
+40-
+41:impl View for FrameAddress
+42-{
+43-    type V = int;
+44-
+45-    closed spec fn view(&self) -> int
+46-    {
+47-        self.0@
+48-    }
+49-}
+50-
+51:impl FrameAddress {
+52-    pub open spec fn inv(&self) -> bool
+53-    {
+54-        self@ % spec_page_s...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+The pattern is now clear. `new`/`from_raw_value` (self-less) need a `#[verus_verify]` impl block (phys.rs pattern); `into_raw_value` (self) gets `#[verus_spec]` directly (frame.rs pattern). Let me write the spec file and restructure virt.rs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+
+[THINKING] I'm noticing that `FrameAddress::into_raw_value` is an inherent method with a spec ensuring the result equals the address value, marked as external since it's in an unverified dependency module. The key distinction here is that this is the inherent implementation, not a trait method, and it's defined in a plain impl block without needing the wrapper attribute on the block itself.
+
+For my `VirtualAddress::into_raw_value`, which is a trait method in the `impl Address for VirtualAddress` block, I should apply the same `#[verus_spec(ensures result as int == self@)]` pattern directly to the method. My first attempt compiled successfully with this approach, so I'll stick with it and verify that both the method itself and callers can see the spec. For the self-less methods like `new` and `from_raw_value`, I'll create a separate `#[verus_verify] impl VirtualAddress` block following the pattern from the physics module. I'm realizing these specs should verify trivially without proof functions—the View is visible within the same module, so `result@` unfolds directly to `result.0 as int`, and the ensures clauses are straightforward arithmetic. The real question now is whether splitting the impl block counts as an exec code mutation that violates the constraints. Writing the verus_verify impl block...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+Now restructure virt.rs: split the inherent impl so `new` and `from_raw_value` live in a `#[verus_verify]` block.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 43. //==================================================================================================
+44. // Implementations
+45. //==================================================================================================
+46. 
+47. impl VirtualAddress {
+48.     pub const fn new(value: usiz...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Now add the spec to `into_raw_value` in the `Address` trait impl.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|coverage:|status:" | head -20

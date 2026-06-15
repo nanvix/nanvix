@@ -1,4 +1,4 @@
-# Unverified exec functions: 253/254
+# Unverified exec functions: 251/254
   as_u32
   ok
   to_ne_bytes
@@ -157,7 +157,6 @@
   is_writable
   is_executable
   fmt
-  from_raw_value
   align_up
   align_down
   is_aligned
@@ -168,7 +167,6 @@
   align_down
   is_aligned
   max_addr
-  into_raw_value
   as_ptr
   as_mut_ptr
   fmt

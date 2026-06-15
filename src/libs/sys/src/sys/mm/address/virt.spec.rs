@@ -8,7 +8,7 @@ verus! {
 // callers performing address arithmetic and round-trips rely on — is that the
 // value fits in a `usize` (the pointer-sized address space).
 //
-// `open` so callers can unfold the bound in arithmetic proofs.
+// `open` so callers can unfold the bound in their arithmetic proofs.
 impl VirtualAddress {
     pub open spec fn inv(&self) -> bool {
         0 <= self@ <= usize::MAX as int
