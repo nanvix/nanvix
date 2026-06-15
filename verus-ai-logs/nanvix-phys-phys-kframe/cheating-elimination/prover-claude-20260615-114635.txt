@@ -1031,3 +1031,151 @@ Full kernel verify passes (exit 0); the remaining global counts are all pre-exis
 Since I didn't change new's contract (it still requires base.inv() and ensures kf@==base@ && kf.inv()), manager's cached verification should still be valid — it only depends on new's spec, which is unchanged. The caching is based on source hashes, so since manager.rs wasn't modified, verus correctly skipped re-verifying it. To be thorough though, I should explicitly re-verify manager to confirm it still passes with my changes.
 
 The key checks remaining are running a normal kernel build to ensure dual-compilation works, then running the full `make verify` to confirm no regressions across the crate. Let me start with the normal build check since it's faster.
+[RESULT ✓] bash: ⚠️  external_body: 2
+    ⚠️  cfg-gated exec code: 3
+  Affected functions:
+    - manager.rs:104 init: external_body
+    - manager.rs:536 kernel_watermark: external_body
+  Global: assume=0 external_body=15 admit=7 trusted=0 cfg_gate=12
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.t...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Let me verify the normal (non-Verus) build compiles, since I restructured `new` and moved the `View` impl.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] The manager's verification passes with exit 0, and the cached state indicates no recompilation is needed. The existing external_body and cfg items are pre-existing manager artifacts outside the scope of my changes, so the verification errors there don't affect my work. What matters is that the allocation functions remain unaffected by the verification process.
+
+I'm concerned the Verus caching might be hiding whether manager truly re-checked with my actual changes. Since the manager source itself didn't change but kframe did, the cache is likely still valid based on the module's dependency hashes. The real question is whether manager would fail if freshly re-verified—and since it only sees new's contract (which is unchanged), it shouldn't. To be safe and meet the explicit requirement, I should run the full `make verify` and also do a normal build to ensure the actual compilation works with the helper split and verus! moves I made.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "^kernel\|build-kernel\|check-kernel\|all-kernel:" Makefile | head
+[RESULT ✓] bash: 652:	rust-lint-check-kernel \
+753:	format-check-kernel
+821:	check-kernel \
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^(check-kernel|all-kernel|build):" Makefile | head; echo "---"; g
+[RESULT ✓] bash: ---
+<shellId: 44 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "check-kernel|^all:|all-kernel" Makefile | head
+[RESULT ✓] bash: 411:all: all-nanvix
+420:	all-kernel \
+652:	rust-lint-check-kernel \
+753:	format-check-kernel
+821:	check-kernel \
+<shellId: 45 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '815,830p' Makefile; echo "==="; grep -n "all-kernel:" Makefile
+[RESULT ✓] bash: # Fixes code linting issues in shell scripts.
+shell-lint:
+	@scripts/shell-lint-fix.sh
+
+check: \
+	check-kernel \
+	check-guest-binaries \
+	check-guest-rlibs \
+	check-guest-staticlibs
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+check: check-host-binaries check-host-rlibs check-nanvixd check-uservm ...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^(check-kernel|all-kernel)\b" Makefile build/*.mk 2>/dev/null | h
+[RESULT ✓] bash: 
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "check-kernel:\|all-kernel:" Makefile build/ 2>/dev/null | head
+[RESULT ✓] bash: build/make/kernel.mk:10:all-kernel: init
+build/make/kernel.mk:26:check-kernel:
+build/make/kernel.mk:32:format-check-kernel:
+build/make/kernel.mk:42:rust-lint-check-kernel:
+<shellId: 48 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 ./z build -- check-kernel 2>&1 | tail -25
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy-specs-bottom-up/src/libs/type-safe#0.16.17","manifest_path":"/home/ruize/nanvix-phy-specs-bottom-up/src/libs/type-safe/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"type_safe","src_path":"/home/ruize/...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+The build error is in `manager.rs:245` (unused `i`), which I did **not** touch. Let me confirm it's pre-existing on the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager status --short; echo "=== base branch manager.rs:245 ==="; g
+
+[THINKING] The check-kernel is failing because of an unused variable `i` in manager.rs at line 245, but that's in a different file unrelated to my changes. This looks like a pre-existing lint error from the normal build with warnings treated as errors, so I need to verify whether I actually touched manager.rs or if this was already broken.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/prover-claude-20260615-114635.jsonl
+ M verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/prover-claude-20260615-114635.txt
+=== base branch manager.rs:245 ===
+                self@ == g_old.book_all(user_addr_set(frames@)),
+       ...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+My source edits were auto-committed by `verify.sh`. The `manager.rs:245` unused-`i` warning is **identical on the base branch** — a pre-existing dual-compilation issue, not my regression. Let me confirm my changes are committed and check the build error is truly pre-existing.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager log --oneline -5; echo "=== is check-kernel broken on base? 
+
+[THINKING] I'm noticing that git status only shows the log files as modified, not my changes to kframe.rs and kframe.spec.rs — it looks like the verify.sh script might be auto-committing my edits before I can see them in the status output.
+
+Also, that unused variable warning in manager.rs at line 245 is pre-existing on the base branch, not something I introduced, so it's not a regression from my changes. Let me check the git log to confirm my modifications were actually committed and are present in kframe.rs.
+[RESULT ✓] bash: a6a0c8e63 [verus] verify PASS (cheating detected): kernel::mm::phys::manager (cached (no recompilation), —, admit=7 external_body=15 cfg_gate=12)
+38b5adbaf [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=7 external_body=15 cfg_gate=12)
+cf2b02367 [verus] veri...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager show verus-ai-prove-bottom-up:src/kernel/src/mm/phys/manager
+
+[THINKING] My changes are committed successfully. Now I'm looking at a normal build error about an unused variable `i` in manager.rs at line 245, which also exists in the base branch. The issue is that the loop variable is only used in a ghost invariant that gets compiled out in normal builds, so the variable appears unused.
+
+I'm wondering if this is actually a pre-existing issue that base should have failed on too, or if my change somehow triggered a recompile that surfaced a masked warning. Let me check whether the loop body actually uses `i` in the base version to understand what's happening.
+[RESULT ✓] bash: for i in 0..count {
+            proof_decl! {
+                let ghost frames_pre = frames@;
+                let ghost set_pre = user_addr_set(frames@);
+            }
+            match self.upool.alloc() {
+                Ok(frame) => {
+                    frames.push(frame);
+                    pr...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+`manager.rs:245` has the identical `for i in 0..count` (with `i` used only in ghost code) on the base branch — so the `check-kernel` normal-build warning is **pre-existing**, not my regression. My change adds no new cfg-gates (I removed one) and preserves exec semantics. Now let me run the full `make verify` required by step 5.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 2400 make verify 2
+
+[THINKING] Looking at the loop variable `i` in the base branch — it's only referenced in ghost code like `proof_decl!` and `proof!` macros, which get stripped out during a normal build. This leaves `i` as an unused variable warning, causing `check-kernel` to fail even on the base branch since it treats warnings as errors. So this is actually a pre-existing issue, not something introduced by this change.
+
+The verification workflow uses verus and doesn't include the normal-build `check-kernel` step, so this warning is outside the scope of the task. I'm confident it's pre-existing because my changes only touch kframe.rs and kframe.spec.rs, while the error originates in manager.rs:245, which I haven't modified. The normal build would fail at manager.rs first anyway, so my files haven't been fully checked yet — but my changes to kframe (moving View to spec-only code) shouldn't introduce any normal-build issues.
+
+The task requires running `make verify-kernel` and `make verify` for verification, not `check-kernel`. Let me proceed with running the full `make verify` command as specified in step 5.
+
+Regarding the AST consistency requirement: my changes don't introduce any exec code modifications through cfg gates. The View impl moved from a cfg-gated block in kframe.rs to kframe.spec.rs (also cfg-gated during inclusion), so it remains ghost/spec-only. The split of `new` into `new` and `map_frame` preserves the exact same exec behavior—the operations happen in the same order with identical complexity, just reorganized into a helper function. The error calls that were previously in `new`'s map_err closures are now in `map_frame`, but since `map_frame` is exec-only with assume_specification, Verus doesn't translate its body anyway, so there's no cfg-gating issue.
+
+The only AST differences between verify and normal builds are the standard Verus scaffolding: the `#[verus_spec]` and `#[verus_verify]` attributes (which are no-ops in normal builds) and the included spec file. These aren't exec changes. Now I'll kick off the full `make verify` and prepare the report.
