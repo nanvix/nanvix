@@ -879,3 +879,27 @@ Turn 3
 [TOOL] report_intent: Running full verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me confirm the verification log shows the verified/errors counts (not just cache).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE 'verified|error' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_12-03-
+[RESULT ✓] bash: ---coverage unverified head---
+# Unverified exec functions: 253/255
+  as_u32
+  ok
+  to_ne_bytes
+  from_ne_bytes
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The cache prevented recompilation. Let me force a fresh verification to independently confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && make verify-sys 2>&1 | grep -iE 'veri
