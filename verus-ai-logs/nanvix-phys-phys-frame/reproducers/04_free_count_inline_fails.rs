@@ -4,23 +4,37 @@
 //     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 // must be split into named `let nbits` / `let used` bindings.
 //
-// Models the EXACT architecture:
-//   * a `Bitmap` whose `inv()` hides the backing-slice length, so the abstract
-//     `num_bits` bound is OPAQUE to any caller (== ::bitmap::Bitmap).
-//   * `number_of_bits()` whose exec postcondition materializes `result as int ==
-//     num_bits` and `result > 0` — the ONLY place `num_bits >= 0` becomes known.
-//   * a `lemma_free_count` that REQUIRES `bitmap@.num_bits >= 0` (== frame.proof.rs).
-//   * `free_count`, which calls the lemma then returns `number_of_bits() - usage()`.
+// The key to faithfulness is the MODULE BOUNDARY: the real `::bitmap::Bitmap`
+// has a `closed spec fn view` defined in a *different crate*, so
+// `inner.bitmap@.num_bits` is OPAQUE in `frame.rs` — its `>= 0` lower bound is
+// not visible. Here `Bitmap` lives in an inner `mod bm` and is called from
+// outside, so its closed view is likewise hidden (closed-spec bodies are visible
+// only within their defining module). A same-module model would leak
+// `num_bits == self.n as int >= 0` and FAIL to reproduce the failure.
 //
-// PASS form  (split bindings): `let nbits = number_of_bits();` surfaces
-//            `nbits >= 0` ⇒ `num_bits >= 0`, discharging the lemma precondition.
-// FAIL form  (inlined expr): the lemma runs before any binding materializes the
-//            `usize` fact ⇒
-//            `error: precondition not satisfied ... bitmap@.num_bits >= 0`.
+//   * `number_of_bits()` postcondition `result as int == num_bits` is the ONLY
+//     place the caller learns `num_bits == nbits (a usize) >= 0`.
+//   * `lemma_free_count` REQUIRES `b@.num_bits >= 0` (== frame.proof.rs:95).
 //
-// Observed FAIL (inlined) against the real tree
-// (`make verify-kernel MODULE=mm::phys`):
+// PASS form (`free_count_split`): `let nbits = number_of_bits()` materializes the
+//   `usize`/`u32` value, so `nbits as int == num_bits` and `nbits >= 0` discharge
+//   the lemma precondition. Verifies.
+// FAIL form (`free_count_inline`, shipped COMMENTED OUT): the lemma runs before
+//   any binding materializes the usize fact, so `num_bits >= 0` is unknown.
 //
+// Observed output, this reproducer as committed (FAIL form commented out):
+//   /mnt/toolchain/verus/verus <this file>
+//   verification results:: 4 verified, 0 errors
+//
+// Observed output, FAIL form uncommented:
+//   error: precondition not satisfied
+//      --> 04_free_count_inline_fails.rs (free_count_inline)
+//         proof! { lemma_free_count(b); }
+//      lemma_free_count ... requires b@.num_bits >= 0,
+//                                    ---------------- failed precondition
+//   verification results:: 4 verified, 1 errors
+//
+// This matches the real-tree error when the expression is inlined in frame.rs:
 //   error: precondition not satisfied
 //      --> src/kernel/src/mm/phys/frame.rs:851:9
 //   851 |         lemma_free_count(inner);
@@ -31,48 +45,52 @@ use vstd::prelude::*;
 
 verus! {
 
-pub struct BitmapView {
-    pub num_bits: int,
-    pub usage: int,
-}
+// `Bitmap` lives behind a module boundary so its closed view is hidden from the
+// caller — mirroring the real cross-crate `::bitmap` boundary.
+mod bm {
+    use vstd::prelude::*;
 
-pub struct Bitmap {
-    pub n: u32,
-    pub u: u32,
-}
+    pub struct BitmapView {
+        pub num_bits: int,
+        pub usage: int,
+    }
 
-impl View for Bitmap {
-    type V = BitmapView;
-    closed spec fn view(&self) -> BitmapView {
-        BitmapView { num_bits: self.n as int, usage: self.u as int }
+    pub struct Bitmap {
+        n: u32,
+        u: u32,
+    }
+
+    impl View for Bitmap {
+        type V = BitmapView;
+        closed spec fn view(&self) -> BitmapView {
+            BitmapView { num_bits: self.n as int, usage: self.u as int }
+        }
+    }
+
+    impl Bitmap {
+        pub closed spec fn inv(&self) -> bool {
+            self.u <= self.n
+        }
+
+        // == ::bitmap number_of_bits(): the `usize`/`u32` result postcondition is
+        // the ONLY materialization point of `num_bits >= 0` for a caller.
+        pub fn number_of_bits(&self) -> (result: u32)
+            requires self.inv(),
+            ensures result as int == self@.num_bits,
+        {
+            self.n
+        }
+
+        pub fn usage(&self) -> (result: u32)
+            requires self.inv(),
+            ensures result as int == self@.usage,
+        {
+            self.u
+        }
     }
 }
 
-impl Bitmap {
-    // `inv()` references the private fields but, like ::bitmap::Bitmap::inv(),
-    // exposes NO usable lower bound on `num_bits` to an external caller.
-    pub closed spec fn inv(&self) -> bool {
-        self.u <= self.n
-    }
-
-    // == ::bitmap number_of_bits(): the `usize`/`u32` result postcondition is the
-    // ONLY materialization point of `num_bits >= 0` for a caller.
-    pub fn number_of_bits(&self) -> (result: u32)
-        requires self.inv(),
-        ensures
-            result as int == self@.num_bits,
-            result > 0,
-    {
-        self.n
-    }
-
-    pub fn usage(&self) -> (result: u32)
-        requires self.inv(),
-        ensures result as int == self@.usage,
-    {
-        self.u
-    }
-}
+use bm::Bitmap;
 
 // == frame.proof.rs lemma_free_count: REQUIRES the opaque `num_bits >= 0`.
 pub proof fn lemma_free_count(b: &Bitmap)
@@ -83,8 +101,10 @@ pub proof fn lemma_free_count(b: &Bitmap)
 }
 
 // ---- PASS form: split bindings materialize `num_bits >= 0` ----
-pub fn free_count_ok(b: &Bitmap) -> (result: u32)
-    requires b.inv(),
+pub fn free_count_split(b: &Bitmap) -> (result: u32)
+    requires
+        b.inv(),
+        b@.usage <= b@.num_bits,
 {
     let nbits: u32 = b.number_of_bits();
     let used: u32 = b.usage();
@@ -93,11 +113,16 @@ pub fn free_count_ok(b: &Bitmap) -> (result: u32)
 }
 
 // ---- FAIL form (uncomment to reproduce): inlined expression ----
+// The lemma runs before any binding surfaces the usize fact, so `num_bits >= 0`
+// is unknown across the module boundary:
+//   error: precondition not satisfied ... b@.num_bits >= 0
+//
 // pub fn free_count_inline(b: &Bitmap) -> (result: u32)
-//     requires b.inv(),
+//     requires
+//         b.inv(),
+//         b@.usage <= b@.num_bits,
 // {
-//     proof! { lemma_free_count(b); }     // error: precondition not satisfied:
-//                                         //        b@.num_bits >= 0
+//     proof! { lemma_free_count(b); }
 //     b.number_of_bits() - b.usage()
 // }
 
