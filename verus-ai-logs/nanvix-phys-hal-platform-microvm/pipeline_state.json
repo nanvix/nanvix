@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "e04e9508-eddb-43ec-92c5-c27d0cadfc0b",
   "completed": false,
   "base_branch": "verus-ai/hal-memory-region",
   "verus_branch": "verus-ai/hal-platform-microvm",
