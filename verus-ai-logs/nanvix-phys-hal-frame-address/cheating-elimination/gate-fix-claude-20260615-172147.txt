@@ -797,3 +797,37 @@ Turn 49
 [TOOL] report_intent: Verifying with pinned toolchain
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify-kernel VERUS_EXECUTABLE_DIR=/home/ruize/.copilot/session-state/9f8
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: disallowed: field expression for an opaque datatype
+  --> src/kernel/src/mm/phys/upool.spec.rs:56:9
+   |
+56 |           self.addr.inv()
+   |           ^^^^^^^^^ this field expression is disallowed because of datatype opaqueness
+   |...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The toolchain works now — vstd compiled and reached kernel. But my `self.addr.inv()` accesses a private field, disallowed in a `pub open spec fn`. I'll express the invariant over the public view `self@` instead (semantically identical, since `self@ == self.addr@`), which mirrors `FrameAddress::inv` exactly.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+
+[THINKING] The toolchain is working now, but I'm hitting a Verus error with my changes—specifically, I can't access the private `addr` field in `UserFrame` from a `pub open spec fn inv` because that function needs to be well-formed everywhere, including outside the module where the field is opaque.
+
+The original `inv` used `self@` (a closed spec view, which is fine to call), so I should rewrite my version to express the invariant directly in terms of `self@` instead of accessing `self.addr`. Since `self@` delegates to `self.addr@`, I can express the frame address invariant—checking that the address is page-aligned and the frame number is within bounds—entirely through the view and spec helper functions. This means importing `spec_frame_number` and `spec_max_frame_number` from `crate::hal::mem` into the upool spec file.
+
+The key question is whether the verifier can connect `self.inv()` (expressed over `self@`) to `self.addr.inv()` (expressed over `self.addr@`) when they're called inside the UserFrame methods. Since the closed view body is visible within the upool module, the verifier should know that `self@` is defined as `self.addr@`, but I need to verify this works when `frame::share(self.addr)` is invoked. So the key insight is that `FrameAddress::inv` is `pub open`, meaning its body unfolds everywhere, and within the upool module I can verify that `self@` equals `self.addr@`, so the invariant conditions match up. I'll rewrite the invariant in terms of `self@` directly to avoid the opaque field access issue, then update the imports to include `spec_frame_number`, `spec_max_frame_number`, and `spec_page_size` from `crate::hal::mem`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+Now verifying with the corrected invariant (expressed over the public view).
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2400 make verify-kernel VERUS_EXECUTABLE_DIR=/home/ruize/.copilot/session-state/9f8
+
+[THINKING] I'm concerned about whether Verus will automatically unfold the closed view to establish that `self@` equals `self.addr@` when connecting `self.inv()` to `self.addr.inv()` inside the share/refcount logic. The view body is visible within the upool module, but I need to verify if Verus handles this unfolding implicitly or if the preconditions will fail. Let me run verify-kernel to test this, though I'm also realizing the precondition for `frame::share(self.addr)` might need closer inspection.
