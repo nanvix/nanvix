@@ -292,3 +292,101 @@ The real question is whether the proofs actually pass verification. Let me run `
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, cached). Let me examine the cheating detail to confirm all `frame.rs` items are allow-listed.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating-detail (frame) ===" && grep -nE "frame" verus-ai-logs/verify-kernel/veru
+
+[THINKING] The verification passes but the cheating detector is flagging external_body items throughout the kernel crate, specifically in frame.rs at multiple line numbers. I'm noticing a discrepancy between the line numbers I'm seeing now versus earlier ones—it looks like the detector is reporting the attribute lines rather than the function declaration lines, so I need to cross-reference the actual locations in the file to understand what's being flagged.
+
+Looking at the full list of flagged external_body functions in frame.rs, I'm checking each one against tcb-allowed.md to verify they're all permitted: alloc_contiguous, free, share, refcount, book, is_covered, alloc_range, instance, init, and the Drop impl's free are all in the allow-list. The key insight is that the detector reports "CHEATING_DETECTED" as a global status because it counts all external_body items across the crate, but for our module, every flagged function is actually allowed by the tcb-allowed.md file, so the verification should be valid. I need to check the cheating-detail file to see if there's anything else I'm missing in the frame files, particularly around those cfg-gated includes and whether they're actually a problem for the task.
+[RESULT ✓] bash: === cheating-detail (frame) ===
+1:    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+2:    - mm/phys/frame.rs:137 alloc: external_body
+3:    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+4:    - mm/phys/frame.rs:290 free: external_body
+5:    - mm/phys/frame.rs:368 share:...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All 11 `frame.rs` external_body items are in `tcb-allowed.md`; zero `admit`/`assume`/`assume_specification`. Verification passes (exit 0). Let me confirm AST consistency vs the base branch and check the skills.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== branches ===" && git branch -a | grep -E "phys-kframe|phys-frame"; echo "=== diff
+
+[THINKING] I'm checking off all the external_body items in the frame.rs file against the tcb-allowed.md list, and it looks like all 11 of them are accounted for.
+
+There are no admit, assume, or assume_specification statements in the frame files, and the verification passes cleanly. The cheating detector flags external_body globally across the kernel, but since everything here is allow-listed, there's nothing actually to eliminate for phys-frame. The body-verified shims all check out against the Inner contracts, so this is already in a passing state.
+
+Now I need to verify AST consistency against the base branch verus-ai/phys-kframe by comparing the current frame.rs against what was originally there, making sure no exec code was changed inappropriately.
+[RESULT ✓] bash: === branches ===
+* verus-ai/phys-frame
+  verus-ai/phys-kframe
+=== diff frame.rs vs base (exec) ===
+diff --git a/src/kernel/src/mm/phys/frame.rs b/src/kernel/src/mm/phys/frame.rs
+index 8c21657fe..cfe196a6b 100644
+--- a/src/kernel/src/mm/phys/frame.rs
++++ b/src/kernel/src/mm/phys/frame.rs
+@@ -633,6 +6...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff verus-ai/phys-kframe -- src/kernel/src/mm/phys/frame.rs 2>&1 | grep -E 
+
+[THINKING] I'm looking at the diff more carefully now to see what actually changed in the function bodies themselves, filtering past the comment and attribute modifications.
+[RESULT ✓] bash: --- a/src/kernel/src/mm/phys/frame.rs
++++ b/src/kernel/src/mm/phys/frame.rs
++        (*result).inv(),
++        (*result)@ == phys_view().frames,
+-    instance().alloc()
++    let r = instance();
++    let res = r.alloc();
++    proof! {
++        auth.v.frames = (*r)@;
++    res
++                        ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Exec-code changes are zero-cost local bindings plus ghost `proof!` blocks (required to thread the `PhysAuth` token) — semantics/time/space preserved. Let me confirm the verus result is genuinely clean (not just cached) and check the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy && tail -25 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_09-55-39.log 2>/dev/null; 
+
+[THINKING] I'm refactoring the free-function shims to split the instance allocation and result binding, adding a ghost proof block that captures the frame state without affecting runtime behavior—this keeps the semantics identical while enabling verification. Verifying that all 11 external_body declarations are in the tcb-allowed list, the verification passes cleanly, and the AST changes are legitimate Verus workarounds that preserve semantics and complexity. The frame.rs functions are either properly allow-listed (Inner methods, instance, free, init) or body-verified against their contracts (the free-function shims), so there's genuinely nothing left to address.
+[RESULT ✓] bash: Timestamp: 2026-06-15_09-55-39
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Finished `dev` profile [optimized + debugin...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me force a fresh (non-cached) verification by touching the source to confirm 0 errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/frame.rs && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE
+
+[THINKING] The cache is showing a successful result from a previous run, but I want to verify this with a fresh compilation to be absolutely certain there are no errors. I'm considering touching the frame.rs file to invalidate the cache, though I'm hesitant about modifying files. Let me check if there's a way to run a clean verification instead.
