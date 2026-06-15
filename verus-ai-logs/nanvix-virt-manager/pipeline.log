@@ -87,3 +87,19 @@ PIPELINE COMPLETE: manager
   Total: 39m55s
 ============================================================
 [2026-06-15 19:58:29] [USAGE] Summary: 4 calls, 0 tokens, 39m49s total → /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-manager/usage_summary.json
+[2026-06-16 00:30:48] [BRANCH] Staying on current branch: virt-mm-ai-spec-property-analysis
+[2026-06-16 00:30:48] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-manager/body_removed_source.rs (39042 -> 22215 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: manager
+Source: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs
+Crate:  kernel
+Branch: virt-mm-ai-spec-property-analysis (base: virt-mm-ai-spec-property-analysis)
+Phases: property-analysis → specification
+############################################################
+
+============================================================
+PHASE: property-analysis
+Module: manager
+============================================================

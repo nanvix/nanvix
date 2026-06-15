@@ -126,6 +126,7 @@ static MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 ///
 /// Memory manager.
 ///
+#[cfg_attr(verus_keep_ghost, verus_verify)]
 pub struct VirtMemoryManager;
 
 impl VirtMemoryManager {
@@ -204,6 +205,21 @@ impl VirtMemoryManager {
     /// - `Ok(new_vmem)` if the new virtual address space was successfully created.
     /// - `Err(_)` if the new virtual address space could not be created.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            vmem.inv(),
+        ensures
+            match ret {
+                Ok(new) => {
+                    &&& new.inv()
+                    &&& new@.kernel == vmem@.kernel
+                    &&& new@.user == Map::<nat, UserPageView>::empty()
+                },
+                Err(_) => true,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> { ... }
 
     ///
@@ -240,6 +256,26 @@ impl VirtMemoryManager {
     /// already linked into `child` are unmapped (releasing the shared refcount) and any
     /// copy-on-write marks installed on `parent` are cleared.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            parent.inv(),
+            child.inv(),
+            link_user_pages_pre(parent@, child@),
+        ensures
+            match ret {
+                Ok(_) => {
+                    &&& links_child_cow(old(parent)@, final(parent)@, old(child)@, final(child)@)
+                    &&& final(parent).inv()
+                    &&& final(child).inv()
+                },
+                Err(_) => {
+                    &&& final(parent).inv()
+                    &&& final(child).inv()
+                },
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> { ... }
 
     /// Links a single user page from `parent` into `child` with copy-on-write semantics.
@@ -313,6 +349,37 @@ impl VirtMemoryManager {
     ///   to the registered handler.
     /// - `Err(_)` if the fault was a copy-on-write fault but resolving it failed.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            vmem.inv(),
+        ensures
+            match ret {
+                Ok(true) => {
+                    &&& spec_is_cow_write_fault(error_code)
+                    &&& old(vmem)@.user_mapped(page_base(fault_addr as nat))
+                    &&& old(vmem)@.user[page_base(fault_addr as nat)].cow
+                    &&& exists|f: nat|
+                            #![trigger old(vmem)@.spec_resolve_cow(page_base(fault_addr as nat), f)]
+                            {
+                                &&& is_page_aligned(f)
+                                &&& spec_is_physical_region(f, page_size())
+                                &&& final(vmem)@
+                                        == old(vmem)@.spec_resolve_cow(page_base(fault_addr as nat), f)
+                            }
+                    &&& final(vmem).inv()
+                },
+                Ok(false) => {
+                    &&& final(vmem)@ == old(vmem)@
+                    &&& (!spec_is_cow_write_fault(error_code)
+                            || !spec_is_user_addr(page_base(fault_addr as nat))
+                            || !old(vmem)@.user_mapped(page_base(fault_addr as nat))
+                            || !old(vmem)@.user[page_base(fault_addr as nat)].cow)
+                },
+                Err(_) => final(vmem)@ == old(vmem)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_resolve_cow_fault(
         &mut self,
         vmem: &mut Vmem,
@@ -336,6 +403,25 @@ impl VirtMemoryManager {
     /// - `Ok(false)` if the page was not present.
     /// - `Err(_)` on unexpected failures.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            vmem.inv(),
+        ensures
+            match ret {
+                Ok(true) => {
+                    &&& old(vmem)@.user_mapped(vaddr.addr_nat())
+                    &&& final(vmem)@ == old(vmem)@.spec_unmap(vaddr.addr_nat())
+                    &&& final(vmem).inv()
+                },
+                Ok(false) => {
+                    &&& !old(vmem)@.user_mapped(vaddr.addr_nat())
+                    &&& final(vmem)@ == old(vmem)@
+                },
+                Err(_) => final(vmem)@ == old(vmem)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_unmap_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -361,6 +447,32 @@ impl VirtMemoryManager {
     /// Upon success, `Ok(())` is returned. Upon failure, all successfully mapped pages are rolled
     /// back and an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            vmem.inv(),
+            old(uframes)@.len() == 0,
+        ensures
+            match ret {
+                Ok(_) => {
+                    &&& maps_user_run_with(
+                            old(vmem)@,
+                            final(vmem)@,
+                            vaddr.addr_nat(),
+                            nframes as nat,
+                            access.perms_view(),
+                        )
+                    &&& final(vmem).inv()
+                    &&& final(uframes)@.len() == 0
+                },
+                Err(_) => {
+                    &&& final(vmem)@ == old(vmem)@
+                    &&& final(vmem).inv()
+                    &&& final(uframes)@.len() == 0
+                },
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_upages(
         &mut self,
         vmem: &mut Vmem,
@@ -386,6 +498,20 @@ impl VirtMemoryManager {
     ///
     /// Upon success, empty is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            vmem.inv(),
+        ensures
+            match ret {
+                Ok(_) => {
+                    &&& final(vmem)@ == old(vmem)@.spec_uctrl(vaddr.addr_nat(), access.perms_view())
+                    &&& final(vmem).inv()
+                },
+                Err(_) => final(vmem)@ == old(vmem)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn ctrl_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -406,6 +532,19 @@ impl VirtMemoryManager {
     ///
     /// Upon success, a kernel page is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            match ret {
+                Ok(kpage) => {
+                    &&& is_page_aligned(kpage.addr_nat())
+                    &&& spec_is_physical_region(kpage.addr_nat(), page_size())
+                },
+                Err(_) => true,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> { ... }
 
     ///
@@ -425,6 +564,17 @@ impl VirtMemoryManager {
     /// Upon success, `Ok(())` is returned and `kframes` is filled with `count`
     /// frames. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            old(kframes)@.len() == 0,
+        ensures
+            match ret {
+                Ok(_) => final(kframes)@.len() == count as nat,
+                Err(_) => final(kframes)@.len() == 0,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpages(
         &mut self,
         clear: bool,
@@ -433,6 +583,25 @@ impl VirtMemoryManager {
     ) -> Result<(), Error> { ... }
 
     /// Load an ELF image into a virtual address space.
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            vmem.inv(),
+        ensures
+            match ret {
+                Ok((entry, args_vaddr)) => {
+                    &&& final(vmem).inv()
+                    &&& old(vmem)@.user.dom().subset_of(final(vmem)@.user.dom())
+                    &&& final(vmem)@.kernel == old(vmem)@.kernel
+                    &&& final(vmem)@.pgdir == old(vmem)@.pgdir
+                    &&& spec_is_user_addr(entry.addr_nat())
+                    &&& spec_is_user_addr(args_vaddr.addr_nat())
+                    &&& is_page_aligned(args_vaddr.addr_nat())
+                },
+                Err(_) => final(vmem).inv(),
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn load_elf(
         &mut self,
         vmem: &mut Vmem,
