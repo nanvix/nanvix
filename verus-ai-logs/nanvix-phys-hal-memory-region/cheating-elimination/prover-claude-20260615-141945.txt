@@ -303,3 +303,31 @@ Turn 11
 ────────────────────────────────────────────────────────────
 Now run the full kernel verification and full crate verification to confirm no regressions.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel 2>&1 | tail -15
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  47/1022 exec functions have contracts.
+  Unverified function list written to: verus-ai-lo...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Full verify-kernel: **41 verified, 0 errors**. The global `external_body=25 cfg_gate=7` are all in other modules (TCB-allowed). Let me confirm none are in the region module and check cfg-gate sources.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== region.rs entries in cheating detail ==="; grep -n "types/region" verus-ai-logs/v
+
+[THINKING] The kernel verification passed with 41 verified items and no errors. The "CHEATING_DETECTED" flags at the global level come from 25 external_body and 7 cfg_gate references, all from other modules and all allowed by the TCB policy. I'm now confirming that all 32 of these are accounted for in the TCB-allowed list and none appear in the region files, since the module-scoped check already cleared hal-memory-region of any violations.
+[RESULT ✓] bash: === region.rs entries in cheating detail ===
+NONE (in-scope module clean)
+
+=== cfg_gate entries ===
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+In-scope module is fully clean. Now running full `make verify` to ensure no cross-crate regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | tail -25
+
+[THINKING] No region entries found in the cheating detail, so the in-scope module is clean. Now I'm running the full verification suite to check for any regressions, though this will take a bit since it covers all crates plus the kernel.
