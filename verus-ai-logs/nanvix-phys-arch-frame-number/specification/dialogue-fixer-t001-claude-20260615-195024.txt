@@ -135,3 +135,228 @@ The struct needs `#[verus_verify]` for the type invariant to attach. Let me mirr
 Turn 7
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: cannot use function `arch::x86::mem::constants::MAX_ADDRESS` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:5
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Constants outside `verus!` need to be made visible to Verus. Let me check how the codebase exposes module constants and the associated const.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===verus_verify on const in repo==="; grep -rn "verus_verify" --include=*.rs src/libs s
+
+[THINKING] I'm seeing a couple of issues with how Verus is handling constants and const functions. The constants `MAX_ADDRESS` and `FRAME_SIZE` defined in `constants.rs` need the `#[verus_verify]` attribute so Verus can actually see them, and there's also a problem with using `Self::MAX` in an exec context that I need to work through.
+
+Looking at how `phys.spec.rs` handled this before with `assume_specification`, that was a workaround for when the arch module wasn't Verus-enabled. Now that it is, I should be using `#[verus_verify]` on the constants directly instead. For the associated const `FrameNumber::MAX` used in the comparison, I need to figure out how Verus expects const definitions to be annotated so it can understand their values in specs.
+[RESULT ✓] bash: ===verus_verify on const in repo===
+src/libs/sys/src/sys/mm/address/virt.rs:46:// Verification-target constructors. They live in a dedicated `#[verus_verify]`
+src/kernel/src/hal/mem/types/address/phys.rs:94:// `#[verus_verify]` impl to resolve), while the untouched constructors above are
+src/kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Per the verus-constraints skill, constants from another module that Verus can't resolve need `#[verus_verify]` on the defining constant. Let me expose the needed constants.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I'm realizing there's a distinction between module-level constants defined outside the Verus macro and associated constants. The module-level ones like `MAX_ADDRESS` and `FRAME_SIZE` get ignored by Verus entirely since they're declared outside the macro boundary, but I can use `#[verus_verify]` on the actual definition to make Verus see them.
+
+However, there's a dependency chain to consider—`FRAME_SIZE` references `PAGE_SIZE`, so if I mark one with `#[verus_verify]`, I'd need to mark the other too. Rather than cascading the attribute across multiple unrelated constants, I should explore whether defining a spec function that wraps the constant value would be cleaner than modifying the original constant definitions. The `#[verus_verify]` attribute only affects Verus processing and gets erased in the normal build, so it shouldn't break anything else. I'll add it to the constants in constants.rs to make PAGE_SIZE, FRAME_SIZE, and MAX_ADDRESS visible to Verus with their concrete values known.
+[RESULT ✓] view: 36. /// # Description
+37. ///
+38. /// Log2 PAGE_SIZE
+39. ///
+40. pub const PAGE_SHIFT: usize = 12;
+41. 
+42. ///
+43. /// # Description
+44. ///
+45. /// Number of bytes in a page.
+46. ///
+47. pub const PAGE_SIZE: usize = 4096;
+48. ::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me iterate. First expose the module constants, and handle the associated const.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I'm considering adding the `#[verus_verify]` attribute to the constants like PAGE_SIZE, FRAME_SIZE, and MAX_ADDRESS to see if that helps Verus handle them. The real issue is with the associated constant `FrameNumber::MAX` — Verus is rejecting it because it doesn't support that pattern directly, suggesting I might need to add a specification or find another approach.
+
+I'm thinking about moving MAX into a `#[verus_verify]` annotated impl block or marking it appropriately so Verus can process it. Rather than continuing to debug through the full verification cycle, I should set up a quick experimental test to iterate faster on what annotation strategy actually works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] view: 85. 
+86. ///
+87. /// # Description
+88. ///
+89. /// Maximum addressable memory.
+90. ///
+91. pub const MAX_ADDRESS: usize = usize::MAX;
+92. 
+93. ///
+94. /// # Description
+95. ///
+96. /// Alias for `PAGE_SHIT`.
+97. ///
+98. pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+99. 
+100. ///
+101. /// # Description
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I'm realizing that adding `#[verus_verify]` to constants.rs would require importing the vstd prelude there, which feels like unnecessary coupling. The macro needs that import in scope for the Verus build to work, even though it gets erased during normal compilation. Let me think about a cleaner approach instead of modifying constants.rs directly.
+
+The reviewer wants the spec functions provably tied to the actual exec constants, so I can't just hardcode literal values. I could either mark those constants with the macro and handle the import, or use `assume_specification` to establish the connection without exposing the constants to Verus. Let me check what constants.rs currently imports to see if adding vstd would be too invasive.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me revert the constants.rs change and experiment to understand Verus const handling in this version.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] I'm realizing that `constants.rs` doesn't have vstd imported, so adding `#[verus_verify]` to a const won't work without bringing the macro into scope. Rather than trying to reference exec constants in spec functions, maybe the simpler approach is to avoid that altogether and instead focus on proving the core requirement: that `from_raw_value` returns `Some` if and only if the value doesn't exceed `Self::MAX`.
+
+The real challenge is that Verus needs to understand the relationship between the exec constant `Self::MAX` and the spec function `spec_max_frame_number()`. I could either make the spec function reference the exec constant directly (which requires making it Verus-visible), or define the spec function with a concrete literal and prove the connection separately. The error about "impl&%0::MAX is not supported" suggests associated consts in exec comparisons might need special handling in this version of Verus.
+
+Let me step back and test how Verus actually handles associated consts by looking at examples or trying a quick experiment to understand the constraint better.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /tmp; rm -rf vtest; mkdir vtest; cd vtest; cat > t.rs <<'EOF'
+use vstd::prelude::*;
+
+pub const PAGE_SIZE: usize = 409
+[RESULT ✓] bash: error: cannot use type `t::F` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> t.rs:17:30
+   |
+15 |       ensures (r is Some) <==> (value as int <= 4095),
+   |                -
+16 |   )]
+17 |   fn from_raw(value: usize) -> Option<F> {
+   | ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+`#[verus_verify]` on a top-level const works. Let me confirm the full pattern with the struct and spec-fn const reference.
+[TOOL] bash: cd /tmp/vtest; cat > t.rs <<'EOF'
+use vstd::prelude::*;
+
+#[verus_verify]
+pub const PAGE_SIZE: usize = 4096;
+#[verus_veri
+
+[THINKING] The `verus_verify` attribute on the top-level const MAXV worked fine, but PAGE_SIZE needs it too to avoid errors. I also need to add `verus_verify` with `external_derive` to the struct F, similar to what I already did in number.rs. Let me update the test with these annotations and verify it compiles.
+[RESULT ✓] bash: error: `t::impl&%0::MAX` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+  --> t.rs:45:20
+   |
+45 |         if value > Self::MAX { return None; }
+   |                    ^^^^^^^^^
+
+error: aborting due to 1 previous error
+<shellId: 2 ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Module consts work now. The associated const `Self::MAX` is the blocker. Let me test annotating it.
+[TOOL] bash: cd /tmp/vtest; sed -i 's|    pub const MAX: usize = MAX_ADDRESS / FRAME_SIZE - 1;|    #[verus_verify]\n    pub const MAX
+
+[THINKING] The associated const `Self::MAX` is blocking progress since verus_verify works on module-level consts but not associated ones. I should test whether adding `#[verus_verify]` directly to the associated const helps, or if I need to extract MAX outside the struct instead.
+[RESULT ✓] bash: error: postcondition not satisfied
+  --> t.rs:33:36
+   |
+33 |         ensures r as int == self@, 0 <= r as int <= spec_max_frame_number(),
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+34 |     )]
+35 |     pub fn into_raw_value(self) -> us...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+The associated const works with `#[verus_verify]`. Now discharge the two proof obligations properly via `use_type_invariant` (no admit needed). Let me test in scratch.
+[TOOL] bash: cd /tmp/vtest; cat > t.rs <<'EOF'
+use vstd::prelude::*;
+
+#[verus_verify]
+pub const PAGE_SIZE: usize = 4096;
+#[verus_veri
+
+[THINKING] The `#[verus_verify]` attribute on the associated const is now working, but I still need to satisfy the postcondition for `into_raw_value` that ensures the returned value stays within the valid frame number range. I'll need to invoke the type invariant to discharge this proof obligation, which means adding a proof block inside the exec function that uses the type invariant to establish the required bounds. self)` should work since `self` is Copy. Actually, I'm in the spec phase where I only need signatures with admit in proof files, but for exec functions the contracts must verify with zero errors. The cleanest approach is to prove these obligations properly rather than use admit — it keeps cheating at zero and avoids the tension with the reviewer's checklist.
+
+For `into_raw_value`, I can use `use_type_invariant(&self)` to get the range directly from the type invariant. For `from_raw_value`, I need to prove the postcondition by establishing that when we construct `F(value)`, the type invariant holds — which requires showing `value <= Self::MAX` and that `Self::MAX` as an integer equals `spec_max_frame_number()`. Since both use the same arithmetic (MAX_ADDRESS divided by FRAME_SIZE minus one), Verus should recognize they're equivalent.
+
+Let me add the actual proofs to the test and see what gaps remain.
+[RESULT ✓] bash: error: expected one of `,`, `:`, or `}`, found `(`
+  --> t.rs:36:35
+   |
+36 |         proof { use_type_invariant(&self); }
+   |         -----   ------------------^ expected one of `,`, `:`, or `}`
+   |         |       |
+   |         |       while parsing this struct field
+   |         while parsing ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+In attribute style the macro is `proof!{ }`. Let me fix.
+[TOOL] bash: cd /tmp/vtest; sed -i 's|proof { use_type_invariant(&self); }|proof! { use_type_invariant(\&self); }|' t.rs; /home/ruize
+
+[THINKING] I need to use the `proof!` macro syntax instead of a regular proof block when working in attribute style outside of the verus context.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The full pattern verifies (6 verified, 0 errors). Now apply to the real files. First, expose the three module constants — they need `#[verus_verify]` and a vstd import in constants.rs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+
+[THINKING] All six verification checks passed with no errors, so the pattern is solid across module constants with `#[verus_verify]`, associated constants, proof blocks in conversion methods, and automatic type invariant verification. Now I'm ready to apply this approach to the actual codebase.
+
+For constants.rs, I need to add `#[verus_verify]` to PAGE_SIZE, MAX_ADDRESS, and FRAME_SIZE, which means I also need to import `use vstd::prelude::*;` unconditionally since the macro requires it during both Verus and normal builds. The arch crate already depends on vstd in Cargo.toml, so adding the import shouldn't break the normal build—other crates like bitmap do this same pattern. I'm slightly concerned about whether vstd compiles correctly when arch is built as part of the standard library with rustc-dep-of-std, but that should work since vstd supports no_std with alloc.
+
+The core issue is that the spec functions need these constants visible to Verus, and `#[verus_verify]` must be on the definition site in constants.rs. I could avoid touching constants.rs by referencing the constants only in number.spec.rs, but that won't work because Verus marks undefined constants as external. So I'll apply the changes and test both `make verify-arch` and `make build` to confirm nothing breaks under the rustc-dep-of-std configuration. I'm debating whether to just add `#[verus_verify]` to the three module constants and test if the build survives, since the real concern is whether `arch` can depend on `vstd` when it's compiled under the `rustc-dep-of-std` feature. Let me apply the minimal changes and run `make build` to see if it breaks.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now update number.rs: annotate the associated const `MAX` and add the `use_type_invariant` proof in `into_raw_value`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&

@@ -33,6 +33,7 @@ pub struct FrameNumber(usize);
 
 impl FrameNumber {
     /// The maximum frame number.
+    #[verus_verify]
     pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
 
     pub const NULL: Self = Self(0);
@@ -57,6 +58,7 @@ impl FrameNumber {
             0 <= result as int <= spec_max_frame_number(),
     )]
     pub fn into_raw_value(self) -> usize {
+        proof! { use_type_invariant(&self); }
         self.0
     }
 }
