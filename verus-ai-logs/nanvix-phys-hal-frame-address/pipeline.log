@@ -259,3 +259,21 @@ Module: hal-frame-address
 [2026-06-15 17:38:31] Running final comprehensive review...
 [2026-06-15 17:38:31] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 17:54:20]   ↳ review done in 15m49s (exit=0)
+[2026-06-15 17:54:20] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 17:54:20] [FINAL REVIEW] Cheating report: external_body: 1
+[2026-06-15 17:54:20] [FINAL REVIEW] ⚠ unapproved external_body type-spec: 1
+[2026-06-15 17:54:20] [FINAL REVIEW] ❌ Overriding to FAIL — cheating: unapproved external_body type-spec: 1
+[2026-06-15 17:54:20] [FINAL REVIEW] Done (15m49s)
+
+============================================================
+PIPELINE FINISHED: hal-frame-address (some phases need work)
+  ✅ caller-analysis           no-review                 2m17s
+  ✅ view-design               no-review                 3m08s
+  ✅ specification             dialogue-RESOLVED        30m59s (2 dialogue turns)
+  ✅ proving                   dialogue-RESOLVED        14m57s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED        10m03s (1 dialogue turns)
+  ❌ final-review              FAIL                     15m49s
+  ──────────────────────────────────────────────────────────
+  Total: 1h34m22s
+============================================================
+[2026-06-15 17:54:20] [USAGE] Summary: 12 calls, 0 tokens, 1h33m51s total → /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/usage_summary.json
