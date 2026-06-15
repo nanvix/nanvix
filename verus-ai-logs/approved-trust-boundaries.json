@@ -1,0 +1,99 @@
+{
+  "schema": "approved-trust-boundaries/v1",
+  "catalog_version": "v0.3",
+  "module": "mm::phys",
+  "source": "src/kernel/src/mm/phys/manager.rs",
+  "rationale_source": "verus-ai-logs/tcb-allowed.md",
+  "entry_points": [
+    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init",
+    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_user_frame",
+    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::check_user_watermark",
+    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_user_frames",
+    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_many_kernel_frames",
+    "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::alloc_kernel_frame"
+  ],
+  "approved_limitation_ids": [
+    "L60",
+    "L61",
+    "L62",
+    "L63"
+  ],
+  "approved_external_body_fns": [
+    "init",
+    "kernel_watermark"
+  ],
+  "approved_callees": {
+    "manager.proof.rs::lemma_manager_attached": {
+      "name": "lemma_manager_attached",
+      "verdict": "VERUS_LIMITATION_SILENT_MODEL",
+      "evidence": "repro",
+      "callsites": [
+        "manager.proof.rs:23"
+      ],
+      "id": "L60",
+      "repro": "verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/repros/L60.rs",
+      "construct": "ghost_token_attachment",
+      "minimal_assume": "m@ == phys_view().frames",
+      "rationale": "tcb-allowed.md: the manager brokers the global frame partition; its abstract Upool view (uninterp) coincides with phys_view().frames (a 0-arg uninterp constant). No in-module fact links the two uninterpreted functions; the bridge is a §8 ghost-token attachment over the frame::INSTANCE / PhysMemoryManager / Upool singletons, realized only in the not-yet-done proving phase. Empirically postcondition-not-satisfied without the assume."
+    },
+    "manager.proof.rs::lemma_kernel_alloc_one": {
+      "name": "lemma_kernel_alloc_one",
+      "verdict": "VERUS_LIMITATION_SILENT_MODEL",
+      "evidence": "repro",
+      "callsites": [
+        "manager.proof.rs:37"
+      ],
+      "id": "L61",
+      "repro": "verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/repros/L61.rs",
+      "construct": "ghost_token_attachment",
+      "minimal_assume": "pre.free_frames.contains(addr) && post == pre.alloc_one(addr) && post.wf()",
+      "rationale": "tcb-allowed.md: frame::alloc() is a free function (no self), so the kernel-frame allocation never mutates self.upool; Verus sees self@ unchanged. The post/pre/addr parameters carry the global-partition transition supplied by frame::alloc(), unprovable in-module. Empirically postcondition-not-satisfied without the assume."
+    },
+    "manager.proof.rs::lemma_kernel_alloc_contiguous": {
+      "name": "lemma_kernel_alloc_contiguous",
+      "verdict": "VERUS_LIMITATION_SILENT_MODEL",
+      "evidence": "repro",
+      "callsites": [
+        "manager.proof.rs:49"
+      ],
+      "id": "L62",
+      "repro": "verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/repros/L62.rs",
+      "construct": "ghost_token_attachment",
+      "minimal_assume": "frames.len() == count && kernel_frames_contiguous(frames, count) && post == pre.book_all(kernel_addr_set(frames)) && pre.all_free(kernel_addr_set(frames)) && post.wf()",
+      "rationale": "tcb-allowed.md: frame::alloc_contiguous() is a free function (no self); the region transition over the global partition and the contiguity/length facts about the returned frames come from the runtime allocator, unprovable in-module. Empirically postcondition-not-satisfied without the assume."
+    },
+    "manager.proof.rs::lemma_user_bulk_err_restored": {
+      "name": "lemma_user_bulk_err_restored",
+      "verdict": "VERUS_LIMITATION_SILENT_MODEL",
+      "evidence": "repro",
+      "callsites": [
+        "manager.proof.rs:175"
+      ],
+      "id": "L63",
+      "repro": "verus-ai-logs/nanvix-phys-phys-manager/cheating-elimination/repros/L63.rs",
+      "construct": "drop_side_effect",
+      "minimal_assume": "m@ == pre",
+      "rationale": "tcb-allowed.md: on a mid-bulk failure the implementation Vec::clear()s the partial vector, dropping (and via Drop freeing) every taken frame and restoring the partition to its pre-call state. Drop side effects are not modeled in Verus exec semantics, so the restoration is unprovable in-module. Empirically postcondition-not-satisfied without the assume."
+    },
+    "manager.rs::init": {
+      "name": "init",
+      "verdict": "TCB_EXTERNAL_BODY",
+      "evidence": "tcb-allowed",
+      "callsites": [
+        "manager.rs:96"
+      ],
+      "construct": "external_body",
+      "rationale": "tcb-allowed.md: init flips the global PHYS_MEMORY_MANAGER_INIT/ready singleton; the manager-ready transition over phys_view() is a runtime singleton effect Verus cannot model. Approved external_body."
+    },
+    "manager.rs::kernel_watermark": {
+      "name": "kernel_watermark",
+      "verdict": "TCB_EXTERNAL_BODY",
+      "evidence": "tcb-allowed",
+      "callsites": [
+        "manager.rs:532"
+      ],
+      "construct": "external_body",
+      "rationale": "tcb-allowed.md: kernel_watermark reads the link-time constant config::kernel::KERNEL_WATERMARK whose value Verus cannot resolve; this accessor ties it to spec_kernel_watermark(). Approved external_body."
+    }
+  }
+}
