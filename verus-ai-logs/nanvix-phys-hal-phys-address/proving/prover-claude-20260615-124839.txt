@@ -162,3 +162,73 @@ Module verifies (exit 0), but it's cached. Let me force a clean re-verification 
 [THINKING] The module verification for mm::phys passes with caching, so no recompilation is needed. The external_body warnings are scattered across other files in the same module path like frame.rs and manager.rs, but my target file phys.rs is clean—it has no external_body, admit, or assume issues to worry about.
 
 Actually, I'm realizing the proofs might already be complete. The phys.rs file contains inline proof blocks that are fully filled in, there are no admit() calls left, and verification exits with 0. Let me force a fresh verification run to confirm the proofs actually validate rather than relying on the cached result.
+[RESULT ✓] bash: === Results ===
+  31 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Clean re-verification: **31 verified, 0 errors**. The proofs are already complete. Let me confirm the full picture — check git status and verify there are no cheating patterns specific to my target file.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager status --short src/kernel/src/hal/mem/types/address/ && echo "---LOG---" && 
+[TOOL] grep: external_body|admit\(\)|assume\(|assume_specification
+
+[THINKING] The verification shows all 31 proofs are already complete with no admits or assumes in the target file, which makes me wonder if I'm misunderstanding the task—let me carefully check whether those problematic functions actually contain any of the incomplete proof markers I'm supposed to eliminate.
+[RESULT ✓] grep: No matches found.
+[RESULT ✓] bash: ---LOG---
+ff936d39d [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::phys (4 verified, 0 errors, external_body=25 cfg_gate=10)
+87bab5898 [verus] verify FAIL: kernel::hal::mem::types::address::phys (0 verified, compilation/setup error (verus did not run))
+9e1e643b5 [verus] v...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Working tree is clean and the proofs are committed. Let me confirm none of the cheating patterns (cfg-gated exec, external_body) are in my target file `phys.rs`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -i "phys"
+
+[THINKING] Git shows the working tree is clean with the latest commit indicating "cheating detected" due to external_body references in other files like frame.rs, but phys.rs itself has no external_body, admit, or assume statements and passes verification. The issue seems to be that those external references are outside my scope.
+
+The work appears to be complete — phys.rs has full inline proofs with 31 verified and 0 errors, no cheating markers in the target file. But I should verify the cheating detection isn't actually flagging phys.rs's target functions themselves by checking the detailed report to confirm none of them are using forbidden constructs.
+[RESULT ✓] bash: - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refcount: external_body
+    - mm/phys/frame.rs:481 book: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+All cheating entries are in a **different** directory (`src/kernel/src/mm/phys/` — the frame manager), not my target `hal/mem/types/address/phys.rs`. My target file has zero cheating patterns and verifies cleanly (31 verified, 0 errors). The proofs were already completed in commit `ff936d39d`.
+
+Let me confirm the 4 target functions specifically are in-scope verified, and check the bugs log dir.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/nanvix-phys-hal-phys-address/ 2>/dev/null || echo "bugs dir does not e
+
+[THINKING] The cheating entries are all located in the physical memory manager module at `mm/phys/`, which is distinct from the address types module at `hal/mem/types/address/phys.rs`. When I filter with `--module mm::phys`, it's pulling in the manager module and its dependencies, including the address types from the HAL layer.
+
+Looking at the verification output more carefully, the target file `hal/mem/types/address/phys.rs` shows 31 verified with 0 errors and no external_body calls on the target functions themselves — the cheating entries are pre-existing in the separate manager directory and outside my scope. The four target functions have the proper verification annotations and are being verified cleanly, so the work is already complete.
+
+Now I should run the full `make verify` to confirm there are no regressions across the entire codebase, though that could take some time.
+[RESULT ✓] bash: total 116
+drwxrwxr-x 1 ruize ruize   380 Jun 15 12:48 .
+drwxrwxr-x 1 ruize ruize   772 Jun 15 12:01 ..
+-rw-rw-r-- 1 ruize ruize  5760 Jun 15 12:01 body_removed_source.rs
+drwxrwxr-x 1 ruize ruize   136 Jun 15 12:01 caller-analysis
+-rw-rw-r-- 1 ruize ruize 10386 Jun 15 12:03 caller_analysis.md
+-rw-rw-...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+All 4 target functions have full specs + inline proofs and verify cleanly. The work was already completed. Let me run the full `make verify` to confirm no regressions in other modules (the ultimate goal).
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
+
+[THINKING] The bugs.md file hasn't been created yet, but the directory structure exists with a proving subdirectory and pipeline state. Looking at the pipeline_state.json and the proving directory to verify the current status—it seems all four target functions are already verified with no admit/assume/external_body calls remaining, so the task is essentially done.
+
+Let me run the full `make verify` to confirm there are no regressions across all modules, since that's the responsible final check to ensure everything is working correctly.
