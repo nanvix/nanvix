@@ -888,3 +888,808 @@ Now I need to verify that the precondition `spec_frame_number(phys_addr@) <= spe
 Turn 52
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|fail|fr
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/frame.rs:535:5
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:530:13
+    | |_____...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Confirmed: the `into_frame_number` precondition can't be discharged from alignment alone. Let me check if `PhysicalAddress`/`PageAligned` carry a type invariant bounding the view.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "type_invariant" src/kernel/src/hal/mem/types/address/ ; echo "=== p
+
+[THINKING] The precondition for `into_frame_number` isn't being satisfied—I need to prove that the physical address is bounded by the maximum frame number, but I can't just strengthen the requires clause. I'm exploring other ways to establish this bound on the physical address, and I'm considering what options might actually be available. Maybe the precondition is actually satisfiable through a type invariant on PhysicalAddress that I haven't located yet. Let me search the address module more carefully to see if there's a `#[verifier::type_invariant]` annotation I missed, especially since FrameNumber has one.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs:146:        // `use_type_invariant` on `arch`'s `FrameNumber` is unsupported ("missing type invariant
+=== phys.rs view ===
+
+verus! {
+
+impl View for PhysicalAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+}...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+This `into_frame_number` bound gap is systemic (affects all Inner methods taking addresses). Let me find how other verified code discharges this precondition.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "into_frame_number\|spec_max_frame_number\|spec_frame_number" src/ke
+
+[THINKING] I'm realizing there's a fundamental issue with the spec design: the `is_covered` function requires the physical address invariant to hold, but `PhysicalAddress` doesn't actually have a type invariant defined. This means the precondition can't be satisfied, and when `Inner::is_covered` tries to verify its logic, it can't establish the necessary bounds because the invariant is missing.
+
+Looking at the actual implementation, `into_frame_number` performs a right shift that won't overflow, but then calls `FrameNumber::from_raw_value` with an unwrap. If the frame number exceeds the spec's maximum (which happens when the raw address is in the top frame range), the unwrap panics. So `into_frame_number` genuinely needs the physical address invariant as a precondition to prevent this panic. For `is_covered` to safely call it on arbitrary addresses, the physical address would need to satisfy that invariant.
+
+The core issue is that `PageAligned<PhysicalAddress>` only guarantees alignment, not the stricter bound needed to avoid the panic. I'm reconsidering whether `PhysicalAddress` itself might carry an implicit type invariant that would provide this bound—if the type enforces that addresses stay within valid RAM bounds, then the panic would never occur.
+
+But even if `PhysicalAddress` is bounded by `usize::MAX`, dividing by 4096 could still theoretically reach the top frame number, which exceeds `spec_max_frame_number()`. So there's a genuine gap here—the design seems to allow a panic for the absolute maximum physical address, though practically this never happens since real RAM never reaches `usize::MAX`.
+
+I'm now wondering if there's a proof pattern or helper in the codebase that I'm missing, or if the intended solution relies on some property of the `Address` trait itself.
+
+Actually, let me reconsider the core issue: the functions that call `into_frame_number` on `PageAligned` addresses—like `is_covered`, `book`, and `alloc_range`—are exactly the ones that receive physical addresses from external or boot sources. The fact that they need a bound that isn't available in scope suggests the design expects either a stronger precondition on those functions or a type invariant on the address types themselves. But modifying the address layer is out of scope since it's already verified in a locked dependency.
+
+Looking at the parallel in the already-verified `FrameAddress::into_frame_number`, it has the same requirement: `spec_frame_number(self@) <= spec_max_frame_number()`. And the kernel-level functions that call it—`free`, `share`, `refcount`—face the same gap. The free functions call through to `Inner::share`, which has an `admit` masking the bound issue in its body. So this is a systemic problem across all the functions that invoke `into_frame_number`: they all need that frame number bound but only have alignment guarantees.
+
+The resolution has to be systemic—either the preconditions on these functions need strengthening, or there's a missing type invariant that should be enforced at the address layer.
+[RESULT ✓] bash: src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:105:            paddr.into_frame_number(),
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:143:            paddr.into_frame_number(),
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:494:        let new_pte: PageTableEntry = PageTable...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Let me get the full detailed error to see exactly which precondition fails.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs se
+
+[THINKING] I'm checking whether the page directory and page table implementations in the shared memory management code are actually verified, and looking at how the proof structure works in the physical address module. The real challenge is figuring out how to satisfy the alignment requirements at call sites when I only have the basic invariants available.
+
+Looking at the frame number conversion, it requires both alignment and a bound that the frame number stays within the maximum allowed range. The alignment comes from the address type's invariant, but that bound doesn't automatically follow from alignment alone when the maximum address is usize::MAX. I'm realizing the inner allocator methods might need to range-check the computed frame number against their internal data structures (bitmap size, refcount length) before using it, but the conversion itself happens first and could panic without the precondition being satisfied upfront.
+
+This suggests either the spec is missing a bound on the address types, or there's a type invariant I haven't found that constrains PhysicalAddress values to stay within valid frame number ranges. Let me check if PhysicalAddress or its underlying VirtualAddress has such an invariant, and whether the already-verified sibling modules handle this differently.
+
+Actually, I'm realizing the real issue might be simpler — the comment at phys.rs:146 mentions that cross-crate use_type_invariant on FrameNumber is unsupported, which could be blocking the precondition discharge. Let me pull the exact error details from the verification output to see which precondition is actually failing at line 536:35.
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:536:35
+    |
+536 |         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.r...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Let me check the proving notes for how the `into_frame_number` precondition was meant to be discharged.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls verus-ai-logs/nanvix-phys-phys-frame/proving/ verus-ai-logs/nanvix-phys-ph
+
+[THINKING] I see the issue now—the `into_frame_number` method requires a precondition that `spec_frame_number(self@) <= spec_max_frame_number()`, but dereferencing the `PhysicalAddress` from `PageAligned` only gives me the value equality, not the invariant bound. I need to establish that `spec_frame_number(phys_addr@) <= spec_max_frame_number()` to satisfy the precondition.
+
+The deref assume_specification in frame.spec.rs currently only ensures value equality, not the invariant. I could strengthen it to also ensure the invariant holds, but that would be unsound in general—a `PageAligned` only guarantees alignment, not that the wrapped address has a valid frame number. However, practically speaking, the only addresses with frame numbers exceeding `spec_max` are in the very top page near `usize::MAX`, which is unlikely to occur in practice.
+
+The real issue is that the deref assume_specification is a placeholder meant to be replaced once the underlying modules are verified. Rather than weakening the locked specs, I should consider whether the code should call a method that explicitly returns the frame number with the bound guaranteed, or strengthen the `PageAligned` validation itself to ensure the wrapped address satisfies the invariant.
+
+Looking at this more carefully: `PageAligned<PhysicalAddress>` validates alignment but not the frame number bound, and these are separate invariants. The alignment guarantee from `PageAligned` doesn't imply the range bound needed by `into_frame_number`. I need to check the design notes and proving documentation to understand how the preconditions for `into_frame_number` were actually meant to be discharged.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-phys-frame/proving/:
+prover-claude-20260615-075958.jsonl
+prover-claude-20260615-075958.txt
+
+verus-ai-logs/nanvix-phys-phys-frame/view-design/:
+prover-claude-20260614-033334.jsonl
+prover-claude-20260614-033334.txt
+===grep into_frame_number / spec_max / bound in notes===
+veru...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+This is a prior attempt's log. Let me read its conclusions about the `into_frame_number` bound resolution.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '517,700p' verus-ai-logs/nanvix-phys-phys-frame/proving/prover-claude-
+
+[THINKING] I'm looking at a log from a previous attempt on this same problem, and it reached the same conclusions I did about the free functions and the into_frame_number bound issue. Let me see if that earlier run found a way to resolve it.
+[RESULT ✓] bash: - manager.proof.rs:21 lemma_free_count_bounded: admit
+    - manager.proof.rs:36 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:49 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:71 lemma_c...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Let me check `PhysicalAddress::from_raw_value` to see if it validates a range that would establish the bound.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I see this is my own session history confirming I'm on the right track. Now I need to focus on solving the `into_frame_number` bound issue — the problem is that inner methods receive a `PageAligned<PhysicalAddress>` or `FrameAddress` with only alignment invariants, but they need to call into
+
+_frame_number which requires a frame-number bound. The code actually has a real panic bug: it calls `into_frame_number` before validating the frame is in range, and for an address in the top frame, `FrameNumber::from_raw_value` will panic. The specs for inner methods only require alignment, not the frame bound, so either the specs are under-specified or the address types themselves need a type invariant that captures the frame-number bound — possibly by adding an invariant to `PhysicalAddress` or `FrameAddress` in the hal module.
+
+Let me trace through the method resolution more carefully. When calling `into_frame_number()` on a `PageAligned<PhysicalAddress>`, Rust dereferences to `PhysicalAddress` and invokes `PhysicalAddress::into_frame_number`, which requires `self.inv()`. The deref placeholder assume_specification gives us `(*result)@ == a@`, so the invariant of the dereferenced `PhysicalAddress` depends on the invariant of the original `PageAligned` value. If I strengthen the deref assume_specification to also ensure `(*result).inv()`, that would propagate the frame-number bound through the deref, making the call sound.
+
+But here's the problem: `PageAligned` only guarantees alignment, not the frame-number invariant. A top-frame aligned address like `0xFFFF_FFFF_FFFF_F000` can be wrapped in `PageAligned` successfully (it's aligned), yet its frame number would exceed `spec_max_frame_number`, violating `PhysicalAddress::inv()`. So asserting `(*result).inv()` in the deref spec would be unsound.
+
+This leaves me stuck with the fundamental issue: the locked inner specs are too weak to prove the safety of `into_frame_number`, and the address types lack the necessary type invariant to prevent invalid frame numbers. I'm reconsidering whether `spec_max_frame_number()` is actually what I think it is—let me verify the arithmetic on the frame bound calculation. The real issue is that `free`, `share`, and `refcount` receive a `FrameAddress` as a parameter, and while that address was originally constructed from a bounded frame number in the allocator, that history is lost once it's passed in—the spec only captures alignment, not the numeric bound. This is a genuine under-specification across the board. Adding a type invariant to the address types won't help since their invariants only enforce alignment, not the frame number bound. The cleanest fix would require modifying the address modules themselves, but that risks breaking their existing verification and expands scope significantly. The real issue is that there's no bound on the physical address itself, only on covered addresses within the Inner structure. So I can't prove the precondition for `into_frame_number` at all. This leaves two paths: either there's a missing bounds check in the code that should be added before calling `into_frame_number`, which could be flagged as a bug-fix opportunity, or the invariant needs to be established when the `PhysicalAddress` is first constructed. Let me check whether `PhysicalAddress::from_raw_value` actually ensures the invariant holds.
+[RESULT ✓] view: 178. 
+179. impl Address for PhysicalAddress {
+180.     ///
+181.     /// # Description
+182.     ///
+183.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+184.     ///
+185.     /// # Parameters
+186.     ///
+187.     /// - `raw_addr`: The raw value.
+188.     ///
+189.     /// # Returns
+1...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Let me check how other code in the codebase that calls `into_frame_number` on a parameter discharges this bound (e.g., page_table.rs).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '575,590p' src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs; echo 
+
+[THINKING] I'm tracing through the validation logic for `from_raw_value` and how it chains to `from_virtual_address`, but the specification already constrains the behavior with an assume that overrides the actual implementation. I need to make a pragmatic call here rather than getting stuck on the details.
+
+The core issue is that the Inner methods can't satisfy `into_frame_number`'s precondition—it requires the frame number to be within bounds, but the address types don't have that invariant built in. This is a real gap in the spec layer. I could add a type invariant to FrameAddress and PhysicalAddress to capture the frame-number bound, but that would require new invariants beyond their current alignment-only specs, and it might break their construction proofs. That's too risky and out of scope.
+
+The real problem surfaces in two places: the PageAligned deref path for `is_covered`, `book`, and `alloc_range`, and FrameAddress directly for `free`, `share`, and `refcount`. Looking back at the precondition for `into_frame_number` in frame.rs, it explicitly requires both `self.inv()` and `spec_frame_number(self@) <= spec_max_frame_number()`. So the free/share/refcount methods definitely need that bound on the frame value.
+
+The cleanest fix would be if PhysicalAddress and FrameAddress had a type invariant including the frame-number bound, but that's a significant change—I'd need to strengthen FrameAddress's invariant beyond just alignment and make it a type invariant, which could break hal verification and the existing frame.rs semantics. This is getting too deep and risky to pursue.
+
+Let me look for a local solution within frame.proof.rs instead. I'm wondering if there's a sound way to add an assumption or lemma that guarantees any constructible PageAligned<PhysicalAddress> satisfies the frame bound. The key insight is checking whether from_virtual_address actually validates that addresses stay within physical RAM—if it rejects top-frame addresses near usize::MAX, then every constructible PhysicalAddress would automatically satisfy the bound.
+
+The real from_raw_value likely validates the physical range, but the assume_specification placeholder currently only ensures the value matches. If I strengthen that placeholder to also ensure pa.inv() holds for successful constructions, it would match reality and propagate the bound through the system. Better yet, if PhysicalAddress itself had a type_invariant marking inv() as a guaranteed property, then from_raw_value establishing it would mean any PhysicalAddress parameter—including those passed to Inner methods—would automatically carry that bound through use_type_invariant.
+
+But making that change requires modifying the hal address modules, which is outside my scope and would need re-verification. Given the constraints, I'm stuck: the Inner specs need the frame bound, into_frame_number requires it, but nothing in the current system provides it without either weakening specs, modifying other modules, or leaving admits in place. Let me reconsider whether there's a sound assume_specification in the editable frame.spec.rs that could establish the bound for PageAligned deref in a way that's actually justified by the system's design. I'm realizing this spans multiple modules' placeholder specs, which is getting complicated. Let me step back and reconsider whether the Inner methods actually need to be fully proven, or if there's a more realistic deliverable here. I keep circling around whether `PhysicalAddress::inv()` should be a type invariant in the first place — maybe it's an oversight that it isn't, and I should check if FrameNumber already encodes this constraint. I'm checking whether any verified functions in the kernel already call `into_frame_number` and how they discharge the bound, particularly looking at page_table.rs. The real question is whether I should strengthen the type invariant on FrameAddress or PhysicalAddress in the hal layer since those modules are now verified, rather than modifying the kernel code. I'm leaning toward restructuring the Inner methods' proof instead of touching other modules. I'll search through page_table.rs to see how the into_frame_number calls are being used and whether they're in verified code.
+[RESULT ✓] bash: error!("fill(): {}", reason);
+                    return Err((0, Error::new(ErrorCode::ResourceBusy, reason)));
+                }
+            }
+        }
+
+        // Build and write each page table entry.
+        let base_frame: FrameNumber = base_address.into_frame_number();
+        for i in 0..cou...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Let me check the hal address proof files for lemmas that establish the frame-number bound.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat src/kernel/src/hal/mem/types/address/frame.proof.rs; echo "=========PHYS 
+
+[THINKING] I'm checking whether page_table.rs has any verified specifications to use as a reference, and it doesn't. So I need to make a firm decision about whether I can soundly strengthen the placeholder assumptions in my editable KERNEL frame.spec.rs file for the generic `PageAligned<T>` methods. The issue is that I can't safely add constraints without understanding the full implications for the generic type parameter.
+
+The real bottleneck is the precondition on `PhysicalAddress::into_frame_number`, which requires `self.inv()` (the bound check). I'm exploring whether I could instead add a new assume_specification in the kernel spec that provides the bound for `PageAligned`'s deref operation, returning a `PhysicalAddress` that already satisfies the invariant—but I'm running into the constraint that I can't add a second spec for `into_frame_number` since the HAL already defines one.
+
+Let me step back and reconsider whether adding a type invariant to the address types themselves would be the cleaner fix, and whether that's even compatible with the HAL verification. The core issue is that `FrameAddress::inv()` only checks page alignment (`self@ % PS == 0`), but the functions calling it also need the frame number to be within bounds. I'm wondering if any of the underlying types—`VirtualAddress` or the chain leading to `usize`—already have a type invariant that would propagate up and satisfy this requirement.
+
+Actually, I need to recalculate `spec_max` more carefully. If `MAX_ADDRESS` is `usize::MAX` and we compute `MAX_ADDRESS / FRAME_SIZE` in `usize` arithmetic, that gives us `2^52 - 1`, then subtracting 1 yields `2^52 - 2`. This means the actual bound on physical addresses is `phys_addr@ <= 4096 * (2^52 - 2) + 4095`, which works out to roughly `2^64 - 4097`—far tighter than just `usize::MAX`. Even if I added a type invariant capping addresses at `usize::MAX`, it wouldn't be sufficient to satisfy the frame number bound. The real issue is that the placeholder specs for the address layer are fundamentally too weak, and fixing them properly is beyond the current scope. I'm realizing the real fix might be adding a type invariant to `FrameAddress` and `PhysicalAddress` that captures the bound `spec_frame_number(self@) <= spec_max_frame_number()`, ensuring every value carries this property through constructors. But this would require re-verifying the hal modules, which is complex and risky given the scope constraints. I need to decide whether to pursue this architectural fix or accept that the address-layer dependency contracts are fundamentally insufficient for what the proof requires. I'm reconsidering whether the address layer's verified guarantees might already provide the bound I need through type invariants or lemmas. Let me check the proof files for FrameAddress and PhysicalAddress to see if there's an existing lemma that captures the frame number bound.
+[RESULT ✓] bash: verus! {
+
+use vstd::arithmetic::div_mod::lemma_mod_multiples_basic;
+use vstd::arithmetic::div_mod::lemma_fundamental_div_mod;
+
+// =================================================================================================
+// Proof obligations for `FrameAddress`'s frame-number conversions.
+//
+/...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+This bound issue is subtle. Let me definitively check whether `FrameAddress` has inherent `into_frame_number` or derefs, and check the exact structure.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "impl.*Deref.*FrameAddress\|impl Deref for FrameAddress\|struct Frame
+
+[THINKING] There's no lemma that bounds an arbitrary address, so the caller needs to provide the bound for `into_frame_number`. I'm reconsidering whether the bound on the address parameter is actually available through the closed view backed by `usize` — in Verus, when a closed spec function returns `int` from a `usize` field, Verus doesn't automatically know the result stays within `[0, usize::MAX]` since the view is opaque and returns an unbounded integer type.
+
+The only way around this is if the type has a `#[verifier::type_invariant]`. I've now confirmed that the Inner methods can't be proven without the address layer providing the frame-number bound through a type invariant or stronger parameter invariant — this is a genuine dependency-spec insufficiency.
+
+Since the task says specs must be strong enough for callers and I shouldn't weaken them, the proper fix belongs in the address layer (out of scope). Given that constraint and that the Inner methods are in scope but unprovable with current dependency specs, I'm looking at a few realistic options: adding type invariants to `PhysicalAddress` and `FrameAddress` (which would require touching hal modules and re-verifying them, medium-high risk), or strengthening the kernel `frame.spec.rs` placeholder assumptions to provide the bound — though for `free`/`share`/`refcount` which use `FrameAddress::into_frame_number`, there's no existing placeholder for `FrameAddress` in that file, so I'd need to add one.
+
+Option 2 doesn't actually cover `FrameAddress` cleanly. For Option 1, if `PhysicalAddress` gets a type invariant bound, then when `FrameAddress::into_frame_number` is called from `free`, I need to connect the frame's view to the inner `PhysicalAddress`'s bounded invariant — but the inner field is private, so I can't access it directly to apply the type invariant.
+
+Actually, I could add the type invariant directly to `FrameAddress` itself: `spec_frame_number(self@) <= spec_max_frame_number()`. Then `free`/`share`/`refcount` can use that invariant when calling `into_frame_number`. The constructors would need to establish it — `from_frame_number` works because the `FrameNumber` type already has its own invariant, but `from_raw_value` breaks: for a top-frame raw address, the frame number would exceed `spec_max`, so `from_raw_value` would have to reject those addresses instead of accepting any aligned address, which breaks its current verification contract.
+
+This cascades into changes to the hal frame.rs spec itself, which is way beyond the scope of proving frame.rs in mm/phys. Let me step back and check if I'm reading the `into_frame_number` spec correctly — maybe the precondition is actually weaker than I think. Looking at the spec again, it definitely requires both `self.inv()` and `spec_frame_number(self@) <= spec_max_frame_number()`. So `free`/`share`/`refcount` genuinely need that bound.
+
+The task says specs must be strong enough for callers and not to weaken specs, but here the problem is a downstream dependency spec being too weak, not the spec I'm proving. Let me check the guidance on reporting complex bugs.
+
+I could try adding a placeholder assume_specification for `into_frame_number` in the kernel frame.spec.rs, but the hal already has a real `#[verus_spec]` for it — I can't double-spec the same function. And when verifying mm::phys, Verus loads the hal specs anyway since they're in the same crate.
+
+Another angle: could I avoid calling `into_frame_number` by proving the bound holds through the structure of how FrameAddress is used? In `free`/`share`/`refcount`, the first thing after `into_frame_number` is a bounds check, but the panic happens before that check runs. So I'd need to validate the raw address bound before calling `into_frame_number`, which would require reordering the exec code — but that's a legitimate fix for a missing bounds check.
+
+I'm hitting a wall here. Let me step back and consider what the pipeline designers likely intended. Either the address types have a guarantee I'm missing, or these functions are meant to stay as `external_body` / `admit` and the proof targets are aspirational. Let me do one final check: can Verus prove that `spec_frame_number(x) <= spec_max_frame_number()` given only `x % PS == 0`? It obviously can't, but I should confirm.
+
+Actually, I'm realizing the precondition failure might be cascading from the postcondition issue. Let me think about this differently: the real problem is a spec gap. The address types need a type invariant to guarantee the bound, but adding one to `PhysicalAddress` would break `from_raw_value` — that assume_specification claims to return a valid address for any raw value, which would contradict a type invariant that requires the value to be bounded. This is a fundamental inconsistency in the current design.
+
+So this isn't something I can fix locally. The proper solution requires redesigning how `from_raw_value` handles out-of-bounds values, which is out of scope. I need to accept that this is a dependency-spec gap and focus on what's actually achievable. I'm trying to figure out if the bound check in `into_frame_number` is actually necessary or if it's overly conservative. The core issue is that I need `frame@/PS <= usize::MAX/PS - 1`, but even if `frame@` is bounded by `usize::MAX`, dividing by the page size still leaves me one off. The top frame address is genuinely problematic.
+
+My approach: I'll strengthen the kernel's PageAligned deref placeholder to guarantee the inner address invariant, which handles the PhysicalAddress case. For FrameAddress in free/share/refcount, I need to figure out whether `into_frame_number` is actually being called directly on the FrameAddress or if it's going through a deref coercion.
+
+Looking at the code, `FrameAddress::into_frame_number` is an inherent method that requires the bound on the frame address itself. Since there's no kernel placeholder for FrameAddress, I can't strengthen it there. The real blocker is inside the Inner methods—they use `admit` to hide the precondition failure, so removing that would expose the issue. Let me check if the address types ever carried type invariants historically, or if I should add them now as part of the fix.
+
+The specs for the Inner methods only require alignment (`frame.inv()` / `phys_addr.inv()`), which isn't enough to safely call `into_frame_number`. The sound minimal fix would be adding a type invariant to `FrameAddress` and `PageAligned<PhysicalAddress>` to capture the RAM-bound requirement, but that's cross-module work. Since fixing the address layer is out of scope and would require re-verifying hal modules, I'm stuck: I can't remove `admit` from any Inner method that calls `into_frame_number` without the whole function failing to verify. The only methods that don't call it are `alloc` and `alloc_contiguous`, which construct frame numbers directly from raw values.
+
+Looking closer at `alloc`: the bitmap returns an index bounded by `num_bits`, then `FrameNumber::from_raw_value` handles the case where the index exceeds the spec max by returning `None`, which the code handles gracefully. `FrameAddress::from_frame_number` is total, so `alloc` has no problematic `into_frame_number` calls and should be fully provable. The same logic applies to `alloc_contiguous`. But `free`, `share`, `refcount`, `book`, `is_covered`, and `alloc_range` all call `into_frame_number` on parameters, which blocks them. That leaves six of eight Inner methods unprovable, so I need to reconsider whether the bound issue can be resolved for the blocked ones.
+
+For the `PageAligned<PhysicalAddress>` methods, I could add the bound to the deref placeholder in the kernel frame spec, asserting that the inner physical address has a valid frame number. While this isn't provable from `from_address` alone (which only checks alignment), it's a reasonable assumption at the trust boundary—in practice, all physical addresses in Nanvix are well below the frame limit. Since `assume_specification` is already a trust boundary, adding this invariant there is justified.
+
+For the `FrameAddress` methods like `free`, `share`, and `refcount`, there's no kernel placeholder to modify. The `into_frame_number` call is on the real hal spec, so I need the bound directly on the frame address without a deref to leverage.
+
+I could try adding a kernel-level lemma that asserts the frame is bounded, but that would require an unsound axiom since it's false for the top frame. And since `FrameAddress` has its own inherent `into_frame_number` method rather than relying on deref coercion, I can't work around it that way either.
+
+The real solution might be to add a type invariant directly to `FrameAddress` itself, ensuring its constructors establish that the wrapped address is RAM-bounded.  But `from_raw_value` would then fail to verify for top-frame addresses, which either breaks the constructor or requires changing its behavior and spec.
+
+I keep circling back to the same fundamental constraint: either the bound exists and I can use it, or it doesn't and these methods can't be verified. Maybe the intended scope really is just `alloc` and `alloc_contiguous`, and the other inner methods like `free`, `share`, `refcount`, `book`, `is_covered`, and `alloc_range` are supposed to be handled through a different mechanism entirely—but they're not listed in the external_body allowlist either.
+
+Let me try one more approach: strengthen the deref placeholder to guarantee `(*result).inv()` holds, and see if that lets me handle all six methods uniformly. For `free`, `share`, and `refcount`, they call `frame.into_frame_number()` on a `FrameAddress`. If `FrameAddress` doesn't have an inherent `into_frame_number` method and instead relies on dereferencing to `PhysicalAddress`, then using the strengthened deref would work. But I'm pretty sure `FrameAddress` has its own `into_frame_number` implementation, so that won't help.
+
+I think I need to make a final decision: add a type invariant to the address types that bounds the frame number, accepting that `from_raw_value` will reject top-frame addresses and require spec changes.
+
+Actually, wait — let me step back and check what the current verification status is. If the hal modules are already verified, modifying them is risky. And I'm realizing the real issue might be simpler: `spec_max_frame_number()` is `2^52 - 2`, but a real `FrameAddress` representing a valid usize address divided by page size gives at most `2^52 - 1`. So the bound fails only for that single top frame. Maybe I can prove that any properly aligned address strictly less than `usize::MAX` stays within the bound. So the real system guarantees that every PhysicalAddress satisfies the validity invariant because from_raw_value validates the range, even though the weak placeholders don't capture this. Strengthening the deref placeholder to assert this invariant is defensible as encoding a real-system fact that the module guarantees. For FrameAddress though, I can't add a placeholder since into_frame_number is a real hal spec, so I need to handle the frame bound constraint differently. So the real issue is that `FrameAddress::from_raw_value` should validate the frame number through its chain of constructors, and if I strengthen the `PhysicalAddress::from_raw_value` placeholder to ensure the address invariant holds, then a type invariant on `FrameAddress` itself would let that guarantee propagate to any `FrameAddress` parameter. Without the type invariant, the bound doesn't carry through the parameter, so I need to add one to `FrameAddress` and make sure both `from_raw_value` and `from_frame_number` establish it—which means updating the hal address layer across multiple files.
+
+But this is a significant change with real risk, so let me first verify I'm not missing something by checking whether the bound is actually available in the current setup, and then decide if the type invariant approach is worth the blast radius or if there's a simpler workaround.
+[RESULT ✓] bash: 34:pub struct FrameAddress(PageAligned<PhysicalAddress>);
+56:impl FrameAddress {
+69:impl FrameAddress {
+87:impl FrameAddress {
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+Let me re-add the admit to `is_covered` temporarily and examine the full address type definitions to plan a type-invariant fix (the codebase-consistent pattern, as `FrameNumber` already uses).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "===PhysicalAddress full impl signatures==="; grep -n "pub fn\|fn \|veru
+
+[THINKING] FrameAddress doesn't have a Deref implementation, so calling `into_frame_number()` on it uses the inherent method directly, which means I need that bound on the frame parameter. I've worked through the full situation now, and I'm considering a simpler approach—maybe adding a kernel-side `assume_specification` for FrameAddress instead of the more complex type invariant strategy.
+
+Actually, I'm realizing I might not need to modify hal at all. The key insight is that when Rust inserts the deref call in `phys_addr.into_frame_number()`, Verus sees that deref operation and can apply its ensures clause. If I strengthen the kernel's deref placeholder to provide the invariant, then the deref result will satisfy `into_frame_number`'s precondition automatically, which solves the problem for the book/is_covered/alloc_range case without touching hal.
+
+But there's a soundness issue: the deref placeholder is generic over `T: Address`, and I'd be writing `(*result).inv()` which calls T's inv method. That works for PhysicalAddress but not necessarily for all Address types. Instead, I should express the deref's ensures in terms of the integer view — something like ensuring `spec_frame_number((*result)@) <= spec_max_frame_number()`, which is a property of the view itself and doesn't depend on T's specific invariant definition.
+
+For PhysicalAddress, this works because its inv() unfolds to exactly that frame number bound, so Verus can verify the precondition. But for VirtualAddress, this creates a problem: virtual addresses can be arbitrarily large, so asserting every deref'd PageAligned<VirtualAddress> has a valid frame number would be unsound. I need to check whether PageAligned<VirtualAddress>::deref is actually called in the system.
+
+Looking at the code, only PageAligned<PhysicalAddress> is used in frame.rs, so the generic assumption wouldn't break existing verified code—it only adds a fact. But I'm still uneasy about the soundness implications if other code instantiates PageAligned with VirtualAddress.
+
+The real blocker is FrameAddress, which has no placeholder I can strengthen. For the free/share/refcount operations, I can't discharge the frame number bound from within the kernel files alone.
+
+I'm wondering if the proper fix is to add a type invariant to FrameAddress and PhysicalAddress that ensures they're always constructed from valid frame numbers, but that's a massive scope expansion. Let me check if FrameAddress is always constructed from valid frame numbers and whether I can add a kernel-side placeholder for the into_frame_number precondition instead.
+
+Actually, looking at the tcb-allowed comment, FrameAddress::into_frame_number is already verified with a real spec in the hal layer, so I can't override it. The genuinely correct fix seems to be adding a type invariant to the address types to carry the bound, but that would require modifying constructors like from_raw_value to reject invalid addresses — which changes their postconditions and might break things like accepting top-frame raw values that currently work.
+
+This cross-module change feels too risky. Let me reconsider the task scope: maybe the expected approach is to prove what's provable with current specs (like Inner::alloc and Inner::alloc_contiguous which don't use into_frame_number), and accept that the 6 blocked methods genuinely need the address-layer bound that isn't available. Let me try strengthening the deref-placeholder for PageAligned cases first and see if that unblocks some of the methods incrementally. ically carry the type invariant, so Verus would automatically discharge the preconditions for `into_frame_number` calls on both parameters and deref results without needing explicit `use_type_invariant` calls. The tradeoff is that constructors like `from_raw_value` would need to maintain the invariant — if they produce a value violating it (like a top-frame address), verification would fail.
+
+Looking at which constructors actually build these types, I'm seeing that some take arbitrary input without validation (like `from_raw_value` and `from_virtual_address`), so they can't establish the bound. This would break verification across the hal address layer. Given how risky and extensive this change would be, I'm reconsidering whether type invariants were actually removed from these modules in the past, or how the hal code originally handled `into_frame_number` calls.
+
+The pragmatic path forward seems to be: restore the external body on instance and init, fully prove `Inner::alloc` and `Inner::alloc_contiguous` without relying on `into_frame_number` validation, and for the remaining methods that hit the dependency gap, either strengthen the placeholder specs where they verify cleanly or accept that adding type invariants to `PhysicalAddress` creates a trust boundary issue—since `from_raw_value` is a placeholder that Verus assumes satisfies the invariant, but if that assumption contradicts the invariant itself at certain call sites, we'd have unsoundness.
+
+The cleaner solution is to strengthen the `PhysicalAddress::from_raw_value` placeholder to return `Err` for out-of-range inputs, matching the real implementation's validation behavior, so the `Ok` branch can safely assert the invariant holds without creating a derivable-false scenario.
+
+Once I add type invariants to `PhysicalAddress` and `FrameAddress` (consistent with how `FrameNumber` already uses them in this codebase), I need to verify all constructors maintain those invariants—either by taking bounded inputs, being external/placeholder, or requiring explicit proofs. This is a significant blast radius, so I should first check how many constructors exist and whether this aligns with the established patterns in the codebase.
+
+The core issue is that `FrameAddress::new` takes a `PageAligned<PhysicalAddress>` but has no spec to enforce the frame number bound, so unless the `PhysicalAddress` itself carries that invariant, the type invariant on `FrameAddress` breaks at construction.
+
+My pragmatic path forward: prove the two inner allocator functions, strengthen the kernel's `PageAligned` deref placeholder to carry the frame-number bound (which is sound since these wrapped addresses are RAM-valid by design), then tackle `free`/`share`/`refcount` by reconsidering whether `FrameAddress::into_frame_number` itself could be modified to discharge its precondition differently.
+
+Rather than theorize further, I should experiment: strengthen the deref placeholder, remove the admit from `is_covered` and see if it verifies, then remove the admit from `free` to see the exact error path. This will confirm whether the bound flows through or if I need a different approach for `FrameAddress`.
+
+The risk of adding a generic frame-number bound to the deref is that it would incorrectly constrain types like `VirtualAddress` that shouldn't be frame-bounded, potentially creating unsoundness if verified code dereferences a `PageAligned<VirtualAddress>` with a high address. Rather than touch the generic deref, I should add a type invariant directly to `PhysicalAddress` and `FrameAddress` and run the full kernel verification to see what breaks—though that could be expensive in verification cycles. Let me instead be more surgical: remove the admit from `free` and capture both error locations to understand exactly where the bound is needed and whether `FrameAddress` already carries it somewhere. I'm realizing the core issue: if I make `inv()` a type invariant on PhysicalAddress, every constructor needs to prove it maintains the frame-number bound, which is risky for placeholder methods like `from_raw_value`. The simpler path might be to just leverage the existing `inv()` preconditions directly in the callers rather than promoting them to a type invariant. Let me step back and check if I'm overcomplicating this—maybe the alignment invariants already constrain the values enough, and I just need to be more careful about when `into_frame_number` gets called.
+[RESULT ✓] bash: ===PhysicalAddress full impl signatures===
+40:#[verus_verify(external_derive)]
+48:impl PhysicalAddress {
+49:    pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
+61:    pub fn into_virtual_address(self) -> VirtualAddress {
+78:    pub fn from_frame_address(frame_addr: FrameAd...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== callers of into_frame_number in kernel (verified context) ==="; gre
+
+[THINKING] I'm concerned about the scope of modifying the HAL address layer since it touches multiple modules, so let me step back and verify the actual error by running the current state and checking the admit status. I should also look at the git history to understand what the repo's intended state is and whether there's an established pattern I should follow.
+
+Let me check how a sibling kernel module that's already verified handles the into_frame_number field.
+[RESULT ✓] bash: === callers of into_frame_number in kernel (verified context) ===
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs:105:            paddr.into_frame_number(),
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs:143:            paddr.into_frame_number(),
+src/kernel/src/hal/arch/shared/mem/mmu...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== page_table.rs around 575-595 ==="; sed -n '560,600p' src/kernel/src
+
+[THINKING] I need to trace through the verified kernel code that calls `into_frame_number` to see how they satisfy the precondition — specifically checking `page_table.rs:582` and `page_directory.rs:105` in the hal/arch module to understand what guarantees they provide.
+[RESULT ✓] bash: === page_table.rs around 575-595 ===
+            return Err((0, Error::new(ErrorCode::InvalidArgument, reason)));
+        }
+
+        // Validate that the present bit is set.
+        if !pte_flags.is_present() {
+            let reason: &str = "present bit not set in pte_flags";
+            error!("fi...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== fill signature/spec ==="; sed -n '500,560p' src/kernel/src/hal/arch
+
+[THINKING] I'm trying to figure out whether `fill` is actually verified and whether it can legitimately call `into_frame_number()`. The real question is whether any verified function successfully uses this method, and if so, how it manages to do that.
+[RESULT ✓] bash: === fill signature/spec ===
+15:    /// - `base_address`: Page-aligned physical address of the first frame.
+38:    pub fn fill(
+42:        base_address: FrameAddress,
+--- raw lines 520-560 ---
+    ///
+    /// Upon success, the number of frames mapped is returned and the page table entries are
+    ///...
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== phys.spec.rs ==="; cat src/kernel/src/hal/mem/types/address/phys.sp
+
+[THINKING] The `fill` function lacks verification annotations, so it can't serve as a verified caller for `into_frame_number`. This reveals a real gap in the verified codebase—there's no existing verified pattern for calling `into_frame_number` with an arbitrary FrameAddress, and the mm::phys frame.rs Inner methods appear to be the first verified code attempting this.
+
+The intended solution seems to be encoding the bound as a type invariant on FrameAddress/PhysicalAddress itself. The comments in phys.rs and phys.spec.rs hint at this design—they acknowledge type invariants and note that `into_frame_number` should be total. I need to examine the spec file more closely to understand how they're planning to structure this invariant.
+[RESULT ✓] bash: === phys.spec.rs ===
+use crate::hal::mem::spec_page_size;
+use vstd::arithmetic::power2::pow2;
+
+verus! {
+
+// =================================================================================================
+// Abstract models of frame-number quantities, realized by the verified `arch` crate.
+//
+// `F...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== FrameAddress::inv ==="; grep -rn "fn inv\|spec_frame_number\|spec_m
+
+[THINKING] I'm noticing a distinction between `PhysicalAddress::inv()` and the alignment invariant that `PageAligned<PhysicalAddress>` requires. The inner methods need the PageAligned alignment invariant specifically, not just the PhysicalAddress invariant. But there's a mismatch — the precondition for operations like book/is_covered/alloc_range expects `phys_addr.inv()`, yet the parameter is PageAligned, which has its own alignment requirements.
+
+I need to check whether `PageAligned::inv()` and `FrameAddress::inv()` already bundle in their respective alignment constraints, or if they're separate from the inner address invariants.
+[RESULT ✓] bash: === FrameAddress::inv ===
+5:    spec_frame_number,
+8:    spec_max_frame_number,
+
+=== frame.spec.rs full ===
+// Spec helpers for `FrameAddress` are shared with the `phys` sibling module: a frame's abstract
+// state is the physical address (`int`), its frame number is `self@ / spec_page_size()`, and i...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== FrameAddress impl in frame.rs (hal) ==="; grep -n "fn \|inv\|verus_
+
+[THINKING] I'm noticing there's a placeholder in the hal frame.spec.rs file for `PhysicalAddress::from_raw_value` that needs to validate the raw value matches the result, but I need to check whether this file is actually in scope to modify since the task restrictions mention mm/phys files, and this is in a different location under hal/mem/types/address.
+
+The spirit of the constraints seems to be avoiding changes to dependency specs, so I should probably leave that alone. Instead, I need to track down where `FrameAddress::inv` is defined since it's being called in the Inner free/share/refcount logic.
+[RESULT ✓] bash: === FrameAddress impl in frame.rs (hal) ===
+17:    PageAligned,
+32:#[verus_verify(external_derive)]
+34:pub struct FrameAddress(PageAligned<PhysicalAddress>);
+42:pub open spec fn spec_page_size() -> int {
+46:impl View for FrameAddress
+50:    closed spec fn view(&self) -> int
+56:impl FrameAddress {
+57...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 44. }
+45. 
+46. impl View for FrameAddress
+47. {
+48.     type V = int;
+49. 
+50.     closed spec fn view(&self) -> int
+51.     {
+52.         self.0@
+53.     }
+54. }
+55. 
+56. impl FrameAddress {
+57.     pub open spec fn inv(&self) -> bool
+58.     {
+59.         self@ % spec_page_size() == 0
+60.     }
+61...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== FrameNumber spec_max / number.spec.rs ==="; cat src/libs/arch/src/x
+
+[THINKING] I see that `FrameAddress::into_frame_number` needs two separate preconditions: the alignment check from `self.inv()` and a bound check that `spec_frame_number(frame@) <= spec_max_frame_number()`. The Inner methods only satisfy the alignment part, so I need to figure out how to establish that bound for them.
+
+The key is that `spec_max_frame_number()` equals `2^52 - 2`, while `spec_frame_number(frame@) = frame@ / 4096`. Since frame@ is at most `usize::MAX`, dividing by 4096 gives at most `2^52 - 1`, which exceeds the max only for addresses in the very top page (above `(2^52-1)*4096`). So the bound almost always holds—it only fails for the topmost page. To discharge it, I'd need to prove the frame address isn't in that top page, which would have to come from the `internal_inv` constraints in the FrameAllocView, but those constraints apply to the bitmap's coverage of physical memory, not necessarily to arbitrary caller-supplied frame parameters.
+
+This means the only sound approach is a type invariant on `FrameAddress` or `PhysicalAddress` that carries the bound. For `PhysicalAddress`, if it has a type invariant enforcing the bound, then dereferencing it automatically satisfies the precondition for `into_frame_number()`. But `FrameAddress` currently has an alignment invariant, not this bound—so I need both the alignment invariant from `FrameAddress::inv` and the frame number bound to be satisfied together.
+
+The challenge is that strengthening `FrameAddress::inv` to include the bound would effectively add a precondition to callers of Inner methods, which is forbidden. Instead, I can define a separate type invariant predicate on `FrameAddress` (distinct from `inv()`) that enforces the bound, and similarly add a type invariant to `PhysicalAddress` for its bound. This way, all constructed values automatically carry these invariants, and I need to ensure the constructors maintain them.
+
+Looking at the constructors: `from_virtual_address` is external so Verus trusts the result; `from_frame_address` and `from_into_frame_address` can derive the bound from `FrameAddress`'s type invariant; `from_mmio_address` already has a requires clause; `from_number` is provable since a bounded `FrameNumber` produces a bounded address. But `Address::from_raw_value` is the real problem — it's a trusted external function that currently assumes any result satisfies the invariant, which breaks soundness if the value is out of bounds. Fixing this properly would require modifying the hal specification and potentially introducing unsoundness, which touches many dependent modules and makes passing full verification unlikely.
+
+The core issue is a dependency-spec insufficiency: the hal layer doesn't give verified callers a way to confirm a `FrameAddress` or `PhysicalAddress` has a representable frame number, even though in reality all constructed addresses are frame-number-representable due to RAM bounds. The cleanest sound fix is adding a type invariant to `PhysicalAddress` and `FrameAddress` that reflects this reality — matching the existing pattern used by `FrameNumber` and `PageTableEntry`. I need to test this approach empirically by adding the invariants and running full kernel verification to see what breaks, but since I can't leave admits and can't weaken specs, cross-module changes are required to complete the task.
+
+Actually, there might be a narrower fix: if `spec_max_frame_number()` is truly `2^52-1` instead of `2^52-2`, then the bound `spec_frame_number(frame@) <= spec_max_frame_number()` becomes trivially true for any frame address (since `frame@ / 4096 <= 2^52-1` always holds when `frame@` is a `usize`). Let me check the actual definition of `FrameNumber::spec_max()` in the arch module to verify whether this shortcut is viable.
+[RESULT ✓] bash: === FrameNumber spec_max / number.spec.rs ===
+verus! {
+
+//==================================================================================================
+// View
+//==================================================================================================
+
+impl View for FrameNumber {
+    t...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] So the maximum frame number works out to 2^52 - 2, and when I calculate the frame number for the maximum address value, I get 2^52 - 1, which means there's a one-frame difference between the spec's maximum and what the actual calculation produces.
+
+The key insight is that this top frame at address usize::MAX - 4095 is deliberately excluded by the architecture's design — FrameNumber::MAX is defined to exclude it with the "-1" in the formula. So the type invariant is actually sound and intentional: valid physical addresses can never represent that topmost frame, which mirrors how FrameNumber itself reserves it as invalid.
+
+To fix this properly, I need to add the same type_invariant attribute to PhysicalAddress that FrameNumber already has. The challenge is that PhysicalAddress has many construction methods scattered across phys.rs — from_virtual_address, align_up, align_down, from_frame_address, from_number, and others — and each one will now need to prove the invariant holds for its result. Some of these methods are external or unspecified, which complicates the proof burden.
+
+The honest assessment is that this is a substantial but bounded task requiring careful coordination across phys.rs, phys.spec.rs, and the frame module specs. However, given the stated scope limits and the fact that modifying hal-level specs is arguably out of bounds, the more appropriate approach is to prove what I can (alloc, alloc_contiguous, and their wrappers) and document the dependency issue for the functions blocked by into_frame_number.
+
+I'm now considering whether adding a type invariant to the address types themselves—reflecting the alignment reality that already exists—would be a legitimate spec strengthening rather than a modification of the target specs. Since the ultimate goal is making verify pass and the specs need to be strong enough for upstream callers, adding this invariant could be justified. Let me try the empirical approach: implement the type invariant on PhysicalAddress, fix the constructors, and run make verify-kernel to see how far this gets me.
+
+Actually, there's an elegant path here—if PhysicalAddress carries the bound as a type invariant, then FrameAddress wraps PageAligned<PhysicalAddress>, and the inner PhysicalAddress's view would automatically satisfy the spec_frame_number bound. The challenge is whether I can extract and use that inner invariant from within FrameAddress::into_frame_number, but that function is already verified with its current preconditions, so I shouldn't need to modify it.
+
+What I really need is for the caller—Inner::free—to discharge the precondition by proving spec_frame_number(frame@) <= spec_max. If FrameAddress itself has a type invariant asserting that bound, I can call use_type_invariant(frame) to extract it. The tricky part is ensuring FrameAddress's constructors maintain that invariant. The new function takes PageAligned<PhysicalAddress>, and if it's external with no spec, Verus will assume the type invariant holds on the result—which could be unsound if new is called with an unbounded address in verified code. I need to check whether FrameAddress::new is actually used in the verified allocator code or if it only uses bounded constructors like from_frame_number.
+
+For from_raw_value, the placeholder currently allows Ok for any raw value, but to maintain the type invariant, it should only return Ok when the value satisfies the frame number bound. I'd need to strengthen the PhysicalAddress::from_raw_value placeholder to guarantee that on Ok, the resulting address satisfies the invariant—either by constraining the input value or by asserting pa.inv() on the result. The cleanest approach for soundness is to have the placeholder state that Ok(pa) implies both pa@ == value and pa.inv(), since that's what the real hardware would enforce.
+
+For the PageAligned<PhysicalAddress> cases like book and is_covered, when dereferencing to call into_frame_number, I need to apply the type invariant to the dereferenced reference. The challenge is that use_type_invariant expects a value, not a reference, so I'd need to dereference and then apply the invariant proof—something like use_type_invariant on the dereferenced result. This gets tricky because the deref returns a reference to existing data, not a fresh binding I can easily work with.
+
+I'm overcomplicating this. Let me step back and look at the actual Inner method signatures in frame.rs and their requires clauses, plus where the admits are, to see if the bound precondition is already there or if I'm missing something fundamental about what's expected.
+[RESULT ✓] view: 505.                 Ok(())
+506.             },
+507.             Err(error) => {
+508.                 #[cfg(not(verus_keep_ghost))]
+509.                 error!("{error:?} (phys_addr={phys_addr:?})");
+510.                 Err(error)
+511.             },
+512.         }
+513.     }
+514. 
+515.     ///
+516...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== PageAligned file location ==="; grep -rln "struct PageAligned\|impl
+
+[THINKING] I'm tracing through the type hierarchy to understand how `is_covered` works—specifically, `phys_addr.into_frame_number()` where `phys_addr` is a `PageAligned<PhysicalAddress>`, and how `region.start()` on a `TruncatedMemoryRegion<PhysicalAddress>` fits into this. I need to check what methods `PageAligned` exposes and what `region.start()` actually returns.
+[RESULT ✓] bash: === PageAligned file location ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+=== PageAligned into_frame_number / inv / from_address ===
+--- find file ---
+src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/t...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== page.rs (aligned) signatures ==="; grep -n "fn \|verus_spec\|requir
+[RESULT ✓] bash: === page.rs (aligned) signatures ===
+22:use ::core::ops::Deref;
+40:impl<T: Address> PageAligned<T> {
+42:    #[verus_spec(ret =>
+43:        ensures
+45:                Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+49:    pub fn from_address(addr: T) -> Result<Self, Error> {
+58:    pub fn int...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== mm/phys/frame.spec.rs ==="; cat src/kernel/src/mm/phys/frame.spec.r
+
+[THINKING] I'm tracing through how `into_frame_number()` gets called on a `PageAligned<PhysicalAddress>` — the `Deref` trait implementation on `PageAligned` resolves to the underlying `PhysicalAddress` type, which has the actual method. The deref operation itself is verified by a kernel placeholder that ensures the dereferenced value maintains the same address semantics.
+
+For the verification to work, I need `PhysicalAddress` to have a type invariant that Verus can assume when the deref returns a reference — this way, when `into_frame_number()` requires `self.inv()`, it's automatically satisfied. Similarly, for `FrameAddress` parameters in free/share/refcount operations, I need a type invariant that captures the frame number bound constraint, then use `use_type_invariant()` in the proof to discharge that precondition.
+
+The approach is to add type invariants to both types that encode their alignment and bound requirements. The real challenge is that FrameAddress can't easily access the inner PhysicalAddress's type invariant, so the cleanest approach is to give FrameAddress its own bound type invariant. This means strengthening the constructors—new and from_raw_value need to enforce the bound, which could affect verified code throughout the architecture. Given how many places construct and use these types, the risk to the build is substantial, so I need to weigh whether this scope aligns with what the reviewer actually expects for the frame.rs changes. I'm going to take a pragmatic approach and implement the type invariant strategy, then run the verification suite to see the actual impact. First, I need to examine the key files—the deref placeholder in mm/phys/frame.spec.rs, the full phys.rs implementation, and trace through how FrameAddress and PhysicalAddress constructors are currently specified and verified.
+[RESULT ✓] bash: === mm/phys/frame.spec.rs ===
+verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+// =================================================================================================
+// Dependency contracts for not-yet-...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The issue is that the generic `deref` method on `PageAligned<T>` won't have the `inv()` method I need since `T` is just a generic `Address` type. But I could potentially add a second `assume_specification` that targets the concrete instantiation `PageAligned<PhysicalAddress>` instead, though Verus requires `assume_specification` to match a specific function signature, and the generic version is technically one function regardless of how it's instantiated.
+
+I can't add a PhysicalAddress-specific bound to the generic deref spec because properties like `spec_frame_number(a@) <= spec_max` only hold for `PhysicalAddress`, not for all `Address` types. This means the only viable path forward is to add a type invariant to `PhysicalAddress` itself, so the deref result automatically carries the necessary properties. I need to assess the impact of adding this invariant by examining the existing verification in `phys.rs`, and I'm reconsidering whether the task actually expects me to discover that strengthening the dependency specs with a type invariant is the intended solution rather than proving all six functions directly.
+[RESULT ✓] view: 40. #[verus_verify(external_derive)]
+41. #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+42. pub struct PhysicalAddress(VirtualAddress);
+43. 
+44. //==================================================================================================
+45. // Implementations
+46. //=================...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm working through how adding a type invariant to PhysicalAddress would affect the verification of its constructor methods. Each construction via `Self(...)` would need to prove the invariant holds, so I'm tracing through what constraints from_mmio_address and the other builders would need to satisfy.
+
+For from_number specifically, I can't directly use type_invariant on FrameNumber across crates, but the bound `frame@ <= spec_max` is available through the postcondition of into_raw_value, so the invariant is still provable even though I'd need to add that proof explicitly. And for into_frame_number, since it consumes self by value, the type invariant on the input is automatically assumed as a precondition, which actually makes the existing requires clause redundant.
+
+Now looking at the non-verified impl blocks: the one starting at line 48 (from_virtual_address, into_virtual_address, etc.) has no #[verus_verify] attribute, so it's external and Verus assumes the type invariant holds on its results—which is sound because from_virtual_address validates addresses against actual RAM bounds. The Address trait impl block at line 179 also appears to lack the attribute, making it external as well, so its results are similarly assumed to satisfy the invariant.
+
+The critical soundness issue is with from_raw_value: the kernel placeholder currently only specifies that Ok(pa) means pa@==value, but doesn't enforce that pa.inv() holds. For an arbitrary value like top-frame, this creates a contradiction—Verus would assume the result satisfies the invariant even though top-frame violates it, allowing false proofs. The fix is to strengthen the placeholder's ensures clause to require both pa@==value AND pa.inv(), which forces from_raw_value to return Err for out-of-range values, preventing the unsoundness.
+
+This change is safe for existing callers since the real implementation already validates and returns Err for out-of-range inputs—verified code couldn't have relied on Ok for invalid values. However, the blast radius is large because PhysicalAddress is used throughout the kernel, so I need to check whether other verified impl blocks (like align_up and align_down in the Address trait) would break under this stricter invariant.
+[RESULT ✓] view: 178. 
+179. impl Address for PhysicalAddress {
+180.     ///
+181.     /// # Description
+182.     ///
+183.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+184.     ///
+185.     /// # Parameters
+186.     ///
+187.     /// - `raw_addr`: The raw value.
+188.     ///
+189.     /// # Returns
+1...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+I found a much cleaner, in-scope solution. Instead of `into_frame_number()` (which needs the unprovable frame-number bound and can panic), I can compute the frame index via `into_raw_value() / FRAME_SIZE` — same value, no bound precondition, no panic. Let me verify the region API and PageAligned specs support this.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== region.rs API: start/size/inv specs ==="; grep -n "fn start\|fn siz
+
+[THINKING] The `impl Address for PhysicalAddress` block at line 179 lacks the `#[verus_verify]` attribute, meaning it's external and not verified—Verus will assume the type invariant holds for any results it produces. The only verified implementation constructing PhysicalAddress is the one at line 90, which includes `from_mmio_address`, `from_number`, and `into_frame`.
+
+Now I'm considering the `#[verifier::type_invariant]` requirement: all methods in verified impls that take `&mut self` or construct `Self` must maintain the invariant, and Verus needs `use_type_invariant` support for the type. The comment at line 146 mentions that cross-crate `use_type_invariant` on `FrameNumber` is unsupported (in the arch crate), but `PhysicalAddress` is in the kernel crate, so it should work here. The type invariant spec function must be declared in the same crate as the struct with accessible fields—`PhysicalAddress` has a single field and uses `self@` in the view, which is fine. Verus will verify that every `PhysicalAddress` construction in verified code establishes the invariant; since the only verified constructions are in the line-90 block and external blocks don't count, this should be safe. For `FrameAddress`, I'm setting up a type invariant where the bound checks that the frame number stays within the maximum allowed value.
+
+Since `PhysicalAddress` now has its own type invariant guaranteeing the bound, I'm wondering if I can derive `FrameAddress`'s bound from the inner `PhysicalAddress`'s invariant without a separate `FrameAddress` type invariant. However, the inner `PhysicalAddress` is wrapped in private fields (`PageAligned` and then the inner `PhysicalAddress`), so I can't access it from other modules to call `use_type_invariant`. This means I do need a `FrameAddress` type invariant to expose the bound. For maintenance, the verified `FrameAddress` constructions are in the `#[verus_verify] impl` block—`from_raw_value` and `from_frame_number`—where `from_raw_value` constructs via `PageAligned::from_address(PhysicalAddress::from_raw_value(...))`, and I need to establish that the result's frame number stays within the maximum bound.
+
+For `from_frame_number`, the result's frame number equals the input frame number (which is bounded since `FrameNumber` is a bounded type), but I need to extract that bound from `FrameNumber` itself, which requires accessing its type invariant across crate boundaries—something that's currently unsupported. The current implementation uses a lemma about frame base alignment, but to complete the proof I need to trace where `FrameNumber`'s bound comes from.
+
+The cleanest fix is to strengthen `PhysicalAddress::from_number`'s postcondition to explicitly expose that the result satisfies the type invariant (i.e., `spec_frame_number(result@) <= spec_max_frame_number()`). Since `PhysicalAddress` must establish its invariant anyway to construct the type, exposing this as an ensures clause is natural and doesn't weaken anything.
+
+The scope of changes is substantial: I need to update the type invariant attributes in the spec files, strengthen the placeholder postconditions, add block proofs to the implementation files, and then re-verify all kernel modules that depend on these types. It's a significant refactoring, but the approach is sound and consistent with the codebase's verification strategy.
+
+Before committing to adding a type invariant to `PhysicalAddress`, I should survey how many verified construction sites across the kernel would be affected—particularly in page tables and regions—to understand the blast radius. Alternatively, I could avoid touching the type invariant entirely and instead change how the three methods (`is_covered`, `book`, `alloc_range`) compute the frame number, bypassing `into_frame_number` altogether to sidestep the need for the bound.
+
+The key insight is that these methods only need the frame number as a `usize` for bitmap indexing, not as a bounded `FrameNumber` type. I can compute it directly via `phys_addr.into_raw_value() / FRAME_SIZE` (or bit-shift equivalent), which gives the same value as `into_frame_number().into_raw_value()` without requiring any bound precondition. This changes only the implementation—the spec remains unchanged—and is provable from the existing `PageAligned` placeholder and division semantics.
+
+For `FrameAddress`, the same logic applies: `frame.into_raw_value() / FRAME_SIZE` computes the frame number without calling `into_frame_number()`, avoiding the panic that would occur for the top frame. This is actually more robust—invalid inputs like the top frame would gracefully fail the bitmap bounds check rather than panic—and doesn't violate the spec since the division matches the spec's mathematical definition. So the division approach `raw / FRAME_SIZE` should match the spec's integer division semantics, since `FRAME_SIZE == spec_page_size()` and both use the same constant value. I need to verify that `region.start()` returns a `FrameAddress` and that the region API specs confirm `region.start()@` corresponds to `region@.start`, then I can apply the same division-based fix to `alloc_range` without needing cross-module type surgery. This keeps the change localized to the frame module. Let me implement `is_covered` first to test whether this approach actually works, then verify that Verus can reason about the division properties and constant equivalence. Now I need to verify that FRAME_SIZE is accessible and check what the region API returns for start() and size(), then I can implement is_covered with the division approach and test it incrementally.
+[RESULT ✓] bash: === region.rs API: start/size/inv specs ===
+67:pub struct MmioCachePolicy {
+145:pub struct MemoryRegion<T: Address> {
+210:    #[verus_spec(result =>
+211:        ensures
+212:            result@ == self@.start,
+214:    pub fn start(&self) -> T {
+219:    #[verus_spec(result =>
+220:        ensures
+223: ...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 368. 
+369.     /// Returns the first valid address that lies in the target memory region.
+370.     #[verus_spec(result =>
+371.         ensures
+372.             result@ == self@.start,
+373.     )]
+374.     pub fn start(&self) -> PageAligned<T> {
+375.         self.0.start()
+376.     }
+377. 
+378.     /...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Region API confirms the division approach works. Let me implement `is_covered` first to validate the approach before applying to all 6 methods.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm verifying that `region.start()` and `region.size()` return the correct types and values—the start as a page-aligned physical address and size as a usize—which align with the spec's expectations when converting to raw values and dividing by frame size. Now I need to trace through the alloc_range implementation to check for the bug mentioned in the notes.
+
+The code calculates the end frame as `start_frame_number + region.size()/FRAME_SIZE - 1` and loops inclusively, which gives the range `[start/PS, start/PS + size/PS - 1]`. This matches the spec's half-open range `[start/PS, (start+size)/PS)` only when both start and size are page-aligned. Since `region.start()` is guaranteed to be page-aligned, I need to verify that `region.size()` is also aligned—that requires checking the region's invariant. For now, I'll focus on implementing the division approach using `mem::FRAME_SIZE` to match the spec more directly, starting with `is_covered` and validating it before updating all six functions.
+
+Now I need to check the current state of `is_covered` and restore the admit that was removed from lines 535-538.
+[RESULT ✓] view: 534.     )]
+535.     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+536.         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+537.         frame_number < self.bitmap.number_of_bits()
+538.     }
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat -n src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to examine the View definition in frame.proof.rs to understand the allocated_frames, free_frames, and internal_inv properties before I can write the is_covered proof.
+[RESULT ✓] bash: 1	verus! {
+     2	
+     3	use super::FrameAllocView;
+     4	use crate::hal::mem::spec_page_size;
+     5	use vstd::map::*;
+     6	
+     7	/// Helper: convert a bitmap index to a frame (physical) address.
+     8	pub open spec fn frame_addr_of(i: int) -> int {
+     9	    i * spec_page_size()
+    10	}
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== page.spec.rs (PageAligned inv/spec_aligned/view) ==="; cat src/kern
+
+[THINKING] I'm working through the logic for the `is_covered` function. The frame number is calculated by dividing the physical address by the page size, and it's covered if that frame number is within the valid range. I need to prove this is equivalent to checking whether the address exists in either the allocated or free frames sets, where allocated frames are those with set bits and free frames are those without set bits in the valid range. I'm finishing the backward direction: if `free.contains(a)`, then there exists an index where `0 <= i < num_bits` and `a == i*PS`, which means `fn == i`, so `fn < num_bits` holds. Now I need to verify the key invariants: that `phys_addr.inv()` guarantees page alignment, that the bitmap invariant ensures all set bits are within bounds, and that multiplication cancellation works when `PS > 0`. Let me check the bitmap library and PageAligned definitions to confirm these properties are available.
+[RESULT ✓] bash: === page.spec.rs (PageAligned inv/spec_aligned/view) ===
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+// Success condition for the validating constructor, stated purely on the abstract
+// address value. `from_address` validates, it does NOT normalize: success requires the
+// *input* to already be...
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn inv\|wf()\|number_of_bits\|fn view\|impl.*Bitmap\|self@.wf\|@.num
+
+[THINKING] I'm checking whether `Bitmap::inv()` includes the well-formedness constraint, since `BitmapView::wf()` guarantees that set bits fall within the valid range, and I need to verify that the inversion operation preserves this property in the spec.
+[RESULT ✓] bash: 24:impl BitmapView {
+88:            self.wf(),
+151:    /// If a free range of size n exists starting at p, then usage <= number_of_bits - n.
+154:            self.wf(),
+198:            self.wf(),
+214:    /// If usage equals number_of_bits, all bits are set.
+215:    pub proof fn lemma_usage_equals_num...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn number_of_bits" src/libs/bitmap/src/lib.rs; sed -n '/pub fn numbe
+
+[THINKING] Looking at the `Bitmap::inv()` method, I can see it establishes that `self@.wf()` holds and `number_of_bits` equals `num_bits`, which means `internal_inv` properly leads to the inverted bitmap with the correct well-formedness properties. Now I need to check what the `number_of_bits()` function guarantees in its ensures clause.
+[RESULT ✓] bash: 211:    pub fn number_of_bits(&self) -> usize {
+    pub fn number_of_bits(&self) -> usize {
+        self.number_of_bits
+    }
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 200.     ///
+201.     /// The number of bits in the bitmap.
+202.     ///
+203.     #[verus_spec(result =>
+204.         requires
+205.             self.inv(),
+206.         ensures
+207.             result as int == self@.num_bits,
+208.             result > 0,
+209.             result < u32::MAX as usize,...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the `is_covered` method now, using `self.bitmap.inv()` from the internal inversion function and computing the frame number through division to establish the equivalence proof.
+
+The tricky part is that `into_raw_value()` consumes `phys_addr`, so I can't reference it directly in the proof afterward — but Verus preserves the spec value of consumed parameters for the postcondition, so I can bind the raw value and reason about it through that binding instead of trying to use `phys_addr@` after the move.
+
+Now I'm working through the equivalence: I need to show that `result` (which is `frame_number < number_of_bits()`) is equivalent to the ensures condition `allocated.contains(phys_addr@) || free.contains(phys_addr@)`. The key insight is that the bitmap contains entries for frame numbers in the valid range, so a frame number is contained if and only if it's less than the number of bits. I'm setting up the proof by establishing that the raw address value equals the frame number times the frame size, using the alignment property from `phys_addr.inv()`, then showing both sides of the equivalence reduce to the same frame number comparison. Now I'm working through the membership equivalence for the allocated frames. If `frame_number < num_bits` and `set_bits.contains(frame_number)`, then the page address is allocated; otherwise it's free. For the proof, I'll provide `frame_number` as the witness for the existential in the backward direction. I need to be careful with the trigger on `set_bits.contains(i)` in the View's allocated_frames definition, so I'll assert membership with explicit witnesses. The key lemma I'll need is cancellation: if `i*PS == fn*PS` and `PS > 0`, then `i == fn`, which might require nonlinear arithmetic. Before I write the proof, I should verify what `mem` refers to in the imports and whether Verus already knows that `mem::FRAME_SIZE as int == spec_page_size()`.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "fn spec_page_size\|PAGE_SIZE\b" src/kernel/src/hal/mem/mod.rs src/k
+
+[THINKING] I'm working through the relationship between `mem::FRAME_SIZE` and `arch::mem::FRAME_SIZE`, and checking whether the equivalence `FRAME_SIZE as int == spec_page_size()` is provable given that the architecture verifies these constants are equal.
+[RESULT ✓] bash: ---
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:3:use crate::hal::mem::spec_page_size;
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:9:    addr_view % spec_page_size() == 0
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:16:        self@ % spec_page_size() == 0
+sr...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 36. verus! {
+37. 
+38. // The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
+39. // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+40. // that `arch` carries a real verified spec for `PAGE_SIZE`, that placehold...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+Now I'll implement `is_covered` with the division approach and add a supporting lemma. Let me make the edits:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm implementing the `is_covered` function using a division approach, and I need to verify that the frame size constant matches the spec's page size—I'll assert it and let Verus handle the constant evaluation, adding a lemma if needed.
+
+Writing is_covered function... Writing the lemma... Writing the proof function... Handling the two cases separately to extract the witness for whichever condition holds. I need to unfold the internal invariant to access the bitmap's well-formedness property, which should be available within the same module even though it's marked as closed. Writing the implementation...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to revert that change and restore the opening brace I accidentally removed.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+Now add the lemma to frame.proof.rs before the closing `}`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+Now let me run verification to validate the `is_covered` approach:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+
+[THINKING] I'm hitting a verification issue with the frame address lemma — when I assert that `allocated_frames` contains a physical address, Verus needs to instantiate an existential quantifier with the specific frame number, but it's not automatically connecting that the frame number I'm using is the witness that satisfies the condition.
+
+I also need to verify that `pa == ps * frame_number` follows from the fundamental division-modulo lemma, which requires having `pa % ps == 0` and `frame_number == pa / ps` in scope as preconditions. Let me run the verification on just the `is_covered` method to see if these constraints resolve, then check the overall module status.
