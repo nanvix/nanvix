@@ -432,3 +432,19 @@ Turn 23
 [TOOL] report_intent: Running full verify regression
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; timeout 1200 make verify 2>&1 | tail -50
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1357:42
+     |
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                            ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Full `make verify` completed — all crates pass with 0 errors. The kernel `admit=4`/`external_body=23` are pre-existing items in out-of-scope modules. Let me confirm the overall make exit status and that the arch module specifically is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; timeout 1200 make verify >/tmp/fullverify.log 2>&1; echo "MAKE EXIT: $?"; echo "=== per
+
+[THINKING] The full verification run passed with zero errors across all crates and the kernel. The kernel has some pre-existing admits and external body references that aren't related to my changes, and my arch module is clean with no admits. I'm just confirming that the arch portion of the verification also came through successfully.
