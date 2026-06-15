@@ -68,3 +68,54 @@ The real issue is that `frame::alloc()` is an external_body function with no pos
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+[RESULT ✓] bash: error: postcondition not satisfied
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+error: postcondition not satisfied
+   |...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Confirmed: all 4 lemmas fail their postconditions without `admit()` — they take the post-state (`post`/`m@`) as **free parameters** and assert it equals a derived value, so they are not theorems at all; they are pure axiom-injectors for the §8 global-token attachment. Let me restore and verify clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs && gre
+
+[THINKING] All four lemmas are failing their postconditions when I remove the `admit()` calls—they're treating `post` and `m@` as free parameters and asserting equality that's simply false. These are essentially axiom injectors for the global-token attachment in section 8. The real problem is that making them genuine theorems would require actual preconditions that determine the output, but the output depends on the global allocator's effect, which is unmodeled since `frame::alloc` is an external body with no view-postcondition. I'm trying to figure out whether there's a sound way forward here.
+
+The constraint is tight: I'd need either a `tracked` token field threaded through the allocator signatures (which means changing signatures—forbidden), or a human-approved axiom linking the physical view to the global instance. I can't soundly eliminate these without one of those. But I'm second-guessing myself on whether the expectation is that these lemmas should be restructured to compute the post-state instead of taking it as a parameter. Even if I could change the lemma signature to return the computed post-state, the caller would still need to verify that the actual `self@` after the exec `frame::alloc()` call matches that computed result—and that fact still only comes from the global allocator's unmodeled behavior.
+[RESULT ✓] bash: 4
+ M src/kernel/src/mm/phys/manager.proof.rs
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff --stat src/kernel/src/mm/phys/manager.proof.rs; echo "---"; git di
+
+[THINKING] I'm seeing the file marked as modified, but verify.sh should have auto-committed it. Let me check the actual diff to see what changed, or verify if it's byte-identical to what's already committed since I restored from backup.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.proof.rs | 4 ++++
+ 1 file changed, 4 insertions(+)
+---
+diff --git a/src/kernel/src/mm/phys/manager.proof.rs b/src/kernel/src/mm/phys/manager.proof.rs
+index aa6e8e978..ab0de22e6 100644
+--- a/src/kernel/src/mm/phys/manager.proof.rs
++++ b/src/kernel/src/mm/phys/manager.pr...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -5
+
+[THINKING] So verify.sh auto-committed a broken version with the admits removed, and my backup restored the original—that's why git is showing 4 insertions now. I need to check the commit log to confirm the broken version actually got committed.
+[RESULT ✓] bash: c9415c326 [verus] verify FAIL: kernel::mm::phys::manager (14 verified, 4 errors)
+1c02e6da1 [verus-ai] cheating-elimination cheating-fix: phys-kframe
+ec5fb1e3e docs(phys-kframe): pass-2 cheating-fix response; ledger ExLinkedList type-spec
+06012fa8f [verus] verify PASS: kernel::mm::phys::kframe (cache...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The auto-commit captured my experimental (broken) version. My restore brings back the 4 admits. Let me verify it passes and commit the restoration.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+
+[THINKING] The auto-commit picked up the broken version, so I'm restoring the four admits that were lost and need to verify the fix works before committing it back to get the tree into a passing state.

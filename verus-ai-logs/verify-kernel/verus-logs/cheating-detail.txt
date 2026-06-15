@@ -5,6 +5,10 @@
     - mm/phys/frame.rs:1416 free: external_body
     - mm/phys/frame.rs:1458 book: external_body
     - mm/phys/frame.rs:1479 alloc_range: external_body
+    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - mm/phys/manager.proof.rs:153 lemma_user_bulk_err_restored: admit
     - mm/phys/manager.rs:104 init: external_body
     - mm/phys/manager.rs:536 kernel_watermark: external_body
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
