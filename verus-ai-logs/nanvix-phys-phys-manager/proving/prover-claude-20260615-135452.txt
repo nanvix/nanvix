@@ -633,3 +633,19 @@ Turn 36
 ────────────────────────────────────────────────────────────
 Now run the module verification to confirm 0 admit and 0 errors.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verif
+[RESULT ✓] bash: verification results:: 82 verified, 0 errors (partial verification with `--verify-*`)
+  82 verified
+  0 errors
+    ⚠️  external_body: 18
+  Global: assume=0 external_body=18 admit=3 trusted=0 cfg_gate=12
+  Unverified functions:
+  verification: 82 verified, 0 errors (exit 0)
+  cheating: assume=0 exter...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Module `mm::phys` now has 0 admit. Let me confirm the full cheating breakdown and that all external_body are TCB-listed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | sed -n '/Cheating Pat
+
+[THINKING] I'm checking the module-specific cheating detection for mm::phys and confirming that the admit count is zero at the module level, with the global admit=3 coming from other modules like identity_map. The external_body count of 18 is expected since those entries are all listed in the tcb-allowed list, which explains why the CHEATING_DETECTED status appears.
