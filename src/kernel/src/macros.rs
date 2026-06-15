@@ -47,6 +47,7 @@ macro_rules! debug_assert {
 ///
 /// A `&'static str` containing the function name, or `"<unknown>"` if extraction fails.
 ///
+#[cfg_attr(verus_keep_ghost, allow(unused_macros))]
 macro_rules! extract_function_name {
     () => {{
         let closure = || {};
@@ -78,20 +79,23 @@ macro_rules! extract_function_name {
 ///
 macro_rules! info{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Info {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Info,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Info {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Info,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -107,20 +111,23 @@ macro_rules! info{
 ///
 macro_rules! trace{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Trace {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Trace,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Trace {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Trace,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -136,20 +143,23 @@ macro_rules! trace{
 ///
 macro_rules! debug{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Debug {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Debug,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Debug {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Debug,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -165,20 +175,23 @@ macro_rules! debug{
 ///
 macro_rules! warn{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Warn {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Warn,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Warn {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Warn,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -194,20 +207,23 @@ macro_rules! warn{
 ///
 macro_rules! error{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Error {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Error,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Error {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Error,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -220,4 +236,41 @@ macro_rules! run_test {
         assert!(result);
         result
     }};
+}
+///
+/// # Description
+///
+/// Divergence primitive used by [`kpanic`] under Verus.
+///
+/// Rust's `panic!`/`unreachable!` formatting machinery (`core::fmt::Arguments`) is not
+/// translatable by Verus. This opaque, non-returning function lets verified code keep its
+/// abort paths: the verifier models the call site as divergent (it never returns), while the
+/// executable kernel never reaches it because [`kpanic`] lowers to `::core::panic!` instead.
+///
+#[cfg(verus_keep_ghost)]
+#[verifier::external_body]
+pub fn kpanic_unreachable() -> ! {
+    loop {}
+}
+
+///
+/// # Description
+///
+/// Verus-friendly panic.
+///
+/// In executable builds this is exactly [`::core::panic!`], preserving the formatted
+/// diagnostic. Under Verus the formatting machinery is unsupported, so the macro lowers to a
+/// divergent primitive ([`kpanic_unreachable`]) of type `!`, which coerces in any context.
+///
+/// # Parameters
+///
+/// - `$($arg:tt)*`: Formatted panic message.
+///
+macro_rules! kpanic {
+    ($($arg:tt)*) => ({
+        #[cfg(not(verus_keep_ghost))]
+        { ::core::panic!($($arg)*) }
+        #[cfg(verus_keep_ghost)]
+        { $crate::macros::kpanic_unreachable() }
+    })
 }

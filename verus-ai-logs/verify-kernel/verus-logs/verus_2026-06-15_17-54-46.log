@@ -1,0 +1,36 @@
+Timestamp: 2026-06-15_17-54-46
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: invalid suffix `nat` for number literal
+   --> src/kernel/src/mm/virt/vmem.rs:196:95
+    |
+196 |             vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0nat }),
+    |                                                                                               ^^^^ invalid suffix `nat`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: invalid suffix `nat` for number literal
+   --> src/kernel/src/mm/virt/vmem.rs:260:95
+    |
+260 |             vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0nat }),
+    |                                                                                               ^^^^ invalid suffix `nat`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

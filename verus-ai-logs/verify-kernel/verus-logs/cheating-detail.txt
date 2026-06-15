@@ -1,0 +1,31 @@
+    - macros.rs:252 kpanic_unreachable: external_body
+    - mm/virt/vmem.rs:124 new: admit
+    - mm/virt/vmem.rs:212 clone: admit
+    - mm/virt/vmem.rs:372 allocate_kernel_page_table: external_body
+    - mm/virt/vmem.rs:393 allocate_user_page_table: external_body
+    - mm/virt/vmem.rs:526 is_kernel_addr: external_body
+    - mm/virt/vmem.rs:545 is_kernel_region: external_body
+    - mm/virt/vmem.rs:599 lookup_user_page_table: external_body
+    - mm/virt/vmem.rs:644 lookup_kernel_page_table: external_body
+    - mm/virt/vmem.rs:698 find_user_frame: external_body
+    - mm/virt/vmem.rs:940 replace_user_page_cow_frame: external_body
+    - mm/virt/vmem.spec.rs:25 ExVirtualAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:30 ExPageAligned (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:34 ExAccessPermission (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:40 ExPhysicalAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:44 ExFrameAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:48 ExPageAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:52 ExPageTableAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:56 ExPageDirectoryAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:61 ExPageTableAligned (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:68 ExPageDirectory (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:73 ExPageTable (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:77 ExPageDirectoryStorage (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:81 ExPageTableStorage (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:85 ExPageDirectoryEntry (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:89 ExPageTableEntry (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:95 ExKernelPage (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:99 ExUserFrame (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:103 ExPhysMemoryManager (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:110 ExRefCell (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:116 ExLinkedList (struct): external_type_spec

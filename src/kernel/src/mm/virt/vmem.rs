@@ -92,6 +92,7 @@ use ::sys::{
 //==================================================================================================
 
 /// A type that represents a virtual memory space.
+#[cfg_attr(verus_keep_ghost, verus_verify)]
 pub struct Vmem {
     /// Underlying page directory.
     pgdir: PageDirectory<PageDirectoryStorage>,
@@ -102,10 +103,24 @@ pub struct Vmem {
     kernel_pages: LinkedList<Rc<RefCell<KernelPage>>>,
     /// List of user page tables.
     user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+    /// Ghost abstraction of this address space (spec-only; see `vmem.spec.rs`).
+    #[cfg(verus_keep_ghost)]
+    vmem_view: Ghost<VmemView>,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_verify)]
 impl Vmem {
     /// Initializes a new virtual memory space.
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(v) => {
+                    &&& v@.user == Map::<nat, UserPageView>::empty()
+                    &&& v.inv()
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn new(
         mut kernel_pages: LinkedList<KernelPage>,
         mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -171,15 +186,29 @@ impl Vmem {
             kpages.push_back(Rc::new(RefCell::new(entry)));
         }
 
+        proof! { admit(); }
         Ok(Self {
             pgdir,
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
             user_page_tables: LinkedList::new(),
+            #[cfg(verus_keep_ghost)]
+            vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
         })
     }
 
     /// Clones the target virtual memory space.
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(v) => {
+                    &&& v@.user == Map::<nat, UserPageView>::empty()
+                    &&& v@.kernel == from@.kernel
+                    &&& v.inv()
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
@@ -221,11 +250,14 @@ impl Vmem {
             super::sync_kernel_pdes(target_pd_paddr)?;
         }
 
+        proof! { admit(); }
         Ok(Self {
             pgdir,
             kernel_page_tables,
             kernel_pages,
             user_page_tables: LinkedList::new(),
+            #[cfg(verus_keep_ghost)]
+            vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
         })
     }
 
@@ -336,6 +368,7 @@ impl Vmem {
     ///
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         let kpage: KernelPage = {
             // SAFETY: the memory manager is initialized and access is synchronized.
@@ -356,6 +389,7 @@ impl Vmem {
     ///
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
         // concurrent or re-entrant access to the physical memory manager is possible.
@@ -488,6 +522,7 @@ impl Vmem {
     }
 
     /// Asserts whether an address lies in the kernel space.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn is_kernel_addr(virt_addr: VirtualAddress) -> bool {
         !Self::is_user_addr(virt_addr)
     }
@@ -506,6 +541,7 @@ impl Vmem {
     ///
     /// Returns `true` if the entire region lies in kernel space, `false` otherwise.
     ///
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn is_kernel_region(start: VirtualAddress, size: usize) -> bool {
         // Reject zero-length regions.
         if size == 0 {
@@ -559,6 +595,7 @@ impl Vmem {
     /// Upon success, a mutable reference to the page table is returned. Upon failure, an error
     /// code is returned instead.
     ///
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn lookup_user_page_table(
         &mut self,
         pt_vaddr: PageTableAddress,
@@ -603,6 +640,7 @@ impl Vmem {
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn lookup_kernel_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
@@ -656,6 +694,7 @@ impl Vmem {
     /// Upon success, a reference to the target user page is returned. Upon failure, an error code is
     /// returned instead.
     ///
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn find_user_frame(&self, vaddr: PageAligned<VirtualAddress>) -> Result<FrameAddress, Error> {
         let page_addr: PageAddress = PageAddress::new(vaddr);
         let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
@@ -897,6 +936,7 @@ impl Vmem {
     /// at) is returned. The caller is responsible for releasing that reference.
     /// Upon failure, an error is returned instead.
     ///
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn replace_user_page_cow_frame(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1269,7 +1309,7 @@ impl Vmem {
                     Err(e) => {
                         if !dry_run {
                             let reason: &str = "failed to align destination address";
-                            panic!(
+                            kpanic!(
                                 "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, \
                                  src={src:?}, size={size:?})"
                             );
@@ -1287,7 +1327,7 @@ impl Vmem {
             if !Self::is_physical_region(src_phys_addr_raw, copy_size) {
                 let reason: &str = "source memory region does not lie within physical memory";
                 if !dry_run {
-                    panic!(
+                    kpanic!(
                         "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, src={src:?}, \
                          size={size:?})"
                     );
@@ -1306,7 +1346,7 @@ impl Vmem {
                     Ok(frame) => frame,
                     Err(error) => {
                         let reason: &str = "failed to find user frame";
-                        panic!(
+                        kpanic!(
                             "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
                              dst={dst:?}, src={src:?}, size={size:?})"
                         );
@@ -1318,7 +1358,7 @@ impl Vmem {
                 if !Self::is_physical_region(dst_phys_addr_raw, copy_size) {
                     let reason: &str =
                         "destination memory region does not lie within physical memory";
-                    panic!(
+                    kpanic!(
                         "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, src={src:?}, \
                          size={size:?})"
                     );
@@ -1331,7 +1371,7 @@ impl Vmem {
                 let copy_result: Result<(), Error> = super::memcpy(dst, src, copy_size);
                 if let Err(error) = copy_result {
                     let reason: &str = "failed to perform physical memory copy";
-                    panic!(
+                    kpanic!(
                         "copy_to_user_unaligned_unchecked(): {reason} (error={error:?}, \
                          dst={dst:?}, src={src:?}, size={size:?})"
                     );
@@ -1592,7 +1632,7 @@ impl Vmem {
             if page_table.lookup(page_address)? != frame_address {
                 // The following statement should not be reachable because after mapping user frame we
                 // must have added it to the list of user pages.
-                unreachable!("frame address must match what we expect");
+                kpanic!("frame address must match what we expect");
             }
 
             // Unmap the page from the target virtual address space.

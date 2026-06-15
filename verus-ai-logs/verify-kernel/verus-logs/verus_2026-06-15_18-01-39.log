@@ -1,0 +1,29 @@
+Timestamp: 2026-06-15_18-01-39
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=11
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: unused macro definition: `extract_function_name`
+  --> src/kernel/src/macros.rs:50:14
+   |
+50 | macro_rules! extract_function_name {
+   |              ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `-D unused-macros` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(unused_macros)]`
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

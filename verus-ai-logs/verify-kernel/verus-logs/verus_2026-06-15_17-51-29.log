@@ -1,0 +1,90 @@
+Timestamp: 2026-06-15_17-51-29
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=4
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0425]: cannot find function `new` in this scope
+   --> src/kernel/src/mm/virt/vmem.rs:122:12
+    |
+122 |     pub fn new(
+    |            ^^^ not found in this scope
+
+error[E0423]: expected function, tuple struct or tuple variant, found struct `Ghost`
+   --> src/kernel/src/mm/virt/vmem.rs:194:24
+    |
+194 |             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/builtin/src/lib.rs:395:1
+    |
+395 | pub struct Ghost<A> {
+    | ------------------- `Ghost` defined here
+    |
+help: you might have meant to use an associated function to build this type
+    |
+194 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+194 +             vmem_view: Ghost::new(_),
+    |
+194 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+194 +             vmem_view: Ghost::assume_new(),
+    |
+194 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+194 +             vmem_view: Ghost::assume_new_fallback(_),
+    |
+
+error[E0425]: cannot find function `clone` in this scope
+   --> src/kernel/src/mm/virt/vmem.rs:210:12
+    |
+210 |     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
+    |            ^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/pervasive.rs:426:1
+    |
+426 | pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
+    | ----------------------------------------------------- similarly named function `cloned` defined here
+    |
+help: a function with a similar name exists
+    |
+210 |     pub fn cloned(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
+    |                 +
+
+error[E0423]: expected function, tuple struct or tuple variant, found struct `Ghost`
+   --> src/kernel/src/mm/virt/vmem.rs:258:24
+    |
+258 |             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/builtin/src/lib.rs:395:1
+    |
+395 | pub struct Ghost<A> {
+    | ------------------- `Ghost` defined here
+    |
+help: you might have meant to use an associated function to build this type
+    |
+258 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+258 +             vmem_view: Ghost::new(_),
+    |
+258 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+258 +             vmem_view: Ghost::assume_new(),
+    |
+258 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+258 +             vmem_view: Ghost::assume_new_fallback(_),
+    |
+
+Some errors have detailed explanations: E0423, E0425.
+For more information about an error, try `rustc --explain E0423`.
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors

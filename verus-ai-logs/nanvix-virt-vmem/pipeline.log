@@ -39,3 +39,7 @@ Module: vmem
 PHASE: specification
 Module: vmem
 ============================================================
+[2026-06-15 17:16:07] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs
+[2026-06-15 17:16:07] [PROVER] Running specification...
+[2026-06-15 17:16:07] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 18:25:00]   ↳ prover done in 1h08m53s (exit=0)

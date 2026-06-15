@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_17-57-41
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0425]: cannot find function `new` in this scope
+   --> src/kernel/src/mm/virt/vmem.rs:123:12
+    |
+123 |     pub fn new(
+    |            ^^^ not found in this scope
+
+error[E0425]: cannot find function `clone` in this scope
+   --> src/kernel/src/mm/virt/vmem.rs:211:12
+    |
+211 |     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
+    |            ^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/pervasive.rs:426:1
+    |
+426 | pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
+    | ----------------------------------------------------- similarly named function `cloned` defined here
+    |
+help: a function with a similar name exists
+    |
+211 |     pub fn cloned(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
+    |                 +
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

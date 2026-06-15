@@ -1,0 +1,27 @@
+Timestamp: 2026-06-15_17-40-40
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=1
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0425]: cannot find function `is_user_addr` in this scope
+   --> src/kernel/src/mm/virt/vmem.rs:462:12
+    |
+462 |     pub fn is_user_addr(virt_addr: VirtualAddress) -> bool {
+    |            ^^^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

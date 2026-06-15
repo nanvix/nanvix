@@ -1,0 +1,345 @@
+Timestamp: 2026-06-15_17-55-28
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:116:12
+    |
+116 |               let _ = write!(
+    |  _____________________^
+117 | |                 &mut crate::klog::Klog::get(
+118 | |                     module_path!(),
+119 | |                     crate::klog::KlogLevel::Trace,
+...   |
+122 | |                 $($arg)*
+123 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:128:9
+    |
+128 |           trace!("kernel_pages.len()={}", kernel_pages.len());
+    |           --------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `trace` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:302:17
+    |
+302 |                   error!("{reason}");
+    |                   ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:413:13
+    |
+413 |               error!("{reason} (uframe={uframe:?}, vaddr={vaddr:?}, access={access:?})",);
+    |               --------------------------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:634:9
+    |
+634 |           error!("{reason}");
+    |           ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:645:13
+    |
+645 |               error!("{reason:?} (pde={pde:?})");
+    |               ---------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:712:9
+    |
+712 |           error!("{reason} (vaddr={vaddr:?})");
+    |           ------------------------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:868:13
+    |
+868 |               error!("{reason}");
+    |               ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:901:13
+    |
+901 |               error!("{reason}");
+    |               ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:203:12
+    |
+203 |               let _ = write!(
+    |  _____________________^
+204 | |                 &mut crate::klog::Klog::get(
+205 | |                     module_path!(),
+206 | |                     crate::klog::KlogLevel::Error,
+...   |
+209 | |                 $($arg)*
+210 | |             );
+    | |_____________^
+    |
+   ::: src/kernel/src/mm/virt/vmem.rs:939:13
+    |
+939 |               error!("{reason}");
+    |               ------------------ in this macro invocation
+    |
+    = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:203:12
+     |
+ 203 |               let _ = write!(
+     |  _____________________^
+ 204 | |                 &mut crate::klog::Klog::get(
+ 205 | |                     module_path!(),
+ 206 | |                     crate::klog::KlogLevel::Error,
+...    |
+ 209 | |                 $($arg)*
+ 210 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1059:17
+     |
+1059 |                   error!("{reason} (addr={addr:?}, size={size:?})");
+     |                   ------------------------------------------------- in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:203:12
+     |
+ 203 |               let _ = write!(
+     |  _____________________^
+ 204 | |                 &mut crate::klog::Klog::get(
+ 205 | |                     module_path!(),
+ 206 | |                     crate::klog::KlogLevel::Error,
+...    |
+ 209 | |                 $($arg)*
+ 210 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1145:13
+     |
+1145 | /             error!(
+1146 | |                 "copy_from_user_unaligned(): {reason} (dst={dst:?}, src={src:?}, size={size:?})"
+1147 | |             );
+     | |_____________- in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:203:12
+     |
+ 203 |               let _ = write!(
+     |  _____________________^
+ 204 | |                 &mut crate::klog::Klog::get(
+ 205 | |                     module_path!(),
+ 206 | |                     crate::klog::KlogLevel::Error,
+...    |
+ 209 | |                 $($arg)*
+ 210 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1258:13
+     |
+1258 | /             error!(
+1259 | |                 "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, src={src:?}, \
+1260 | |                  size={size:?})"
+1261 | |             );
+     | |_____________- in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:203:12
+     |
+ 203 |               let _ = write!(
+     |  _____________________^
+ 204 | |                 &mut crate::klog::Klog::get(
+ 205 | |                     module_path!(),
+ 206 | |                     crate::klog::KlogLevel::Error,
+...    |
+ 209 | |                 $($arg)*
+ 210 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1457:13
+     |
+1457 |               error!("copy_user_to_user(): {reason} (src={src:?}, dst={dst:?}, size={size:?})");
+     |               --------------------------------------------------------------------------------- in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:203:12
+     |
+ 203 |               let _ = write!(
+     |  _____________________^
+ 204 | |                 &mut crate::klog::Klog::get(
+ 205 | |                     module_path!(),
+ 206 | |                     crate::klog::KlogLevel::Error,
+...    |
+ 209 | |                 $($arg)*
+ 210 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1583:13
+     |
+1583 |               error!("{reason}");
+     |               ------------------ in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:203:12
+     |
+ 203 |               let _ = write!(
+     |  _____________________^
+ 204 | |                 &mut crate::klog::Klog::get(
+ 205 | |                     module_path!(),
+ 206 | |                     crate::klog::KlogLevel::Error,
+...    |
+ 209 | |                 $($arg)*
+ 210 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1665:13
+     |
+1665 |               error!("{reason}");
+     |               ------------------ in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `error` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unsupported constant type
+    --> src/kernel/src/macros.rs:116:12
+     |
+ 116 |               let _ = write!(
+     |  _____________________^
+ 117 | |                 &mut crate::klog::Klog::get(
+ 118 | |                     module_path!(),
+ 119 | |                     crate::klog::KlogLevel::Trace,
+...    |
+ 122 | |                 $($arg)*
+ 123 | |             );
+     | |_____________^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1734:9
+     |
+1734 |           trace!("{vaddr:?}");
+     |           ------------------- in this macro invocation
+     |
+     = note: this error originates in the macro `write` which comes from the expansion of the macro `trace` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `kernel` (bin "kernel") due to 16 previous errors

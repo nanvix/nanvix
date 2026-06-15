@@ -1,0 +1,67 @@
+Timestamp: 2026-06-15_18-23-52
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=29
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=23
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0423]: expected function, tuple struct or tuple variant, found struct `Ghost`
+   --> src/kernel/src/mm/virt/vmem.rs:196:24
+    |
+196 |             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/builtin/src/lib.rs:395:1
+    |
+395 | pub struct Ghost<A> {
+    | ------------------- `Ghost` defined here
+    |
+help: you might have meant to use an associated function to build this type
+    |
+196 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+196 +             vmem_view: Ghost::new(_),
+    |
+196 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+196 +             vmem_view: Ghost::assume_new(),
+    |
+196 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+196 +             vmem_view: Ghost::assume_new_fallback(_),
+    |
+
+error[E0423]: expected function, tuple struct or tuple variant, found struct `Ghost`
+   --> src/kernel/src/mm/virt/vmem.rs:260:24
+    |
+260 |             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/builtin/src/lib.rs:395:1
+    |
+395 | pub struct Ghost<A> {
+    | ------------------- `Ghost` defined here
+    |
+help: you might have meant to use an associated function to build this type
+    |
+260 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+260 +             vmem_view: Ghost::new(_),
+    |
+260 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+260 +             vmem_view: Ghost::assume_new(),
+    |
+260 -             vmem_view: Ghost(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+260 +             vmem_view: Ghost::assume_new_fallback(_),
+    |
+
+For more information about this error, try `rustc --explain E0423`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

@@ -1,0 +1,28 @@
+Timestamp: 2026-06-15_17-27-04
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+35 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking bitmap v0.16.48 (/home/ruize/nanvix-virt/src/libs/bitmap)
+verification results:: 68 verified, 0 errors
+    Checking nanvix-slab v0.16.48 (/home/ruize/nanvix-virt/src/libs/slab)
+verification results:: 35 verified, 0 errors
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: could not find module mm::virt::vmem specified by --verify-module or --verify-only-module
+       available modules are:
+       or use --verify-root
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

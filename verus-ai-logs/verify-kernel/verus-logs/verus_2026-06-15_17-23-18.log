@@ -1,0 +1,27 @@
+Timestamp: 2026-06-15_17-23-18
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Checking vstd v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+
+thread 'rustc' (3629914) panicked at rust_verify/src/verus_items.rs:742:17:
+unexpected verus diagnostic item verus::vstd::iset::ISet::empty
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `vstd` (lib)
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name vstd --edition=2021 /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/vstd.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata -C opt-level=3 -C embed-bitcode=no -C codegen-units=1 -C debuginfo=2 --warn=unexpected_cfgs --check-cfg 'cfg(verus_keep_ghost)' --check-cfg 'cfg(verus_verify_core)' --check-cfg 'cfg(verus_keep_ghost_body)' -C debug-assertions=on --cfg 'feature="alloc"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("alloc", "allocator", "allow_panic", "default", "std", "strict_provenance_atomic_ptr"))' -C metadata=705340ef0df9f6c6 -C extra-filename=-c07c8794a2b26672 --out-dir /home/ruize/nanvix-virt/target/x86-kernel/debug/deps --target /home/ruize/nanvix-virt/build/targets/x86-kernel.json -Zunstable-options -L dependency=/home/ruize/nanvix-virt/target/x86-kernel/debug/deps -L dependency=/home/ruize/nanvix-virt/target/debug/deps --extern 'noprelude,nounused:alloc=/home/ruize/nanvix-virt/target/x86-kernel/debug/deps/liballoc-7a9d91d7c8f78543.rlib' --extern 'noprelude,nounused:compiler_builtins=/home/ruize/nanvix-virt/target/x86-kernel/debug/deps/libcompiler_builtins-87ec5c91af693f29.rlib' --extern 'noprelude,nounused:core=/home/ruize/nanvix-virt/target/x86-kernel/debug/deps/libcore-0157cf8607007ad3.rlib' --extern verus_builtin=/home/ruize/nanvix-virt/target/x86-kernel/debug/deps/libverus_builtin-086f7b5e9873e651.rmeta --extern verus_builtin_macros=/home/ruize/nanvix-virt/target/debug/deps/libverus_builtin_macros-de16790b71a8fbbf.so --extern verus_state_machines_macros=/home/ruize/nanvix-virt/target/debug/deps/libverus_state_machines_macros-344664cdecc59426.so -Z unstable-options --cap-lints allow -C relocation-model=static -C prefer-dynamic=no` (exit status: 1)

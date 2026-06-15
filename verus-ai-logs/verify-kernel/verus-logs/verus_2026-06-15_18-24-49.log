@@ -1,0 +1,33 @@
+Timestamp: 2026-06-15_18-24-49
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=29
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=23
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/virt/vmem.rs:196:95
+    |
+196 |             vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+    |                                                                                               ^ expected `nat`, found integer
+
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/virt/vmem.rs:260:95
+    |
+260 |             vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 }),
+    |                                                                                               ^ expected `nat`, found integer
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

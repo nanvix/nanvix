@@ -1,0 +1,29 @@
+Timestamp: 2026-06-15_18-02-10
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=12
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: Unsupported constant type
+    --> src/kernel/src/mm/virt/vmem.rs:1304:29
+     |
+1304 | / ...                   panic!(
+1305 | | ...                       "copy_to_user_unaligned_unchecked(): {reason} (dst={dst:?}, \
+1306 | | ...                        src={src:?}, size={size:?})"
+1307 | | ...                   );
+     | |_______________________^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

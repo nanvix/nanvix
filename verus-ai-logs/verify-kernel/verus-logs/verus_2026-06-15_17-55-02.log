@@ -1,0 +1,33 @@
+Timestamp: 2026-06-15_17-55-02
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0605]: non-primitive cast: `i32` as `vstd::prelude::nat`
+   --> src/kernel/src/mm/virt/vmem.rs:196:95
+    |
+196 |             vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 as nat }),
+    |                                                                                               ^^^^^^^^ an `as` expression can only be used to convert between primitive types or to coerce to a specific trait object
+
+error[E0605]: non-primitive cast: `i32` as `vstd::prelude::nat`
+   --> src/kernel/src/mm/virt/vmem.rs:260:95
+    |
+260 |             vmem_view: Ghost::new(VmemView { user: Map::empty(), kernel: Map::empty(), pgdir: 0 as nat }),
+    |                                                                                               ^^^^^^^^ an `as` expression can only be used to convert between primitive types or to coerce to a specific trait object
+
+For more information about this error, try `rustc --explain E0605`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
