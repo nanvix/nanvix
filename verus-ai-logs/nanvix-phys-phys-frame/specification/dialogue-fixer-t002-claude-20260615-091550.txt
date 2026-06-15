@@ -1,0 +1,827 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T09:15:50.006737
+Model: claude-opus-4.8
+Session: 8f250b92-a62e-4d00-9972-f6710f1699c3
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+The reviewer identified a specific issue. Read the request at
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_driver.md.
+
+Your job is to FIX it — make actual code changes, not justifications.
+
+1. Read the reviewer's specific request.
+2. Make the code change.
+3. Run `make verify-kernel` and `make build` to verify.
+4. Write your response to /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_fixer.md.
+
+If you cannot fix it, show EXACT error messages from every approach you tried.
+Do NOT just explain why it's hard — try it and show the result.
+
+Write to /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_fixer.md:
+```markdown
+## Response to Turn 2
+
+### What I Changed
+[File paths, line numbers, description of changes]
+
+### Verification
+[Output of make verify-kernel — must pass]
+
+### Result: FIXED / NEEDS_GUIDANCE
+[If NEEDS_GUIDANCE: exact error messages from each failed attempt]
+```
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading turn 2 reviewer request
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_driver.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ## Turn 2: Adjudicating the fixer's NEEDS_GUIDANCE — scope refuted, two turn-1 premises corrected, core FAIL stands
+
+### Progress
+- Done (PASS): items 1, 7, 8, 10, 12, 15, 16, 17.
+- Corrected this turn: item 13 (my turn-1 "delete manager axioms" demand was wrong — WITHDRAWN).
+- Current FAIL (unchang...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The reviewer resolved the scope conflict: `verification-plan.json` puts upool/manager/kframe/mod in scope. I must implement the PhysAuth carrier end-to-end. Let me verify the scope claim and read the design.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verification-plan.json exists? ==="; ls -la verus-ai-logs/verification-plan.json 
+
+[THINKING] The reviewer has confirmed the scope—`verification-plan.json` includes `upool.rs`, `manager.rs`, `kframe.rs`, and `mod.rs` functions, so the fix request is authorized. Now I need to implement the PhysAuth carrier end-to-end, starting by verifying the scope claim and reviewing the key files like verification-plan.json, view_design.md, mod.spec.rs, and the frame module.
+[RESULT ✓] bash: === verification-plan.json exists? ===
+-rw-rw-r-- 1 ruize ruize 30306 Jun 15 00:16 verus-ai-logs/verification-plan.json
+=== show_fn_order for mm::phys ===
+No matching modules found.
+Available modules:
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verificati
+[RESULT ✓] bash: No matching modules found.
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 -c "
+import json
+d=json.load(open('verus-ai-logs/verification-plan.json'))
+print('t
+[RESULT ✓] bash: top keys: ['target', 'entries', 'total_modules', 'cycles_broken', 'steps']
+target: src/kernel/src/mm/phys/frame.rs
+/entries list len 39
+  sample 0 src/kernel/src/mm/phys/frame.rs:Inner::alloc
+  sample 1 src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous
+  sample 2 src/kernel/src/mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 -c "
+import json
+d=json.load(open('verus-ai-logs/verification-plan.json'))
+print('=
+[RESULT ✓] bash: === ALL entries ===
+  src/kernel/src/mm/phys/frame.rs:Inner::alloc
+  src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous
+  src/kernel/src/mm/phys/frame.rs:Inner::free
+  src/kernel/src/mm/phys/frame.rs:Inner::share
+  src/kernel/src/mm/phys/frame.rs:Inner::refcount
+  src/kernel/src/mm/phys/frame.r...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Confirmed — the whole `mm::phys` subsystem is in scope. The reviewer is correct. This is a substantial end-to-end carrier threading task. Let me read the design and all relevant files.
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l verus-ai-logs/nanvix-phys-phys-frame/view_design.md src/kernel/src/mm/phys/mod.spec.r
+
+[THINKING] The reviewer confirmed that the entire `mm::phys` subsystem is in scope, so I can edit across upool.rs, manager.rs, kframe.rs, and mod.rs in addition to the target frame.rs file. I need to read the view_design.md to understand the PhysAuth design specifics, then examine all the relevant source files to create a plan and task list.
+[RESULT ✓] bash: 520 verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+   174 src/kernel/src/mm/phys/mod.spec.rs
+   975 src/kernel/src/mm/phys/frame.rs
+   272 src/kernel/src/mm/phys/upool.rs
+   450 src/kernel/src/mm/phys/manager.rs
+   194 src/kernel/src/mm/phys/kframe.rs
+   217 src/kernel/src/mm/phys/mod.rs
+  2802...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] view: File too large to read at once (25.1 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] view: 1. # View Design: `mm::phys::frame`
+2. 
+3. > **Re-run after rollback (specification → view-design, attempt 1/1).**
+4. > The previous design modeled the global frame-allocator singleton with an
+5. > **argument-free, uninterpreted constant** `phys_view() -> PhysMemView`. A
+6. > constant has the same v...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] view: 200.                 ..self.frames
+201.             },
+202.             ..self
+203.         }
+204.     }
+205. 
+206.     /// `free`: −1 reference; the last reference returns the frame to the pool.
+207.     /// (Defined for completeness / for the manager-level reasoning that *can*
+208.     ///  thread...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] view: 360. *invariant preservation*, *no unwind*, and *no precondition* (so `Drop` is sound).
+361. `spec_free` is still defined above for the manager-level reasoning that *can* hold
+362. the token, but the `free` shim itself does not assert it. Keeping `free` weak is a
+363. deliberate, caller-justified ex...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+This is a large, well-specified end-to-end carrier threading task that's now confirmed in-scope. Let me create a plan and read all the source files.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > /home/ruize/.copilot/session-state/8f250b92-a62e-4d00-9972-f6710f1699c3/plan.md <<'EO
+
+[THINKING] I see the reviewer is allowing me to keep the zero-argument `phys_view()` function for non-mutating paths like query and initialization to reduce unnecessary changes, but the token carrier is still required for any mutating operations. The follow-up point about `manager.rs` frame allocation functions seems to be cut off, but it's likely clarifying similar constraints around which operations need the carrier threaded through. I'm realizing the `with` clause mechanism has a key behavior: it generates both a verified version that accepts the tracked token and an unverified stub with `requires false` for the original signature, with bare calls defaulting to the unverified version. Verified callers must explicitly use the `with` clause at the call site. But there's a deeper issue—adding a `tracked` field to `PhysMemoryManager` in attribute-style Verus (rather than the `verus!{}` macro) might not be straightforward, and `instance()` being `external_body` while needing to accept a `Tracked(&mut PhysAuth)` parameter creates tension. The real risk areas are whether tracked fields work in attribute-style structs, how `instance()` can thread the token while remaining external, and how `init` mints the initial `PhysAuth` in a way that non-Verus test code can still call it.
+
+Before diving into a massive refactor, I should validate the core assumption: can a tracked field actually live in `PhysMemoryManager` in this codebase, and does the `with` clause chain through `&mut self` methods end-to-end? The reviewer already confirmed the `with` clause works on inherent methods in isolation, but the question is whether the full composition holds. Looking at the success criteria more carefully—zero errors on `make verify-kernel`, no admits in frame.rs, the verified `Upool::alloc` carrying the strong post-state about allocated frames and refcounts, and `./z build` succeeding—I need to thread the carrier from `frame::alloc` through to `Upool::alloc` and have `Upool::alloc`'s ensures state the strong invariant. But `Upool::alloc` is a `&mut self` method on a ZST facade with no fields, so the question becomes where the carrier actually lives. frame::alloc's verified version establishes the strong post-state on `auth@`, so Upool::alloc can ensure that `allocated_frames.contains(uf@)` where `uf` is the returned UserFrame. The key is understanding what UserFrame@'s view represents — it should map to the frame address returned by frame::alloc. Rather than reason through this abstractly, I need to read the actual source files to see how the views are defined and how the token threading works across mod.spec.rs, frame.rs, upool.rs, manager.rs, and kframe.rs.
+[RESULT ✓] bash: plan written
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to examine the frame.rs file more closely, particularly the free function shims, specification and proof files, and the relevant execution functions starting around line 640 through the end of the file.
+[RESULT ✓] view: 620. // Use relaxed ordering for all atomic operations to mitigate synchronization overhead. It is safe
+621. // to use this ordering semantics because Nanvix is a single-core system, and the kernel runs with
+622. // interrupts disabled.
+623. const ORDER: Ordering = Ordering::Relaxed;
+624. 
+625. //==...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verus_spec\|verus_verify\|fn alloc\|fn book\|fn share\|fn refcount\|fn is_covered\
+
+[THINKING] I need to examine the Inner method contracts to understand what invariants they establish, so I'm looking at the specifications around lines 131, 205, 290 and checking the method signatures with their Verus annotations to see what facts are guaranteed.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+104:impl Inner {
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+137:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+210:    fn alloc_contiguous(&mut self, coun...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+113.     /// returned inst...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The `Inner::alloc` contract precisely captures the post-state as inserting the new frame into the allocated set, which matches `spec_alloc_one` exactly. Now I'm moving through the remaining contracts—alloc_contiguous, free, share, refcount, and book—to verify they follow the same pattern.
+[RESULT ✓] view: 181.     #[verus_verify(external_body)]
+182.     #[verus_spec(result =>
+183.         requires
+184.             old(self).inv(),
+185.             count > 0,
+186.         ensures
+187.             final(self).inv(),
+188.             match result {
+189.                 Ok(base) => {
+190.                ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 254.     #[verus_verify(external_body)]
+255.     #[verus_spec(result =>
+256.         requires
+257.             old(self).inv(),
+258.             frame.inv(),
+259.         ensures
+260.             final(self).inv(),
+261.             match result {
+262.                 Ok(()) => {
+263.                ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 339.     #[verus_verify(external_body)]
+340.     #[verus_spec(result =>
+341.         requires
+342.             old(self).inv(),
+343.             frame.inv(),
+344.         ensures
+345.             final(self).inv(),
+346.             match result {
+347.                 Ok(()) => {
+348.                ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 459.     #[verus_verify(external_body)]
+460.     #[verus_spec(result =>
+461.         requires
+462.             old(self).inv(),
+463.             phys_addr.inv(),
+464.         ensures
+465.             final(self).inv(),
+466.             match result {
+467.                 Ok(()) => {
+468.            ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now let me read the caller layer: upool.rs, manager.rs, kframe.rs.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I've mapped out all the `Inner::*` contracts as precise state transitions between the final and original states, which align directly with the spec allocation and sharing transitions. Now I'm facing the core design challenge: how to pass the PhysAuth token through `instance()`, which is an external function returning a static mutable reference to `Inner`.
+
+The design shows `instance()` taking a tracked PhysAuth reference and ensuring the returned Inner's state matches the token's frames, while the token itself remains unchanged. The `alloc()` shim then calls `instance()` and uses a `sync_to()` operation to update the auth token's frames to match the final Inner state. The key tension is whether to use a ghost-assignable field on the carrier or a method, and how the `with` clause affects the actual signature visible to non-Verus callers—the design doc shows `Tracked(auth)` directly in the signature, but that would alter the execution signature.
+
+In this dual-compilation model, non-Verus builds process the code without Verus, so `Tracked(auth)` parameters would break normal callers since PhysAuth doesn't exist in that context. The `with` clause solves this by keeping the exec signature clean while still threading the token through verified code paths. For `instance()` as an external_body function, the contract including the `with` clause is trusted even though the body isn't verified, and shims call it with the token via `with` syntax at the call site. The overall approach needs careful incremental validation, especially around how external_body interacts with the `with` mechanism. So the key realization is that manager functions are external_body, meaning their bodies aren't verified — they're trusted. That means I don't actually need to thread the PhysAuth token through manager.rs at all. The token threading only matters for verified functions like Upool::alloc, which can carry the strong post-state through the `with` clause. Manager can keep calling the tokenless version of alloc, and the verified layer stays isolated to the subsystem that actually needs verification.
+
+The reviewer withdrew the demand to delete manager axioms and accepts them as tcb-allowed, so leaving manager external_body with its existing phys_view()-based contracts is fine — there's no contradiction there. But I need to verify whether those axioms are actually sound or if they're masking an unsoundness, especially around the allocation membership assertions.
+
+Let me focus on what's concrete and achievable: getting verify-kernel to zero errors, keeping frame.rs at admit=0, ensuring Upool::alloc carries the strong post-state that allocated_frames contains the new frame with refcount 1, and making the build succeed. I need to trace through upool.rs, manager.rs, and kframe.rs to understand how the caller layer works.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm looking at the manager.rs and kframe.rs files to understand the relevant methods.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now let me check the `FrameAddress`/`View` infrastructure and how `@`/`inv()` work for the exec types, plus the proof file.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== frame.proof.rs ==="; cat src/kernel/src/mm/phys/frame.proof.rs; echo "=== frame.s
+
+[THINKING] I'm seeing the core issue now: the reviewer's assertion that `phys_view().frames.allocated_frames.contains(frame@)` must hold after allocation is actually contradictory—a freshly allocated frame can't simultaneously satisfy the pre-state invariant at that single program point. The reproducer seems to demonstrate this is provably false, though I'm questioning whether `phys_view()` being uninterpreted changes the analysis.
+
+But the reviewer actually withdrew that concern in Turn 2 and accepted these external_body axioms as tcb-allowed, so I can keep the manager as-is. The real deliverable is strengthening `Upool::alloc` from its weak postcondition `Ok ⇒ free_frames.contains(uf@)` to the stronger `allocated_frames.contains(uf@) && refcounts[uf@]==1`, which means threading a carrier through the frame allocation call.
+
+The carrier flows from `frame::alloc(token)` producing a strong postcondition on the token, which `Upool::alloc` then forwards and states. Since `Upool::alloc` takes `&mut self` with no fields, the token comes as a `with Tracked(auth)` parameter, and its caller in manager (the external_body) just calls the tokenless version. The key question is whether to keep `phys_view()` in the requires or switch entirely to the carrier — I can tie them with `old(auth)@ == phys_view()`, but that's a requirement the caller must establish. Actually, the carrier might be self-sufficient on its own: `old(auth)@.initialized && old(auth)@.inv()` as requires, with instance() bridging `(*r)@ == auth@.frames`, so I may not need `phys_view()` in the carrier path at all.
+
+But `instance()` currently has both a tokenless contract using `phys_view()` and would need a token-carrying version, which creates a problem: if both describe `(*r)@`, they implicitly force `auth@.frames == phys_view().frames`. The cleanest approach is to make the token version of `instance()` drop `phys_view()` entirely and use only the carrier. However, `instance()` also serves `free()`, which can't thread a token through the Drop path, so I need both a tokenless and token version. With the `with` clause, the tokenless version becomes `requires false`, but `free()` currently has `admit()` and the reviewer wants that removed — so if `free()` calls `instance()` and `instance()` now requires a token, I'm stuck.
+
+The alternative is to keep `instance()` as-is without adding a token, then in the mutating shim, after calling `instance().alloc()`, re-sync the token from the result in a ghost block. This requires the precondition that `old(auth)@ == phys_view()` (since `instance()` gives `old(r)@ == phys_view().frames`), which ensures the token and the frame state stay consistent through the allocation and re-sync.
+
+For the query shims, I should add `Tracked(&PhysAuth)` as the reviewer requested, even though they don't mutate — it's a polish that makes the interface more uniform.
+
+The hard verification gate is clear: zero errors, admit=0 for frame.rs, Upool::alloc with the strong post-state, and the build succeeds. The per-shim strengthening is part of the fix request, so I'll thread the carrier through all mutating shims (alloc, alloc_contiguous, book, alloc_range, share) and add Tracked params to the query shims where it helps cleanly.
+
+The tricky part is removing admit from frame::free—it currently relies on instance() which requires phys_view().initialized, but free has no precondition to establish that. I need to either avoid calling instance() in free or find another way to satisfy its precondition. The real issue is that instance() requires initialized, but free() has no precondition to prove it. I could remove instance()'s requires and make the ensures conditional on initialized — the panic path diverges anyway, so the postcondition only matters when the function actually returns. But Verus's external_body doesn't automatically model panic divergence, so I'd need to handle that carefully.
+
+Actually, the reviewer said I can modify instance() since it's in the verification target. The cleanest approach might be to give free() a contract with `opens_invariants none, no_unwind` and ensure the physical view's invariant holds, then have the body call instance() — but I still need to resolve how instance() gets called without its precondition being met.
+
+If I redefine instance() to require nothing and conditionally ensure the invariant holds only when initialized, then free() can call it, but free() still can't satisfy Inner::free's precondition without knowing the allocator is initialized. This exposes a real soundness issue: free is undefined behavior if the allocator wasn't initialized, so the admit was hiding a legitimate gap. The honest fix would be to encode the initialized guarantee into UserFrame's type invariant itself, but that's a larger refactor than what the reviewer is asking for.
+
+Re-reading the feedback though, the reviewer is open to changing free's ensures to something "Drop-compatible and always-true that verifies cleanly." The real constraint is the body—instance() and Inner::free's preconditions. What if I restructure instance() to unconditionally ensure the invariant holds? Since instance() panics if uninitialized, any return path means the Inner is valid, so `ensures (*result).inv()` without a requires clause would be sound. The tricky part is keeping the frames postcondition while managing the initialized dependency. instance() isn't on the do-not-modify list and view_design.md explicitly redesigns it, so I can change its contract. Dropping the `requires phys_view().initialized` means all callers would get that as an ensure instead, which is fine since they already require it. The soundness concern is that if instance() panics when not initialized, the ensures only hold on the return path, which Verus treats as valid since the diverging path never reaches the ensures.
+
+So my plan is to remove the requires from instance() and add an ensures for `phys_view().initialized`, then check whether FrameAddress.inv() needs establishing in free(). Before diving into the full implementation, I should verify this approach by checking the inv() implementations and testing incrementally—starting with mod.spec.rs and the PhysAuth transitions, then frame::alloc in isolation.
+[RESULT ✓] bash: === frame.proof.rs ===
+verus! {
+
+use super::FrameAllocView;
+use super::PhysMemView;
+use super::phys_view;
+use crate::hal::mem::spec_page_size;
+use vstd::map::*;
+use vstd::set_lib::*;
+use vstd::relations::injective_on;
+use vstd::arithmetic::mul::{
+    lemma_mul_is_commutative,
+    lemma_mul_is_distri...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "fn inv\|impl View for FrameAddress\|type V\|struct FrameAddress\|fn view" src/ker
+
+[THINKING] I need to look at the FrameAddress.inv() method and how the View trait implements it to understand what preconditions are needed for the frame inversion operation.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:29:pub struct FrameAddress(PageAligned<PhysicalAddress>);
+src/kernel/src/hal/mem/types/address/frame.rs:41:impl View for FrameAddress
+=== search FrameAddress def ===
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs
+src/kernel/src/hal/arch/shared/...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 29. pub struct FrameAddress(PageAligned<PhysicalAddress>);
+30. 
+31. #[cfg(verus_keep_ghost)]
+32. verus! {
+33. 
+34. pub uninterp spec fn spec_page_size() -> int;
+35. 
+36. pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+37.     ensures
+38.         result == spec_page_size(),
+39. ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== upool.spec.rs ==="; cat src/kernel/src/mm/phys/upool.spec.rs; echo "=== upool.pro
+
+[THINKING] I'm realizing that `FrameAddress::inv()` checks if the address is page-aligned, which isn't guaranteed for arbitrary frame addresses. This means `free()` can't assume the frame parameter satisfies the invariant, so removing `admit()` would require making `frame.inv()` a precondition along with the initialized fact.
+
+For the second issue, I need to trace whether `UserFrame` actually guarantees that its stored address maintains the invariant — if `UserFrame::new` requires `addr.inv()` and preserves it through its own invariant, then calls to `free(self.addr)` would be safe. Let me check the UserFrame definition and its invariant in the spec.
+[RESULT ✓] bash: === upool.spec.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// UserFrame / Upool - Specifications
+//
+// `UserFrame` is an RAII owning handle to one reference of a reference-counted
+// physical user frame, abstracted by the physical address of the frame it own...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "free\|admit\|Drop\|drop" verus-ai-logs/tcb-allowed.md | head -40
+
+[THINKING] I'm realizing that `UserFrame::inv()` requires the address to be page-aligned, but the Drop implementation receives `&mut self` without any guarantee that the invariant holds—Verus doesn't automatically enforce struct invariants unless they're declared as type invariants. This means removing the `admit` from the free operation is tied to ensuring the instance is properly initialized first.
+
+The core issue is that `free` needs `frame.inv()` to hold, but when Drop calls `free(self.addr)`, there's no way to prove the address is valid without adding a type invariant to UserFrame itself. I'm considering whether declaring a type invariant on UserFrame would let me guarantee `self.addr.inv()` always holds, which would allow Drop to satisfy free's precondition.
+
+But since Inner::free is in the do-not-modify list with its `frame.inv()` requirement fixed, and the reviewer explicitly allows free to keep a weak contract, I'm wondering if the pragmatic approach is to accept the admit or find a way to require `frame.inv()` at the free shim level and trace back through all callers to see if that's actually feasible. The reviewer's core failures are really about the weakened reservation specs and missing PhysAuth carrier—items 2, 3, 9, 14—while the free admit is secondary. I need to prioritize strengthening the PhysAuth carrier and Upool::alloc's post-state first, then tackle removing the free admit. Let me reconsider the free problem: maybe I can create a separate internal helper for the Drop path that's marked external_body and handles the frame deallocation without needing to prove the initialized precondition.
+[RESULT ✓] bash: 15:  `PhysMemView` and discharged (no `admit`) by
+43:free-function shims) is **body-verified** against these contracts.
+64:`UserFrame::drop`) and the `arch` newtypes `FrameNumber` / `FrameAddress`
+68:- `Inner::alloc`, `Inner::alloc_contiguous`, `Inner::free`, `Inner::share`,
+74:The `frame::*` free-f...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 60. Each `Inner::*` method has a rich, do-not-modify `old(self)@ → final(self)@`
+61. transition contract, but its **body** cannot be translated by Verus: every method
+62. uses the `error!` / `debug_assert_eq!` macros (whose expansion needs
+63. `core::fmt::Arguments`, unsupported — the same limitatio...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] I'm checking the tcb-allowed.md documentation against the current frame.rs implementation to see if there's a mismatch — the spec says all the mutating shims (alloc, alloc_contiguous, free, share, book, alloc_range) should carry a deferred admit(), but looking at the code, only free actually has it while the others use weaker phys_view-based specs without admit.
+
+The tcb-allowed.md text appears to describe an earlier state before the weakening happened, so it's stale documentation. Since the reviewer wants to eliminate the remaining admit in free, I'm exploring whether the PhysAuth carrier approach can thread through the mutating shims to let them prove their strong post-states without needing admit — though free is tricky because the carrier can't be threaded through Drop, and I need to handle both the instance() precondition and Inner::free's frame.inv() precondition.
+
+Let me reconsider whether free can actually verify without admit. If I modify instance() to ensure rather than require the initialized check (sound via panic), that handles one precondition. For frame.inv(), I could add it as a requires clause to the free shim itself — and since both UserFrame::drop and KernelFrame::drop are external_body, adding that requirement is essentially free because external_body callers aren't verified anyway. That means free's body could call r.free(frame) and verify without needing admit at all. Let me check whether KernelFrame::drop is also external_body.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame type.
+5. //!
+6. //! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+7. //! It provides `Deref`/`DerefMut` for direct kernel access (identity-mapped) a...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+KernelFrame::drop is verified (not external_body) yet uses `error!` — I need to understand the `with`-clause call-site syntax and verify assumptions empirically. Let me check the GUIDE and run a baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && find / -path /proc -prune -o -name "GUIDE.md" -print 2>/dev/null | head; find /home/ruize/v
+
+[THINKING] KernelFrame::drop is verified and calls free with self.base, but if I add a requires clause to free that demands frame.inv(), the drop implementation won't be able to satisfy it since KernelFrame lacks an inv() method and Drop trait has no requires—this creates an unsatisfiable proof obligation.
+
+But wait, there's something odd here: KernelFrame::drop uses an error! macro which should be untranslatable, yet it's verified in the baseline while UserFrame::drop is marked external_body for exactly that reason. Either KernelFrame::drop is failing verification somehow, or it's not actually in the verification scope. Both UserFrame and KernelFrame use the same `error!` pattern with Debug formatting, so the inconsistency of only marking UserFrame as external_body is puzzling — either KernelFrame isn't actually verifying cleanly or error! works in this context for some reason I'm missing. Rather than theorize further, I'll just start implementing and let the verifier tell me what's actually possible. My focus is on the core deliverable: getting the carrier threaded through the alloc path end-to-end, implementing the other mutating shims in frame.rs, and tackling free's admit, all while keeping errors and admits at zero.
+
+I'm recalling the `with` clause syntax that worked in my earlier experiment — a function decorated with `#[verus_spec(result => with Tracked(auth): ...)]` that the caller invokes by threading the token through a special call-site syntax. Now I need to look up the exact call-site syntax for passing the token when Upool::alloc calls frame::alloc.
+[RESULT ✓] bash: /home/ruize/fm-study/cedar-spec/cedar-lean/GUIDE.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/docs/skills/verus-syntax/GUIDE.md
+/home/ruize/verus-ai-exp/verus-ai-vmem-0417/docs/skills/verus-syntax/GUIDE.md
+/hom...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "with Tracked\|with clause\|`with`\| with \|call.*site\|borrow_mut\|Tracked(" /home
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "with Tracked\|with clause\|call site\|borrow_mut\|Tracked(" /home/ruize/verus-ai-e
+[RESULT ✓] bash: 17:        Tracked(y): Tracked<&mut u32>,
+51:    #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+55:    (#[verus_spec(with Tracked(&mut y), Ghost(0))]
+66:`#[verus_spec(with ...)]` at the call site calls the verified version.
+89:    with Tracked(perm): Tracked<&mut PointsTo<T>>
+<shellId: 13...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "with\|Tracked\|Ghost\|verus_spec\|external\|requires false" /home/ruize/verus-ai-e
+[RESULT ✓] bash: 8:## Ghost/Tracked Parameters (`with` clause)
+12:### Declaring a function with ghost/tracked params
+15:#[verus_spec(ret =>
+16:    with
+17:        Tracked(y): Tracked<&mut u32>,
+18:        Ghost(w): Ghost<u64>
+19:            -> z: Ghost<u32>
+30:    #[verus_spec(with |= Ghost(x))]
+35:- The `with` clau...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md
+[RESULT ✓] view: 8. ## Ghost/Tracked Parameters (`with` clause)
+9. 
+10. Functions can accept ghost/tracked parameters invisible to non-Verus callers.
+11. 
+12. ### Declaring a function with ghost/tracked params
+13. 
+14. ```rust
+15. #[verus_spec(ret =>
+16.     with
+17.         Tracked(y): Tracked<&mut u32>,
+18.       ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Now let me understand the module include structure to know where `PhysAuth` will be visible.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] I'm grasping how the `with` clause works in practice—you declare it in the function signature with tracked parameters and pre/post-conditions, then at the call site you either pass the tracked value directly or wrap the expression in parentheses. The macro generates two versions: one for verified callers that uses the `with` clause, and another for unverified external callers.
+
+For the proof body, when you have `with Tracked(auth): Tracked<&mut PhysAuth>`, the `auth` variable inside the function is unwrapped to just `&mut PhysAuth`, so you can directly assign ghost fields like `auth.v.frames = (*r)@`. For the postconditions referencing the mutable reference, I should use `old(auth)@` for the pre-state and `final(auth)@` for the post-state, following the pattern from the guide where `*old(y)` and `*y` are used for `Tracked<&mut u32>`.
+
+Now I'm defining the PhysAuth struct with a View implementation so that the `@` operator works on it. The struct will contain a ghost PhysMemView field, and I'll implement the View trait to expose that field as the view type.
+
+For the transitions, I need to add the new spec methods—spec_alloc_one, spec_alloc_set, spec_share, and spec_free—while keeping the existing spec_book_frame and spec_book_frames as aliases to avoid duplication. Then I'll write the strong postcondition for frame::alloc that ensures the auth state is initialized and valid, with the result frame satisfying the appropriate invariants. I'm verifying that the frame allocation correctly updates the auth state by ensuring the frames field matches what the spec expects, and I need to confirm the caller can satisfy the precondition that old(auth) equals the global physical view at entry. Once frame::alloc returns with auth mutated, Upool::alloc will need to establish its own postcondition over the final auth state after creating the UserFrame. Refining the borrow mechanics...
+
+I think the right approach is `Tracked(&mut *auth)` at the call site, since `auth` is already `&mut PhysAuth`. The `?` operator should work fine here—when `frame::alloc` returns `Err`, its postcondition guarantees `auth` remains unchanged, so the early return preserves that invariant. Let me structure the code to handle the result explicitly rather than relying on `?` with the annotation, just to keep the proof cleaner.
+
+The bigger question is whether I actually need to thread `Tracked<PhysAuth>` through the manager layer at all. Since manager functions are `external_body`, their bodies aren't verified anyway—they just call the tokenless versions. The only real benefit would be to re-express manager's contracts in terms of the carrier, but those contracts are already trusted and expressed over `phys_view()`. The reviewer withdrew the demand to remove manager's axioms, so I'll leave those contracts as-is since they're tcb-allowed external_body statements. Now I need to figure out the module structure — specifically whether PhysAuth, once defined in mod.spec.rs, will be visible in frame.rs where I need to use it for the verified allocation path.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The `mod.spec.rs` file gets included directly into `mod.rs`, so all the types like `PhysAuth`, `PhysMemView`, and `phys_view` live in the `crate::mm::phys` module namespace. The submodules—`frame`, `upool`, `manager`, `kframe`—import these via qualified paths like `use crate::mm::phys::phys_view;`. Now I'm figuring out how `frame.rs` should access these same items.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Let me check cross-module callers (cascade risk) of the functions I plan to add tokens to.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== callers of Upool::alloc ==="; grep -rn "\.alloc()" src/kernel/src/mm/phys/ | grep
+
+[THINKING] I'm tracing through how `phys_view()` and `PhysMemView` are accessible in frame.rs—they're being used directly in the verus_spec shims even though they're not explicitly imported at the top of frame.rs. The key is that frame.spec.rs gets included into frame.rs via `include!`, and frame.proof.rs has explicit `use` statements for these items, though it looks like those imports might be scoped within frame.proof.rs itself. So I need to add `use super::PhysAuth;` to frame.proof.rs inside the verus block to bring it into scope for the shims. In the non-verus build, the spec files aren't included at all, so PhysAuth doesn't exist—but that's fine since it's only referenced in stripped attributes and proof blocks anyway.
+
+The key insight is that `auth` only appears inside `proof!` blocks and `#[verus_spec]` attributes, both of which vanish in non-verus builds. So the actual executable code never touches `auth`, meaning the non-verus body compiles cleanly without needing to know about the tracked struct. Now I need to figure out how `auth` becomes available as a `&mut PhysAuth` inside the function body when verus is enabled. The re-sync works because Verus allows mutating ghost fields of tracked structs in proof code. The key insight is that I need `phys_view()` in the requires/ensures to bridge between the old auth state and the carrier, since instance() connects to phys_view() rather than directly to auth. Now I'm thinking through which verified callers actually use the tokenless versions of these shims — frame::alloc has Upool::alloc as a verified caller that will thread the token, while frame::alloc_contiguous has no verified callers besides the external_body wrapper, so strengthening it with a token requirement doesn't break anything. The risk here is that if I add the token requirement to refcount, then UserFrame::refcount needs to pass it along, which means all of UserFrame::refcount's callers—potentially verified code outside mm::phys like vmem—would break. I need to check who's actually calling these methods from outside the module to see if this cascades beyond what I can fix.
+[RESULT ✓] bash: === callers of Upool::alloc ===
+src/kernel/src/mm/phys/manager.rs:222:            match self.upool.alloc() {
+src/kernel/src/mm/phys/manager.rs:269:        self.upool.alloc()
+=== callers of UserFrame::share ===
+src/kernel/src/mm/phys/test.rs:156:    let second: UserFrame = match first.share() {
+src/k...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== virt/manager.rs around 350 ==="; sed -n '335,355p' src/kernel/src/mm/virt/manager
+
+[THINKING] I'm analyzing the safety implications of threading tokens through these functions. `Upool::alloc` is isolated within the memory manager's physical layer, so it's safe to thread. But `UserFrame::share` is called from the virtual memory manager, and if that caller is verified, threading a token into `share()` would create a cascade that breaks the verification boundary beyond the physical memory scope.
+
+Similarly, `UserFrame::refcount` is invoked from `vmem.rs`, and if that's a verified function, the same problem occurs. I need to check whether those virtual memory functions are actually marked as verified to understand if this approach would violate the verification scope.
+[RESULT ✓] bash: === virt/manager.rs around 350 ===
+        child: &mut Vmem,
+        vaddr: PageAligned<VirtualAddress>,
+        frame: FrameAddress,
+        writable: bool,
+        page_table_allocator: &F,
+    ) -> Result<(), Error>
+    where
+        F: Fn() -> Result<PageTable<PageTableStorage>, Error>,
+    {
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== check verus_spec/verify on link_one_user_page ==="; grep -n "link_one_user_page\|
+[RESULT ✓] bash: === check verus_spec/verify on link_one_user_page ===
+307:                if let Err(e) = Self::link_one_user_page(
+333:    fn link_one_user_page<F>(
+
+=== mm/virt verified at all? check module attrs ===
+=== count verus in mm/virt ===
+src/kernel/src/mm/virt/boot_init.rs:0
+src/kernel/src/mm/virt/ident...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+`mm/virt` and `test.rs` callers are entirely unverified — so threading tokens into UserFrame::share/refcount/Upool::alloc is cascade-safe (unverified code calls the tokenless version normally). The whole change is bounded within `mm::phys`. Let me check the `error!` macro behavior under Verus and run a baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== error! macro def ==="; grep -rn "macro_rules! error\|macro error\|pub use.*error"
+
+[THINKING] The issue is that `mm/virt` has no verified code at all, so when unverified callers like those in `virt/manager.rs` and `vmem.rs` invoke `UserFrame::share` and `UserFrame::refcount`, they're calling the original tokenless versions directly without any `with` wrapper — which is allowed since unverified code can call originals normally. This means threading tokens into these methods won't actually break anything for the unverified callers.
+
+The verification cascade stays entirely within `mm::phys` with all external callers being unverified, making the plan feasible. I'm weighing whether to thread tokens into `share` and `refcount` for completeness against the added complexity — the reviewer's fix request wants `share` strengthened with auth postconditions and query shims to take `Tracked(&PhysAuth)`, plus token threading for these methods. Since it's safe, I'll prioritize the must-have tier (PhysAuth transitions, frame/Upool alloc carriers, free admit removal, build passing) and then tackle the should-have tier (frame book/alloc_range/alloc_contiguous carriers, query shim auth parameters, UserFrame carriers) for completeness.
+
+For the query shims specifically, I'm reconsidering whether they actually need tokens — they're read-only operations that already work with `phys_view()`, and since the carrier and view are tied by the auth postcondition at relevant points, the current `phys_view()`-based specs are sufficient. The reviewer's deeper goal is really about the mutating path expressing postconditions, so I'll focus on strengthening those (book, alloc_range, alloc_contiguous, share, UserFrame::share) while keeping the query shims (refcount, is_covered, free_count) as-is over `phys_view()`.
+
+Now I need to tackle the free admit problem more carefully since it's a gating criterion. The core issues are that `instance()` requires `phys_view().initialized` but free doesn't have that precondition, and `Inner::free` requires `frame.inv()` but the parameter is just a FrameAddress with no invariant guarantee. I'm thinking about modifying `instance()` to remove the initialized precondition and instead ensure it (panicking if not), which would be a sound change to an unmodified function.
+
+For the frame invariant issue, I could add `requires frame.inv()` to free, but then I'd need to prove it in KernelFrame::drop, which currently has no such guarantee. The real question is whether KernelFrame::drop should be marked external_body like UserFrame::drop — it uses the error! macro which is untranslatable, so it qualifies for the same TCB rationale. But it's not currently listed in tcb-allowed.md, so adding it would require justification and a new entry, which is allowed but a judgment call.
+
+Let me just run the baseline verifier to see which functions currently pass and test my changes incrementally, starting with mod.spec.rs. I could also explore keeping free with an admit since tcb-allowed.md already sanctions admits in these shims, though that's a weaker solution than properly establishing the invariant. I think the best approach is to empirically test the changes rather than reason through all the edge cases. Let me start by modifying `instance()` to remove the `initialized` precondition and add it as a postcondition instead, then run verification to see what actually breaks with `frame.inv()` requiring that precondition. That'll give me concrete feedback on whether `KernelFrame::drop` needs to become `external_body` or if there's another path forward.
+
+Now I'll add the new spec methods to the existing `impl PhysMemView` block and define the `PhysAuth` struct with its implementations in the same verus block.
+[RESULT ✓] bash: === error! macro def ===
+src/kernel/src/hal/arch/mod.rs:23:    pub use ::sys::error::Error;
+src/kernel/src/kcall/mod.rs:21:pub use kcall_error::KcallError;
+src/kernel/src/macros.rs:180:macro_rules! error{
+src/kernel/src/macros.rs:180:macro_rules! error{
+src/libs/syslog/src/standalone.rs:79:macro_rul...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/macros.rs
+[RESULT ✓] view: 170. 
+171. ///
+172. /// # Description
+173. ///
+174. /// Logs an ERROR-level formatted message.
+175. ///
+176. /// # Parameters
+177. ///
+178. /// - `$($arg:tt)*`: Formatted message to be logged.
+179. ///
+180. macro_rules! error{
+181. 	( $($arg:tt)* ) => (
+182.     #[cfg(not(verus_keep_ghost))]
+183.   ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+The `error!` macro is `#[cfg(not(verus_keep_ghost))]` — it's empty under Verus, so it's NOT a translation blocker. That's why KernelFrame::drop verifies. Now let me check whether `FrameAddress` is always page-aligned by construction (via `PageAligned`), which would resolve `free`'s `frame.inv()` obligation.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== PageAligned view/inv/spec ==="; grep -rn "impl View for PageAligned\|PageAligned.
+
+[THINKING] The `error!` macro is gated behind `#[cfg(not(verus_keep_ghost))]`, which means it compiles to nothing when Verus is active. That's why KernelFrame::drop can verify successfully even with error! calls present — under Verus, those macros simply disappear. This applies to `warn!` and `info!` as well, making them all no-ops in the Verus context, which undermines the "untranslatable error! macro" justification for using external_body.
+
+Given this, the verification story changes: KernelFrame::drop works because error! is empty, leaving just the `if let Err(e) = free(self.base) { }` block to verify. If I add a `requires frame.inv()` precondition to free, then KernelFrame::drop would need to prove `self.base.inv()`, but it has no such guarantee without a type invariant on KernelFrame itself. UserFrame::drop is marked external_body, yet under Verus it should also reduce to a simple free call that's verifiable — so that marking might be historical or stem from other reasons unrelated to error!.
+
+This actually reopens the manager functions since error! and warn! are no-ops under Verus; the real blockers are the Rust combinators like inspect_err and and_then, which Verus may not support. But I'll defer to the reviewer's acceptance of manager as external_body.
+
+For free's admit, I need to handle two obligations: instance() requires phys_view().initialized, and Inner::free requires frame.inv(). I can modify instance() to ensure initialized instead of requiring it — the body panics if uninitialized, otherwise returns a valid Inner, so the ensures is sound as a TCB trust statement. Removing the require doesn't weaken anything because the mutating shims that call instance() already have their own requires phys_view().initialized for the carrier bridge invariants, so they still establish what they need.
+
+For the second obligation, I'll add requires frame.inv() to the free shim. KernelFrame::drop calls free and needs to provide frame.inv(), which should hold if FrameAddress guarantees alignment by construction through its PageAligned wrapper.
+[RESULT ✓] bash: === PageAligned view/inv/spec ===
+=== find page_aligned file ===
+src/kernel/src/hal/mem/types/address/aligned
+src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/types/address/page.rs
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== aligned/page.rs ==="; grep -n "View\|view\|inv\|spec\|% spec_page_size\|verus" sr
+[RESULT ✓] bash: === aligned/page.rs ===
+30:#[verus_verify(external_derive)]
+67:    /// - `Err(Error::BadAddress)`: If the provided address is invalid.
+201:#[cfg(verus_keep_ghost)]
+202:verus! {
+204:use crate::hal::mem::spec_page_size;
+206:impl<T: Address + View<V = int>> View for PageAligned<T>
+210:    closed spec f...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== type_invariant usage ==="; grep -rn "type_invariant" src/ | head; echo "=== how m
+
+[THINKING] PageAligned's invariant isn't automatically satisfied by the type—it's a separate predicate that needs to be explicitly checked. This means I can't freely assert that a FrameAddress has the invariant, so obligation 2 still stands. I'm considering whether to add a `requires frame.inv()` precondition to the free function.
+
+Looking at the alternatives: if I add a type invariant to KernelFrame that guarantees `base.inv()`, then KernelFrame::drop would get that for free. But this means KernelFrame::new would need to require `base.inv()` as a precondition to establish the invariant at construction. Since new is called only by external_body functions (manager::alloc_kernel_frame and alloc_many_kernel_frames), adding this precondition is safe—those callers are unchecked anyway. The new function would then prove the type invariant by relying on the precondition.
+
+However, I'm uncertain about Verus's support for type invariants in the attribute-style syntax used here, so that path feels risky. A simpler approach: make free require `frame.inv()` as a precondition, then make KernelFrame::drop external_body (like UserFrame::drop already is). The justification is that Drop implementations can't reliably carry frame-alignment and initialization facts through the drop path, and since UserFrame::drop is already external_body for the same reason, making KernelFrame::drop external_body for consistency is defensible.
+
+The tradeoff is that the reviewer explicitly wants the admit removed, and while tcb-allowed.md already sanctions these mutating shims with a deferred proof obligation, converting a verified function to external_body might face pushback. But adding a justified entry to tcb-allowed.md is within my authority, and the symmetry argument between the two Drop implementations is solid.
+
+For obligation 2, I'm circling back to whether I can make `free` require `frame.inv()` and have KernelFrame::drop satisfy it cleanly. The core issue is that Inner::free is external_body and needs frame.inv(), so the shim must provide it somehow. I'm exploring whether a runtime alignment check or a type invariant on KernelFrame could eliminate the admit without risky machinery, but if that doesn't work cleanly, keeping free's admit is defensible since the reviewer already allows it as a caller-justified exception. The precondition on free is unchecked by verified callers since they're all external_body, but it's sound and honest—free genuinely needs the frame aligned for Inner::free. Making KernelFrame::drop external_body is necessary because if it stays verified, it can't prove the alignment requirement to free. I should check if the repo uses type_invariant with verus_verify attributes, since that might be a cleaner alternative that keeps the drop verified.
+[RESULT ✓] bash: === type_invariant usage ===
+=== how many verified callers of frame::free (non-external_body)? ===
+src/kernel/src/mm/phys/test.rs:99:    match frame::free(leaked_addr) {
+src/kernel/src/mm/phys/test.rs:128:    match frame::free(addr) {
+src/kernel/src/mm/phys/test.rs:183:    match frame::free(addr) {
+...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+The `error!` macro is empty under Verus, and **neither** Drop impl is actually `external_body` (the code is stricter than tcb-allowed.md claims). I have a complete picture now. Let me set up todos and start implementing — Phase 1: the carrier in `mod.spec.rs`.
+[TOOL] sql: {'description': 'Create implementation todos', 'query': "INSERT INTO todos (id, 
+
+[THINKING] The grep search for "external_body" in upool.rs came up empty, which is strange since tcb-allowed.md claims UserFrame::drop should be marked as external_body. Looking back at the actual code around line 186-203, UserFrame::drop only has `#[verus_verify]` and `#[verus_spec(...)]` attributes—no external_body annotation. So the documentation describes an intended state that doesn't match what's currently in the code.
+
+Both UserFrame::drop and KernelFrame::drop are actually verified right now, not external_body, and they both call frame::free. They verify because free has no preconditions and uses admit to handle its internals. But if I add `requires frame.inv()` to free, both Drop implementations would break since they can't prove the frame invariant. That would force me to mark both as external_body and update tcb-allowed.md accordingly—a significant cascade of changes just to remove one admit.
+
+I'm wondering if there's a simpler path I'm overlooking. The real blocker is that instance() requires phys_view().initialized, which free can't establish. What if I flip that around and make instance() ensure initialized instead of requiring it—would that let free verify without needing to remove the admit at all?
+
+Actually, even if I fix instance() that way, frame.inv() is still required by r.free(frame), and free still can't prove it. So that alone doesn't solve the problem. The core issue remains: free needs frame.inv() to verify, but the Drop callers have no way to provide it.
+
+I'm weighing the trade-off now. Removing the admit cleanly means converting two verified Drop implementations to external_body, which trades one trust marker for two. The reviewer might actually prefer keeping those Drop impls verified rather than expanding the external_body surface area just to hit admit=0.
+
+But the reviewer was explicit about wanting admit=0 on own-functions. So maybe the right move is to accept that the Drop impls need to become external_body if I want to eliminate the free admit entirely. The reviewer already sanctioned the TCB-allowed external_body boundary, so adding two more there for Drop might be acceptable if properly justified.
+
+Alternatively, I could keep the free admit as-is and document it as a caller-justified weak exception that's already sanctioned in the tcb-allowed rules. That leaves admit=1 but avoids expanding external_body, though it might trigger another review bounce on the remaining items.
+
+Actually, looking back at the reviewer's feedback more carefully — they said the external_body count itself isn't the issue; it's the admit on own-functions that's the flag. So if I make UserFrame::drop and KernelFrame::drop external_body (which aligns with what tcb-allowed.md already claims), I can eliminate the free admit. The Drop implementations can't carry the frame.inv() precondition structurally, so marking them external_body is justified. And free itself still needs `requires frame.inv()` for its own body verification since it calls Inner::free which requires that invariant.
+
+The test.rs callers are unverified code, so they don't prove the requires — that's fine in the non-verus build where requires gets stripped anyway. This approach is sound and cleaner than keeping the admit. I'll implement the carrier first to verify the core failures pass, then apply this Option A fix to remove the free admit.
+
+Now I'm starting the implementation with mod.spec.rs. I need to define PhysAuth as a tracked struct that wraps a PhysMemView and implements the View trait, so I can use the `@` operator in my shims. The View impl will expose the ghost view field, and I'll add an inv method that delegates to the underlying view's invariant.
+
+Defining PhysAuth struct and View trait...
+[RESULT ✓] sql: Executed 3 statement(s):
+
+1. INSERT
+   6 row(s) inserted. Last inserted row ID: 6.
+
+2. INSERT
+   5 row(s) inserted. Last inserted row ID: 5.
+
+3. UPDATE
+   1 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Now Phase 1 — add the `PhysAuth` carrier and transitions to `mod.spec.rs`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Phase 1 done. Now Phase 2 — frame.rs. First add the import in frame.proof.rs, then thread the carrier through the mutating shims.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I should do an incremental verification after Phase 1 to catch any syntax errors early, so let me add the import to frame.proof.rs and run a quick compile check before moving on to the frame.rs shims in Phase 2.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Now the `alloc` shim — thread the carrier with strong post-state:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Now thread the remaining mutating shims. First `alloc_contiguous`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to thread through the remaining shims and update Upool before I can verify everything together, since Upool::alloc currently calls the bare frame::alloc() which will break without the token parameter. Let me push forward with the full implementation rather than trying to verify in isolation.
+
+For alloc_contiguous, I'm checking that the spec contract holds: the final auth state should equal the old state with the newly allocated frames added to the set, and those frames must be a subset of the allocated frames in the final state. The re-sync logic where I update auth.v.frames with the union/difference of the old and new allocations should preserve this invariant correctly.
+
+Now for book: the Ok path should establish that the final auth state matches spec_alloc_one applied to the old state with the given physical address, and that address should be in the allocated frames with a refcount of 1. On the Err path, the auth state stays unchanged since the inner book call failed and the re-sync just copies back the unchanged frames. The re-sync happens unconditionally after the book call returns, so both paths are covered.
+
+For the Err arm specifically, I can preserve the meaningful detail from Inner::book — that the address wasn't in free frames — alongside the no-change fact. This keeps the spec informative about why the operation failed.
+
+For share: the Ok path should establish that the final auth state matches spec_share applied to the old state with the given frame, and that frame should be in allocated frames with its refcount incremented.
+
+The Err path captures when share fails — either the frame wasn't allocated to begin with, or the refcount is already maxed out at 255. spec_share leaves allocated_frames unchanged, so if the frame was allocated before, it stays allocated after. The refcount insertion in Inner::share matches what spec_share does, so the postconditions align.
+
+Now I'm deciding how to handle the query shims for refcount, is_covered, and free_count. The reviewer wants them to take Tracked(&PhysAuth), but they're just pure reads from a single state. I'll thread Tracked through refcount since UserFrame::refcount is a verified caller and the reviewer explicitly wants the share/refcount pair connected. For is_covered and free_count, their callers are mostly external, so I need to think through whether they need the same treatment.
+
+Actually, threading all three query shims would satisfy the reviewer's request fully, but is_covered and free_count have no verified callers, so it's extra work with no verified consumer. The real risk is whether changing the spec to require `auth@ == phys_view()` will still verify when the body calls instance() to bridge to phys_view(). It should work, but it's additional complexity.
+
+I'll thread the carrier through all the mutating shims — alloc, alloc_contiguous, book, alloc_range, and share — to maximize the chance of passing review cleanly. I'm deciding whether to thread the carrier through the query shims too for consistency, even though they're read-only and sound as-is. The risk is low since external callers like book_mmio_regions aren't verified anyway, so the `requires false` tokenless fallback won't cause issues. I'll prioritize getting the mutating shims and upool changes working first, then circle back to thread the query shims if needed to satisfy the reviewer or for thoroughness.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Now `book`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Now `alloc_range`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the allocation range logic, the inner function uses a frames set derived from the region's start and size, which gets passed to the spec_alloc_set. The strong postcondition verifies that the allocated frames for that region are properly tracked in the final authorization state.
+
+Now I'm ready to write the alloc_range implementation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Now `share`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Let me run an incremental verify to confirm the frame.rs mutating shims verify (upool cascade errors are expected until I update callers).
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+
+[THINKING] Running an incremental verify on the frame.rs shims to check for errors, though I expect the upool callers will show `requires false` errors since they're using the tokenless versions. The frame shims themselves should verify cleanly.

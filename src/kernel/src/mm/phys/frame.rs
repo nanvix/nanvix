@@ -729,28 +729,38 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 
 /// Allocate a frame.
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&mut PhysAuth>
     requires
         phys_view().initialized,
         phys_view().inv(),
+        old(auth)@ == phys_view(),
+        old(auth)@.initialized,
+        old(auth)@.inv(),
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // As with the other mutating shims, the post-state membership effect (the
-        // frame now being in `allocated_frames` with refcount 1) is not expressible
-        // against the fixed pre-state `phys_view()` (no `old(phys_view())` to diff;
-        // see `alloc_contiguous`/`book` and bugs.md). The sound, verified facts are
-        // that a successful result is a well-formed (page-aligned) frame address and
-        // that it was free in the pool immediately before the call.
+        final(auth)@.initialized,
+        final(auth)@.inv(),
+        // Strong post-state contract carried by the `PhysAuth` token: a successful
+        // allocation moves one free frame into `allocated_frames` with refcount 1;
+        // an error leaves the allocator unchanged. `old(auth)@` names the pre-state
+        // and `final(auth)@` the post-state — the two program points a fixed
+        // `phys_view()` constant could not distinguish.
         match result {
             Ok(frame) => {
                 &&& frame.inv()
-                &&& phys_view().frames.free_frames.contains(frame@)
+                &&& final(auth)@ == old(auth)@.spec_alloc_one(frame@)
+                &&& final(auth)@.frames.allocated_frames.contains(frame@)
+                &&& final(auth)@.frames.refcounts[frame@] == 1
             },
-            Err(_) => true,
+            Err(_) => final(auth)@ == old(auth)@,
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
-    instance().alloc()
+    let r = instance();
+    let res = r.alloc();
+    proof! {
+        auth.v.frames = (*r)@;
+    }
+    res
 }
 
 /// # Description
@@ -762,32 +772,45 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 /// Returns the base `FrameAddress` of the contiguous range.
 ///
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&mut PhysAuth>
     requires
         phys_view().initialized,
         phys_view().inv(),
+        old(auth)@ == phys_view(),
+        old(auth)@.initialized,
+        old(auth)@.inv(),
         count > 0,
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // As with `alloc`, the post-state contiguity/membership effect over the
-        // freshly reserved range is not expressible against the fixed pre-state
-        // `phys_view()` (see `alloc` and bugs.md). The sound, verified facts are
-        // that a successful result is a well-formed base address and that the
-        // `count` page-strided frames it spans were all free immediately before
-        // the call (contiguity precondition for identity-mapped kernel stacks).
+        final(auth)@.initialized,
+        final(auth)@.inv(),
+        // Strong post-state contract carried by the `PhysAuth` token: a successful
+        // allocation moves the `count` page-strided frames from the free pool into
+        // `allocated_frames`, each with refcount 1; an error leaves the allocator
+        // unchanged. Contiguity of the run is the contract of `Inner::alloc_contiguous`
+        // (the base address plus page strides); here it is captured as the
+        // reserved frame set.
         match result {
             Ok(base) => {
                 &&& base.inv()
-                &&& Set::new(|addr: int|
-                    exists|i: int| 0 <= i < count
-                        && addr == #[trigger] (base@ + i * spec_page_size())
-                ).subset_of(phys_view().frames.free_frames)
+                &&& ({
+                    let frames = Set::new(|addr: int|
+                        exists|i: int| 0 <= i < count
+                            && addr == #[trigger] (base@ + i * spec_page_size())
+                    );
+                    &&& final(auth)@ == old(auth)@.spec_alloc_set(frames)
+                    &&& frames.subset_of(final(auth)@.frames.allocated_frames)
+                })
             },
-            Err(_) => true,
+            Err(_) => final(auth)@ == old(auth)@,
         },
 )]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
-    instance().alloc_contiguous(count)
+    let r = instance();
+    let res = r.alloc_contiguous(count);
+    proof! {
+        auth.v.frames = (*r)@;
+    }
+    res
 }
 
 ///
@@ -881,73 +904,120 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
 
 /// Reserve a frame so [`alloc`] will skip it.
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&mut PhysAuth>
     requires
         phys_view().initialized,
+        phys_view().inv(),
+        old(auth)@ == phys_view(),
+        old(auth)@.initialized,
+        old(auth)@.inv(),
         phys_addr.inv(),
     ensures
-        phys_view().inv(),
-        // On success the booked frame was free immediately before the call; on
-        // failure it was not free. The post-state effect (the frame now being in
-        // `allocated_frames`) is not expressible against the fixed pre-state
-        // `phys_view()` (see `alloc` and bugs.md).
-        phys_view().initialized,
+        final(auth)@.initialized,
+        final(auth)@.inv(),
+        // Strong post-state contract carried by the `PhysAuth` token: a successful
+        // booking moves the frame from free to allocated with refcount 1; a
+        // failure leaves the allocator unchanged and the frame was not free.
         match result {
-            Ok(()) => phys_view().frames.free_frames.contains(phys_addr@),
-            Err(_) => !phys_view().frames.free_frames.contains(phys_addr@),
+            Ok(()) => {
+                &&& final(auth)@ == old(auth)@.spec_alloc_one(phys_addr@)
+                &&& final(auth)@.frames.allocated_frames.contains(phys_addr@)
+                &&& final(auth)@.frames.refcounts[phys_addr@] == 1
+            },
+            Err(_) => {
+                &&& final(auth)@ == old(auth)@
+                &&& !old(auth)@.frames.free_frames.contains(phys_addr@)
+            },
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-    instance().book(phys_addr)
+    let r = instance();
+    let res = r.book(phys_addr);
+    proof! {
+        auth.v.frames = (*r)@;
+    }
+    res
 }
 
 /// Book every frame in the given physical memory region.
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&mut PhysAuth>
     requires
         phys_view().initialized,
+        phys_view().inv(),
+        old(auth)@ == phys_view(),
+        old(auth)@.initialized,
+        old(auth)@.inv(),
         region.inv(),
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // On success every frame of the region was free immediately before the
-        // call; on failure at least one was not free. The region's frame set is
-        // `PhysMemView::region_frames`, matching `Inner::alloc_range`. The
-        // post-state effect (the frames now being allocated) is not expressible
-        // against the fixed pre-state `phys_view()` (see `alloc` and bugs.md).
+        final(auth)@.initialized,
+        final(auth)@.inv(),
+        // Strong post-state contract carried by the `PhysAuth` token: on success
+        // every frame of the region moves from free to allocated (each refcount 1);
+        // on failure the allocator is unchanged and at least one region frame was
+        // not free. The region's frame set is `PhysMemView::region_frames`,
+        // matching `Inner::alloc_range`.
         match result {
-            Ok(()) => PhysMemView::region_frames(region@.start, region@.size)
-                .subset_of(phys_view().frames.free_frames),
-            Err(_) => !PhysMemView::region_frames(region@.start, region@.size)
-                .subset_of(phys_view().frames.free_frames),
+            Ok(()) => {
+                &&& final(auth)@ == old(auth)@.spec_alloc_set(
+                    PhysMemView::region_frames(region@.start, region@.size))
+                &&& PhysMemView::region_frames(region@.start, region@.size)
+                    .subset_of(final(auth)@.frames.allocated_frames)
+            },
+            Err(_) => {
+                &&& final(auth)@ == old(auth)@
+                &&& !PhysMemView::region_frames(region@.start, region@.size)
+                    .subset_of(old(auth)@.frames.free_frames)
+            },
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
-    instance().alloc_range(region)
+    let r = instance();
+    let res = r.alloc_range(region);
+    proof! {
+        auth.v.frames = (*r)@;
+    }
+    res
 }
 
 /// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&mut PhysAuth>
     requires
         phys_view().initialized,
         phys_view().inv(),
+        old(auth)@ == phys_view(),
+        old(auth)@.initialized,
+        old(auth)@.inv(),
         frame.inv(),
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // On success the frame remains allocated (it has gained a reference). The
-        // increment itself is not stated: `phys_view()` is a single fixed value
-        // with no `old(phys_view())` to compare against.
+        final(auth)@.initialized,
+        final(auth)@.inv(),
+        // Strong post-state contract carried by the `PhysAuth` token: on success
+        // the frame gains one reference (the allocated/free partition is unchanged)
+        // and remains allocated; on failure the allocator is unchanged and the
+        // frame was either not allocated or already at the u8 refcount ceiling.
         match result {
             Ok(()) => {
-                &&& phys_view().frames.allocated_frames.contains(frame@)
-                &&& phys_view().frames.refcounts.contains_key(frame@)
+                &&& final(auth)@ == old(auth)@.spec_share(frame@)
+                &&& final(auth)@.frames.allocated_frames.contains(frame@)
+                &&& final(auth)@.frames.refcounts.contains_key(frame@)
             },
-            Err(_) => !phys_view().frames.allocated_frames.contains(frame@)
-                || (phys_view().frames.refcounts.contains_key(frame@)
-                    && phys_view().frames.refcounts[frame@] >= 255),
+            Err(_) => {
+                &&& final(auth)@ == old(auth)@
+                &&& (!old(auth)@.frames.allocated_frames.contains(frame@)
+                    || (old(auth)@.frames.refcounts.contains_key(frame@)
+                        && old(auth)@.frames.refcounts[frame@] >= 255))
+            },
         },
 )]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
-    instance().share(frame)
+    let r = instance();
+    let res = r.share(frame);
+    proof! {
+        auth.v.frames = (*r)@;
+    }
+    res
 }
 
 /// Returns the current reference count of an already-allocated frame.

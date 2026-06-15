@@ -153,6 +153,117 @@ impl PhysMemView {
             ..self
         }
     }
+
+    // ----- Reservation transitions threaded through the `PhysAuth` carrier -----
+    //
+    // These mirror, value-for-value, the do-not-modify `Inner::*` transition
+    // contracts (`old(self)@ -> final(self)@`). A mutating shim that threads a
+    // `&mut PhysAuth` re-synchronizes the carrier to the post-state of the
+    // `Inner::*` call and states `final(auth)@ == old(auth)@.spec_<op>(...)`,
+    // which — unlike a single fixed `phys_view()` constant — can name both the
+    // pre-state (`old(auth)@`) and the post-state (`final(auth)@`).
+
+    /// `alloc` / `book`: a single free frame becomes allocated with one reference.
+    /// Identical in shape to `spec_book_frame`; named for the allocation callers.
+    pub open spec fn spec_alloc_one(self, addr: int) -> PhysMemView {
+        PhysMemView {
+            frames: FrameAllocView {
+                allocated_frames: self.frames.allocated_frames.insert(addr),
+                free_frames: self.frames.free_frames.remove(addr),
+                refcounts: self.frames.refcounts.insert(addr, 1int),
+            },
+            ..self
+        }
+    }
+
+    /// `alloc_contiguous` / `alloc_range`: a whole set of frames moves from free
+    /// to allocated, each with refcount 1. Identical in shape to
+    /// `spec_book_frames`; named for the allocation callers.
+    pub open spec fn spec_alloc_set(self, frames: Set<int>) -> PhysMemView {
+        PhysMemView {
+            frames: FrameAllocView {
+                allocated_frames: self.frames.allocated_frames.union(frames),
+                free_frames: self.frames.free_frames.difference(frames),
+                refcounts: self.frames.refcounts.union_prefer_right(
+                    Map::new(|a: int| frames.contains(a), |a: int| 1int),
+                ),
+            },
+            ..self
+        }
+    }
+
+    /// `share`: add one reference to an already-allocated frame; the
+    /// allocated/free partition is unchanged.
+    pub open spec fn spec_share(self, addr: int) -> PhysMemView {
+        PhysMemView {
+            frames: FrameAllocView {
+                refcounts: self.frames.refcounts.insert(
+                    addr,
+                    self.frames.refcounts[addr] + 1,
+                ),
+                ..self.frames
+            },
+            ..self
+        }
+    }
+
+    /// `free`: release one reference; the last reference returns the frame to the
+    /// free pool. Defined for the manager-level reasoning that can thread the
+    /// token; the `frame::free` shim itself keeps its weak Drop contract.
+    pub open spec fn spec_free(self, addr: int) -> PhysMemView {
+        if self.frames.refcounts[addr] == 1 {
+            PhysMemView {
+                frames: FrameAllocView {
+                    allocated_frames: self.frames.allocated_frames.remove(addr),
+                    free_frames: self.frames.free_frames.insert(addr),
+                    refcounts: self.frames.refcounts.remove(addr),
+                },
+                ..self
+            }
+        } else {
+            PhysMemView {
+                frames: FrameAllocView {
+                    refcounts: self.frames.refcounts.insert(
+                        addr,
+                        self.frames.refcounts[addr] - 1,
+                    ),
+                    ..self.frames
+                },
+                ..self
+            }
+        }
+    }
+}
+
+/// Tracked ghost authority over the global frame-allocator singleton.
+///
+/// Its abstract value (`auth@ : PhysMemView`) is the current value of the
+/// subsystem. Holding `&mut PhysAuth` is the right to mutate the singleton and,
+/// crucially, exposes BOTH the pre-state `old(auth)@` and the post-state
+/// `auth@` of that mutation — which the zero-argument `phys_view()` constant
+/// cannot. `PhysAuth` carries NO new caller-visible content: `auth@` ranges over
+/// exactly the same `PhysMemView` values; it only restores the ability to name
+/// two program points across a mutating operation. It is `tracked` (ghost): it
+/// is erased at runtime and threaded only to express the abstract transition.
+pub tracked struct PhysAuth {
+    /// The singleton's abstract value at the current program point.
+    pub ghost v: PhysMemView,
+}
+
+impl View for PhysAuth {
+    type V = PhysMemView;
+
+    open spec fn view(&self) -> PhysMemView {
+        self.v
+    }
+}
+
+impl PhysAuth {
+    /// Well-formedness of the carrier is exactly the well-formedness of the
+    /// `PhysMemView` it holds.
+    pub open spec fn inv(self) -> bool {
+        self.v.inv()
+    }
 }
 
 /// Abstract view of the global physical-memory subsystem at the current program
