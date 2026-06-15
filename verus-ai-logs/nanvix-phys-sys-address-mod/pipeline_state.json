@@ -2,9 +2,11 @@
   "module_name": "sys-address-mod",
   "log_name": "nanvix-phys-sys-address-mod",
   "source_path": "/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "b6bf44d75636033d926743bbe02db307ab06ff49"
   },
   "phase_start_shas": {
-    "proving": "45a9dc979ebebc0137413b75d7671e733ee3952c"
+    "proving": "45a9dc979ebebc0137413b75d7671e733ee3952c",
+    "cheating-elimination": "2b743dedbb1dd5366a179ff2df6e4b874f456736"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "b6bf44d75636033d926743bbe02db307ab06ff49",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "2b743dedbb1dd5366a179ff2df6e4b874f456736",
       "rollback_iter": 0
     }
   ],
