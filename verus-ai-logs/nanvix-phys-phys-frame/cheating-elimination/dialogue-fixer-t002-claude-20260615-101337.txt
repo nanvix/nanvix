@@ -114,3 +114,11 @@ Both forms behave as documented: committed → 0 errors; FAIL form uncommented �
 [RESULT ✓] bash: === confirm committed file unchanged & verifies ===
 verification results:: 4 verified, 0 errors
 <shellId: 4 completed with exit code 0>
+[RESULT ✓] bash: Exit code : 0
+  Unverified functions:
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification results" | head; echo "===
