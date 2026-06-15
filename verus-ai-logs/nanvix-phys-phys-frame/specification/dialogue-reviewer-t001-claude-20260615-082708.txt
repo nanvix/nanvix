@@ -197,3 +197,224 @@ This is a continuing session. Let me read existing dialogue, context files, and 
 ### Verification
 
 **Fixer'...
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but reports `CHEATING_DETECTED`. There's a rollback file present. Let me understand the current cycle state before deciding where to write.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la --time-style=full-iso verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/; 
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== pipeline_state.json ==="; cat verus-ai-logs/nanvix-phys-phys-frame/pipeline_state
+
+[THINKING] I'm noticing there's a conflict here—the previous reviewer marked everything as resolved, but I'm starting a fresh review session with instructions to run verification and write to turn_001_driver.md. The file already exists from prior reviews, so I need to clarify whether I'm overwriting it or working with what's there.
+
+The key signal is that verify-kernel now shows CHEATING_DETECTED with external_body=22 and admit=1, which is different from the previous turn_002 results. This suggests the rollback from the proving phase has reset us back to specification review, and I need to walk through the checklist properly given this new status.
+[RESULT ✓] bash: total 20
+drwxrwxr-x 1 ruize ruize  106 2026-06-15 08:27:08.067595014 +0800 .
+drwxrwxr-x 1 ruize ruize 1076 2026-06-15 08:27:08.069390399 +0800 ..
+-rw-rw-r-- 1 ruize ruize 7699 2026-06-15 07:16:29.990154743 +0800 turn_001_driver.md
+-rw-rw-r-- 1 ruize ruize 4121 2026-06-15 07:18:10.932344178 +0800 tur...
+[RESULT ✓] bash: === pipeline_state.json ===
+{
+  "module_name": "phys-frame",
+  "log_name": "nanvix-phys-phys-frame",
+  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs",
+  "current_phase": "specification",
+  "current_phase_idx": 2,
+  "completed_phases": [
+    "caller-analysis",
+    "view-desig...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+This is a **re-review after a proving→specification rollback**. The proving phase found the original post-state specs were provably false (constant `phys_view()` can't express post-state), weakened them to sound pre-state facts, left one `admit` in `free`, and filed a rollback request pointing at view-design. I must independently verify this before deciding RESOLVED vs ROLLBACK. Let me gather the concrete code and run tools.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "fn \|verus_spec\|ensures\|requires\|admit\|external_body\|spec fn\|opens_invariant
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '160,230p' src/kernel/src/mm/phys/mod.spec.rs 2>/dev/null; echo "=== search phys_vie
+
+[THINKING] So after the rollback, the four mutating shims were re-specified to capture pre-state facts instead, with most admits removed except for `free`, and all the changes are documented. The kernel verification passes now, but the cheating-check is still flagging some external bodies, admits, and cfg gates that shouldn't be there.
+
+The `admit=1` in `free` is documented as deferred to the proving phase with a TRUE spec, so that's expected. Now I need to conduct a fresh review walk-through for this new specification cycle and write it up in turn_001_driver.md. The previous turn files from the earlier specification round are still in the directory with old timestamps, but since we've rolled back to a fresh specification phase, I should follow the explicit instruction and write to turn_001_driver.md as the harness expects.
+
+The core tension here is the weakening of post-state guarantees. The prior proving phase found the original ensures were unprovable given the constant view architecture, so the fixer replaced them with pre-state facts. The checklist rule says guarantees shouldn't be weakened, but the rollback proved the original was false. I need to decide whether to accept the sound-but-weakened specs with documentation in bugs.md, or pursue the proper fix by making the view diffable through edits to the spec contracts. ide whether the weakening is justified and within scope or if this needs to roll back further to view-design. The key is verifying the reproducers—if they genuinely prove the original specs are false using Verus proofs, then weakening becomes forced, and the real fix belongs upstream in view-design. But before rolling back again, I need to confirm those reproducers actually demonstrate what they claim and that no local fixes are viable. I need to trace through the timeline more carefully. The first specification round marked things RESOLVED, but then the proving phase discovered those specs were actually false and rolled back here. Now I'm reviewing in a new specification round, and I see that bugs.md and the current code already show weakened pre-state specs with an admit flag. So someone must have already run a fixer after the rollback to produce these sound but weaker specifications. The question is whether accepting this weakening with documentation is the right call, or if I should demand a rollback to view-design to fix the root cause. I need to do the actual verification work before deciding whether to rollback—reading through the physical view contracts in frame.rs and mod.spec.rs, running the reproducers, and checking for spec drift to confirm this really does need view-design changes rather than a specification fix.
+[RESULT ✓] bash: 115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+117:        requires
+119:        ensures
+137:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+183:        requires
+186:        ensures
+210:    fn alloc_...
+[RESULT ✓] bash: ///
+/// The subsystem state lives in module-level `static`s (`frame::INSTANCE` /
+/// `frame::INSTANCE_INIT`) that a Verus `spec fn` cannot read directly, so this
+/// is an *uninterpreted* function: the exec wrappers in `frame.rs` and the
+/// `book_*`/`init` functions pin down its value through their...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '80,160p' src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I need to dive into the memory allocation contracts and their implementations—looking at the shim functions that handle mutations, the inner contract definitions they delegate to, and how the PhysMemView struct and its witness function tie everything together.
+[RESULT ✓] bash: verus! {
+
+use vstd::set_lib::set_int_range;
+
+/// Abstract state of the global physical-memory subsystem managed by `mm::phys`.
+///
+/// Models the boot lifecycle of the frame-allocator singleton plus its
+/// frame-reservation state. The `frames` component mirrors `frame::instance()@`;
+/// the `initia...
+[RESULT ✓] view: 100.     refcount: &'static mut [u8],
+101. }
+102. 
+103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. U...
+[RESULT ✓] view: 640. // statics, and the verifier does not support `static mut` paths, so the bridge
+641. // between the live singleton and the uninterpreted `phys_view()` is asserted
+642. // here as an external contract: once the allocator is initialized, the returned
+643. // reference is well-formed and its abstr...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Now I understand the architecture clearly. The `Inner::*` methods have proper two-state specs (`old(self)@`/`final(self)@`), but the free-function shims can only relate to `phys_view()` — a constant pinned to pre-state. The deciding factor is **what callers actually expect**. Let me read the caller analysis, TCB list, and verify the rollback's reproducers myself.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== caller_analysis.md ==="; cat verus-ai-logs/nanvix-phys-phys-frame/caller_analysis
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== tcb-allowed.md ==="; find verus-ai-logs -name "tcb-allowed.md" -exec cat {} \; 2>
+
+[THINKING] I'm seeing the core issue now: the `Inner::alloc` method and other mutators have solid two-state contracts using `old(self)@` and `final(self)@` that correctly specify post-conditions, but the problem surfaces at the shim layer where the abstract state representation shifts.
+
+The shims call `instance()` which returns a reference pinned to `phys_view().frames` at the pre-state, then invoke a mutator. But `phys_view()` is an uninterpreted constant that doesn't change between pre- and post-state, so after the mutation, the reference no longer matches what `phys_view()` claims. This means the shims can only assert pre-state facts, which weakens the user-facing guarantee.
+
+The real question is whether this needs a rollback to the view-design phase — the root cause is that `phys_view()` lacks state-awareness, and a proper fix might require a state-indexed view or ghost token in the spec. But there could be a local specification workaround that doesn't touch the view design itself.
+
+Actually, thinking through this more carefully: `phys_view()` is fundamentally a global constant tied to whatever `instance()` returns, so once the mutation happens, `phys_view()` still reflects only the pre-state. There's no mechanism in this module to express post-state facts about the singleton through `phys_view()`. The shim can only soundly state pre-state facts, which means the specs were genuinely weakened.
+
+As the reviewer, I need to apply the rules: the checklist item fails because specs were weakened, and before rolling back, I must show that local fixes were attempted and that the root cause truly belongs in view-design. The proving phase already explored local fixes, so now I need to evaluate whether a rollback is justified.
+
+The key question is whether there's any way to re-spec the shim to express post-state without changing the abstraction boundary — but since callers reason about `phys_view()` and it's a constant, there's no local fix that produces an equally strong correct spec. The architecture itself is the blocker, which points to view-design. However, this would be a second rollback (proving→specification→view-design), and I need to reconsider whether the spec weakening is actually forbidden or if it's acceptable under the checklist's allowance for replacing incorrect specs with equally strong ones.
+
+The original specs were added during the first specification round and then proven false, so I should run the spec-drift command against the view-design baseline to see what it reports as weakened. The engineering case for rolling back to view-design is strong — the constant `phys_view()` forces the weakening, no local fix recovers the strength, and the proving phase already documented this with reproducers. But rollback is expensive, so I need to verify the reproducers exist and run them to build ironclad evidence before deciding.
+
+Actually, I'm reconsidering the whole framing. My job is to review whether the specification phase output is acceptable given the strict mandate. The rollback already happened once from proving to specification, so if specification also rolls back to view-design, that's escalating further up the chain. But there's a strong argument the weakened spec might be acceptable: Verus verification passes, the specs state the strongest true facts expressible in this module, the strong guarantee is preserved at the TCB boundary per bugs.md, and intentional limitations are documented. The real tension is that you can't keep a false spec — a false ensures isn't a guarantee, it's unsound.
+
+So the question becomes whether an equally-strong correct spec exists within the specification phase's scope. If not, the weakening is forced and the real fix must come from view-design, justifying a rollback. But before deciding, I need to verify the reproducers, check the caller analysis to see what callers actually expect, and confirm whether callers need the post-state membership from these shims or get it from the TCB boundary instead. The fact that `make verify-kernel` passes all modules suggests callers verify with the weakened specs, which is strong evidence the weakening doesn't break them.
+
+If callers get the strong guarantee from TCB external_body wrappers in the manager module rather than from the shims themselves, then the weakening is architecturally acceptable for frame.rs's specification phase. The guarantee still exists, just at a different trusted layer. Let me gather the concrete evidence: check caller_analysis.md and tcb-allowed.md, run the reproducers to verify the post-state claims, and confirm which external_body functions are sanctioned.
+[RESULT ✓] bash: === caller_analysis.md ===
+# Caller Analysis: `mm::phys::frame`
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+(raw output of `find_callers_lsp.py` for `src/kernel/src/mm/phys/frame.rs`).
+
+Summary from the script: 19 exec functions (10 `pub(super)` / trait-pub,...
+[RESULT ✓] bash: === tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The bui...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The caller analysis is decisive. For `alloc`, callers expect (Ok): **"now in `allocated_frames`, with `refcounts[frame] == 1`"** and explicitly **"Would break callers: ... returning a frame not in `allocated_frames`/with refcount ≠ 1."** But the current shim ensures the *opposite* — `free_frames.contains(frame@)` (pre-state). Let me verify the reproducers and check whether the claimed "TCB boundary that preserves the guarantee" actually exists and is sanctioned.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== reproducer 02 ==="; cat verus-ai-logs/nanvix-phys-phys-frame/reproducers/02_goal_
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== manager alloc_user_frame / alloc_kernel_frame specs & external_body ==="; grep -n
+
+[THINKING] The caller_analysis.md makes it clear what the `alloc` function needs to guarantee: the returned frame must be page-aligned, present in `allocated_frames`, and have a refcount of exactly 1. But the current shim specification only checks that the frame is in `free_frames` and satisfies the invariant—it's missing the critical postconditions that callers actually depend on.
+
+This is a direct coverage failure: the shim's weakened spec doesn't match what the authoritative caller_analysis.md says callers expect. However, verification still passes because the actual callers like `Upool::alloc` are themselves external_body (trusted code), so they bypass the shim's weak spec and re-establish the real guarantee directly in their own contracts. The weakening even cascaded down to `Upool::alloc` itself, so nobody in the verified chain is actually consuming the weak postcondition.
+
+This confirms the rollback is justified — the caller coverage checklist item fails because the shim cannot deliver the post-state fact that callers need, and the architecture makes a local fix impossible. But I should verify the reproducers actually demonstrate this and confirm there's truly no way to express the post-state in the shim layer given that `phys_view()` is a global uninterpreted function with no arguments.
+
+The core problem is that `phys_view()` returns a constant view, so after `alloc()` mutates the Inner state, the view still reflects the pre-allocation frame set — there's no mechanism to name the post-state through it. The proper fix requires state-indexed views or ghost tokens, both of which demand changes to the view design in mod.spec.rs and ripple across the entire subsystem. Even threading a ghost token through `instance()` would require signature changes across all Inner contracts, which is outside the specification phase scope. So there's genuinely no local fix that delivers the caller-expected guarantee without touching the view design.
+
+Before committing to a rollback, I need to verify the reproducers actually demonstrate the problem and attempt at least one conceptual local fix to confirm it fails. The real question is whether I should accept the weakened specs as the best the specification phase can achieve, or push back to view-design — and given that the caller analysis shows callers need post-state membership, the shims can't deliver it, and the guarantee has been pushed into external axioms outside the verified layer, the correct verdict is to rollback. The whole point of formally verifying frame.rs is to prove that alloc reserves a frame; if that's just asserted as an axiom, the verification is hollow.
+
+But I need to be careful not to rollback prematurely. Let me verify the proving phase's claims by running the reproducers and checking the spec-drift and caller-coverage evidence. There's also a counter-argument worth examining: the architecture might deliberately place the strong allocation guarantee at the TCB boundary, which would mean checking whether manager::alloc_user_frame and related functions are actually listed in tcb-allowed.md as external_body entries — the bugs.md claims they are, but I need to verify that against the actual tcb-allowed.md file.
+[RESULT ✓] bash: === manager alloc_user_frame / alloc_kernel_frame specs & external_body ===
+98:    #[verus_verify(external_body)]
+177:    #[verus_verify(external_body)]
+191:                            #[trigger] phys_view().frames.allocated_frames.contains(final(frames)@[i]@)
+198:    pub fn alloc_many_user_frames(
+...
+[RESULT ✓] bash: === reproducer 02 ===
+// Reproducer 2: the shim's frozen post-state `ensures` is logically CONTRADICTED
+// by its own premises under ANY single-state contract on `instance()`.
+//
+// In the Ok branch, `Inner::alloc` guarantees the returned `frame` was in
+// `old(self)@.free_frames`. The only bridge `...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Confirmed: `manager::alloc_user_frame` (line 267) and `alloc_kernel_frame` (line 352) are `external_body` and assert the strong `allocated_frames.contains(frame@)` fact as **axioms** — but they are **not** in `tcb-allowed.md`'s allowlist (which says "Any `external_body` outside this list must be removed"). The strong guarantee callers need has been laundered out of the verified layer into unsanctioned TCB axioms. Let me verify the reproducers actually prove the impossibility claim.
+[TOOL] bash: cd /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/reproducers && echo "=== Run 02 (negation provable => str
+
+[THINKING] I'm seeing that `alloc_user_frame` and `alloc_kernel_frame` in manager.rs do provide the strong post-state guarantee about allocated frames as axioms in their external_body definitions, but these functions aren't actually listed in the tcb-allowed.md file's permitted set.
+
+The tcb-allowed.md header explicitly states that any external_body outside the allowlist must be removed, so these manager functions are technically not sanctioned here. However, manager.rs is a separate module from frame.rs (my actual review target), and those manager functions predate this work — they're part of the broader subsystem verification. The real issue for frame.rs is that the shim `frame::alloc` is checking the opposite precondition: it ensures `free_frames.contains(frame@)` when callers actually expect the post-state to guarantee `allocated_frames.contains(frame@) && refcounts[frame@]==1`. This is a fundamental mismatch in what the specification promises versus what the implementation delivers.
+
+Since `phys_view()` is a stateless constant, this can't be fixed at the specification phase — reproducer 02 demonstrates the strong shim spec is provably false under the only sound `instance()` bridge. I need to run the reproducers through verus to confirm they actually verify and prove the negation.
+[RESULT ✓] bash: === Run 02 (negation provable => strong shim spec is FALSE) ===
+verification results:: 1 verified, 0 errors
+=== Run 01 (faithful shim model fails) ===
+error: postcondition not satisfied
+  --> 01_shim_fails.rs:93:9
+   |
+93 |         view_fn().frames.allocated_frames.contains(result as int),
+   |     ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Reproducers confirmed by me. Let me run reproducer 03 and then perform a **direct local-fix attempt in the real source**: restore the strong post-state `ensures` on `frame::alloc` and run verification to confirm it fails in-tree (satisfying the "must attempt local fix before rollback" requirement).
+[TOOL] bash: cd /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/reproducers && echo "=== Run 03 (strengthening instance()
+
+[THINKING] So I've confirmed that the strong postcondition negation is provable under the sound single-state bridge, which means the strong post-state spec is actually false. And when I model the shim faithfully with that strong postcondition, verification fails. Now I need to check reproducer 03 to see if strengthening instance() also leads to a contradiction, and then directly verify the remaining case.
+
+The evidence is clear: the caller documentation requires the strong postcondition (allocated frames with refcount 1), but the current shims only deliver pre-state facts about free frames — the opposite of what's needed. The strong guarantee has been moved into manager.rs axioms that aren't in the TCB allowlist, and the root issue traces back to phys_view being a stateless uninterpreted function rather than a proper state-dependent view. There's no local fix at the specification level without changing phys_view's signature fundamentally.
+
+Before escalating to rollback, I need to genuinely attempt a local fix. Let me restore the strong postcondition on frame::alloc and run the actual kernel verification to demonstrate it fails in the real codebase — that's the most direct evidence that this can't be fixed locally.
+[RESULT ✓] bash: === Run 03 (strengthening instance() derives false) ===
+verification results:: 1 verified, 0 errors
+=== git status clean check ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+All three reproducers confirmed by me. Now the direct in-tree local-fix attempt: restore the caller-expected strong post-state spec on `frame::alloc` and verify it fails.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] All three reproducers are confirmed, and frame.rs is already committed. Now I'm attempting a direct local fix by restoring the strong post-state ensures on `frame::alloc` to see if that's what causes the verification to fail. I'm editing the alloc shim's ensures clauses and running verify-kernel to test it.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE "error|verified|alloc|frame.rs:7|Exit code|note: verifyi

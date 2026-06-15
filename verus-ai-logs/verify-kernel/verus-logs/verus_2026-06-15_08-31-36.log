@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_08-31-36
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+31 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:261:17
+    |
+261 |                   Ok(uf) => {
+    |                   ^^^^^^ failed this postcondition
+...
+268 |       pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+    |  _________________________________________________________-
+269 | |         let addr: FrameAddress = frame::alloc()?;
+270 | |         Ok(UserFrame::new(addr))
+271 | |     }
+    | |_____- at the end of the function body
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:751:13
+    |
+751 |             Ok(frame) => {
+    |             ^^^^^^^^^ failed this postcondition
+...
+761 |     instance().alloc()
+    |     ------------------ at the end of the function body
+
+verification results:: 31 verified, 2 errors
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

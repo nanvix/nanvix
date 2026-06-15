@@ -750,7 +750,9 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
         match result {
             Ok(frame) => {
                 &&& frame.inv()
-                &&& phys_view().frames.free_frames.contains(frame@)
+                &&& phys_view().frames.allocated_frames.contains(frame@)
+                &&& phys_view().frames.refcounts.contains_key(frame@)
+                &&& phys_view().frames.refcounts[frame@] == 1int
             },
             Err(_) => phys_view().frames.free_frames.is_empty(),
         },
