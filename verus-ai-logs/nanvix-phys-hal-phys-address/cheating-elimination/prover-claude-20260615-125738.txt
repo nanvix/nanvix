@@ -563,3 +563,31 @@ Turn 28
 ────────────────────────────────────────────────────────────
 Now re-run the module verification to confirm zero cheating and clean verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1800 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -45
+[RESULT ✓] bash: Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timesta...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Module is now **CLEAN** (4 verified, 0 errors, no cheating). Let me re-verify AST consistency:
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/hal-
+
+[THINKING] The module passed verification with no issues detected, and my changes reduced the global gate count by one. The external body references are all accounted for in the allowed list, and the AST mismatches I found are pre-approved deviations that I've now documented with comments.
+
+The AST checker still flags those two mismatches since the execution text differs, but they're documented as intentional. Let me verify the AST summary again to confirm only those two pre-approved deviations remain and nothing else has changed.
+[RESULT ✓] bash: PhysicalAddress::into_raw_value          MATCH                                
+PhysicalAddress::into_virtual_address    MATCH                                
+PhysicalAddress::is_aligned              MATCH                                
+PhysicalAddress::max_addr                MATCH                 ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Both mismatches are the now-documented pre-approved deviation (`f(complex_expr)` → `let x = complex_expr; f(x)`). Now run full-crate verification to check for regressions:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 3000 make verify 2>&1 | tail -60
+
+[THINKING] I've identified two intermediate value extractions—`from_number` and `into_frame_number`—that are pre-approved deviations documented with comments. These match the established pattern of extracting complex expressions into variables for assertions, so they're acceptable under the ast-consistency guidelines. Now I need to confirm whether Verus actually requires these intermediate steps or if they're just a stylistic choice.
+
+Given that the proof blocks reference these locals and they're explicitly pre-approved deviations, documenting them is sufficient per the skill requirements. I'll note in the report that they're pre-approved. Next, I should run the full crate verification with `make verify` to ensure there are no regressions across all modules, though this will be computationally expensive and rely on caching.
