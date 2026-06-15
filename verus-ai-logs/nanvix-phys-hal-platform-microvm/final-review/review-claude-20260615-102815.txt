@@ -970,3 +970,16 @@ Turn 10
 [TOOL] report_intent: Running kernel verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Verification escapes are clean: the 6 "assume" hits were the prose word "assumes" (lines 256-304), and precise `assume(`/`admit(` patterns return 0. Now let me run the kernel verification.
+[TOOL] report_intent: Running kernel verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -40
+[RESULT ✓] report_intent: Intent logged
