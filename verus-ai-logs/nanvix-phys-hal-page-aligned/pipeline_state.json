@@ -2,23 +2,52 @@
   "module_name": "hal-page-aligned",
   "log_name": "nanvix-phys-hal-page-aligned",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "view-design",
+  "current_phase_idx": 1,
+  "completed_phases": [
+    "caller-analysis"
+  ],
+  "phase_results": {
+    "caller-analysis": {
+      "phase": "caller-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 122.3,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "e708b693-1362-4723-a002-58505bfb397d",
   "completed": false,
   "base_branch": "verus-ai/phys-frame",
   "verus_branch": "verus-ai/hal-page-aligned",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "caller-analysis": "885241c679c7397ce26e508460f4090caf97b62c"
+  },
   "phase_start_shas": {
-    "caller-analysis": "1589c21b601b9f4d37ae778396af64996308e3d9"
+    "caller-analysis": "1589c21b601b9f4d37ae778396af64996308e3d9",
+    "view-design": "885241c679c7397ce26e508460f4090caf97b62c"
   },
   "phase_history": [
     {
       "phase": "caller-analysis",
       "event": "start",
       "sha": "1589c21b601b9f4d37ae778396af64996308e3d9",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "caller-analysis",
+      "event": "end",
+      "sha": "885241c679c7397ce26e508460f4090caf97b62c",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "start",
+      "sha": "885241c679c7397ce26e508460f4090caf97b62c",
       "rollback_iter": 0
     }
   ],
