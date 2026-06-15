@@ -21,3 +21,11 @@ Module: manager
 [2026-06-15 19:18:33] [PROVER] Running caller-analysis...
 [2026-06-15 19:18:33] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 19:20:59]   ↳ prover done in 2m25s (exit=0)
+[2026-06-15 19:20:59] [PHASE] caller-analysis: no-review (2m25s)
+[2026-06-15 19:20:59] ✅ caller-analysis: PASS (0/0)
+[2026-06-15 19:20:59] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-manager/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: manager
+============================================================
