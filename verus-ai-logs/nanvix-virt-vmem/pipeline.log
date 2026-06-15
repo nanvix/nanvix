@@ -113,3 +113,4 @@ Module: vmem
 PHASE: specification
 Module: vmem
 ============================================================
+[2026-06-15 23:59:13] [STRIP-EXT] removed 35 external_body attribute(s) from /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs
