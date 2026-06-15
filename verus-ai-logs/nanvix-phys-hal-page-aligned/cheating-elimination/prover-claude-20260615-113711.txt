@@ -684,3 +684,21 @@ Turn 41
 ────────────────────────────────────────────────────────────
 Files restored to clean START state. Now let me re-run the module verification (cache was invalidated by my edits, so it'll actually run this time — confirming the true baseline passes).
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -iE "panicked
+[RESULT ✓] bash: verification results:: 1 verified, 0 errors (partial verification with `--verify-*`)
+  1 verified
+  Exit code : 0
+    ⚠️  external_body: 1
+    ⚠️  cfg-gated exec code: 1
+  Unverified functions:
+  verification: 1 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=24 admit=0 trusted=0 no_d...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+True baseline confirmed: **1 verified, 0 errors, exit 0**. The panic was solely from my reproducer (now fully reverted). Let me run the full-crate `make verify-kernel` to confirm no regressions across the whole kernel.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE "panicked|verified, .*errors|exit code|status:|verificat
+
+[THINKING] The baseline verification passes cleanly with no errors, and the panic was only from my test edit which I've now reverted. Looking at the module state, I have one verified entry with external_body handling the from_address as tcb-allowed, plus one cfg-gated exec code block that's legitimate. The assume, admit, and trusted counts are all zero, but I'm noticing the assume_specification for into_raw_value isn't gate-counted—it's human-approved in tcb-allowed.md. Both blocking issues stem from unverified upstream traits and untranslatable constants, plus the confirmed Verus front-end panic when trying the trait-impl approach. The cfg_gate count of 1 is actually ghost-only material (the View impl and invariant block), not executable code—the AST check confirms all exec code matches the baseline perfectly. Since the from_address external_body is allowed under the tcb-allowed exception and into_raw_value is human-approved, this should pass the stated requirements.
+
+Now I need to run the full kernel verification to confirm there are no regressions across the entire crate, though this will be a complete recompilation since the cache was invalidated by my changes. The task requires confirming zero errors before writing the final report.
