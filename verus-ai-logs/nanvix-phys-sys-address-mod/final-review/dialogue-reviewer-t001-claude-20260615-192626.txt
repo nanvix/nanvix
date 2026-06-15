@@ -178,3 +178,231 @@ Turn 0
 6. // The in-scope items are trait *method declarations* (`is_aligned`,
 7. // `into_raw_value`, `from_raw_value`): they have no bodies, so they carry no
 8. // proof obligation...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Verification is CLEAN (exit 0, no cheating). Now let me gather the context artifacts referenced in the checklist.
+[TOOL] bash: cd /home/ruize/nanvix-phy && find verus-ai-logs/nanvix-phys-sys-address-mod -type f 2>/dev/null | head -50; echo "---VIR
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/ | grep -iE 'fn_coverage|spec_drift|spec-drift|coverage'; echo "---"; cat verus-
+
+[THINKING] The verification checks out, so now I need to gather the supporting evidence for the checklist by examining the referenced context files like the caller analysis, view design, and bugs documentation, along with the verus-ai-logs directory structure and address-mod review materials.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-sys-address-mod/verification-plan.json
+verus-ai-logs/nanvix-phys-sys-address-mod/pipeline.log
+verus-ai-logs/nanvix-phys-sys-address-mod/pipeline_state.json
+verus-ai-logs/nanvix-phys-sys-address-mod/body_removed_source.rs
+verus-ai-logs/nanvix-phys-sys-address-mod/caller-anal...
+[RESULT ✓] bash: ---
+<shellId: 2 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la src/libs/sys/src/sys/mm/address/; echo "---SCRIPTS---"; ls scripts/; echo "---VERUS-
+
+[THINKING] I need to verify the virt module exists in mod.rs and locate the scripts directory.
+[RESULT ✓] bash: total 36
+drwxrwxr-x 1 ruize ruize  122 Jun 15 18:20 .
+drwxrwxr-x 1 ruize ruize   82 Jun 15 00:16 ..
+-rw-rw-r-- 1 ruize ruize  575 Jun 15 18:20 mod.proof.rs
+-rw-rw-r-- 1 ruize ruize 5056 Jun 15 19:18 mod.rs
+-rw-rw-r-- 1 ruize ruize 3281 Jun 15 18:27 mod.spec.rs
+-rw-rw-r-- 1 ruize ruize   21 Jun 15 15...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-sys-address-mod/verification-plan.json 2>/dev/null | head -60
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md
+
+[THINKING] I'm focusing on the Address trait in mod.rs and need to verify the three methods with specifications: `from_raw_value`, `into_raw_value`, and `is_aligned`. The other utility methods don't have specs, so they're out of scope. Let me review the key documentation files to understand the verification requirements.
+[RESULT ✓] bash: {
+  "target": "src/kernel/src/mm/phys/frame.rs",
+  "entries": [
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc",
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
+    "src/kernel/src/mm/phys/frame.rs:Inner::free",
+    "src/kernel/src/mm/phys/frame.rs:Inner::share",
+    "src/kernel/sr...
+[RESULT ✓] view: 1. # Caller Analysis: `sys::mm::address::mod` (the `Address` trait)
+2. 
+3. ## Script Output
+4. 
+5. `find_callers_lsp.py` reported **0 exec functions / 0 pub functions** for this file:
+6. 
+7. ```
+8. Total exec functions: 0
+9. Public / trait-pub:    0
+10. Private:               0
+11. Types:           ...
+[RESULT ✓] view: 1. # View Design: `sys::mm::address::mod` (the `Address` trait)
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, an `Address` is **one pointer-sized location in an address space**,
+6. nothing more. The only state a caller reasons about is the *numeric address
+7. itself* — a single mathematical integer...
+[RESULT ✓] view: 1. # Bugs — `sys::mm::address` (Address trait)
+2. 
+3. Specification phase for `is_aligned`, `into_raw_value`, `from_raw_value`.
+4. 
+5. ## Code bugs
+6. 
+7. **None found.** The three in-scope `Address` trait methods are declarations
+8. (no bodies); their specs verify cleanly. `make verify-sys` and `ma...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.md
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "external_body\|admit\|assume" src/libs/sys/src/sys/mm/address/ ; echo "---TCB---"
+
+[THINKING] I need to understand the scope better—the three trait methods in mod.rs are what I'm focusing on: `from_raw_value`, `into_raw_value`, and `is_aligned`. Let me check the existing final_review.md to see what's already documented, then look at virt.rs to understand how these are implemented, and verify against the TCB allowed file before running the coverage and drift analysis tools.
+[RESULT ✓] view: 1. # Final Comprehensive Review: sys-address-mod
+2. 
+3. Consolidated from two independent sub-agent reviews (raw reports alongside this
+4. file):
+5. 
+6. - `final_review.claude.md` — model **claude-opus-4.8** — Result: **PASS**
+7. - `final_review.gpt.md` — model **gpt-5.5** — Result: **FAIL**
+8. 
+9. ...
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:71:    // boundary today (`kernel`'s `phys.spec.rs` `assume_specification`).
+src/libs/sys/src/sys/mm/address/virt.rs:266:    // identity fact is therefore held as an `assume_specification` trust boundary
+src/libs/sys/src/sys/mm/address/mod.spec.rs:33:// `hal::m...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -80
+[TOOL] bash: cd /home/ruize/nanvix-phy && find / -path /proc -prune -o -iname '*verus-constraints*' -print 2>/dev/null | head; echo "
+
+[THINKING] I'm reviewing the prior assessment that flagged two issues: the subsumed `addr_inv(&a)` conjunct in the `Ok` arm of `from_raw_value`, and the banned `uninterp spec fn spec_addr<T>`. Now I need to work through the checklist systematically and determine whether this passes or fails the strict review criteria.
+
+Let me verify the first issue myself. Since `spec_addr(&a)` equals `raw_addr as int` where `raw_addr` is a `usize`, and `addr_inv(&a)` requires `0 <= spec_addr(&a) <= usize::MAX`, that constraint is indeed automatically satisfied by the type system—it's derivable and therefore subsumed, confirming a real deviation. For the second issue, I need to check whether `uninterp spec fn` is actually prohibited by looking at the TCB allowed file and the verus-constraints documentation, plus any kernel precedent.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/docs/skills/verus-constraints
+/mnt/shared/verus-ai-improve5-argus-exp2/docs/skills/verus-constraints
+/mnt/shared/view-design-exp/kheap-worker7-clean/docs/skills/verus-constraints
+/mnt/shared/verus-ai-improve5-kheap-claw/docs/skills/verus-constraints
+/mnt/shared/kheap-ma...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls .github/skills/ 2>/dev/null; echo "---"; grep -rin "uninterp" /home/ruize/.openclaw/work
+
+[THINKING] I should check the verus-constraints skill to see if `uninterp spec fn` is actually disallowed.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+---
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rin "uninterp" /home/ruize/verus-ai-improve/docs/skills/verus-constraints/ 2>/dev/null | head -30; echo "===FILES=
+[RESULT ✓] bash: ===FILES===
+SKILL.md
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rin "uninterp\|external_body\|banned\|assume" /home/ruize/verus-ai-improve/docs/skills/verus-constraints/SKILL.md 
+[RESULT ✓] bash: 3:description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+72:| `admit()` | Banned — only as placeholder in initial sk...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '60,120p' /home/ruize/verus-ai-improve/docs/skills/verus-constraints/SKILL.md
+
+[THINKING] I need to double-check whether `uninterp spec fn` is actually on the banned list in the verus-constraints documentation, since there's a discrepancy with what was claimed in the prior review. Let me look at the forbidden patterns table to get the exact details.
+[RESULT ✓] bash: alternatives, build a minimal reproducer proving unsupported, then make the
+smallest change needed and document why.
+
+**After completing all changes**, use the `ast-consistency` skill to verify
+source integrity. Fix all inconsistencies. For unavoidable ones, you must
+confirm: (1) the code still buil...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -iE 'drift|coverage|consistency|ast|caller'; echo "---grep cyclic c
+
+[THINKING] I'm checking the actual forbidden patterns list in the verus-constraints documentation, and `uninterp spec fn` isn't there—the banned items are admit, assume, external_body, trusted, external, exec_allows_no_decreases_clause, and rlimit. So the earlier claim that this pattern is on the banned list appears to be wrong based on what I can see in the skill text. Now I'm checking whether `addr_inv(&a)` in the Ok arm is actually subsumed by the other ensures. Since `spec_addr(&a) == raw_addr as int` and `raw_addr` is a `usize`, Verus automatically knows that `raw_addr as int` falls within `[0, usize::MAX]`, which means `addr_inv(&a)` is derivable and therefore redundant—this is a genuine violation of the no-subsumed-ensures rule, so I need to remove it from the Ok arm.
+
+There's a potential tension between removing subsumed clauses and not weakening specs, but since `addr_inv(&a)` is logically derivable from what remains, dropping it doesn't actually weaken the contract—callers can still derive it themselves. Both checklist items are satisfied by the removal.
+
+For the `uninterp spec fn` construct, I'm checking whether it violates any of the verification rules. It's not an `assume_specification`, not an `assume`, and not in the list of cheating patterns, so it passes those checks. The uninterpreted function is sound because its properties are pinned by the trait method contracts that implementors must discharge, following the standard logical identity pattern.
+
+Now I need to run the remaining verification tools systematically: `make verify` across modules, check for spec drift, and validate AST consistency.
+[RESULT ✓] bash: ast_consistency.py
+find_callers_lsp.py
+fn_coverage.py
+refinement_coverage.py
+scan_ast_limitations.py
+spec_drift.py
+---grep cyclic check: does removing addr_inv verify?---
+<shellId: 12 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 150.     ///
+151.     pub fn checked_add(&self, rhs: usize) -> Option<Self> {
+152.         self.0.checked_add(rhs).map(VirtualAddress::from_raw_value)
+153.     }
+154. 
+155.     ///
+156.     /// # Description
+157.     ///
+158.     /// Performs a checked subtraction of a [`VirtualAddress`] and a `usiz...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now let me run the verification tools myself. Starting cross-module verify in background, and running the analysis scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
+[TOOL] bash: cd /home/ruize/nanvix-phy && PY=/home/ruize/verus-ai-exp/verus-ai/scripts; F=src/libs/sys/src/sys/mm/address/mod.rs; ech
+
+[THINKING] I'm going to run the analysis tools—fn_coverage, spec_drift, and ast_consistency—against the address module while kicking off a cross-module verification in the background. Let me check the fn_coverage script to see what parameters it expects before executing.
+[RESULT ✓] bash: <command started in background with shellId: fullverify>
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+=== spec_drift ===
+usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
