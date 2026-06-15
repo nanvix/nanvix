@@ -1,97 +1,24 @@
 {
   "module_name": "arch-paging-table",
   "log_name": "nanvix-phys-arch-paging-table",
-  "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/table.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
-  "completed_phases": [
-    "caller-analysis",
-    "view-design"
-  ],
-  "phase_results": {
-    "caller-analysis": {
-      "phase": "caller-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 138.0,
-      "review_rounds": 0
-    },
-    "view-design": {
-      "phase": "view-design",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 228.7,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 3352.6,
-      "review_rounds": 3
-    }
-  },
-  "prover_session_id": "702a087e-71ae-4509-a5b2-ec753e322d88",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai/virt-identity-map",
-  "verus_branch": "verus-ai/arch-paging-table",
-  "phase_boundary_shas": {
-    "caller-analysis": "16c877936600c4eb2dcd0225502eb9b15e9511e6",
-    "view-design": "6b53570e2e946101d32d926416b6c42e565cd703",
-    "specification": "a21d2660c7770436cf24c26e67141957d5ed89d8"
-  },
+  "base_branch": "verus-ai-prove",
+  "verus_branch": "verus-ai-prove",
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "caller-analysis": "ee25c4d2568a9fc5921f401849b2aaf916674312",
-    "view-design": "16c877936600c4eb2dcd0225502eb9b15e9511e6",
-    "specification": "6b53570e2e946101d32d926416b6c42e565cd703"
+    "proving": "83302a5f4e7dd65099947da57635696d16629b1c"
   },
   "phase_history": [
     {
-      "phase": "caller-analysis",
+      "phase": "proving",
       "event": "start",
-      "sha": "ee25c4d2568a9fc5921f401849b2aaf916674312",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "caller-analysis",
-      "event": "end",
-      "sha": "16c877936600c4eb2dcd0225502eb9b15e9511e6",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "start",
-      "sha": "16c877936600c4eb2dcd0225502eb9b15e9511e6",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "end",
-      "sha": "6b53570e2e946101d32d926416b6c42e565cd703",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "start",
-      "sha": "6b53570e2e946101d32d926416b6c42e565cd703",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "a21d2660c7770436cf24c26e67141957d5ed89d8",
+      "sha": "83302a5f4e7dd65099947da57635696d16629b1c",
       "rollback_iter": 0
     }
   ],
