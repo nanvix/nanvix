@@ -206,3 +206,4 @@ The proving phase for sys-address-mod is complete and sound.
 [2026-06-15 18:48:55] [GATE] Running verify: make verify
 [2026-06-15 18:49:03] [GATE] Verify FAILED (attempt 1), log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/proving/gate_verify_fail_1.log
 [2026-06-15 18:49:03] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 18:58:19]   ↳ gate-fix done in 9m16s (exit=0)
