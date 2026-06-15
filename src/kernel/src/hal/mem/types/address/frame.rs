@@ -57,6 +57,48 @@ impl FrameAddress {
         PageAddress::new(PageAligned::into_virtual_address(self.0))
     }
 
+    // Total projection: yields the frame index this address belongs to
+    // (`self@ / PAGE_SIZE`). The receiver's invariant guarantees the index is
+    // representable, so the internal `unwrap()` never panics.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+    )]
+    pub fn into_frame_number(self) -> FrameNumber {
+        self.0.into_frame_number()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a [`FrameAddress`] into a raw value.
+    ///
+    /// # Returns
+    ///
+    /// The raw value of the target [`FrameAddress`].
+    ///
+    // Pure newtype-identity projection: the raw value coincides with the
+    // address's abstract view (`result as int == self@`). Body-verified directly
+    // against the inner `PageAligned` identity (`into_raw_value` returns exactly
+    // `self.0@ == self@`).
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
+    pub fn into_raw_value(self) -> usize {
+        self.0.into_raw_value()
+    }
+}
+
+// Verification-target constructors. They live in a dedicated `#[verus_verify]`
+// impl block so the self-less associated functions resolve under verification
+// (a self-less associated function requires an enclosing `#[verus_verify]` impl),
+// while the untouched constructors above (`new`, `into_physical_address`,
+// `into_page_address`) stay out of verification scope.
+#[verus_verify]
+impl FrameAddress {
     // On `Ok`, the produced frame address denotes the base of `frame_number`
     // (`fa@ == frame_number * PAGE_SIZE`) and satisfies the type invariant
     // (page-aligned and frame-representable). Construction never fails: the base
@@ -80,19 +122,6 @@ impl FrameAddress {
         Ok(Self(PageAligned::from_address(physical_address)?))
     }
 
-    // Total projection: yields the frame index this address belongs to
-    // (`self@ / PAGE_SIZE`). The receiver's invariant guarantees the index is
-    // representable, so the internal `unwrap()` never panics.
-    #[verus_spec(result =>
-        requires
-            self.inv(),
-        ensures
-            spec_frame_raw_value(result) == spec_frame_number(self@),
-    )]
-    pub fn into_frame_number(self) -> FrameNumber {
-        self.0.into_frame_number()
-    }
-
     // On `Ok`, the produced frame address is the newtype identity of `raw_addr`
     // (`fa@ == raw_addr`) and satisfies the type invariant (page-aligned and
     // frame-representable). On `Err`, `raw_addr` was not a valid (in-range,
@@ -103,27 +132,6 @@ impl FrameAddress {
     )]
     pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Converts a [`FrameAddress`] into a raw value.
-    ///
-    /// # Returns
-    ///
-    /// The raw value of the target [`FrameAddress`].
-    ///
-    // Pure newtype-identity projection: the raw value coincides with the
-    // address's abstract view (`result as int == self@`). Body-verified directly
-    // against the inner `PageAligned` identity (`into_raw_value` returns exactly
-    // `self.0@ == self@`).
-    #[verus_spec(result =>
-        ensures
-            result as int == self@,
-    )]
-    pub fn into_raw_value(self) -> usize {
-        self.0.into_raw_value()
     }
 }
 

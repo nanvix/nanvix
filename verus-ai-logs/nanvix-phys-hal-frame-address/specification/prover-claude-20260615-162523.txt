@@ -934,3 +934,73 @@ Turn 52
 Turn 53
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -45
+[RESULT ✓] bash: |
+71 -     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+71 +     pub fn spec_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+   |
+
+error[E0425]: cannot find function `from_raw_value` in this scope
+   --> src/kernel/src/hal/mem/types/address/frame.rs:1...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_16-40-43.log | head
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error[E0425]: cannot find function `from_frame_number` in this scope
+37:error[E0425]: cannot find function `from_raw_value` in this scope
+43:For more information about this error, try `rustc --explain E0425`.
+44:error: could not compile `kernel` (bin ...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+The self-less constructors need an enclosing `#[verus_verify]` impl block (like phys.rs). Let me restructure.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] The `#[verus_spec]` macro is generating code that references `from_frame_number` as a free function rather than as a method, which is causing the scope error. I need to look more carefully at how the macro is transforming the function definition and what it's actually generating. I'm noticing the pattern now — both failing functions are constructors that call other functions internally, while the working ones use methods. The `from_frame_number` calls `PhysicalAddress::from_number`, `from_raw_value` calls `PhysicalAddress::from_raw_value`, but `into_frame_number` and `into_raw_value` use method calls on `self.0`. The error messages suggest the macro is trying to resolve function paths that don't exist in the current scope, which might be a scoping issue with how the `verus_spec` macro expands when internal function calls are involved. Maybe the issue is that the `?` operator combined with `verus_spec` isn't being handled correctly — `from_raw_value` and `from_frame_number` both use `?` in their bodies while `into_raw_value` doesn't, which could explain why only those two are failing. Let me check if any other `verus_spec` functions in the codebase use `?` to see if that's a known pattern or limitation.
+
+Actually, I just realized the real difference: `from_frame_number` and `from_raw_value` are self-less associated functions, while `into_raw_value` and `into_frame_number` take `self`. The caller_analysis comment mentioned that self-less associated functions need an enclosing `#[verus_verify] impl` block to resolve properly. My `impl FrameAddress` block isn't annotated with `#[verus_verify]`, but `phys.rs` has `#[verus_verify] impl PhysicalAddress` for its verified methods — that's why `from_mmio_address` works there. I need to either add `#[verus_verify]` to the whole impl block or move the self-less constructors into a separate `#[verus_verify]` impl block, though that might conflict with the other methods already in there. I'm wondering if adding `#[verus_verify]` to the entire impl block would automatically verify all methods or just the specced ones, but to match the phys.rs pattern and avoid pulling unspecced methods into verification scope, I'll create a separate `#[verus_verify] impl` block specifically for the two constructor functions. Now I need to look at the current frame.rs structure to figure out where to place it.
+[RESULT ✓] view: 46. 
+47. impl FrameAddress {
+48.     pub fn new(address: PageAligned<PhysicalAddress>) -> Self {
+49.         Self(address)
+50.     }
+51. 
+52.     pub fn into_physical_address(self) -> PageAligned<PhysicalAddress> {
+53.         self.0
+54.     }
+55. 
+56.     pub fn into_page_address(self) -> PageAddre...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I need to reorganize the code by moving the static methods `from_frame_number` and `from_raw_value` into a separate `#[verus_verify]` impl block for `FrameAddress`, while keeping the instance methods `into_frame_number` and `into_raw_value` in the existing impl. Let me find where the current impl block ends so I can insert the new verified impl block before the Debug implementation.
+[RESULT ✓] view: 115.     /// The raw value of the target [`FrameAddress`].
+116.     ///
+117.     // Pure newtype-identity projection: the raw value coincides with the
+118.     // address's abstract view (`result as int == self@`). Body-verified directly
+119.     // against the inner `PageAligned` identity (`into_ra...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm reorganizing the impl blocks by moving the `from_frame_number` and `from_raw_value` methods out of the plain impl and into a new `#[verus_verify]` impl block that I'll place before the Debug impl.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Now add the `#[verus_verify]` impl block for the self-less constructors after the plain impl:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42
