@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "601c0507-cf40-4862-8c2d-de4015880798",
   "completed": false,
   "base_branch": "verus-ai/hal-frame-address",
   "verus_branch": "verus-ai/sys-address-mod",

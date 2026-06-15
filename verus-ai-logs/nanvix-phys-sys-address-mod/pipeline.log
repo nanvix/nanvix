@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: sys-address-mod
 ============================================================
+[2026-06-15 17:54:21] [PROVER] Running caller-analysis...
+[2026-06-15 17:54:21] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 17:57:19]   ↳ prover done in 2m58s (exit=0)
