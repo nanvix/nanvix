@@ -1161,3 +1161,26 @@ I'll add the external trait specification before ExTable so that the bound `E: :
 Turn 69
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -55
+[RESULT ✓] bash: error: external_trait_specification trait bound mismatch
+  --> src/kernel/src/mm/virt/identity_map.spec.rs:59:1
+   |
+59 | / pub trait ExTableEntry {
+60 | |     type ExternalTraitSpecificationFor: ::arch::mem::paging::TableEntry;
+61 | | }
+   | |_^
+   |
+   = help: external_trait_specification requires...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+The trait needs the `Copy` supertrait to match. Let me add it.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] The trait bounds need to match exactly—since `TableEntry` requires `Copy`, my proxy trait specification needs to include that constraint too. I'm adding `: Copy` to the `ExTableEntry` trait definition to satisfy the external trait bounds that include both `MetaSized` and `Copy`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -55

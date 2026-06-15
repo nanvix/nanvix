@@ -56,7 +56,7 @@ pub struct ExPageDirectoryEntry(::arch::mem::paging::PageDirectoryEntry);
 pub struct ExPageTableEntry(::arch::mem::paging::PageTableEntry);
 
 #[verifier::external_trait_specification]
-pub trait ExTableEntry {
+pub trait ExTableEntry: Copy {
     type ExternalTraitSpecificationFor: ::arch::mem::paging::TableEntry;
 }
 
