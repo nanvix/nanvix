@@ -2,10 +2,11 @@
   "module_name": "hal-platform-microvm",
   "log_name": "nanvix-phys-hal-platform-microvm",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs",
-  "current_phase": "view-design",
-  "current_phase_idx": 1,
+  "current_phase": "specification",
+  "current_phase_idx": 2,
   "completed_phases": [
-    "caller-analysis"
+    "caller-analysis",
+    "view-design"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -18,6 +19,17 @@
       "review_file": null,
       "duration_s": 112.1,
       "review_rounds": 0
+    },
+    "view-design": {
+      "phase": "view-design",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 166.5,
+      "review_rounds": 0
     }
   },
   "prover_session_id": "9e5cbeed-b1fc-4855-b3ff-282850b03ded",
@@ -25,11 +37,13 @@
   "base_branch": "verus-ai/hal-memory-region",
   "verus_branch": "verus-ai/hal-platform-microvm",
   "phase_boundary_shas": {
-    "caller-analysis": "f5516e2f7948a69f6d186a5b6f6f942be7326758"
+    "caller-analysis": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
+    "view-design": "d9580512007a4cf08140f60a52eebf24e3c98fa8"
   },
   "phase_start_shas": {
     "caller-analysis": "5b0379853300830015c683dc213bc0dab81de185",
-    "view-design": "f5516e2f7948a69f6d186a5b6f6f942be7326758"
+    "view-design": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
+    "specification": "d9580512007a4cf08140f60a52eebf24e3c98fa8"
   },
   "phase_history": [
     {
@@ -48,6 +62,18 @@
       "phase": "view-design",
       "event": "start",
       "sha": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "end",
+      "sha": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
       "rollback_iter": 0
     }
   ],
