@@ -518,3 +518,169 @@ Now let me run `make verify-sys` to see if the trait impl method spec works.
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | tail -45
 
 [THINKING] I'm implementing `into_raw_value` as a trait method and need to check whether Verus will accept the spec when applied to the trait implementation. Let me run the verification to see what happens.
+[RESULT ✓] bash: Source dir : /home/ruize/nanvix-phy/src/libs/sys/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_15-17-5...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+The named-return syntax may be malformed. Let me check the official syntax example.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax; grep -nB1 -A8 "verus_spec" syntax_attr.rs | head -80
+
+[THINKING] The `#[verus_spec]` macro with a named return value seems to be transforming the function in a way that breaks the function definition itself during verus checking — the error about not finding the `new` function is pointing to line 53 where `new` is actually defined, which suggests the macro is interfering with how the function is being recognized.
+
+I'm wondering if the issue is with how the macro handles `const fn` functions, or if the named return syntax `result => ensures result.inv()` is causing the macro to generate a spec companion that references the function before it's properly defined. Let me check the official syntax_attr.rs example to see the exact macro syntax that's expected.
+[RESULT ✓] bash: 19-/// exec and proof functions may name their return values inside parentheses, before the return type
+20:#[verus_spec(sum =>
+21-    requires
+22-        x < 100,
+23-        y < 100,
+24-    ensures
+25-        sum < 200,
+26-)]
+27-fn my_exec_fun(x: u32, y: u32) -> u32
+28-{
+--
+57-/// This proof code ca...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me look at the full error log for more context.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-sys/verus-logs/*.log | head -1 | xargs grep -nB2 -A6 "E0425\|canno
+
+[THINKING] The syntax looks correct, but the "cannot find function `new`" error is puzzling — it might be that the macro is generating an associated spec inside the `impl` block that's trying to reference `new` as a free function. Though it could also be the `result.inv()` call in the ensures clause, since `inv()` is a spec function included from another file. The error code E0425 suggests an unresolved name, so I need to trace where exactly the reference is breaking. Maybe the issue is that the macro is generating a wrapper that calls `new` outside the impl block. Let me strip down the specs incrementally — I'll remove the `from_raw_value` and `into_raw_value` annotations and test `new` in isolation to narrow down what's actually breaking.
+[RESULT ✓] bash: 6-Exit code: 101
+7-0 verified
+8:compilation/setup error (verus did not run)
+9-
+10-Cheating patterns:
+11-  assume=0
+12-  external_body=0
+13-  admit=0
+14-  trusted=0
+--
+18---- Full output ---
+19-    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+20:error[E0425]: cannot find function `new`...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax; grep -niB2 -A15 "associated\|impl block\|fn new\|no self\
+
+[THINKING] The issue is that `new` and `from_raw_value` are associated functions that don't take `self`, while `into_raw_value` is a trait method that does. The `#[verus_spec]` macro is having trouble with the associated functions specifically.
+
+I'm wondering if the macro generates a proof companion that tries to call `new` as a free function when it's actually scoped as `Self::new`, or if there's a specific requirement for how named returns work with non-receiver associated functions. Let me check the documentation more carefully to understand how the macro handles impl blocks with associated functions.
+[RESULT ✓] bash: 
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Let me look at how the verified kernel modules use `#[verus_spec]` on constructor-style associated functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rln "verus_spec" src/ | head -20
+
+[THINKING] I need to look at how other verified files in the project handle associated functions with verus_spec, particularly constructors that return Self without taking self as a parameter. Let me search the repository for examples of this pattern to understand the conventions being used.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/kernel/src/hal/mem/types/address/frame.rs
+src/kernel/src/hal/mem/types/address/phys.rs
+src/kernel/src/hal/mem/types/region.rs
+src/kernel/src/hal/platform/microvm/mod.rs
+src/kernel/src/mm/phys/kframe.rs
+src/kernel/src/mm/phys/upool.rs
+src/kerne...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+`phys.rs` is the direct analog (PhysicalAddress). Let me examine how it specs its constructors.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nB1 -A12 "verus_spec" src/kernel/src/hal/mem/types/address/phys.rs | head -90
+
+[THINKING] I found the PhysicalAddress type in that file — it's the exact pattern I need to follow for building out this address abstraction layer.
+[RESULT ✓] bash: 120-    // satisfies the type invariant and may later flow into `into_frame_number`.
+121:    #[verus_spec(result =>
+122-        requires
+123-            spec_frame_number(addr@) <= spec_max_frame_number(),
+124-        ensures
+125-            result is Ok,
+126-            result matches Ok(r) ==> r@ ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+`from_number` (associated fn returning Self) works in phys.rs. Let me check whether `const fn` is the issue and how function-pointer references interact.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== const fn with verus_spec anywhere? ==="; grep -rn "const fn" src/ | grep -i verus; 
+
+[THINKING] I see that `from_mmio_address` and `from_number` work fine with the `#[verus_spec]` attribute even though they're associated functions returning `Self`, so the pattern itself is valid. The real issue must be something specific to my `new` function being `const fn` — let me check if phys.rs has any examples of `const fn` with verus_spec, since `from_number` is just a regular `pub fn`.
+
+Actually, wait — both my failing functions are being used as function pointers elsewhere in the code, like in `.map(VirtualAddress::new)` and `.map(VirtualAddress::from_raw_value)`. When `#[verus_spec]` wraps these functions, it might be renaming the original function and creating a wrapper, which could break those function pointer references.
+
+But the error message itself is "cannot find function `X` in this scope" at the definition line, not at the use site — that suggests the macro-generated body is trying to reference something that isn't resolvable. The verus_spec macro might be generating some internal structure that needs the original function to exist in a certain way.
+
+Let me try a different approach: I'll check if there are any other `const fn` functions with `verus_spec` in the codebase to see how they're handled, or I could try removing the spec annotations temporarily to isolate whether that's actually the culprit.
+[RESULT ✓] bash: === const fn with verus_spec anywhere? ===
+src/kernel/src/hal/mem/types/region.rs has const fn
+src/libs/sys/src/sys/mm/address/virt.rs has const fn
+src/libs/bump_allocator/src/lib.rs has const fn
+=== map(.*::new) or fn-ptr refs to specced fns in phys.rs ===
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+The difference: `new` and `from_raw_value` are used as function pointers (`.map(VirtualAddress::new)`, `.map(VirtualAddress::from_raw_value)`), while `into_raw_value` is not. Let me verify this hypothesis with a quick isolated test.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/verus-unsupported.md 2>/dev/null | head -40; echo "=== search examples for 
+
+[THINKING] I'm checking whether specced functions like `VirtualAddress::new` and `VirtualAddress::from_raw_value` are being used as function pointers in `.map()` calls throughout the codebase. The distinction is that `into_raw_value` gets called as a method rather than passed as a function pointer, which might be the key difference I'm looking for. I'm testing the hypothesis that adding a `verus_spec` attribute to `new` or `from_raw_value` breaks their use as function pointers in `.map()` calls. The error message showed both functions failing, and they're the only ones used as fn-pointers in the codebase—`new` appears in `align_up` at line 81 and `from_raw_value` in `checked_add`/`checked_sub`. Since those out-of-scope functions aren't specced themselves, specifying these functions seems to prevent them from being passed to `.map()`, which would be a Verus limitation conflicting with the constraint that exec code is already Verus-compatible.
+[RESULT ✓] bash: === search examples for map with method fn pointer ===
+/home/ruize/verus-ai-exp/verus-ai/verus/source/rust_verify_test/tests/common/mod.rs:247:        .map(|x| x.split_whitespace().map(|x| x.to_string()).collect::<Vec<_>>())
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Let me create a minimal reproduction to confirm the function-pointer hypothesis.
+[TOOL] bash: cd /tmp; cat > vtest.rs <<'EOF'
+use vstd::prelude::*;
+
+verus!{
+struct A(usize);
+impl A {
+    #[verus_spec(r => ensures r
+
+[THINKING] I'm going to run a focused test by stripping out the `from_raw_value` and `into_raw_value` specifications and keeping only `new` to see if that's where the function pointer issue lies. If `new` still fails in the `.map` call, I'll know for certain it's a function pointer problem with the toolchain.
+[RESULT ✓] bash: /home/ruize/toolchain/verus/rust_verify: error while loading shared libraries: librustc_driver-6108105cd7e839cf.so: cannot open shared object file: No such file or directory
+---try verify---
+A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow.
+
+Usage: cargo...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Let me isolate by temporarily reverting the `from_raw_value` and `into_raw_value` specs, keeping only `new`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cp src/libs/sys/src/sys/mm/address/virt.rs /tmp/virt.rs.bak
+
+[THINKING] Rather than setting up a standalone reproduction, I'll test this directly in the actual file by temporarily removing the `from_raw_value` and `into_raw_value` specs to see if the `new` function pointer on line 81 fails on its own. Actually, a cleaner approach would be to remove all three specs except for `into_raw_value` to narrow down which one's causing the issue.
+[RESULT ✓] bash: 
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|Results|status:" | head -20
