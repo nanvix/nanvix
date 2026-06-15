@@ -459,3 +459,147 @@ Let me establish a baseline by verifying the module as-is.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tail -40
 
 [THINKING] I'm setting up a baseline test run with the verify-kernel check scoped to the module to establish a reference point before making changes. The toolchain environment variable is empty in the shell, but the Makefile has a sensible default path, so I'll proceed with running the baseline in the background.
+[RESULT ✓] bash: === Results ===
+  0 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  cfg-gated exec code: 1
+  Global: assume=0 external_body=23 admit=0 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.t...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== page.rs (non-aligned) ==="; grep -n "struct PageAddress\|impl Address for\|impl Vie
+
+[THINKING] The baseline is working with no verification issues or errors, and the build pipeline completes in about 4-5 minutes. There's a pre-existing warning about gated execution code that's likely coming from a cfg-gated block in the page module, which is expected. Now I need to explore the core design challenge with a quick experiment.
+
+I'm considering adding just the `into_raw_value` spec with `self@` to see if it type-checks, but each verification run takes around 5 minutes. Let me think through the type-checking constraints more carefully instead. When I write a spec like `result as int == self@` for the generic `into_raw_value` method in the `Address` trait impl, Verus needs to resolve `self@` which requires `PageAligned<T>: View`. But the impl block only has `T: Address` as a bound, not `T: View<V=int>`, so this won't type-check. The real solution might be to add a `View<V = int>` supertrait bound to the `Address` trait itself and see if the existing types like `PageTableAligned` and `PageAddress` already satisfy it or need minimal changes. I'm realizing the core issue: adding `View<V = int>` as a supertrait to `Address` would break both `PageTableAligned` and `PageAddress` since neither has a `View` implementation. Let me verify whether `PageAddress` actually implements `Address` and check if I missed any `View` impls in the codebase, particularly for `PageTableAligned`.
+[RESULT ✓] bash: === page.rs (non-aligned) ===
+13:pub struct PageAddress(PageAligned<VirtualAddress>);
+15:impl PageAddress {
+21:        self.0
+24:    pub fn into_raw_value(self) -> usize {
+25:        self.0.into_raw_value()
+29:        let addr: usize = self.into_raw_value();
+36:        self.0 == other.0
+42:        s...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me empirically test the typechecking constraint with a minimal Verus file.
+[TOOL] bash: cd /tmp; cat > vtest.rs <<'EOF'
+use vstd::prelude::*;
+
+verus! {
+
+trait Addr where Self: Sized {
+    fn into_raw(self) ->
+
+[THINKING] PageAddress has its own `into_raw_value` implementation rather than deriving it through a trait, while `PageTableAligned<T>` in pgtab.rs does implement Address but lacks a View implementation. If I add View as a supertrait to Address, it would break the existing `impl<T: Address> Address for PageTableAligned<T>` because PageTableAligned wouldn't satisfy the View requirement that the supertrait imposes.
+
+Since the codebase deliberately keeps Address and View as separate bounds rather than linking them through inheritance, I can't attach a View-dependent specification directly to the generic `into_raw_value` method. The real question is how to specify the behavior for concrete types like PageAligned where View is available. I'm thinking the inner `T::into_raw_value` calls might need to be specced through a different mechanism that only applies when T actually implements View, or I could experiment with a minimal Verus example to see what's actually possible with trait method specs in this scenario.
+
+Let me find the Verus binary and test this quickly.
+[RESULT ✓] bash: written
+-rwxr-xr-x 1 ruize ruize  2096112 May 24 11:12 /home/ruize/toolchain/verus/cargo-verus
+-rwxr-xr-x 1 ruize ruize 19995504 May 24 11:12 /home/ruize/toolchain/verus/rust_verify
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+I need to understand the dependencies. Let me look at `Alignment`, `is_aligned`, `into_raw_value` impls, and `PAGE_ALIGNMENT`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== VirtualAddress is_aligned/into_raw_value impl ==="; sed -n '151,260p' src/libs/sys/
+
+[THINKING] The `#[verus_spec]` attribute requires the verus_builtin_macros proc macro crate, which makes running a standalone file complicated. Instead, I'll write the full specs directly in the actual files and run verify-kernel to get the ground truth, even though it takes about five minutes.
+
+But I want to avoid multiple five-minute iterations, so let me think through the correct approach upfront. The core issue is whether I can add `#[verus_spec]` to the Address trait method declarations with specs that reference trait-associated open spec functions — but that would require all implementations to define them, which is too broad.
+
+The real constraint is that within `impl<T: Address> Address for PageAligned<T>`, calling `self@` requires `PageAligned<T>: View`, which needs the blanket impl `impl<T: Address + View<V=int>> View for PageAligned<T>`. Since we only have `T: Address`, this bound isn't satisfied, so it's a genuine type error. To spec `into_raw_value` properly, I need a different approach.
+
+The options are either adding `T: View<V=int>` as a supertrait (which breaks pgtab) or adding it to the impl block itself. But narrowing the trait impl to only apply when `T: View` would break generic code that uses `PageAligned<T>` with just `T: Address`. This is a deep architectural coupling issue. Let me reconsider whether the expected answer might accept a weaker spec instead, looking back at what the caller analysis says about what `into_raw_value` should expose.
+
+Actually, maybe I can use `assume_specification` on the generic trait method itself with the `T: View<V=int>` bound, rather than trying to modify the impl. The question is whether Verus allows `assume_specification` to target a fully generic trait method like `<T as Address>::into_raw_value` where T is a type parameter.
+
+But even if that works, it doesn't solve the core problem: the ENSURES clause on `PageAligned::into_raw_value` still needs to reference `self@`, which requires `PageAligned<T>: View`, which in turn requires `T: View` — and that bound isn't available in the impl block itself.
+
+So the constraint is fundamental. I need to step back and seriously reconsider option (A).
+
+If I add `View<V=int>` as a supertrait to `Address`, then every impl of `Address` would need to satisfy that bound. Looking at the existing impls: `VirtualAddress` and `PhysicalAddress` already have `View`, `PageAligned<T>` would get it automatically since `T: Address` implies `T: View` by the supertrait, but `PageTableAligned<T>` has no `View` impl — that's the only breakage. I'd need to add a spec-level `View` impl for `PageTableAligned<T>` in pgtab.rs, maybe 15 lines of pure spec code.
+
+The question is whether this counts as "within scope" — modifying the `Address` trait in the sys crate and adding a `View` impl to pgtab.rs feels like a significant dependency change that could cascade through the kernel crate and risk breaking `make verify` or `make build`. It's risky.
+
+Now I'm wondering whether adding `View` to a non-verus build even works — `View` comes from vstd, and while vstd is a dependency, I need to check if the trait is available in the normal cargo build path. So adding `View<V=int>` as a supertrait of `Address` would be the globally consistent design—it matches how all the existing View impls already pair `T: Address + View<V=int>` together. The risk is that region.rs and pgtab.rs would need to build under verus_keep_ghost, and pgtab would need a View impl added, but since MemoryRegion already has one, it should work out for VIR generation without breaking the build.
+
+But I'm realizing this is a risky change to a shared trait in the sys crate that would pull in vstd's View dependency, and I need to think through whether that breaks `make build` or `make verify` more broadly. Actually, let me step back—the existing code already compiles with View impls that require both Address and View bounds together, so maybe I'm overcomplicating this.
+
+The real question is whether I can write the ensures clause for `into_raw_value` referencing `self@` without explicitly adding the View bound, since the verus_spec macro might handle it automatically. Rather than keep second-guessing, I should just test it by writing the spec and seeing if it typechecks. I'll scope it to just this method first to minimize the cost of discovering any errors.
+
+Before diving in, though, I'm checking if there's precedent in the codebase for a verified generic wrapper with View-referencing specs. The existing verified hal::mem code only covers concrete types like FrameAddress and PhysicalAddress, so this would be the first generic one. Since there's no template to follow, I'll empirically test the approach.
+
+For the dependency specs, `into_raw_value` needs the Address trait's spec to state that the result as an integer equals the view. For `from_address`, I need specs for `is_aligned` that relate the alignment check to the view modulo the alignment value, and I need to connect PAGE_ALIGNMENT to the spec's page size constant.
+
+The tricky part is that `is_aligned` is generic over any Alignment, but I only care about its behavior when called with PAGE_ALIGNMENT. I could write a general spec for is_aligned, but that requires understanding how Alignment abstracts its value. A simpler path: give is_aligned an external contract that relates PAGE_ALIGNMENT specifically to spec_page_size, then use that in from_address's proof. So the spec phase is about adding annotations to exec functions, not necessarily filling in proofs yet. The task says "0 Verus errors (admit() in proof bodies is fine)" — which suggests admit() goes in proof.rs for the proof functions, not in the exec bodies themselves. For exec functions like `into_raw_value`, the body might actually verify given the dependency contracts without needing admit(). For trickier ones like `from_address` that require alignment reasoning, I might need to add `proof!{admit();}` to reach zero errors, but the cleaner approach is to rely on the dependency contracts making the exec bodies verify naturally.
+
+Rather than keep second-guessing the deferral strategy, I should test empirically whether `self@` even typechecks in the spec for `into_raw_value` by writing just that one spec plus its dependency and running a scoped verify. But before diving into that experiment, I'm reconsidering whether there's a cleaner in-scope solution to the View bound issue I keep running into. The real fix is to make `Address` require `View<V = int>` as a supertrait — that's consistent with what every View impl in hal::mem already assumes. Then I'd add the missing View and inv for `PageTableAligned<T>` in pgtab.rs, and the bound `T: Address + View<V=int>` would simplify to just `T: Address`.
+
+But now I'm realizing a critical problem: the View impls are cfg-gated inside `#[cfg(verus_keep_ghost)]` blocks, so they don't exist in normal `make build`. If I add View as a real supertrait to Address (which isn't cfg-gated), then every `T: Address` would require `T: View` in compiled code, but those View impls are gated out — that breaks the build catastrophically. So adding a supertrait to Address isn't viable. The View relationship has to stay cfg-gated, which means the bound `T: View<V=int>` can only appear inside cfg(verus_keep_ghost) code. Since `#[verus_spec]` attributes are automatically erased in normal builds, the spec content only matters under verus_keep_ghost, so I need `PageAligned<T>: View` to be available there.
+
+The core issue is that the View impl for PageAligned requires `T: View`, but the impl block for Address doesn't carry that bound. I can't unconditionally impl View for PageAligned without the bound, and I can't conditionally add a supertrait to Address. I think the best approach is to just test empirically — write the spec for into_raw_value and see if Verus can infer the bound or if it fails to typecheck.
+
+For the dependency contracts, Address trait methods like into_raw_value and is_aligned need specs. Since Address is workspace-internal and trait methods don't work well with external_body, assume_specification is the practical choice here, even though it adds to the TCB. There's precedent in kframe for this approach, though I'll need to document it in tcb-allowed.md.
+
+Let me just start implementing and testing to see the actual constraints. I'll write assume_specification contracts for the Address trait methods in page.spec.rs, then look at the Alignment type to understand what is_aligned's contract should be.
+[RESULT ✓] bash: === VirtualAddress is_aligned/into_raw_value impl ===
+impl Address for VirtualAddress {
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new [`VirtualAddress`] from a raw value.
+    ///
+    /// # Parameters
+    ///
+    /// - `raw_addr`: The raw value.
+    ///
+    /// # Returns
+    ///
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== Alignment definition ==="; grep -rn "enum Alignment\|pub enum Alignment\|impl Align
+
+[THINKING] I'm working through the contract for the `is_aligned` method on the `Address` trait, where I need to prove that checking alignment against `PAGE_ALIGNMENT` (4096 bytes) returns true exactly when the address is divisible by the page size. The proof strategy seems to be taking shape, though the thought cuts off mid-sentence.
+
+The challenge is defining a faithful spec that's actually provable—I can't use uninterpreted functions, so I need concrete definitions. Since `is_aligned` is only called with `PAGE_ALIGNMENT` in the `from_address` proof and the dependency is external/trusted, I could specialize the contract to that specific case, but that feels less general. The cleaner approach might be to define a concrete spec function for alignment values and separately relate `PAGE_ALIGNMENT` to the page size, though working with the `Alignment` enum adds complexity since it needs to be Verus-visible.
+[RESULT ✓] bash: === Alignment definition ===
+src/libs/sys/src/sys/mm/alignment.rs:41:pub enum Alignment {
+src/libs/sys/src/sys/mm/alignment.rs:63:    Align4096 = 4096,
+src/libs/sys/src/sys/mm/alignment.rs:101:            4096 => Ok(Alignment::Align4096),
+src/libs/sys/src/sys/mm/alignment.rs:121:        Alignment::t...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+This is the key architectural question: whether `self@` even type-checks in the generic trait impl. Let me test empirically with a minimal annotation.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] There's no existing Alignment spec, so I'm working with an enum where `align as usize` gives the numeric value, and alignment checking uses `value & (align as usize - 1) == 0`. For the dependency contract on `<T as Address>::is_aligned`, I need to keep it focused on what `from_address` requires—the cleanest approach is to relate the result to modulo arithmetic, checking if `addr % (align as int) == 0`, though casting alignment to int introduces some complexity.
+
+Given the proof phase uses `admit()`, I'll define a contract that directly serves `from_address` using `spec_page_size()`. Since `from_address` only calls `is_aligned(PAGE_ALIGNMENT)`, I can write the contract generically by defining an abstract spec function `spec_alignment(align: Alignment) -> int` rather than wrestling with enum casting issues. The real question is whether I even need a precise `is_aligned` contract—`from_address`'s ensures clause already specifies that `Ok(p)` means `p@ == addr@` with `p.inv()` (which is `p@ % spec_page_size() == 0`), and `Err(e)` means `addr@ % spec_page_size() != 0`. So the `is_aligned` dependency contract just needs to tie its result directly to that modulo check.
+
+The challenge is expressing this without generic alignment machinery—I could condition the `assume_specification` on `align == PAGE_ALIGNMENT`, but that requires referencing `PAGE_ALIGNMENT` as an exec const with a spec. Looking at how `frame.rs` handled this, they used `assume_specification` on `::arch::mem::PAGE_SIZE` (a const) to ensure it equals `spec_page_size()`, so Verus apparently allows `assume_specification` on constants, treating them as functions.
+
+For the `is_aligned` method, I need to decide whether to model the `Alignment` enum's value directly. Since the function signature already mentions `Alignment` as a parameter type, the `assume_specification` must reference it—meaning `Alignment` has to be Verus-importable, at least as an opaque type. Casting it with `align as int` would require Verus to understand it's a numeric enum, which needs an `external_type_specification`. Rather than go down that path, I'll use a simpler, more concrete abstraction that avoids uninterpreted functions while keeping things tractable. I'm realizing I might be overcomplicating this. Since I'm in the specification phase and can use `admit()` for proofs, the dependency contracts don't need to be bulletproof—they just need to typecheck and let the calls go through. If `is_aligned` has no spec at all, Verus might still allow the exec call to compile, which means I could skip the complex alignment modeling entirely and just admit the proof later when the actual lemmas are available. The core issue is whether `self@` will even typecheck in the spec when `PageAligned<T>: View` isn't automatically satisfied by `T: Address`. I need to test this empirically right now by writing the minimal spec with `self@` and running a scoped verify to see if it elaborates. If the View bound isn't satisfiable, no amount of `proof!{admit();}` will help—it's a fundamental elaboration blocker before proof even starts.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tail -35
