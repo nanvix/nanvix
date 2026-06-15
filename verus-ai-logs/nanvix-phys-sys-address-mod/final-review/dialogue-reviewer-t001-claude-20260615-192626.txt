@@ -535,3 +535,39 @@ Turn 20
 [THINKING] I'm wondering whether to keep `addr_inv` since it's defined but not actually used in any ensures clauses. It's marked as `pub open spec fn`, so it's part of the public API and shouldn't trigger dead code warnings, but there's a design question about whether an unused function should stay in the codebase at all.
 
 The minimality principle suggests removing it entirely since it's now unreferenced, even though it conceptually represents the universal well-formedness bound. I think the cleaner approach is to remove the unused `addr_inv` spec function to keep the vocabulary tight and consistent with the strict checklist requirements.
+[RESULT ✓] bash: Timestamp : 2026-06-15_19-30-10
+
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+verification results:: 6 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.99s
+
+=== Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Still CLEAN (6 verified, 0 errors). Now confirm no spec drift vs the pre-work baseline and re-run cross-module verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && PY=/home/ruize/verus-ai-exp/verus-ai/scripts; echo "=== spec_drift vs pre-work baseline (7c
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -E "Crate|verified|errors|Exit code|status|cheating:" | head -40
+
+[THINKING] The verification still holds with no errors—the fix is solid. Now I'm weighing whether to keep `addr_inv` as exported vocabulary even though it's unused, since the view design documents it as the universal pointer-sized well-formedness predicate and it's part of the module's public spec. `addr_inv` is non-trivial so it satisfies the checklist requirement, and there's no explicit rule against unused spec functions. Since the baseline for "no specs weakened" is the original upstream state before this work started, removing a conjunct I just added during verification isn't actually weakening any original guarantees. I'll keep `addr_inv` as documented public invariant vocabulary and run the cross-module verify and spec_drift checks to confirm there's no regression.
+[RESULT ✓] bash: === spec_drift vs pre-work baseline (7c2fdcf95) ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 3
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 3
+- Functions removed: 0
+
+**✅ No contract drif...
