@@ -422,6 +422,16 @@ pub fn get_kstack_guard_base() -> usize {
 /// The guest physical address corresponding to the given guest virtual address.
 ///
 ///
+#[verus_spec(result =>
+    ensures
+        // Identity: the MicroVM platform contract the caller relies on (the
+        // guest runs in a flat, identity-mapped address space). Directly-usable
+        // form for the caller's frame walk.
+        result == gva,
+        // Same fact in View vocabulary, tying the result to the abstract
+        // translation map for downstream specs.
+        result as nat == (MicrovmTranslationView {}).spec_gva_to_gpa(gva as nat),
+)]
 #[inline(always)]
 pub fn gva_to_gpa(gva: usize) -> usize {
     gva
