@@ -341,3 +341,554 @@ src/libs/sys/src/sys/mm/address/virt.rs:266:    // identity fact is therefore he
 ────────────────────────────────────────────────────────────
 Turn 5
 ────────────────────────────────────────────────────────────
+Mechanical audit clean: 0 admit, 0 assume, 0 external_body, 0 assume_specification (line 266 is just a comment), 0 trusted, 0 VERUS REWRITE. Now launching the two independent sub-agents.
+[TOOL] report_intent: Launching independent review agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'mode': 'background', 
+
+[THINKING] Looking at the mechanical audits in virt.rs/spec/proof, I'm checking the counts for various verification constructs—admit, assume, external_body, and assume_specification all show zero actual instances, with assume_specification only appearing in a comment. The cfg-gated exec at line 39 is a compile-time assertion rather than a runtime check.
+
+The cfg-gated impl block at line 308 for u32 conversion is pre-existing and out-of-scope—these are legitimate platform conditionals for target architecture, not attempts to hide code from verification. No Verus rewrites needed.
+
+Now I'm launching the verification run to get ground truth while spinning up the two sub-agents in parallel to conduct their own reviews independently, each writing their raw findings to the final-review directory with their model names appended. I'll craft a comprehensive prompt and dispatch both claude-opus-4.8 and gpt-5.3-codex as background agents with model overrides.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 5}
+[RESULT ✓] read_bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+I'll start by reading the required skills and key project files in parallel.
+[TOOL] report_intent: Reading skills and key files
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the spec-design skill and check for spec-drift-check skill, plus the project files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/ ; echo "---" ; ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-d
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+---
+SKILL.md
+<shellId: 6 co...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Verification ground truth captured: `make verify-sys` PASS (exit 0), cheating-check CLEAN (admit=0, assume=0, external_body=0, trusted=0, no_decreases=0, cfg_gate=0). Now waiting for the two independent review agents to complete.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] The verify-sys test passed cleanly with no issues detected. The coverage metric shows 2 out of 254 functions, which reflects the whole crate rather than just the in-scope functions—the new functions and from_raw_value are what matter here, while into_raw_value falls under the assume_spec case. This is expected since only the in-scope functions need coverage tracking. But then something's catching my attention...
+
+The verify ran with caching enabled and reports the cached result as CLEAN with exit 0. It used the x86-kernel.json target with the sys crate, and importantly, cfg_gate=0 means the tool correctly doesn't treat the cfg(target_pointer_width="32") as a cheating gate. So I have my ground truth: verify-sys passes with all metrics at zero—no admits, assumes, external bodies, trusted functions, decreases, or cfg gates. Now I'm waiting for the two sub-agents to finish their background work before moving forward.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing verification effort
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verus-unsupported.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Well-formedness invariant for `VirtualAddress`.
+4. //
+5. // `VirtualAddress` is a thin, infallible newtype over a pointer-sized integer.
+6. // Its abstract state (`self@ : int`) is exactly the numeric virtual address.
+7. // The single universal property every constructible valu...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 1. # Bugs — `sys::mm::address::virt` (`VirtualAddress`)
+2. 
+3. None.
+4. 
+5. No code bugs were found in the in-scope functions. `VirtualAddress::new`, the
+6. inherent `VirtualAddress::from_raw_value`, and `into_raw_value` are pure,
+7. infallible newtype identity operations and match their caller-reli...
+[RESULT ✓] view: 1. # View Design: `VirtualAddress` (`mm/address/virt.rs`)
+2. 
+3. > Scope: design the abstract `View` (+ `inv`) for `VirtualAddress` that the
+4. > in-scope functions will reference in later spec/proof phases.
+5. >
+6. > In-scope (verification-order) targets: the type `VirtualAddress` (its `View`
+7. > ...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `mm::address::virt` (`VirtualAddress`)
+2. 
+3. ## Script Output
+4. 
+5. See raw LSP caller-finding output: `/tmp/virt_callers.txt`
+6. (generated by `find_callers_lsp.py` against `src/libs/sys/src/sys/mm/address/virt.rs`,
+7. project dir `/home/ruize/nanvix-phy`, crate `sys`).
+8. 
+...
+[RESULT ✓] view: 1. # Verus Unsupported Constructs
+2. 
+3. Genuine Verus front-end limitations encountered during verification. These are
+4. **not** proof gaps or code bugs: the verifier cannot parse/lower the construct,
+5. so no proof strategy can address them. Per the `verus-constraints` skill they are
+6. recorded ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the rest of spec-design (trust boundaries) and the actual project files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 130.       code), would I believe this ensures clause is guaranteed?"
+131.    5. **Version sensitivity**: note the stdlib/crate version the
+132.       assumption was checked against.
+133. 
+134.    - `external_body`: allowed on dependency functions in other modules as
+135.      a temporary contract p...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Now the spec and proof files, plus the log files.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Well-formedness invariant for `VirtualAddress`.
+4. //
+5. // `VirtualAddress` is a thin, infallible newtype over a pointer-sized integer.
+6. // Its abstract state (`self@ : int`) is exactly the numeric virtual address.
+7. // The single universal property every constructible valu...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 261. 
+262. 2. **Safety** — What must never happen?
+263.    - Bounds, disjointness, uniqueness, conservation, injectivity, ordering, monotonicity
+264. 
+265. 3. **Liveness** — What good things must happen?
+266.    - Guaranteed success conditions, resource availability, recoverability
+267. 
+268. 4. **S...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now the log/analysis files.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verus-unsupported.md
+[RESULT ✓] view: 1. # View Design: `VirtualAddress` (`mm/address/virt.rs`)
+2. 
+3. > Scope: design the abstract `View` (+ `inv`) for `VirtualAddress` that the
+4. > in-scope functions will reference in later spec/proof phases.
+5. >
+6. > In-scope (verification-order) targets: the type `VirtualAddress` (its `View`
+7. > ...
+[RESULT ✓] view: 1. # Bugs — `sys::mm::address::virt` (`VirtualAddress`)
+2. 
+3. None.
+4. 
+5. No code bugs were found in the in-scope functions. `VirtualAddress::new`, the
+6. inherent `VirtualAddress::from_raw_value`, and `into_raw_value` are pure,
+7. infallible newtype identity operations and match their caller-reli...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 1. # Verus Unsupported Constructs
+2. 
+3. Genuine Verus front-end limitations encountered during verification. These are
+4. **not** proof gaps or code bugs: the verifier cannot parse/lower the construct,
+5. so no proof strategy can address them. Per the `verus-constraints` skill they are
+6. recorded ...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::address::virt` (`VirtualAddress`)
+2. 
+3. ## Script Output
+4. 
+5. See raw LSP caller-finding output: `/tmp/virt_callers.txt`
+6. (generated by `find_callers_lsp.py` against `src/libs/sys/src/sys/mm/address/virt.rs`,
+7. project dir `/home/ruize/nanvix-phy`, crate `sys`).
+8. 
+...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running analysis scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager branch --show-current && echo '--- fn_coverage --help ---' && python3 /home/
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-ai/sys-virt-address
+--- fn_coverage --help ---
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional argumen...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me run the helper scripts and verification. First, check the scripts and git state.
+[TOOL] report_intent: Running analysis scripts and checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && git branch --show-current && echo "---LOG---" && git --no-pager log --oneline -8 && echo "-
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/scripts && for s in fn_coverage.py spec_drift.py ast_consistency.py; do echo "=====
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-ai/sys-virt-address
+---LOG---
+ec800a83f [verus] verify PASS: sys::all (cached (no recompilation), —)
+e69a1fda6 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=25 cfg_gate=7)
+4e6834d5c [verus] verify PASS (cheating detected): bump-allocator::all...
+[RESULT ✓] bash: ===== fn_coverage.py -h =====
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file      ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Now let me run the three scripts against the module.
+[TOOL] bash: cd /home/ruize/nanvix-phy && SRC=src/libs/sys/src/sys/mm/address/virt.rs && echo "===== AST consistency summary =====" &
+[RESULT ✓] bash: ===== AST consistency summary =====
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddres...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+AST consistency PASS. Now spec_drift and fn_coverage.
+[TOOL] bash: cd /home/ruize/nanvix-phy && SRC=src/libs/sys/src/sys/mm/address/virt.rs && echo "===== spec_drift vs HEAD =====" && pyt
+[RESULT ✓] bash: ===== spec_drift vs HEAD =====
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 1
+- **Contract drift (⚠ review required): 1**
+  - Ensures removed: 2
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Ea...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Let me investigate the spec_drift vs HEAD anomaly (working tree should be clean).
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git status ===" && git status --porcelain && echo "=== diff HEAD on the file ==="
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-161129.jsonl
+ M verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-161129.txt
+=== diff HEAD on the file ===
+(end diff)
+=== from_raw_value occurrences in file ===
+47:// imp...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing specs and drift
+[TOOL] bash: cd /home/ruize/nanvix-phy
+mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/final-review
+run() { echo "--- $1 ---"; sh
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: --- ast_consistency count ---
+⚠️  4 mismatched (14 functions match)
+[exit:1]
+--- ast_consistency summary ---
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Working tree clean for virt.rs — the "vs HEAD" drift is a tool artifact from two same-named `from_raw_value` functions. Base-branch comparison (the authoritative one) is clean. Now fn_coverage and verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && SRC=src/libs/sys/src/sys/mm/address/virt.rs && python3 /home/ruize/verus-ai-exp/verus-ai/sc
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/libs/sys/src/sys/mm/address/virt.rs`
+- **Verus file:** `src/libs/sys/src/sys/mm/address/virt.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/libs/sys/src/sys`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source ex...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now the guardrails counts across the three module files, then run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && D=src/libs/sys/src/sys/mm/address && for f in virt.rs virt.spec.rs virt.proof.rs; do echo "
+[RESULT ✓] bash: ===== virt.rs =====
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+39:#[cfg(target_pointer_width = "32")]
+266:    // identity fact is therefore held as an `assume_specification` trust boundary
+308:#[cfg(target_pointer_width = "32")]
+===== virt.spec.rs =====
+  (none)
+===== virt.proof.rs =====...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking guardrail usage
+[TOOL] rg: \badmit\s*!?\(
+[TOOL] rg: \bassume\s*!?\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: #\[cfg\([^\]]*\)\]
+[TOOL] rg: VERUS REWRITE
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs:266:    // identity fact is therefore held as an `assume_specification` trust boundary
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs:39:#[cfg(target_pointer_width = "32")]
+/home/ruize/nanvi...
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All cheating dimensions are zero (admit/assume/external_body/assume_specification all absent; only legitimate `cfg(verus_keep_ghost)` include-gating and `cfg(target_pointer_width)` platform conditionals). Now run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "verify-sys|^verify|verify:" Makefile 2>/dev/null | head; echo "---targets---"; gr
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+---targets---
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '560,640p' Makefile
+[RESULT ✓] bash: @echo "  DEPLOYMENT_MODE  Deployment mode (default: $(DEPLOYMENT_MODE))"
+	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
+	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
+	@echo "  MAKE_NO_PRINT    Suppress directory printing in recursive make (default: $(MA...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/hal-p
+[RESULT ✓] bash: ## VirtualAddress::align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,4 @@
+-    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+-        mm::align_up(self.0, align).map(VirtualAddress::new)
++    fn align_up(&self, align: Alignment) -> Result<Self, Error> {
++        self.align...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "VERUS_CRATES|VERUS_EXECUTABLE_DIR|VERUS_BINARY|VERUS_AI_DIR|VERUS_AI_VERIFY_SCRIP
+[RESULT ✓] bash: 298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+305:  VERUS_BINARY := verus.exe
+307:  VERUS_BINARY := verus
+314:# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+316:  VERUS_PATH_PREFIX = $$(cy...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff --minimal verus-ai/hal-platform-microvm -- src/libs/sys/src/sys/mm/addr
+[RESULT ✓] bash: diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index 2da5cf08d..9917c574f 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //===============================================...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+`make verify-sys` is valid (sys is in VERUS_CRATES). Let me check the verus dir and run it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la /home/ruize/toolchain/verus/verus 2>/dev/null && echo "DEFAULT DIR OK" || echo "DEFA
+[RESULT ✓] bash: -rwxr-xr-x 1 ruize ruize 4194488 May 24 11:12 /home/ruize/toolchain/verus/verus
+DEFAULT DIR OK
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-sys 2>&1 | tail -60; echo "VERIFY_EXIT=${PIPESTATUS[0]}"
