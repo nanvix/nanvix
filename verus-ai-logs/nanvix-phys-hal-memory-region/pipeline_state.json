@@ -2,10 +2,11 @@
   "module_name": "hal-memory-region",
   "log_name": "nanvix-phys-hal-memory-region",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs",
-  "current_phase": "view-design",
-  "current_phase_idx": 1,
+  "current_phase": "specification",
+  "current_phase_idx": 2,
   "completed_phases": [
-    "caller-analysis"
+    "caller-analysis",
+    "view-design"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -18,6 +19,17 @@
       "review_file": null,
       "duration_s": 126.9,
       "review_rounds": 0
+    },
+    "view-design": {
+      "phase": "view-design",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 197.3,
+      "review_rounds": 0
     }
   },
   "prover_session_id": "1d0697de-4a63-435a-91f0-a54d321f844d",
@@ -25,11 +37,13 @@
   "base_branch": "verus-ai/hal-phys-address",
   "verus_branch": "verus-ai/hal-memory-region",
   "phase_boundary_shas": {
-    "caller-analysis": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2"
+    "caller-analysis": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2",
+    "view-design": "776a78e85ce25637dc8c495412538013c9f76d56"
   },
   "phase_start_shas": {
     "caller-analysis": "c5c4f78a66b4a71e704e87934380be624047b6d0",
-    "view-design": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2"
+    "view-design": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2",
+    "specification": "776a78e85ce25637dc8c495412538013c9f76d56"
   },
   "phase_history": [
     {
@@ -48,6 +62,18 @@
       "phase": "view-design",
       "event": "start",
       "sha": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "end",
+      "sha": "776a78e85ce25637dc8c495412538013c9f76d56",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "776a78e85ce25637dc8c495412538013c9f76d56",
       "rollback_iter": 0
     }
   ],
