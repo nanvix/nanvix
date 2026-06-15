@@ -210,3 +210,17 @@ Module: arch-x86-pte
 [2026-06-15 15:07:58] Running final comprehensive review...
 [2026-06-15 15:07:58] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 15:15:34]   ↳ review done in 7m35s (exit=0)
+[2026-06-15 15:15:34] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 15:15:34] [CHEATING-GATE] 3 external_body site(s) honored from approved plan
+[2026-06-15 15:15:34] [FINAL REVIEW] Cheating report: limitation_assume: 1 (approved)
+[2026-06-15 15:15:34] [FINAL REVIEW] Done (7m36s)
+
+============================================================
+PIPELINE COMPLETE: arch-x86-pte
+  ✅ proving                   dialogue-RESOLVED        10m08s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         8m17s (1 dialogue turns)
+  ✅ final-review              PASS                      7m36s
+  ──────────────────────────────────────────────────────────
+  Total: 26m28s
+============================================================
+[2026-06-15 15:15:34] [USAGE] Summary: 9 calls, 0 tokens, 41m08s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/usage_summary.json
