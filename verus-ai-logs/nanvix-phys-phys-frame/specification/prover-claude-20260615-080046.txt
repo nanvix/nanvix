@@ -954,3 +954,363 @@ VERUS is at `/home/ruize/toolchain/verus`. Let me run the baseline module verifi
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 540 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
 
 [THINKING] I'm setting up the Verus executable directory at the default location and configuring the module path to `mm::phys`, then running a baseline kernel verification which could take some time.
+[RESULT ✓] bash: - manager.rs:107 init: external_body
+    - manager.rs:198 alloc_many_user_frames: external_body
+    - manager.rs:267 alloc_user_frame: external_body
+    - manager.rs:306 check_user_watermark: external_body
+    - manager.rs:352 alloc_kernel_frame: external_body
+    - manager.rs:409 alloc_many_kernel_...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Baseline shows a compilation error (not the expected "32 verified"). Let me check the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "error\[\|error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_08-18-43.lo
+
+[THINKING] The baseline test is failing with a compilation error instead of the expected verification results. I need to look at the actual error message in the logs to understand what's going wrong with the module build.
+[RESULT ✓] bash: 20:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2254 ~ kernel[5062]::mm::phys::frame::INSTANCE))
+26:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, m...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; grep -n "external_body\|verus_verify\|#\[verus_spec" frame.rs | head -
+
+[THINKING] I'm seeing a compilation error where the verifier is trying to process `static mut INSTANCE` and `REFCOUNT_STORAGE` in the `init` and `instance` functions, but these should be marked as external_body according to the TCB rules. The bugs.md mentions these functions were supposed to have external_body attributes restored, so I need to check if they're actually marked that way in the current frame.rs file.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+115:    #[verus_spec(result =>
+180:    #[verus_spec(result =>
+252:    #[verus_spec(result =>
+336:    #[verus_spec(result =>
+407:    #[verus_spec(result =>
+454:    #[verus_spec(result =>
+499:    #[verus_spec(ret =>
+528:    #[verus_spec(result =>
+636:#[verus_spec...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+No `external_body` attributes currently exist. The body-removal pass stripped the TCB-required `external_body` attrs from `instance`, `init`, and the 8 `Inner::*` methods (which the verifier cannot translate: `static mut`, `error!`/`debug_assert!` macros, `FrameNumber`/`FrameAddress` newtypes — all listed in tcb-allowed.md). Let me check git to see the original attributes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git status --short src/kernel/src/mm/phys/frame.rs; echo "=== git diff stat ==="; git diff --
+
+[THINKING] Looking at the frame.rs file, I notice that the `instance()` and `init()` functions, along with the eight `Inner::*` methods, are missing the `external_body` attribute that they require according to tcb-allowed.md. The current compilation error stems from these functions referencing `static mut INSTANCE` and `REFCOUNT_STORAGE` without being marked as external_body, which the verifier can't handle since it can't translate static mut declarations or certain macros like error! and debug_assert.
+
+I need to restore the `external_body` attributes on all these TCB-allowed functions — adding `#[verus_verify(external_body)]` to instance, init, and each of the Inner methods, following the pattern I see in manager.rs where external_body is paired with verus_spec attributes.
+[RESULT ✓] bash: === git diff stat ===
+=== original attrs on Inner methods (git show HEAD) ===
+81:#[verus_verify]
+103:#[verus_verify]
+136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+208:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+287:    fn free(&mut self, frame: Fr...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Now I understand the full picture. The body-removal pass stripped the TCB-required `external_body` attributes (causing the compile failure), and I need to restore them plus fix the false specs. Let me record the plan and todos.
+[TOOL] create: /home/ruize/.copilot/session-state/ecf4b3df-86ca-44d3-afb5-e08f75312431/plan.md
+
+[THINKING] The committed HEAD version of frame.rs also lacks the external_body field on Inner's instance init, and git status confirms no changes between HEAD and the working tree. Yet the rollback output claimed the baseline had external_body=22, which contradicts what I'm seeing in the actual committed code. I'm wondering if external_body might be getting applied through a different mechanism—
+
+maybe via the spec/proof includes, a wrapper, or a body-removal pass that strips them before committing. Let me check the verify script to see if there's an injection step or if there's a body_removed_source.rs file that gets swapped in during verification, since the baseline supposedly verified with 32 verified and 0 errors but now I'm hitting a compile error on static mut.
+
+Actually, the real issue is becoming clearer: the committed code genuinely lacks external_body on instance and init, which use static mut, and that's why verus fails to compile. The baseline "32 verified" might refer to a different committed state, or maybe verus isn't normally run on the committed code. Regardless, my task is to make `make verify-kernel MODULE=mm::phys` pass with 0 errors, which means I need to add external_body to instance and init in tcb-allowed.md. The Inner::* methods compiled fine in this run (only the 2 static mut errors appeared), so once I fix those, verus should proceed to verification.
+
+But the Inner::* methods are also listed in tcb-allowed.md as requiring external_body, so I should add it to all of them too: the 8 Inner methods (alloc, alloc_contiguous, free, share, refcount, book, is_covered, alloc_range) plus instance and init. This marks them as trusted boundaries with their existing #[verus_spec] contracts honored, allowing the shims to be body-verified against those trusted contracts and the instance() bridge. Once I add external_body to these 10 functions and fix the 4 false shim specs, the verification should pass. I'm confirming that the Inner::* methods genuinely can't be body-verified due to unsupported constructs like error!, debug_assert!, and external types without specs, so external_body is the right approach. The instance() method's contract serves as the critical bridge between the weakened shims and the pre-state, so I'll keep it intact. Before implementing, I need to finalize the exact weakened specs and verify that preserving phys_view().inv() and phys_view().initialized in the ensures clauses is both provable and necessary for chained calls.
+[RESULT ✓] create: Created file /home/ruize/.copilot/session-state/ecf4b3df-86ca-44d3-afb5-e08f75312431/plan.md with 2702 characters
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Insert task todos', 'query': "INSERT INTO todos (id, title, des
+[RESULT ✓] sql: 6 row(s) inserted. Last inserted row ID: 6.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Now let me restore the TCB `external_body` attributes. First let me see the exact lines around each function header:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 100.     refcount: &'static mut [u8],
+101. }
+102. 
+103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. U...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; echo "=== manager impl + method attrs ==="; grep -n "^impl\|#\[verus_v
+
+[THINKING] I need to add the `#[verus_verify(external_body)]` attribute to each method in the Inner impl block, placing it before the existing `#[verus_spec(...)]` attributes. I'm checking whether both attributes can coexist on the same method, since there's already a `#[verus_verify]` at the impl block level.
+[RESULT ✓] bash: === manager impl + method attrs ===
+68:#[verus_verify]
+77:impl PhysMemoryManager {
+98:    #[verus_verify(external_body)]
+99:    #[verus_spec(result =>
+177:    #[verus_verify(external_body)]
+178:    #[verus_spec(result =>
+198:    pub fn alloc_many_user_frames(
+249:    #[verus_verify(external_body)]
+2...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+I'll restore the TCB `external_body` attributes via a script (inserting before each target `#[verus_spec` line, bottom-up to preserve line numbers):
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; python3 - <<'PY'
+path = "frame.rs"
+lines = open(path).read().split("\n
+
+[THINKING] I need to add the `#[verus_verify(external_body)]` attribute before each `#[verus_spec` annotation across the Inner methods and the instance/init methods, targeting the specific line numbers where those spec attributes appear. I'm realizing the cleanest approach is to match each function's unique signature line combined with the closing of its verus_spec block, then prepend the external_body attribute before the verus_spec. Since the manager example shows verus_verify before verus_spec, I should follow that order. I could anchor on the doc comment structure preceding each Inner method, matching the distinctive requires clause that follows the verus_spec opening to uniquely identify which function I'm modifying.
+
+Actually, I'll take a simpler route: write a Python script that inserts the external_body attribute before specific verus_spec lines identified by their line numbers, working from bottom to top to preserve line numbering as I edit. The target lines are 115, 180, 252, 336, 407, 454, 499, 528, 636, 668 for the Inner methods plus instance and init. I need to match the indentation of each location — Inner methods use 4 spaces, while instance and init use none.
+[RESULT ✓] bash: done; new line count: 984
+115:    #[verus_verify(external_body)]
+181:    #[verus_verify(external_body)]
+254:    #[verus_verify(external_body)]
+339:    #[verus_verify(external_body)]
+411:    #[verus_verify(external_body)]
+459:    #[verus_verify(external_body)]
+505:    #[verus_verify(external_body)]
+5...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+10 `external_body` attrs restored. Now let me fix the false shim specs. Let me view the current shim region (line numbers shifted by +10):
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I've added the external_body attributes and now I need to update the shim specs to match the shifted line numbers—the shims have moved down by 10 lines, so I'll need to re-examine them around line 730 and adjust accordingly.
+[RESULT ✓] view: 731. #[verus_spec(result =>
+732.     requires
+733.         phys_view().initialized,
+734.         phys_view().inv(),
+735.     ensures
+736.         phys_view().inv(),
+737.         phys_view().initialized,
+738.         // On success the returned frame is freshly reserved: page-aligned, now in
+739.     ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now let me edit the `alloc` shim — weaken the false Ok-arm and remove the admit:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 760. /// Allocates `count` physically contiguous frames.
+761. ///
+762. /// # Returns
+763. ///
+764. /// Returns the base `FrameAddress` of the contiguous range.
+765. ///
+766. #[verus_spec(result =>
+767.     requires
+768.         phys_view().initialized,
+769.         phys_view().inv(),
+770.         co...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Now let me view the remaining shims (free, book, alloc_range, share, refcount):
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 790. /// Returns the number of free frames in the system.
+791. ///
+792. /// # Returns
+793. ///
+794. /// The number of free frames in the system.
+795. ///
+796. #[verus_spec(result =>
+797.     requires
+798.         phys_view().initialized,
+799.         phys_view().inv(),
+800.     ensures
+801.         ...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Let me check the frozen `Inner::book`, `Inner::alloc_range`, and `Inner::share` contracts to know which Err/Ok facts are derivable from the pre-state:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm reconsidering the contract for `book` and `alloc_range`, specifically whether the error case's precondition `!free_frames.contains(phys_addr@)` is actually provable from `Inner::book`'s specification. Let me trace through what the frozen state tells me about the error arm.
+
+For `alloc_range`, the ok-arm claims all region frames are allocated, but they're actually free in the pre-state, so I need to weaken that. The error arm `!region_frames.subset_of(free_frames)` should be derivable from the inner contract. For `share`, the ok-arm is sound since the frame must already be allocated before sharing, so I can remove the admit there.
+
+I need to check the actual `Inner` contracts for `book`, `alloc_range`, and `share` to see what error conditions I can legitimately derive.
+[RESULT ✓] view: 254.     #[verus_verify(external_body)]
+255.     #[verus_spec(result =>
+256.         requires
+257.             old(self).inv(),
+258.             frame.inv(),
+259.         ensures
+260.             final(self).inv(),
+261.             match result {
+262.                 Ok(()) => {
+263.                ...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking the order of the Inner methods in the code—alloc comes first around line 115, then free at 254, and share starting at 339. I need to look at the other methods like book, alloc_range, and alloc_contiguous to understand the full structure.
+[RESULT ✓] view: 339.     #[verus_verify(external_body)]
+340.     #[verus_spec(result =>
+341.         requires
+342.             old(self).inv(),
+343.             frame.inv(),
+344.         ensures
+345.             final(self).inv(),
+346.             match result {
+347.                 Ok(()) => {
+348.                ...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Let me view `Inner::alloc` and `Inner::alloc_contiguous` contracts, plus `region_frames`/`spec_page_size` definitions:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through how to derive what's available from each shim given the pre-state constraint `phys_view().frames == old(inner)@`. The key insight is that `instance()` guarantees `(*result)@ == phys_view().frames`, so after binding the result I have both the invariant and the frame equality, but the current shims just tail-call `instance().alloc()` without capturing this relationship.
+
+For the `book` shim specifically, I can now state meaningful pre-state facts: on the Ok arm, I can assert that the frame was free in the pre-state (`phys_view().frames.free_frames.contains(phys_addr@)`), which is provable and replaces the current post-state assertion. On the Err arm, the negation holds—the frame was not free—which I can keep as-is.
+
+Now I'm checking whether `phys_view().inv()` is derivable from the `instance()` contract. The `instance()` call ensures the Inner singleton satisfies its invariant and its view equals `phys_view().frames`, but I need to verify whether Inner's invariant actually implies that `phys_view().frames` satisfies the FrameAllocView and PhysMemView invariants. This depends on the exact definitions in the spec, which I need to examine.
+
+Looking at the verification results: `is_covered` requires only `initialized` and `phys_addr.inv()` but ensures `phys_view().inv()`, and it verifies with zero admits. This tells me that `phys_view().inv()` is indeed derivable from the preconditions, which means both the `book` and `alloc_range` ensures clauses can safely include `phys_view().inv()` and `phys_view().initialized`.
+
+For the `book` postcondition, I'm characterizing the pre-state condition: if the operation succeeds, the physical address was in the free frames; if it fails, it wasn't. This captures the meaningful semantic of what booking does. Now I'm looking at how `alloc_range` computes its frame set differently from the book operation.
+
+I need to verify that `PhysMemView::region_frames(region@.start, region@.size)` matches the `frames` computed inside `Inner::alloc_range`. The Ok-arm should weaken to say the region's frames are a subset of the pre-state free frames, while the Err-arm keeps its negation. For `share`, the preconditions are straightforward pre-state facts: the frame must be allocated and have a refcount entry, both of which are provable and remain true after the operation.
+
+Now I'm looking at the `alloc` contract to see if I can strengthen it with a meaningful precondition—specifically, that the allocated frame was free in the pre-state.
+[RESULT ✓] view: 115.     #[verus_verify(external_body)]
+116.     #[verus_spec(result =>
+117.         requires
+118.             old(self).inv(),
+119.         ensures
+120.             final(self).inv(),
+121.             match result {
+122.                 Ok(frame) => {
+123.                     &&& frame.inv()
+124.  ...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm realizing that `Inner::alloc`'s Ok-arm can give us a stronger pre-state fact: the frame was actually free in the old state, which is more meaningful than just checking frame invariants. So I should strengthen the Ok-arm postcondition to explicitly include that the frame was in the free frames set, and for the Err-arm, the precondition would be that the free frames set was empty.
+
+Now I need to look at `Inner::alloc_contiguous` to find what pre-state facts I can extract from there.
+[RESULT ✓] view: 180.     ///
+181.     #[verus_verify(external_body)]
+182.     #[verus_spec(result =>
+183.         requires
+184.             old(self).inv(),
+185.             count > 0,
+186.         ensures
+187.             final(self).inv(),
+188.             match result {
+189.                 Ok(base) => {
+190.   ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Let me check `region_frames` and `spec_page_size` definitions to ensure my `alloc_range` Ok-arm matches the Inner contract:
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; grep -n "region_frames\|spec_page_size\|fn covered\|fn inv" mod.spec.r
+
+[THINKING] I'm working through the invariant for the Ok-arm of `alloc_contiguous`, establishing that the allocated frames form a subset of the previously free frames, and I'm setting up the shim's postcondition to capture this relationship between the base address and the page count.
+
+Now I'm finalizing the postconditions for each shim operation with the strongest true pre-state facts I can derive: `alloc` captures that the returned frame is both valid and was in the free set, `alloc_contiguous` establishes the subset relationship, `book` ties the operation's success to whether the address was already free, and I need to verify the `region_frames` definition to properly handle `alloc_range`. I'm keeping `share` and `free` as-is for now while I check the spec.
+[RESULT ✓] bash: 10:use crate::hal::mem::spec_page_size;
+34:        &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr % spec_page_size() == 0
+35:        &&& forall|addr: int| self.free_frames.contains(addr) ==> addr % spec_page_size() == 0
+105:    pub open spec fn inv(self) -> bool {
+111:    pub op...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+All confirmed. Now let me strengthen the shim Ok-arms with the strongest TRUE pre-state facts. First, strengthen `alloc` (add the `free_frames.contains` pre-state fact):
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the logic of how `region_frames` relates to the frame computation in `Inner::alloc_range`. The function `region_frames` takes a start position and size, divides them by page size, and maps the resulting range back to page-aligned frames. When I apply this to a region's start and size values, it produces the same frame set that `alloc_range` computes directly, so they're equivalent operations.
+
+For the Ok-arm of `alloc_range`, I need to prove that the computed frames are a subset of the free frames in the physical view. The Err-arm requires proving the negation—that the frames are not a subset of free frames. Now I'm planning the edits across multiple functions: strengthening the `alloc` function to include the stronger `free_frames.contains` fact in its Ok-arm, updating the Ok-arms in `book`, `alloc_range`, and `alloc_contiguous` to reflect this subset relationship, and removing the `admit` statements from `share` and the other functions where I can now provide proper proofs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Now strengthen `alloc_contiguous` Ok-arm with the subset pre-state fact:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Now fix `free` (remove admit—keep spec), `book` (weaken Ok-arm to pre-state, remove admit), `alloc_range` (weaken Ok-arm, remove admit), `share` (remove admit only):
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] For the `share` case, I'm keeping the specification but removing the admit. The proof obligation checks that the frame remains allocated and its reference count exists in the pre-state, which is verifiable from the facts we already have.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Now let me run the module verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "admit()" src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking whether the precondition for `share`'s Ok-arm holds by verifying that the frame exists in both the allocated frames and refcount map, which follows from the old state being equivalent to the physical view's frames.
+
+Now I need to confirm that the free-function shims aren't in the protected specs list — they're not, only the Inner methods are — and verify that `Set` is properly imported since `alloc_contiguous` uses it. I should also check whether `book`'s ensures clause about `phys_view().inv()` is derivable from just the initialized and address invariant preconditions, which prior verification of `is_covered` suggests it is. The key remaining question is whether the verifier can connect the ensures facts about `phys_view().frames` back to `old(self)@` through the tail-call shim structure.
+[RESULT ✓] bash: 860:        admit();
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Only `free` retains its admit. Now run module verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys VERUS_EXECUTABLE_DIR=~/toolchain/verus 2>&1 | tail -40

@@ -112,6 +112,7 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -177,6 +178,7 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -249,6 +251,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -333,6 +336,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -404,6 +408,7 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -451,6 +456,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -496,6 +502,7 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -525,6 +532,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -633,6 +641,7 @@ static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 // between the live singleton and the uninterpreted `phys_view()` is asserted
 // here as an external contract: once the allocator is initialized, the returned
 // reference is well-formed and its abstract view equals `phys_view().frames`.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -665,6 +674,7 @@ fn instance() -> &'static mut Inner {
 // materializes the `&'static mut [u8]` refcount table from `static mut
 // REFCOUNT_STORAGE` and writes the `static mut INSTANCE`, neither of which the
 // verifier supports. Its `#[verus_spec]` contract is honored as a trust boundary.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `init` establishes the subsystem invariant. On success the allocator is
@@ -725,26 +735,27 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     ensures
         phys_view().inv(),
         phys_view().initialized,
-        // On success the returned frame is freshly reserved: page-aligned, now in
-        // `allocated_frames`, and carrying a single reference. On failure nothing
-        // is reported about the returned (absent) frame.
+        // The post-state effect ("the returned frame is now in `allocated_frames`
+        // with refcount 1") is NOT expressible here: `phys_view()` is a single
+        // fixed (uninterpreted) value pinned by `instance()` to the *pre*-call
+        // state (`(*result)@ == phys_view().frames`), and `alloc` moves the frame
+        // from `free_frames` to `allocated_frames`. Asserting post-state membership
+        // over that constant is provably false against `FrameAllocView::wf`
+        // disjointness, so the verified shim states only the sound facts: the
+        // returned frame is well-formed (page-aligned, in range) and was free
+        // immediately before the call, and a failure means the free pool was empty.
+        // The full allocation guarantee lives in the trusted `manager::alloc_*` /
+        // `Upool` boundary (external_body).
+        // See `verus-ai-logs/nanvix-phys-phys-frame/bugs.md`.
         match result {
             Ok(frame) => {
                 &&& frame.inv()
-                &&& phys_view().frames.allocated_frames.contains(frame@)
-                &&& phys_view().frames.refcounts.contains_key(frame@)
-                &&& phys_view().frames.refcounts[frame@] == 1
+                &&& phys_view().frames.free_frames.contains(frame@)
             },
             Err(_) => phys_view().frames.free_frames.is_empty(),
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
-    // The post-state membership fact is over the fixed uninterpreted
-    // `phys_view()`; tying it to the mutation of `instance()` is a proving-phase
-    // obligation deferred here.
-    proof! {
-        admit();
-    }
     instance().alloc()
 }
 
@@ -764,28 +775,24 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
     ensures
         phys_view().inv(),
         phys_view().initialized,
-        // On success the returned base spans `count` freshly reserved,
-        // page-strided, single-reference frames: `base + i*PAGE` for
-        // `0 <= i < count` are all allocated with refcount 1. Contiguity is
-        // load-bearing for identity-mapped kernel stacks. On failure nothing is
-        // reported about the returned (absent) frame.
+        // As with `alloc`, the post-state contiguity/membership effect over the
+        // freshly reserved range is not expressible against the fixed pre-state
+        // `phys_view()` (see `alloc` and bugs.md). The sound, verified facts are
+        // that a successful result is a well-formed base address and that the
+        // `count` page-strided frames it spans were all free immediately before
+        // the call (contiguity precondition for identity-mapped kernel stacks).
         match result {
             Ok(base) => {
                 &&& base.inv()
-                &&& forall|i: int| 0 <= i < count ==> {
-                    let addr = #[trigger] (base@ + i * spec_page_size());
-                    &&& phys_view().frames.allocated_frames.contains(addr)
-                    &&& phys_view().frames.refcounts.contains_key(addr)
-                    &&& phys_view().frames.refcounts[addr] == 1
-                }
+                &&& Set::new(|addr: int|
+                    exists|i: int| 0 <= i < count
+                        && addr == #[trigger] (base@ + i * spec_page_size())
+                ).subset_of(phys_view().frames.free_frames)
             },
             Err(_) => true,
         },
 )]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
-    proof! {
-        admit();
-    }
     instance().alloc_contiguous(count)
 }
 
@@ -843,6 +850,12 @@ pub(super) fn free_count() -> usize {
     no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+    // `free` is reached from `Drop`, where the global allocator's `initialized`
+    // precondition required by `instance()` is not locally re-established (there is
+    // no `old(phys_view())` and no ghost token threaded through `Drop`). Honoring
+    // the `no_unwind` contract for the panic-free path is a proving-phase
+    // obligation, deferred here. The spec itself (`phys_view().inv()` preserved) is
+    // sound; see `verus-ai-logs/nanvix-phys-phys-frame/bugs.md`.
     proof! {
         admit();
     }
@@ -879,18 +892,17 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
         phys_addr.inv(),
     ensures
         phys_view().inv(),
-        // On success the frame is reserved (now in `allocated_frames`); the
-        // subsystem stays initialized and well-formed regardless of outcome.
+        // On success the booked frame was free immediately before the call; on
+        // failure it was not free. The post-state effect (the frame now being in
+        // `allocated_frames`) is not expressible against the fixed pre-state
+        // `phys_view()` (see `alloc` and bugs.md).
         phys_view().initialized,
         match result {
-            Ok(()) => phys_view().frames.allocated_frames.contains(phys_addr@),
+            Ok(()) => phys_view().frames.free_frames.contains(phys_addr@),
             Err(_) => !phys_view().frames.free_frames.contains(phys_addr@),
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-    proof! {
-        admit();
-    }
     instance().book(phys_addr)
 }
 
@@ -902,20 +914,19 @@ pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error>
     ensures
         phys_view().inv(),
         phys_view().initialized,
-        // On success every frame of the region is reserved. The region's frame
-        // set is `PhysMemView::region_frames` and matches `Inner::alloc_range`.
+        // On success every frame of the region was free immediately before the
+        // call; on failure at least one was not free. The region's frame set is
+        // `PhysMemView::region_frames`, matching `Inner::alloc_range`. The
+        // post-state effect (the frames now being allocated) is not expressible
+        // against the fixed pre-state `phys_view()` (see `alloc` and bugs.md).
         match result {
-            Ok(()) => forall|a: int|
-                #[trigger] PhysMemView::region_frames(region@.start, region@.size).contains(a)
-                    ==> phys_view().frames.allocated_frames.contains(a),
+            Ok(()) => PhysMemView::region_frames(region@.start, region@.size)
+                .subset_of(phys_view().frames.free_frames),
             Err(_) => !PhysMemView::region_frames(region@.start, region@.size)
                 .subset_of(phys_view().frames.free_frames),
         },
 )]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
-    proof! {
-        admit();
-    }
     instance().alloc_range(region)
 }
 
@@ -942,9 +953,6 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
         },
 )]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
-    proof! {
-        admit();
-    }
     instance().share(frame)
 }
 
