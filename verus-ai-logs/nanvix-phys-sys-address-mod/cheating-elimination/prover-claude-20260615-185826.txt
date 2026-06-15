@@ -292,3 +292,205 @@ Turn 12
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -60
 
 [THINKING] I'm running the `make verify-sys` command, which matches the `verify-%` pattern with `sys` as the target. This might take a bit, so I'll increase the timeout to give it enough time to complete.
+[RESULT ✓] bash: 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+100 | atomic_specs_int!(atomic_specs_i32, AtomicI32, i32);
+    | --------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && head -80 verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-59-42.log 2>/dev/null
+
+[THINKING] There's a vstd compilation error from a registry mismatch between the toolchain and verus version, which is a setup issue unrelated to my changes. The cheating check passed with no issues detected, but the verification seems to have been cut short.
+
+The sys crate verification is failing on vstd compilation from the registry, while the earlier full `make verify` gate passed at 18:58:26. This suggests the error might be environment-specific or a pre-existing toolchain incompatibility rather than something caused by the address module changes. I need to check whether this vstd error occurs on the base branch too to confirm it's not introduced by my modifications.
+[RESULT ✓] bash: Timestamp: 2026-06-15_18-59-42
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking vstd v0.0.0-...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' scripts/verify.sh
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "vstd" src/libs/sys/Cargo.toml Cargo.lock 2>/dev/null | head; echo "---lock sys vst
+
+[THINKING] There's a vstd version mismatch between what the sys crate expects and what's available in the current Verus/Rust nightly environment — this is a toolchain issue unrelated to my address module changes. The `make verify` gate passed earlier, so either it used a cached target that didn't recompile vstd, or there's a stale lock file from a concurrent build affecting the target directory now. The cache invalidation is likely from a concurrent verus process using a different rust toolchain, rebuilding vstd in the shared target directory with an incompatible nightly. Let me check the rust toolchain version and verus setup in verify.sh to understand the mismatch.
+[RESULT ✓] bash: #!/bin/bash
+
+# Generic Verus verification script with cheating detection and git tracking.
+#
+# Two modes:
+#   Cargo mode:  ./verify.sh --crate <crate_name> [OPTIONS]
+#   Legacy mode: ./verify.sh --verus-dir <dir> [OPTIONS]
+#
+# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+# ...
+[RESULT ✓] bash: src/libs/sys/Cargo.toml:22:vstd = { workspace = true }
+Cargo.lock:179: "vstd",
+Cargo.lock:209: "vstd",
+Cargo.lock:791: "vstd",
+Cargo.lock:1523: "vstd",
+Cargo.lock:2034: "vstd",
+Cargo.lock:2630: "vstd",
+Cargo.lock:3052: "vstd",
+Cargo.lock:3757:name = "vstd"
+---lock sys vstd---
+22:vstd = { workspace =...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "vstd" Cargo.toml; echo "---lock---"; sed -n '3750,3775p' Cargo.lock; echo "---chan
+[RESULT ✓] bash: 231:vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false, features = ["alloc"] }
+---lock---
+checksum = "6ba782755fc073877e567c2253c0be48e4aa9a254c232d36d3985dfae0bd5205"
+dependencies = [
+ "libc",
+ "nix 0.31.3",
+]
+
+[[package]]
+name = "vstd"
+version = "0.0.0-2026-05-31-0205"
+source = ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat /home/ruize/toolchain/verus/version.json 2>/dev/null; echo "---"; ls /home/ruize/toolch
+
+[THINKING] I'm seeing a version mismatch issue—the sys crate is using a vstd version from crates.io that doesn't align with the verus toolchain installed locally. The error about generics suggests this is a Rust nightly version incompatibility, so I need to check what version of Rust the verus toolchain is using and compare it against what's currently active.
+[RESULT ✓] bash: {
+  "verus": {
+    "profile": "release",
+    "version": "0.2026.06.14.4ea7d0f",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "toolchain": "1.96.0-x86_64-unknown-linux-gnu",
+    "commit": "4ea7d0ffa4a15763ef9107d5d0141265b931aeb5"
+  }
+}
+---
+builtin
+builtin_macros
+cargo-ver...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cargo\|verus verify\|CHANNEL\|RUSTUP\|toolchain\|build-std\|target" scripts/verify
+
+[THINKING] There's a mismatch between the Verus toolchain built with Rust 1.96.0 and the active nightly version (1.97.0 from May 21), and I'm trying to figure out how `cargo verus verify` determines which toolchain to use—the Makefile doesn't seem to set CARGO_CHANNEL explicitly. The vstd crate from crates.io is being compiled with the active nightly, which might be causing compatibility issues.
+
+But here's the thing: `make verify` actually passed earlier in just 7 seconds, which suggests everything was cached. The current vstd compilation failure might be a caching artifact rather than a real blocker. I should check whether the target directory got cleaned or if there's a cached successful build, and maybe just re-run verify-sys to see if it's deterministic and check what's actually in the target directory.
+
+The real question is what cargo-verus flow is being used here — whether it's using the bundled vstd from the verus binary or compiling the registry vstd as a dependency. Let me look at the verify.sh script to see the exact cargo command and whether RUSTUP_TOOLCHAIN or CARGO_CHANNEL environment variables are involved.
+[RESULT ✓] bash: 9:# Cargo mode uses `cargo verus verify -p <crate>` and is the recommended
+12:# Extra environment variables for custom cargo invocations:
+13:#   CARGO_CHANNEL          Rust toolchain channel (e.g., "nightly-2025-12-08").
+14:#   VERUS_EXTRA_CARGO_ARGS Extra arguments appended to the cargo verus verif...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && rustup override list 2>/dev/null; echo "---show active---"; rustup show active-toolchain 2>
+
+[THINKING] The Makefile doesn't set CARGO_CHANNEL, so `cargo verus verify` uses the default nightly-2026-05-21 toolchain, and the verus binary is located at /home/ruize/toolchain/verus via the VERUS_PATH_PREFIX environment variable. The vstd registry crate is being compiled with that same rustc nightly version.
+
+The gate passed in 7 seconds because it was using cached .rlib artifacts from target/, but when I ran verify-sys, it recompiled vstd — likely due to a cache invalidation from RUSTFLAGS or fingerprint changes. However, the Makefile sets identical VERUS_EXTRA_CARGO_ARGS for both `make verify` and `make verify-sys`, so that's not the difference. I'm wondering if the gate's 7-second run at 18:58 was actually just the final cached check after the earlier 9m16s gate-fix had already done the compilation work.
+
+Let me check the rustup override in this directory and see if a fresh cargo verus verify reproduces the failure, since the toolchain or flags might differ between the gate-fix run and my current attempt.
+[RESULT ✓] bash: /home/ruize/nanvix-exp/nanvix-slab0330  	nightly-2025-12-08-x86_64-unknown-linux-gnu
+/mnt/toolchain/src/rust                 	nightly-x86_64-unknown-linux-gnu
+---show active---
+nightly-2026-05-21-x86_64-unknown-linux-gnu (overridden by '/home/ruize/nanvix-phy/rust-toolchain')
+---env RUSTUP---
+---ver...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat rust-toolchain 2>/dev/null; echo "==="; cat rust-toolchain.toml 2>/dev/null
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la target/verus 2>/dev/null; find target -maxdepth 3 -name "*.rlib" -path "*vstd*" 2>/d
+
+[THINKING] I see there's a rust-toolchain file specifying nightly-2026-05-21, and there are two separate Verus installations on the system—one in the user's home directory on PATH from May 13, and another in the toolchain directory that the Makefile actually uses by prepending it to PATH.
+
+The toolchain Verus is version 0.2026.06.14 built with Rust 1.96.0, but the active Rust override is nightly-2026-05-21 (1.97.0). The registry vstd being compiled is version 0.0.0-2026-05-31-0205, which doesn't match what the Verus binary expects—Verus has its own bundled vstd that should be used instead of the registry version, and this mismatch is causing the "expected generics to match" error in atomic.rs. This is clearly a toolchain configuration issue unrelated to the address module changes, which are already committed and working.
+
+Let me try running the full `make verify` to see if it passes now, since that succeeded earlier at 18:58:26—that would tell me whether the issue is specific to my invocation or something environmental. If the vstd compilation is flaky due to parallel builds, I should run verify-sys cleanly again to get a clearer picture.
+[RESULT ✓] bash: [toolchain]
+channel = "nightly-2026-05-21"
+components = [
+    "rust-src",
+]
+===
+<shellId: 19 completed with exit code 1>
+[RESULT ✓] bash: target/debug/deps/libvstd-5f154aaee2cbe10a.rlib
+target/debug/deps/libvstd-eef2c667880fa2e4.rlib
+target/debug/deps/libvstd-7255992cead56450.rlib
+target/debug/deps/libvstd-422a7c54112c09f9.rlib
+target/debug/deps/libvstd-b75652190d96cda1.rlib
+target/debug/deps/libvstd-df3e7b71be393563.rlib
+target/debug...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "KERNEL_CARGO_FLAGS\|KERNEL_CARGO_TARGET\|KERNEL_RUST_FLAGS\|build-std\|VERUS_PATH_
+
+[THINKING] I'm noticing there are multiple compiled vstd rlibs, and the active nightly toolchain is 2026-05-21. The verus verification process includes compiling the registry vstd as part of the verify step. Let me check if this is a transient issue by looking at previous successful verify logs to see whether vstd compiled before, then consider a more practical approach based on what the previous gate was doing.
+
+The previous `make verify` passed, so I should look at what target the verus verification uses through KERNEL_CARGO_TARGET and check if KERNEL_CARGO_FLAGS uses build-std with a custom target like x86, which might cause vstd to compile differently. Let me examine the Makefile variables to understand this better.
+[RESULT ✓] bash: 216:export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc -Zjson-target-spec
+218:export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
+221:export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
+222:e...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls -la --time-style=full-iso /home/ruize/toolchain/verus/ | head; echo "=== verus-bin version ==="; cat /home/ruize/veru
+
+[THINKING] The issue is a toolchain version mismatch between the verus binary and the vstd registry crate—the macro processor is failing to match generics on the `ExAtomic` struct, which appears to be a known verus compatibility problem.
+
+Looking at the PATH configuration, the Makefile prepends `/home/ruize/toolchain/verus` (version 2026-06-14) ahead of the base PATH, so that's the verus being used for both the gate and my current run. The gate must have succeeded because it used a cached vstd build from when the versions matched, but something has now invalidated that cache and triggered a recompile against the mismatched toolchain.
+
+I need to check the modification times of the toolchain directory to see if it was recently updated — if `/home/ruize/toolchain/verus` was modified after the vstd cache was built, that would explain the fingerprint invalidation and the subsequent compilation failure.
+[RESULT ✓] bash: total 112624
+drwxr-xr-x 1 ruize ruize      450 2026-06-15 18:59:17.340702711 +0800 .
+drwxrwxr-x 1 ruize ruize      170 2026-06-15 18:59:17.279705938 +0800 ..
+-rw-r--r-- 1 ruize ruize      156 2026-06-15 18:59:17.286425638 +0800 .vstd-fingerprint
+drwxr-xr-x 1 ruize ruize       26 2026-06-15 18:59:17....
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -40
+
+[THINKING] The toolchain at /home/ruize/toolchain/verus was updated at 18:59:17, just before my verify-sys run started at 18:59:42, which means the vstd cache got invalidated and recompiled with a mismatched verus version. I'm realizing the timestamp ordering here—18:59:17 comes before 18:59:42, so the update definitely happened before my run kicked off.
+
+Looking at the fingerprint mechanism, it seems cargo-verus rebuilds and syncs vstd into the verus directory whenever it detects a mismatch, which would explain why those files got touched during my run. The core problem is the version mismatch: vstd is pinned to 2026-05-31 in Cargo.lock, but the toolchain has verus 2026-06-14, and neither matches what vstd expects to compile against. The gate passed earlier at 18:58:26, so either it was using a cached vstd built by a compatible verus, or the toolchain state was different then—I need to check whether toolchain/verus was already at 2026-06-14 at that point.
+
+Actually, the timestamps suggest the verus install was updated to 2026-06-14 at 18:59:17, right after the gate passed. So the environment changed between the successful gate run and my attempt. Rather than trying to fix the toolchain version mismatch, let me just re-run verify-sys now and see if vstd gets rebuilt correctly with the current setup.
