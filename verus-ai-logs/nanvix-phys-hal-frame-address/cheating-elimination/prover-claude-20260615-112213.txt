@@ -345,3 +345,79 @@ The correct module path is `hal::mem::types::address::frame`. Let me re-run with
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address::frame VERUS_EXECUTABLE_DIR=~/tool
 
 [THINKING] I need to correct the module path to `hal::mem::types::address::frame` and run it again with the proper naming.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: cannot use function `kernel::hal::mem::types::address::phys::PhysicalAddress::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/hal/mem...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Confirmed. Removing `external_body` fails because the callee `PhysicalAddress::from_raw_value` (an unlisted `Address`-trait impl, out of scope) has no Verus spec. The only resolutions are (a) an `assume_specification` — itself cheating and explicitly removed per `frame.spec.rs`, or (b) adding a spec to the out-of-scope function. So the TCB-allowed `external_body` is correct. Restoring it.
+[TOOL] report_intent: Restoring file and verifying
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/frame.rs.bak src/kernel/src/hal/mem/types/address/frame.rs && rm /tmp/frame.r
+
+[THINKING] So removing `external_body` fails because `PhysicalAddress::from_raw_value` lacks a specification, and Verus suggests `assume_specification` which would be a trust violation—exactly the kind of intra-crate shortcut that spec.rs was designed to prevent. The legitimate fix would be adding a real `#[verus_spec]` to that function, but that's incomplete in the current thinking.
+
+The impl block itself isn't even marked `#[verus_verify]`, and adding specs to unlisted functions is out of scope. Since `assume_specification` is cheating and adding specs violates the "don't touch unlisted functions" rule, `external_body` is actually the TCB-sanctioned approach and it's already documented in tcb-allowed.md. I should restore it from backup.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+=== confirm clean restore vs base ===
+diff --git a/src/kernel/src/hal/mem/types/address/frame.rs b/src/kernel/src/hal/mem/types/address/frame.rs
+index df3e420a8..4c29a4f8d 100644
+--- a/src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Let me verify the actual current state of the file and git status directly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '94p' src/kernel/src/hal/mem/types/address/frame.rs && echo "=== git status ==
+
+[THINKING] I'm getting confused about the diff direction — let me clarify what the `-` and `+` signs actually mean. The diff is showing changes from the base branch (verus-ai-prove) to the working tree, so `-#[verus_verify]` means that's what's in the base, and `+#[verus_verify(external_body)]` is what's in my working tree.
+
+But this contradicts what I saw earlier when `git diff verus-ai-prove -- frame.rs` returned empty, which meant the working tree already matched the base. That would mean the base already had `external_body`. I need to carefully check the actual git state — whether HEAD is at the START commit 182eb2572 (which might be ahead of the verus-ai-prove branch ref) or if something else is going on with the branch pointer.
+[RESULT ✓] bash: #[verus_verify(external_body)]
+=== git status ===
+ M src/kernel/src/hal/mem/types/address/frame.rs
+ M verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-112213.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-112213...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+There's a discrepancy: HEAD has `#[verus_verify]` (no external_body) at line 94, but the working tree I started with had `external_body`. Let me clarify the canonical base state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git log of frame.rs ===" && git --no-pager log --oneline -3 -- src/kernel/s
+
+[THINKING] So the HEAD commit actually has `#[verus_verify]` without the external_body attribute, but my working tree shows it with external_body. That's strange—it suggests there was an uncommitted change already in place before I started, which doesn't quite add up. Let me trace through this more carefully. So the working tree currently has `external_body` but HEAD shows `#[verus_verify]` — meaning there's an uncommitted change. The task says to restore from `git show verus-ai-prove:...frame.rs`, so I need to check what that canonical base actually contains and compare it to what's in my working tree right now.
+[RESULT ✓] bash: === git log of frame.rs ===
+900a21222 [verus] verify FAIL: kernel::hal::mem::types::address (0 verified, compilation/setup error (verus did not run))
+969b51082 [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::frame (5 verified, 0 errors, admit=12 external_body=20 cfg_gate=1...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The verify script auto-commits each run, which moved the refs. Let me confirm my restored working tree matches the original pre-task state of frame.rs (the START commit `182eb2572`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff working vs START commit 182eb2572 ===" && git --no-pager diff 182eb257
+
+[THINKING] I'm noticing a discrepancy in the commit hashes — `verus-ai-prove` and HEAD both point to b2a3c6358, but the earlier log showed HEAD as 182eb2572. I think the uncommitted file changes from my sed experiment might be affecting what I'm seeing, though `rev-parse` shouldn't be picking those up.
+
+Looking at the git history for frame.rs specifically, I can see that the verify script is auto-committing results after each run — the most recent commits like `900a21222` (verify FAIL) and `969b51082` (verify PASS) were created by my own verification runs. So when I removed the external_body attribute and ran verification, that state got committed as `900a21222`. The reason HEAD:frame.rs shows `#[verus_verify]` is because that's what was in the working tree when that commit was made.
+
+This means b2a3c6358 is likely a commit on top of `900a21222` that only touches logs or other files, not frame.rs itself. The real issue is that the `verus-ai-prove` branch has also moved to b2a3c6358, so I've lost the original baseline to compare against.
+
+The true original state I should verify against is commit `182eb2572` (the START commit), which had `#[verus_verify(external_body)]`. Since my current working tree has external_body restored, I should check if it matches that original state by diffing against `182eb2572`.
+[RESULT ✓] bash: === diff working vs START commit 182eb2572 ===
+(empty = identical)
+=== line 94 in START commit ===
+    #[verus_verify(external_body)]
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Working tree is byte-identical to the original baseline (empty diff). AST consistency preserved. Let me run final verification on the frame module to confirm it passes.
+[TOOL] report_intent: Running final module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address::frame VERUS_EXECUTABLE_DIR=~/tool
+
+[THINKING] The working tree now matches the original baseline exactly with no differences, confirming that the frame module's AST is consistent and byte-identical to the starting point. I'm running a final verification to ensure the module compiles cleanly before documenting the results.
+[RESULT ✓] report_intent: Intent logged

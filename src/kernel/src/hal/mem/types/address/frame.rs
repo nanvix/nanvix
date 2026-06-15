@@ -91,7 +91,7 @@ impl FrameAddress {
     // `tcb-allowed.md`) until the intra-crate `PhysicalAddress` `Address` impl carries its own
     // verified `#[verus_spec]`; the strengthened contract below is preserved verbatim so callers
     // keep the full `fa@ == raw_addr` guarantee.
-    #[verus_verify]
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
