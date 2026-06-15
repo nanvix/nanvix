@@ -918,3 +918,184 @@ Turn 7
 [TOOL] report_intent: Validating verifier status
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::phys
 [RESULT ✓] report_intent: Intent logged
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/nanvix-phys-hal-phys-address/final-review/ 2>/dev/null; echo "exit=$?"
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: total 1336
+drwxrwxr-x 1 ruize ruize     136 Jun 15 13:14 .
+drwxrwxr-x 1 ruize ruize     444 Jun 15 13:14 ..
+-rw-rw-r-- 1 ruize ruize 1304158 Jun 15 13:20 review-claude-20260615-131407.jsonl
+-rw-rw-r-- 1 ruize ruize   60297 Jun 15 13:20 review-claude-20260615-131407.txt
+exit=0
+<shellId: 29 completed ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Spot-checking arch constants
+[TOOL] rg: struct\s+FrameNumber|impl\s+FrameNumber|FRAME_SIZE|FRAME_SHIFT|MAX_ADDRESS|from_raw_value\(|into_raw_value\(
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/kmain.rs
+/home/ruize/nanvix-phy/src/kernel/src/multibin.rs
+/home/ruize/nanvix-phy/src/kernel/src/kimage.rs
+/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+/home/ruize/nanvix-phy/src/kernel/src/pm/test.rs
+/home/ruize/nanvix-phy/src/kernel/src/pm/mod...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All evidence gathered and independently verified. Writing the review.
+[TOOL] report_intent: Writing final review
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.claude.md with 12075 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+REVIEW WRITTEN
+
+1. **Result: PASS.** Every checklist item passes under strict review.
+2. Verification re-run myself: `make verify-kernel` exit 0, "No cheating detected", `assume=0 admit=0 external_body=25(global)`; history shows "4 verified, 0 errors".
+3. Caller coverage **10/10**, no gaps — from_number (align/==frame*FRAME_SIZE/round-trip), into_frame_number (totality/==addr>>SHIFT/in-range), from_mmio_address (identity/bypass-RAM/Ok), inv (representable frame).
+4. Guardrails (phys module): admit=0, assume=0, external_body=1 (`ExFrameNumber`), assume_specification=6, cfg-gated exec=0.
+5. TCB: the sole `external_body` (`ExFrameNumber`) and all 6 `assume_specification`s are pre-approved in `tcb-allowed.md`. No new trust boundary.
+6. AST: independently re-derived both flagged deviations (from_number, into_frame_number) — pure `f(expr)→let x=expr;f(x)` rebinds, semantically **equivalent**, no MISMATCH.
+7. Overflow in `from_number` re-derived as **impossible** (`fr*p ≤ m-p ≤ usize::MAX`); `into_frame_number` `unwrap` proven **total** via `inv()`.
+8. cfg gates (L9/L11/L30) cover only `include!`/imports — no exec gated.
+9. Bugs: none, correctly no `bugs.md`.
+10. Two minor/informational notes only (alignment clause is a caller convenience; arch-edge MAX assumption is governed) — both non-blocking.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 212s, total_turns: 0, model: claude-opus-4.8, duration: 212s
+
+REVIEW WRITTEN
+
+1. **Result: PASS.** Every checklist item passes under strict review.
+2. Ve...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Claude review complete: PASS. Waiting for the codex review.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+
+[THINKING] Waiting for the codex review to complete.
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-hal-phys-address/final-review && cat > verus-ai-logs/nan
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Independent Review — `hal::mem::types::address::phys`
+2. 
+3. ## Scope Checked
+4. - Type: `PhysicalAddress` (`View` + `inv`)
+5. - Functions: `from_number`, `into_frame_number`, `from_mmio_address`
+6. - Files read: `phys.rs`, `phys.spec.rs`, `phys.proof.rs`, caller/view docs, TCB allowlist,...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+REVIEW WRITTEN  
+1) Saved to `verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.gpt-5.3-codex.md`.  
+2) Independent `make verify-kernel MODULE=hal::mem::types::address::phys` passed (exit 0).  
+3) In-scope checklist: Caller/View/Spec/Proving/Cheating/Bug Recording all PASS.  
+4) Caller coverage mapped: 11/11 expectations covered, 0 gaps.  
+5) Guardrails: admit=0, assume=0, assume_specification=6, external_body=1 (module-local).  
+6) Only external_body is `ExFrameNumber`; allowlisted in `tcb-allowed.md`.  
+7) cfg gates in `phys.rs` are include/use only; cfg-gated exec branches = 0.  
+8) AST review PASS: two approved let-binding rewrites, both commented `VERUS DEVIATION`.  
+9) Arithmetic/panic spot-checks passed: no overflow, unwrap total under `inv()`, MMIO identity preserved.  
+10) No real in-scope defects found; missing `bugs.md` is correct; final result = PASS.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 228s, total_turns: 0, model: gpt-5.3-codex, duration: 228s
+
+REVIEW WRITTEN  
+1) Saved to `verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_rev...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Both reviews complete and agree: PASS. Let me read both raw reviews and consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review && ls -la && echo "=== CLAUDE ===" && 
+[RESULT ✓] bash: total 1648
+drwxrwxr-x 1 ruize ruize     238 Jun 15 13:21 .
+drwxrwxr-x 1 ruize ruize     444 Jun 15 13:14 ..
+-rw-rw-r-- 1 ruize ruize   12191 Jun 15 13:21 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize    5170 Jun 15 13:21 final_review.gpt-5.3-codex.md
+-rw-rw-r-- 1 ruize ruize 1591992 Jun 15 13:21 r...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Both independent reviews agree: **PASS**, no blockers. Now writing the consolidated final review.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.md
+
+[THINKING] Both reviews align on covering all the caller expectations, with just minor differences in how they were counted. Now I'm consolidating everything into the final_review.md file using the exact required format.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.md with 10644 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review && ls -la *.md && echo "--- result lin
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 12191 Jun 15 13:21 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  5170 Jun 15 13:21 final_review.gpt-5.3-codex.md
+-rw-rw-r-- 1 ruize ruize 10768 Jun 15 13:22 final_review.md
+--- result line ---
+153:## Result: PASS
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Final review complete. Two independent sub-agents (claude-opus-4.8, gpt-5.3-codex) reviewed and **both returned PASS**; consolidated into `final_review.md`.
+
+**Result: PASS** — every checklist item checked.
+
+Key findings:
+- **Guardrails:** admit=0, assume=0, external_body=1 (`ExFrameNumber`, allowlisted), assume_specification=6 (arch/sys edge, allowlisted), cfg-gated exec=0. No blockers.
+- **TCB:** in-scope module's only `external_body` is in `tcb-allowed.md`; all 25 global external_body cross-checked — none unlisted.
+- **Caller coverage:** 11/11, 0 gaps (from_number alignment+`frame*FRAME_SIZE`+round-trip; into_frame_number totality+`>>FRAME_SHIFT`+in-range; from_mmio identity+bypass+Ok; inv).
+- **AST consistency:** PASS — 2 flagged functions are the pre-approved `f(expr)→let x=expr;f(x)` deviation, independently re-derived as semantically equivalent.
+- **Verification:** `make verify-kernel` and `make verify` exit 0; spec_drift clean (no weakening).
+- **Bugs:** none — overflow (from_number) and panic (into_frame_number unwrap) both proven impossible; absence of `bugs.md` is correct.
+
+Files written:
+- `final-review/final_review.claude.md`
+- `final-review/final_review.gpt-5.3-codex.md`
+- `final-review/final_review.md` (consolidated)
+
+
+=== Session End ===
+Session: 490c00e3-eab1-4b29-9704-f1e483b3bd47
+Duration: 524.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/review-claude-20260615-131407.jsonl
