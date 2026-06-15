@@ -243,3 +243,279 @@ Let me run the baseline verification for this module.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tail -40
 
 [THINKING] I'm running the baseline verification for the module.
+[RESULT ✓] bash: cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module hal::mem::types::address::aligned::page:
+    ⚠️  external_body: 1
+    ⚠️  cfg-gated exec code: 1
+  Affected functions:
+    - page.rs:65 from_address: external_body
+  Global: assume=0 external_body=24 admit=0 trust...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | head -80
+
+[THINKING] Looking at the cheating detection results for this module, I see two issues flagged: an external_body reference in `from_address` at page.rs:65 and one cfg-gated execution block. Notably, `into_raw_value`'s assume_specification didn't get flagged as cheating here, which is interesting. I need to check the cheating-detail.txt file to understand what the cfg-gate issue is, though I should note that `from_address` is already listed in tcb-allowed.md so that one might be acceptable.
+[RESULT ✓] bash: - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] grep: cfg\(.*verus_keep_ghost
+
+[THINKING] I need to track down the cfg-gated exec code in page.rs. The module-level check indicated there's one instance, so I'm looking for either `#[cfg(verus_keep_ghost)]` or `#[cfg(not(verus_keep_ghost))]` attributes that would gate exec code differently.
+[RESULT ✓] grep: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:18://     impls are all `cfg(verus_keep_ghost)`-gated), and
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:25:// fact for the concrete frame address. It is `cfg(verus_keep_ghost)`-gated...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "VERUS_AI_VERIFY_SCRIPT\|VERUS_AI_DIR" Makefile | head; echo "---"; ls $(grep -m1 "
+
+[THINKING] I'm noticing the cfg gates in the code are just standard scaffolding patterns for including spec files and the verus material block, not actual executable code changes. But the checker is reporting one instance of cfg-gated exec code, so I need to look at how the detection script actually identifies what counts as an executable code change versus standard configuration.
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+326:export VERUS_AI_DIR ?= /home/ruize/verus-ai-exp/verus-ai
+619:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+627:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+62...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "cfg_gate\|cfg-gated\|cfg(not" scripts/verify.sh | head -20
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+576:        [[ $MOD_CFG_GATE -gt 0 ]] && ec...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "assume_specification\|ASSUME_COUNT\|assume\b\|run_cheating_scan" scripts/verify.sh
+
+[THINKING] I'm looking at how the cfg gate detection works—it identifies `#[cfg(verus_keep_ghost)]` attributes and checks if they're followed within a few lines by something other than include statements, use declarations, or module definitions. In page.rs, the first couple of instances are skipped because they're paired with include! macros, but there's another one around line 230 that needs checking.
+
+The `#[cfg(verus_keep_ghost)]` at line 230 wraps a `verus! {` block containing the View impl and invariant spec—these are ghost-only definitions that reference spec-only items like spec_page_size and spec_addr, so they genuinely need to be gated. This isn't the kind of cheating the checker is looking for (hiding exec code from Verus), it's a legitimate pattern where ghost material must be conditionally compiled.
+
+The module's external_body=1 from `from_address` is already in the allowed list, so that's fine. I'm realizing the cheating scan doesn't actually count `assume_specification` calls—it only counts `assume(`, `external_body`, `admit`, and `trusted`—so I need to verify what the global summary is actually tracking.
+[RESULT ✓] bash: 293:run_cheating_scan() {
+301:combined = {"assume": 0, "external_body": 0, "admit": 0, "trusted": 0, "no_decreases": 0}
+304:    combined["assume"] += r.assume_count
+318:# merely *mentioned* `external_body`, `admit()`, or `assume(...)`.
+323:#   assume         : an assume_expression node, OR a call_ex...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 380.             continue
+381.         callee = call.children[0]
+382.         if callee.text and callee.text.decode().strip() == "admit":
+383.             lines.append(call.start_point[0] + 1)
+384.     return lines
+385. 
+386. def fn_body_assume_lines(fn_node):
+387.     body = fn_node.child_by_field_...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me check the ast-consistency skill and compare against the base branch.
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/ast-consistency/SKILL.md
+
+[THINKING] The cheating scan only looks at function and struct items, so `assume_specification` — which is a macro-like declaration — doesn't get flagged by it. That means the gate determining whether code passes or fails is based on assume, external_body, admit, trusted, no_decreases, and cfg_gate, and `assume_specification` isn't part of that cheating gate at all.
+
+The module check reported CHEATING_DETECTED because of two things: `from_address` has external_body (which is allowed by tcb-allowed.md), and there's a cfg_gate=1 from the verus! material block. The task says external_body on tcb-allowed functions is acceptable, but cfg_gate is also being counted as a cheating item. I'm trying to figure out whether cfg_gate is actually a blocker or if the intent is just to allow the tcb-allowed exceptions and accept the rest.
+
+Looking at `from_address` specifically, the real issue is that its body calls `addr.is_aligned(PAGE_ALIGNMENT)`, but `is_aligned` is an unspecced trait method and `PAGE_ALIGNMENT` is an architecture constant that Verus can't translate. To verify the body properly, I'd need a spec for the `is_aligned` method that relates its result back to the alignment check in the contract, which would itself require an `assume_specification`.
+
+Since these are upstream issues in the `sys` and `arch` modules outside my scope, `from_address` legitimately stays as `external_body` with justification in tcb-allowed.md. The real question now is whether the current state—with all residual external bodies justified and listed—is already the intended final state, or if there's something else to address. The module check still flags `CHEATING_DETECTED` with `cfg_gate=1`, but that's because the `View` impl and `inv` must be cfg-gated since they reference ghost-only specs that don't exist in normal builds.
+
+Actually, I could move that material into page.spec.rs instead of keeping it in page.rs with a cfg gate. Since page.spec.rs is already included via cfg-gated include!, the View impl and inv would live there alongside the spec definitions they reference, and page.rs wouldn't have that flagged cfg block anymore. But I need to check whether this is just gaming the counter or if it's the standard pattern used elsewhere in the codebase—let me look at how sibling modules like frame.rs structure their ghost material.
+
+Wait, stepping back: the baseline commit already had cfg_gate=9 globally and passed with "cheating detected" being acceptable. The real question is what determines PASS for this phase. The task is clear—external_body is a blocker if not in tcb-allowed.md (but from_address is allowed), and I need to eliminate any admit/assume statements. The cfg_gate itself is flagged as a cheating indicator, but cfg-gating ghost material (the View impl) isn't the same as cfg-gating exec code. Let me check the ast-consistency skill to understand the exact concern and verify the original file hasn't been tampered.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 scripts/ast_consistency.py src/kernel/src/hal/mem/types/address/aligned/page.rs cou
+[RESULT ✓] bash: python3: can't open file '/home/ruize/nanvix-phy/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -name "ast_consistency.py" 2>/dev/null; ls /home/ruize/verus-ai-exp/verus-ai/scripts
+[RESULT ✓] bash: ast_consistency.py
+scan_ast_limitations.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff verus-ai/phys-frame -- src/kernel/src/hal/mem/types/address/aligned/page.rs | head
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/mem/types/address/aligned/page.rs b/src/kernel/src/hal/mem/types/address/aligned/page.rs
+index 8f5c293ac..74f4a1eb7 100644
+--- a/src/kernel/src/hal/mem/types/address/aligned/page.rs
++++ b/src/kernel/src/hal/mem/types/address/aligned/page.rs
+@@ -5,6 +5,11 @@
+ // Import...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The exec code is unchanged — only annotations and ghost View impl were modified. Let me verify AST consistency.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/ph
+
+[THINKING] Looking at the diff between the base branch and verus-ai/phys-frame, the executable code like the `from_address` body and struct definitions remain unchanged—only the annotations and the View implementation (which is ghost code for specification) were modified. Let me verify the AST consistency properly to confirm the exec code is truly untouched.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PageAligned::align_down                  MATCH                                
+PageAligned::align_up                    MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+AST consistency is perfect (17 MATCH, 0 mismatch). The file is already in a verified state with `from_address` (external_body) and `into_raw_value` (assume_specification) both listed in tcb-allowed.md. Per the escalation ladder, let me genuinely attempt to eliminate them. First, let me understand the upstream `Address` trait and `PAGE_ALIGNMENT`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "trait Address" src/kernel/src/hal/mem/ | head; echo "---PAGE_ALIGNMENT---"; grep 
+
+[THINKING] The AST checks are passing cleanly. Now I'm looking at the module-scoped violations: there's an external_body reference to `from_address` that's already listed in the allowed exceptions, and a cfg_gate from the verus! block at line 230. My focus is on eliminating these violations entirely—I need to properly verify `from_address` and the `into_raw_value` assume_specification, then work through the remaining issues to get to zero violations.
+
+The real tension here is that tcb-allowed.md permits these as external_body, but the goal is genuine elimination. Let me test whether the blockers I identified are actually real: the unspecced `<T as Address>::is_aligned` trait method and the untranslatable `PAGE_ALIGNMENT` architecture constant. I should verify these claims with a reproducer before deciding whether to keep them as justified exceptions or push harder to eliminate them. Looking at the diff more carefully, the `#[cfg(verus_keep_ghost)]` block was already present in the base branch, so the cfg-gating is pre-existing and not something I introduced. This means the file already has its justified cheating in place from the previous worker's effort. But the task asks me to genuinely attempt elimination following the escalation ladder, so I should try to remove the `from_address` external_body and `into_raw_value` assume_specification to see if they're truly necessary or if Verus limitations are blocking progress.
+
+Let me examine the Address trait definition and how is_aligned works, along with PAGE_ALIGNMENT.
+[RESULT ✓] bash: ---PAGE_ALIGNMENT---
+src/kernel/src/hal/mem/types/address/test.rs:15:    PAGE_ALIGNMENT,
+src/kernel/src/hal/mem/types/address/test.rs:274:    let raw_addr: usize = PAGE_ALIGNMENT as usize;
+src/kernel/src/hal/mem/types/address/test.rs:320:    let align: Alignment = PAGE_ALIGNMENT;
+src/kernel/src/hal/...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "pub trait Address\|trait Address" src/ src/libs 2>/dev/null | head; echo "---in s
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+---in sys?---
+src/libs/sys/src/sys/mm/address/mod.rs:31:pub trait Address
+---Address def location---
+22:    Address,
+23:    VirtualAddress,
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The `Address` trait methods are unspecced. Body-verifying `from_address` would require an `assume_specification` on `<T as Address>::is_aligned` relating its result to `spec_addr % spec_page_size` — a *larger* trust surface than the single-function `external_body`. Let me confirm the `PAGE_ALIGNMENT` translation limitation is real with a reproducer.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "PAGE_ALIGNMENT\|enum Alignment\|pub enum Alignment" src/libs/arch/src 2>/dev/null
+
+[THINKING] The `Address` trait is marked for verification but its methods lack any `#[verus_spec]` contracts, so the verifier has no postconditions to work with. This means when I try to verify `from_address`, I can't reason about what `addr.is_aligned(PAGE_ALIGNMENT)` actually returns in terms of the underlying spec values — the trait method is completely unspecified.
+
+To make this work, I'd either need to add a spec to the trait method itself (which is out of scope and would require an assume_specification anyway since implementations live in arch), or use assume_specification directly on the trait method call. But marking `from_address` as external_body actually creates less trust surface than adding a trait-level assume_specification, since it's scoped to just this one function. I should also verify whether `PAGE_ALIGNMENT` from `arch::mem` can actually be translated by Verus, since that's another potential blocker.
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/cr0.rs:435:pub enum AlignmentMaskFlag {
+src/libs/arch/src/x86/mem/constants.rs:111:pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
+---Alignment enum---
+src/libs/sys/src/sys/mm/alignment.rs:41:pub enum Alignment {
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/alignment.rs
+[RESULT ✓] view: 30.     Error,
+31.     ErrorCode,
+32. };
+33. use ::vstd::prelude::*;
+34. 
+35. //==================================================================================================
+36. // Structures
+37. //=================================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The blockers are real: `is_aligned`/`into_raw_value` are **unspecced** methods of the external `sys::mm::Address` trait, and `spec_addr` is uninterpreted. Body-verifying either function requires `assume_specification` on the upstream trait — an unapproved external-bottom assumption. Per the escalation ladder, let me gather concrete evidence by attempting the in-place verification and capturing the actual Verus errors. I'll do this on the real files, then restore.
+
+Let me first reproduce the `PAGE_ALIGNMENT` translation claim and the trait-impl panic claim.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/hal/mem/types/address/aligned/page.rs /tmp/page.rs.bak && cp src/kernel/s
+
+[THINKING] I see that `PAGE_ALIGNMENT` is actually `arch::mem::PAGE_ALIGNMENT` defined as `Alignment::Align4096` and re-exported from the arch crate, but the tcb-allowed.md file is flagging `arch::x86::mem::constants::PAGE_ALIGNMENT` as unsupported. Even if I could work around the reference issue, there's a deeper blocker with `is_a` that's preventing progress.
+
+The core problem is that `is_aligned` lacks a specification in the Address trait—without a formal relationship between `is_aligned(align)` and `spec_addr % align_value`, I can't prove the ensures clause of `from_address`. And `spec_addr` itself is uninterpreted, defined as an uninterp spec function, so the connection between `spec_addr` and the actual `into_raw_value` result is also unknown without specs on the upstream `sys::mm::Address` trait methods.
+
+This means verifying these functions properly requires assume_specifications on the external Address trait, which is out of scope since that trait's verification is a separate effort. The verus-constraints skill is clear that I shouldn't write assume_specification myself without explicit human approval, so the right approach here is to report the missing assumption and use admit() as a temporary placeholder.
+
+The current state—with `from_address` marked external_body and `into_raw_value` using assume_specification, both documented in tcb-allowed.md—represents the human-approved trust boundary. Attempting to eliminate these would require introducing equal or greater unapproved assumptions, so they should remain as-is. The cfg_gate=1 is legitimate ghost-material verus! block that was pre-existing and necessary. The upstream `sys::mm::Address` trait and the `arch::PAGE_ALIGNMENT` constant remain unverified, so any verification of the impl would just relocate the trust boundary rather than eliminate it — and adding new assume_specification without approval violates the constraints. The current approach with tcb-allowed.md documenting these human-approved trust boundaries is the correct solution. The module verification passes with exit code 0, so I should confirm the final state and prepare the report. I'll save the current state first, then run the test to capture the actual error output before reverting the changes.
+[RESULT ✓] bash: backed up
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm trying to verify the `into_raw_value` method by marking the `Address` implementation with verification attributes and making the method spec-only, then removing the assumption from the spec file to test whether the panic claim holds up. But I'm running into a problem: `into_raw_value` calls the inner type's unspecified `into_raw_value`, so even if the implementation structure checks out, I can't actually prove the result matches the expected integer value.
+
+Let me just add the verification markers to the impl block and method to see if that triggers the front-end panic.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -iE "panic|as

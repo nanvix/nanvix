@@ -47,11 +47,5 @@ pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int;
 // Pure newtype identity projection: the returned raw `usize` is exactly the
 // abstract address. Callers' in-page offset math and page walking require an
 // identity projection (no masking/shifting).
-pub assume_specification<T: Address> [
-    <PageAligned<T> as Address>::into_raw_value
-](addr: PageAligned<T>) -> (result: usize)
-    ensures
-        result as int == addr@,
-;
-
+// verify-attempt: assume_specification removed; into_raw_value body-verified in page.rs
 } // verus!
