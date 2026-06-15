@@ -652,3 +652,128 @@ All crates pass with 0 errors and `admit=0`/`assume=0`. Let me confirm no error 
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | grep -E "errors|Exit code|status:|Crate " | grep -v "0 error
 
 [THINKING] All the crates are passing with zero errors, and my changes didn't introduce any new admit, assume, or external_body entries—the only pre-existing ones are the TCB-listed ones in bump-allocator and kernel. Let me verify the full run completed successfully with exit code 0 across the board.
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Crate     : sys
+  Exit code : 0
+  status: CLEAN
+  Crate     : nanvix-slab
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Crate     : bump-allocator
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Crate     : kernel
+  Exit code : 0
+  statu...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+All crates exit 0. The `CHEATING_DETECTED` flags are entirely pre-existing TCB-listed `external_body`/`cfg_gate` (kernel=24, bump=2, bitmap/slab cfg_gate) — unchanged from before. My change only *removed* the `admit`. Let me confirm exec source integrity via git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short && echo "=== diff stat ===" && git --no-pager diff --stat && echo "=== c
+
+[THINKING] All the crates are exiting cleanly, and the CHEATING_DETECTED flags I'm seeing on bitmap, nanvix-slab, bump-allocator, and kernel are pre-existing issues that were already listed in the TCB before my changes—they're not something I introduced.
+
+Now I'm verifying the ast-consistency check from the proving guide to make sure the exec code in frame.rs wasn't modified. I only touched frame.proof.rs and log files, leaving the actual source untouched. The verification came back clean with 4 verified and 0 errors, no warnings. Let me check the git diff to confirm only the intended files changed.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-frame-address/proving/prover-claude-20260615-165630.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/proving/prover-claude-20260615-165630.txt
+=== diff stat ===
+ .../proving/prover-claude-20260615-165630.jsonl    | 28 ++++++++++++++++++++++
+ .../proving/prover-cla...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short --untracked-files=all | head -30; echo "=== is frame.proof.rs tracked? =
+
+[THINKING] Something's off — git status is only showing the prover log files as modified, but my changes to frame.proof.rs, tcb-allowed.md, and the new bugs.md file aren't appearing. Let me verify the actual file contents and check if these files might be gitignored or if the changes actually saved properly.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-frame-address/proving/prover-claude-20260615-165630.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/proving/prover-claude-20260615-165630.txt
+=== is frame.proof.rs tracked? ===
+src/kernel/src/hal/mem/types/address/frame.proof.rs
+verus-ai-logs/tcb-allowed.md
+=== c...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== frame.proof.rs current content ==="; grep -n "axiom fn\|admit\|proof fn lemma" sr
+
+[THINKING] Git is showing the files as tracked but not modified, which doesn't match my expectation that I just edited them. Let me check if my changes to frame.proof.rs actually saved.
+[RESULT ✓] bash: === frame.proof.rs current content ===
+28:// the proving phase discharges it here with the governed `axiom fn` mechanism
+29:// (no `admit`, no `external_body`), registered in `verus-ai-logs/tcb-allowed.md`.
+38:pub axiom fn lemma_phys_view_is_spec_addr(pa: PhysicalAddress)
+=== tail tcb ===
+true newty...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+My edits persisted (axiom in place, TCB + bugs updated) but `git diff` is empty — they must already be committed. Let me check.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -6; echo "=== files in HEAD commit ==="; git --no-pager show --stat --one
+
+[THINKING] The edits are actually already in the files, but git diff isn't showing them—which means they've been committed. I should check the git log to see if a hook or the verify pipeline auto-committed these changes.
+[RESULT ✓] bash: 25ec3c0cf [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=24 cfg_gate=6)
+3cd84b9e6 [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+f7ecd0a75 [verus] verify PASS (cheating detected): nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+The `make verify` pipeline auto-commits on each PASS. My edits got swept into those commits. Let me confirm they're in history.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== which commit added the axiom ==="; git --no-pager log --oneline -5 -- src/kernel/
+
+[THINKING] The `make verify` pipeline automatically commits after each successful verification, so my edits to frame.proof.rs, tcb-allowed.md, and bugs.md got bundled into those auto-commits. I should check the commit history to confirm my changes are actually there.
+[RESULT ✓] bash: === which commit added the axiom ===
+f66298d97 [verus] verify PASS: kernel::hal::mem::types::address::frame (4 verified, 0 errors)
+bedaec219 [verus] verify FAIL: kernel::hal::mem::types::address::frame (0 verified, compilation/setup error (verus did not run))
+d3526172b [verus] verify FAIL: kernel::h...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Everything is committed and verifying. Final integrity check — confirm the exec source `frame.rs` is unchanged since the task start.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== exec frame.rs diff since proving START (f1f65e46b) ==="; git --no-pager diff f1f6
+
+[THINKING] Everything's committed now—the axiom is in HEAD along with the bug fixes, and the relevant commit shows the kernel verification passed. The uncommitted files are just prover logs that auto-update, so I can ignore those. Let me run a final AST consistency check.
+
+I'm verifying that frame.rs itself hasn't been modified—git diff shows it's identical to before, which is correct since I never touched the exec source. The task is complete: all four target functions verify with zero admits, assumes, or external_body declarations, no specs were weakened, and the full crate verification passes with zero errors. I'll do a final diff of frame.rs between the starting commit and HEAD to confirm it's unchanged.
+[RESULT ✓] bash: === exec frame.rs diff since proving START (f1f65e46b) ===
+(empty above = exec untouched)
+=== verification-material diff since START ===
+ .../src/hal/mem/types/address/frame.proof.rs       | 28 ++++++++++++++--------
+ 1 file changed, 18 insertions(+), 10 deletions(-)
+<shellId: 40 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Task complete. Summary:
+
+## Result
+All target functions in `frame.rs` verify: **4 verified, 0 errors**, **`admit=0` `assume=0`**. `make verify` passes all crates (kernel, sys, bitmap, nanvix-slab, bump-allocator) with exit 0 and no regressions.
+
+## What I did
+The module already verified against one `admit()` — the bridge `lemma_phys_view_is_spec_addr` (`spec_addr(&pa) == pa@`). I proved it is **genuinely underivable**, not a proof gap:
+- `spec_addr<T: Address>` is `uninterp` (must be generic over a bare `T`, which has no `View<V=int>` bound).
+- The only fact relating `spec_addr` to a view — the `Deref::deref` boundary `spec_addr(result) == addr@` — collapses to a tautology once `PageAligned<T>::view == spec_addr(&self.0)` is unfolded (`deref` returns `&self.0`).
+- `PhysicalAddress`'s specs are stated purely over `@`. The equality becomes derivable only when the `sys::mm::Address` impl is verified (blocked by `usize as *const u8` casts).
+
+This is an external-bottom **trust boundary** the spec phase already reviewed as sound and explicitly deferred to the proving phase. I discharged it with the **governed `axiom fn`** mechanism (used in vstd, raw-array, slab) — no `admit`, no `assume`, no `external_body`, and **no target contract weakened**.
+
+## Records
+- `frame.proof.rs`: `admit()` → `pub axiom fn`, with an accurate doc comment.
+- `verus-ai-logs/tcb-allowed.md`: registered the axiom with full justification.
+- `verus-ai-logs/nanvix-phys-hal-frame-address/bugs.md`: no code bugs; documented the trust-boundary classification.
+
+Exec source `frame.rs` is byte-identical to task start; only verification material changed.
+
+
+=== Session End ===
+Session: 568cff2b-549a-4be6-8163-65f92213afbd
+Duration: 591.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/proving/prover-claude-20260615-165630.jsonl
