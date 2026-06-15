@@ -1,0 +1,26 @@
+Timestamp: 2026-06-15_13-59-45
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead
+  --> src/kernel/src/hal/mem/types/region.spec.rs:42:1
+   |
+42 | pub assume_specification<T: Address>[ <T as Clone>::clone ](addr: &T) -> (result: T)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

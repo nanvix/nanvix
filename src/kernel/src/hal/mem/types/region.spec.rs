@@ -39,15 +39,10 @@ use crate::hal::mem::spec_addr;
 // crate-local `spec_addr`). `Address: Clone` (supertrait), so `clone` is in the
 // trait's method surface. External impls are trusted; verified impls must prove
 // it — discharged when the `Address` family is verified.
-#[verifier::external_trait_specification]
-pub trait ExAddressClone: Address {
-    type ExternalTraitSpecificationFor: Address;
-
-    fn clone(&self) -> (result: Self)
-        ensures
-            spec_addr(&result) == spec_addr(self),
-    ;
-}
+pub assume_specification<T: Address>[ <T as Clone>::clone ](addr: &T) -> (result: T)
+    ensures
+        spec_addr(&result) == spec_addr(addr),
+;
 
 // Abstract value of a memory region: the geometry `(start, size)` (in bytes,
 // as mathematical integers) plus the three metadata tags callers observe.

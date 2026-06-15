@@ -294,3 +294,121 @@ The alternative is to proxy Address itself with Address as the supertrait, then 
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|verifica
+[RESULT ✓] bash: error: external_trait_specification trait bound mismatch
+43 | / pub trait ExAddressClone: Address {
+44 | |     type ExternalTraitSpecificationFor: Address;
+46 | |     fn clone(&self) -> (result: Self)
+   = help: external_trait_specification requires trait bounds to match exactly but the proxy's trai...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Progress — now it's a bound-matching issue. The proxy method pattern in vstd (`ExPartialOrd`) only ever calls **proxy-declared spec methods** (`self.partial_cmp_spec(...)`), never a free `fn foo<T: Trait>(t)`. Referencing the free `spec_addr<T: Address>` needs `Self: Address` syntactically, which collides with the exact-bound-match rule. Let me check how `spec_addr` is defined and used to find the right architecture.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== spec_addr definition ==="; grep -rn "spec_addr" src/kernel/src/hal/mem/ ; echo; ech
+
+[THINKING] The issue is that the proxy trait needs to explicitly include all of Address's supertraits—MetaSized, Debug, Clone, PartialEq, Eq, PartialOrd, and Ord—not just MetaSized. I need to update the proxy definition to list all these bounds so the trait specification matches exactly. So the key insight is that the proxy trait should declare its own spec method (like `spec fn addr_spec(&self) -> int`) rather than relying on the external `spec_addr` function, since that avoids the circular dependency where `Self: Address` isn't in scope. But then I'd need to connect this proxy spec method to the View's `spec_addr` somehow, which creates a different problem. Maybe the solution is to make the proxy's spec method BE what the View uses instead. The issue is that `spec_addr` is defined in a shared module and used by callers, so I need to keep it in the ensures clause. The supertrait matching error suggests I should add those bounds directly to the `ExternalTraitSpecificationFor` type to establish that `Self: Address` holds within the proxy context.
+
+Looking at how `ExPartialOrd` handles this, it only references spec methods declared in the proxy itself, never external uninterpreted functions. So if I want to use the free `spec_addr`, I'd either need to declare it as a proxy method or have `Self: Address` available—neither of which works cleanly here. The core tension is that `spec_addr` is uninterpreted and shared across modules, while cloning a bare `T` requires proving equivalence between the proxy's clone and the external spec, which I can't establish without additional constraints.
+
+The most architecturally sound fix would be to modify `page.spec.rs` to define `spec_addr` through an `external_trait_extension` spec method on `Address` rather than leaving it uninterpreted, but that's a bigger change to a verified module and risks regressions. Given the constraints and the reviewer's request for exact error messages from every approach attempted, I should try a few more concrete variants and then document the precise failures if I hit a genuine blocker. The real issue is that `spec_addr` is a free function requiring `T: Address`, but the proxy trait can't syntactically provide that bound without triggering the mismatch error. The solution is to make `spec_addr` delegate to a trait method instead—I'd define it in `page.spec.rs` to call an extension method on the `Address` trait, then re-verify the affected modules. Let me check how widely `spec_addr` is used to understand the scope of changes needed.
+[RESULT ✓] bash: === spec_addr definition ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs:55:            // wrapped address is unchanged (`result@ == spec_addr(&addr)`) and the
+src/kernel/src/hal/mem/types/address/aligned/page.rs:61:                Ok(p) => p@ == spec_addr(&addr) && p.inv(),
+src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Let me re-examine the caller analysis to determine whether region's View *must* use the shared `spec_addr`, or whether callers only need internal consistency (start vs size).
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/nanvix-phys-hal-memory-region/caller_analysis.md
+
+[THINKING] I'm seeing the architecture more clearly now—`spec_addr` is uninterpreted and gets used in the page implementation's `into_raw_value` method, with `PageAligned`'s `try_from` ensuring consistency. There's a trust boundary pattern established here where `PageAligned<T>` as a concrete type constructor gets its specification through `assume_specification`, creating a shared contract.
+
+The real challenge is handling the clone obligation for bare `T: Address`. The project's convention defers facts about bare trait methods to trust boundaries—verified when the Address trait itself is verified. But I can't simply assume_specification a bare-T clone. I'm trying to figure out whether I can avoid the bare-T clone obligation entirely by restructuring how `MemoryRegion<T>` handles cloning, or if I need to accept it as a trust boundary deferred to Address verification.
+
+Looking back at the external_trait_specification errors: when I used `: Sized` as the only supertrait with `type ExternalTraitSpecificationFor: Address`, the bounds matched but Self lacked the Address bound—a different error. Adding `: Address` as a supertrait triggered the bounds mismatch. So the path forward might be keeping `: Sized` and finding a way to satisfy Self: Address without making it a supertrait, or restructuring the specification so it doesn't require Self to have Address at all. The issue is that making the proxy inherit Address as a supertrait creates a bound mismatch, but without it, Self doesn't satisfy Address for the spec_addr call. I'm considering using `external_trait_extension` instead — vstd uses this to add spec content to existing externally-specified traits like Clone, so maybe I can extend Clone with the ensures clause I need rather than fighting the proxy bounds.
+
+Actually, stepping back: the core problem is that `spec_addr(&result) == self@.start` is fundamentally a clone-preservation statement since `self@.start` expands to `spec_addr(&self.start)`. The only way around this without the clone law would be to redefine what the View stores or make `spec_addr` itself defined in terms of the View rather than uninterpreted — if Address types always have a View where `spec_addr(&t) == t@`, then clone preservation could follow from the View's own semantics.
+
+But I keep hitting the same wall: some clone fact is needed, and Verus won't let me state it for bare T except through the Address trait's own verification. The reviewer explicitly asked me to try concrete approaches and show exact error messages rather than just explaining why it's hard, suggesting they believe it's solvable. Let me try matching the exact bounds the error message mentioned — adding Debug, Clone, and the other traits explicitly to the proxy's ExternalTraitSpecificationFor, even though Address should give them transitively.
+
+Actually, wait — the error said the proxy bounds were just MetaSized, but the external bounds included Debug, Clone, PartialEq, Eq, PartialOrd, Ord. Address's supertraits ARE those bounds, so the proxy needs to declare them directly rather than relying on `: Address`. That means the proxy should be `pub trait ExAddressClone: Debug + Clone + PartialEq + Eq + PartialOrd + Ord` without inheriting from Address, then `type ExternalTraitSpecificationFor: Address`. But now Self doesn't have the Address bound, so calling spec_addr(self) fails again.
+
+This confirms the core issue: the proxy can never give Self the Address bound because that would be circular. So I need a different approach — declaring a proxy spec method instead of trying to reference the original spec_addr function.
+
+Defining proxy spec method...
+
+But then I'm stuck with clone_addr instead of spec_addr, which breaks consistency with the View and page.rs callers. The real architectural question is whether to redefine spec_addr in page.spec.rs to use clone_addr, but that touches a verified module and changes spec_addr from uninterpreted to defined.
+
+Actually, the comment in page.spec.rs is pretty clear — spec_addr is intentionally left uninterpreted there, with the expectation that once Address itself gets verified, spec_addr will be tied to Address's View. That's the intended final architecture, and in that world, clone preservation comes automatically.
+
+So the genuinely correct fix is to verify Address properly and let spec_addr become defined through Address's View.
+
+But the reviewer scoped this to region.rs/region.spec.rs, and the task says not to touch unlisted functions. Modifying Address or page.spec.rs is out of scope.
+
+I'm starting to think the honest answer is that the reviewer's requested mechanism doesn't actually compile, and there's no sound in-scope alternative because Verus can't attach a spec_addr-referencing clone law to a bare T: Address — only to the Address trait itself, which is out of scope.
+
+Let me double-check one more thing: maybe the obligation only arises at concrete instantiations, not generically? No, Verus verifies generic functions once, so if clone has no spec generically, it fails. And I should verify whether Address actually requires Copy or just Clone. I'm realizing the external_trait_extension approach with a proxy spec method could work if I make the View use that proxy method directly instead of relying on spec_addr—since I control the View definition in my own module, I don't need to reference spec_addr at all. But I need to verify whether callers comparing region.start() to other values would still work with this approach.
+[RESULT ✓] bash: # Caller Analysis: hal::mem::types::region
+
+## Script Output
+
+Raw `find_callers_lsp.py` report: `/tmp/callers_out.md` (regenerated on demand).
+Command:
+
+```bash
+python scripts/find_callers_lsp.py \
+  src/kernel/src/hal/mem/types/region.rs --project-dir /home/ruize/nanvix-phy
+```
+
+- Crate: `kernel` (...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The clone problem is on **bare `T: Address`** inside generic `MemoryRegion::start`. `Address` is a `#[verus_verify]` (not external) trait, and `clone` is inherited from external `Clone` — so neither `assume_specification` (rejects generic trait methods) nor `external_trait_specification` (clone not declared in Address; can't reference `spec_addr` without `Self: Address`) works. Let me read the actual `Address` trait to see if it already carries an address-value spec I can hook a clone law onto.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,120p' src/libs/sys/src/sys/mm/address/mod.rs
+
+[THINKING] Looking at the callers of `MemoryRegion::start`, I see they're passing the result into other functions like `from_virtual_address` and `align_down` rather than doing direct comparisons on the return value itself.
+
+The key insight is that callers expect `start()` to return a value equal to `self@.start` (the abstract integer), which is `spec_addr(&self.start)`. So the ensures clause `spec_addr(&result) == self@.start` is exactly what's needed.
+
+For `TruncatedMemoryRegion::start`, it returns `PageAligned<T>` and uses `.into_raw_value()` which is already specced. Since `TruncatedMemoryRegion` has a concrete field `start: PageAligned<T>`, I can write an `assume_specification` for the clone operation on that concrete type constructor — the same pattern as `into_raw_value`. But `TruncatedMemoryRegion::start` actually delegates to `MemoryRegion::start` with `T = PageAligned<T>`, so `MemoryRegion::start` gets instantiated with both bare addresses and `PageAligned` types.
+
+The fundamental problem is that `MemoryRegion::start` is generic over `T: Address` and performs a bare-T clone, which I can't spec. I need to either find a way to verify the clone law through the Address trait itself, or test the reviewer's exact suggestion again with different syntax to see if there's an alternate way to specify clone on a bounded generic type.
+
+Let me step back though — the real goal is just getting `make verify` to pass. I'm wondering if I even need `spec_addr` on `MemoryRegion::start`'s view at all. The caller just needs the returned value to be a valid address, so maybe I can satisfy that requirement without specifying the clone behavior directly.
+
+Actually, I realize Address is a verified trait in the sys crate, not an external one, so `external_trait_specification` won't help here. The Clone method comes from the external Clone trait, and since Address doesn't declare its own clone method, I can't just add ensures to it. This feels like a genuine limitation in how Verus handles verified traits inheriting from external ones.
+
+Let me try a different angle — what if I use an `assume_specification` on the concrete wrapper type instead of trying to add a law for the generic T? I'm realizing the layering constraint is the real blocker here — `spec_addr` lives in the kernel crate while `Address` is in sys, so I can't add a clone law to Address itself. I've tried several approaches (external trait extensions, blanket impls with clone laws, adding specs to Address) and each hits a different wall. Let me try a few more concrete attempts end-to-end, particularly exploring whether I can use `assume_specification` on clone for the specific address types, or whether a proxy method through an external trait extension could make `spec_addr` provably clone-stable.
+
+Actually, stepping back — I should check what the callers of `MemoryRegion::start` actually need. The unverified callers in `kernel_vas` don't have constraints yet, but `TruncatedMemoryRegion::start` uses `into_raw_value` which is already specced via the View of `PageAligned`. So maybe I don't need `spec_addr` in the View at all — I could use the standard `@` operator (the View of T itself) instead of the universal `spec_addr`. The reason I used `spec_addr` was that the exec accessor blocks have `impl<T: Address>` with no View bound, making `self@` untypable for the field. But if I can work around that constraint, the clone law problem becomes independent of which spec function I use.
+
+Let me just commit to trying the external trait extension approach concretely.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+mod vir...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The `Address` trait has **no method specs** and `clone` is inherited from external `Clone`. This is a genuine structural wall. Let me systematically capture exact errors for each sound approach. First, the reviewer's literal `assume_specification`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+
+[THINKING] The Address trait is marked for verification but its methods lack any specifications—no requires or ensures clauses. The `into_raw_value` method doesn't establish any relationship to `spec_addr`, leaving the clone-preservation property without a proper place to live in the current scope. The cleanest fix that would pass review and compile is to add a spec method and law directly to the Address trait, but that runs into layering issues with the kernel's `spec_addr`, and any alternative like referencing `into_raw_value` fails because it consumes self while clone needs `&self`. Adding a new spec method like `spec_raw(&self) -> int` to Address would require re-verifying the entire sys module and all address type implementations—too risky and out of scope. The most pragmatic sound approach is to use `assume_specification` for clone on each concrete address type that MemoryRegion is instantiated with, then verify whether MemoryRegion::start's generic obligation can actually be satisfied that way, or whether start even needs to be generic in the first place. The real issue is that I can't attach a clone law to the inherited Clone trait from within the Address trait itself. I could add a new method like `clone_addr` to Address that wraps the clone operation and includes the preservation law, then have region's View call that method instead of relying on spec_addr directly—this way the bound `T: Address` gives me access to the method and its ensures clause.
+
+But the inherited-clone problem is fundamental: Clone's external_trait_specification is already defined in vstd and can't reference Address, so I can't extend it conditionally. Let me try using external_trait_extension on Clone itself to see if I can add a spec method there, though I suspect this won't work since the external_trait_specification is locked in another crate.
+
+At this point I should capture the exact error messages from these remaining approaches to demonstrate the structural limitation definitively. Writing proxy trait bounds... I'm exploring whether I can redefine the View's `start` field to rely on Verus's auto-generated clone semantics rather than `spec_addr`, but without a clone law on the Address trait, the clone result isn't deterministic enough to satisfy the spec. I'm considering adding a `view_addr()` spec method directly to the Address trait with a clone law that preserves it, which would let me use that trait method in the kernel's View definition instead of the kernel-specific `spec_addr` function. I'm hitting a fundamental limitation with Verus's trait system — I can't attach an ensures clause to an inherited clone method, and redefining spec_addr or adding new methods to Address would require changes outside my scope. I need to document this as a guidance issue with the exact errors from each approach and propose concrete resolution paths that require broader changes to the codebase. I'm considering whether adding a `View` to the `Address` trait or explicitly declaring clone-related methods would help, but these approaches either hit the same inherited clone issue or create ambiguity. The most pragmatic path forward is to capture the exact error messages from my key attempts and document them clearly, since the sound structural fixes are out of scope.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|assume_s
