@@ -171,3 +171,72 @@ No cheating patterns found in source. The `cfg(verus_keep_ghost)` includes are s
 4. //==================================================================================================
 5. // Modules
 6. //=========================================================================================...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Verification is already CLEAN (assume=0, external_body=0, admit=0, exit 0). Let me confirm AST consistency against the base branch and verify the result wasn't just stale cache.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff verus-ai/sys-address-mod -- src/libs/arch/src/x86/mem/paging/frame/number.rs 2>&1 
+
+[THINKING] The verification is already passing with all cheating checks clean. Now I need to confirm the cached verification actually ran and check that the AST is consistent with the base branch.
+[RESULT ✓] bash: diff --git a/src/libs/arch/src/x86/mem/paging/frame/number.rs b/src/libs/arch/src/x86/mem/paging/frame/number.rs
+index a3030ccf7..36232b15d 100644
+--- a/src/libs/arch/src/x86/mem/paging/frame/number.rs
++++ b/src/libs/arch/src/x86/mem/paging/frame/number.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //===========...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+The module is already completely clean: zero cheating (assume=0, external_body=0, admit=0, cfg_gate=0), exit code 0, and the diff against base shows only ghost/verification annotations were added — no exec semantic changes. AST consistency holds. Let me write the report.
+[TOOL] report_intent: Writing fix report
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination
+
+[THINKING] The diff only adds verification contracts without changing the actual execution semantics — the `into_raw_value` method still returns `self.0` with a ghost proof block, and `from_raw_value` remains unchanged. The struct itself and its derives are unaffected in terms of runtime behavior.
+
+Since the verification already passes cleanly with zero cheating detected, there are no changes needed and no regression risk. I'll create the fix report documenting that this module is already compliant.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md with 2306 characters
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+## Result: PASS
+
+The `arch-frame-number` module is already free of all cheating. No changes were needed.
+
+**Cheating counts (all zero):** `make verify-arch` reports `assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`, `status: CLEAN`, exit 0.
+
+**Scope functions** — all fully proven:
+- `into_raw_value`: newtype projection proven via ghost `use_type_invariant`.
+- `from_raw_value`: bidirectional `Some`-iff contract proven via the type invariant + `MAX` bound.
+- `FrameNumber` (`View`/`inv`): spec-only, clean.
+
+The only `cfg(...)` are standard `#[cfg(verus_keep_ghost)]` ghost-include directives — not exec cfg-gates.
+
+**AST consistency:** diff vs `verus-ai/sys-address-mod` shows only additive verification annotations and a ghost `proof!` block — no exec semantic/complexity changes.
+
+Report written to `verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/fix_report.md`. No `verification_todo.md` needed (zero proof gaps).
+
+[THINKING] The architecture verification already passed with no changes needed, so the task is complete and there's no regression risk.
+
+
+=== Session End ===
+Session: f34ec9ca-2650-464b-a341-dae154a8e082
+Duration: 97.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/cheating-elimination/prover-claude-20260615-201527.jsonl
