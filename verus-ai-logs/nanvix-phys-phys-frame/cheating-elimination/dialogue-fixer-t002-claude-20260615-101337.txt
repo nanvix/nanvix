@@ -140,3 +140,38 @@ Exit code: 0
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/mm/phys/frame.rs && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE
+[RESULT ✓] bash: verification results:: 31 verified, 0 errors (partial verification with `--verify-*`)
+  Exit code : 0
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Fresh run: **31 verified, 0 errors**. Everything passes. Now write the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/dialogue/turn_002_fixer.md with 2778 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+## Result: FIXED
+
+Rewrote the reproducer `04_free_count_inline_fails.rs` to be faithful per the reviewer's two hard requirements:
+
+1. **Module boundary** — moved `Bitmap` (struct + `closed spec` view/inv + `number_of_bits`/`usage`) into an inner `mod bm`, called via `use bm::Bitmap`. This hides the closed view like the real cross-crate `::bitmap` boundary, so `b@.num_bits` is opaque. The old same-module model leaked `num_bits >= 0`, masking the failure.
+2. **Removed the bogus `result > 0` ensures** (unprovable from `self.n`) that broke the old PASS form.
+
+**Acceptance (run through `/mnt/toolchain/verus/verus`):**
+- As committed (FAIL form commented out) → **4 verified, 0 errors**.
+- FAIL form uncommented → **4 verified, 1 errors**, `precondition not satisfied: b@.num_bits >= 0` on `lemma_free_count` — matching the real-tree inline failure.
+
+**Real tree (forced fresh):** `make verify-kernel MODULE=mm::phys` → **31 verified, 0 errors, exit 0**; `./z build -- all-kernel` → **Build complete**, 0 warnings.
+
+`frame.rs`/`frame.spec.rs`/`frame.proof.rs` untouched — only the reproducer changed.
+
+
+=== Session End ===
+Session: f2a26c3f-a02e-41fa-a57e-a875ef7fa80e
+Duration: 104.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/dialogue-fixer-t002-claude-20260615-101337.jsonl
