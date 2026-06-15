@@ -367,3 +367,62 @@ Wrapper contracts are **IDENTICAL** between proving-start and HEAD — no spec w
 The internal_inv strengthening is actually a required fix that the reviewer explicitly called for in the previous turn. Since it's a closed spec function and appears in both preconditions and postconditions of Inner methods, the strengthening doesn't weaken the public contract—callers already obtain the stronger invariant through instance() and initialization, so no one gets broken by the tighter guarantee.
 
 For the cross-module regression check, I've already run make verify-kernel which covers all kernel modules with 112 verified and zero errors, but I should run the full make verify across all crates to be thorough, though it might take a while.
+[RESULT ✓] bash: 6:/home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+8:  Crate     : bitmap
+22:  Exit code : 0
+42:/home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate sys  --log-dir verus-ai-logs/verify-sys
+44:  Crate     : sys
+56:  Exit code :...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+All crates pass (`make verify` exit 0). Final check — run the build (`./z build`) myself to confirm #10's build requirement on the default target.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build 2>&1 | tee /tmp/zbuild.log | grep -niE "error|warning|E0080|OK|Bu
+
+[THINKING] All the crates are passing verification with exit code 0, including the kernel which shows 112 verified items with no errors. The cross-module regression test passes and the full verification suite completes successfully. Now I'm going through the checklist to confirm everything is finalized, starting with verifying that no specifications were weakened—the frame spec remains unchanged and all wrapper contracts are identical.
+
+Checking the remaining items: zero admit statements across all files, external_body calls are all properly allow-listed, and the two intra-crate assume_specification calls in frame.spec.rs are documented and accepted per project convention. No cfg-gated execution beyond error and debug assertions, the cheating audit shows the expected profile with zero admits and allow-listed external bodies, and the claimed Verus limitation around global size_of has been removed entirely. The exec rewrites are minimal and equivalent, and the cross-module regression passes cleanly.
+
+Now I need to verify the build myself since the checklist requires running both the verification and build commands. The fixer ran ./z build and reported success, but I should confirm it directly. I'm also noting that there's a pre-existing x86_64 architecture issue in idt.rs that's unrelated to the frame module proving—it's out of scope but worth documenting. The default target is x86, so I'll run the build to confirm it passes there.
+[RESULT ✓] bash: 55:Warning: Sysroot directory '/home/ruize/nanvix-phy-specs-bottom-up/sysroot-debug' not found; skipping symlink update.
+63:[OK]    Build complete.
+EXIT=0
+<shellId: zbuild completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+`./z build` exits 0 ("Build complete", no E0080, the only "Warning" is an unrelated missing-sysroot symlink note). Everything passes. Writing the turn 2 review and creating STOP.
+[TOOL] report_intent: Writing turn 2 review and STOP
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/STOP
+
+[THINKING] The build completes successfully with no compiler errors or warnings—just a tooling note about sysroot directories that's unrelated to the frame code. All checklist items are now passing or resolved, so I'm ready to write the turn 2 review and create the STOP file marking this as RESOLVED. Let me verify that item #5 still holds by confirming no new cfg-gated execution was added in the proving diff.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/STOP with 9 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue/turn_002_driver.md with 5974 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**. STOP file created.
+
+## Summary
+
+I verified the fixer's turn-1 fix and walked the entire checklist with my own tool runs (not trusting their writeup).
+
+**Blocking #10 — FIXED.** The fixer removed `global size_of usize == 8;` and replaced the word-size assumption with a strengthened invariant `num_bits <= FrameNumber::spec_max() + 1` in `internal_inv`, discharging the `alloc`/`alloc_contiguous` representability bounds from it. My **forced non-cached** `make verify-kernel`: **112 verified, 0 errors, exit 0, no E0080, 0 warnings**. `./z build` exit 0. `make verify` (all crates) exit 0.
+
+**All 10 items PASS/FIXED:**
+- #1 spec-drift: `frame.spec.rs` unchanged since proving-start; all wrapper contracts **byte-identical**; `internal_inv` strengthened (the exact change I required) — no weakening.
+- #2 admit=0 · #3 8 external_body all in `tcb-allowed.md` · #4 assume=0 (2 allow-listed intra-crate `assume_specification`) · #5 cfg-gates only logging/`debug_assert` · #6 audit recorded · #7 the only claimed limitation was removed, not justified · #8 rewrites ghost-only/equivalent · #9 cross-module all crates exit 0.
+
+**Out-of-scope note flagged:** `TARGET=x86_64` fails with a pre-existing `arch/x86_64/cpu/idt.rs` `E0433` (references nonexistent `idt::Idt`), untouched by the fixer and independent of `mm::phys::frame`. The frame fix itself is now target-agnostic.
+
+
+=== Session End ===
+Session: 7a69a0eb-3f4b-4220-90bb-219a6350a668
+Duration: 319.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/proving/dialogue-reviewer-t002-claude-20260615-100439.jsonl
