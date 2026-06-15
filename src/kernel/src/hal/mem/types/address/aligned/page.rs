@@ -76,11 +76,7 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
-#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
-    #[verus_spec(result =>
-        ensures result as int == self@,
-    )]
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
