@@ -441,3 +441,38 @@ The build skill uses `./z`. Adding an inherent method shadows for concrete calle
 [THINKING] I should run a build to verify that adding the inherent `into_raw_value` method doesn't create conflicts with existing callers. A full build is expensive, so I could do a cargo check on the sys crate instead, but I need to think through what would actually break—the main risk is ambiguity if code is already calling this method, though an inherent method should take precedence over a trait method anyway.
 
 Let me run `make verify` to check for cross-module regressions across all crates and the kernel. This will also reveal whether the kernel's existing `assume_specification` for the trait method becomes redundant now that the inherent method has its own verified spec, which would let me clean it up per the checklist requirement about removing assume_specification for workspace-internal code.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Full `make verify` passes: **sys = 7 verified, kernel = 43 verified, 0 errors** across all crates. The pre-existing `external_body` counts (bump-allocator, kernel) are in unrelated modules, not in virt.rs. My change introduced no cheating.
+
+Now, since `into_raw_value` is verifiable in-module, the kernel's consumer-side `assume_specification` on this workspace-internal method is now redundant. Let me test whether removing it keeps the kernel verifying (concrete callers should resolve to the verified inherent method).
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/kernel/src/hal/mem/types/address/phys.spec.rs /tmp/phys.spec.rs.bak && echo "backup 
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] The verification run completed successfully with all modules passing—43 verified kernels and 7 verified system crates with zero errors across the board. The "CHEATING_DETECTED" flags appearing in bump-allocator and kernel are pre-existing issues in other modules, not introduced by my changes to virt.rs, so they're outside the scope of this phase.
+
+The kernel still verifies cleanly even with the assume_specification still present in phys.spec.rs, which means either concrete callers are still using the trait method or the assume_specification has become harmless but unused. Either way, there's no regression. The real question is whether that consumer-side assume_specification in the kernel module is actually necessary anymore—if concrete VirtualAddress callers now resolve to the inherent method with its exported verified spec, the assume_specification might be redundant. But since the kernel code could still be calling the trait method explicitly or through generic contexts where the inherent isn't visible, it may still be needed. For this phase, my focus is on the sys-virt-address specification itself.
+
+The inherent spec for `into_raw_value` is now properly verified in-module and gets exported across crates, which resolves the primary failure. The kernel's assume_specification is a separate concern belonging to that module's verification phase. Looking at the checklist item "No assume_specification for workspace-internal code"—in the sys module's virt files, there's no assume_specification at all, so that item passes for this phase. The kernel's assume_specification is a different module's artifact.
+
+The verus-unsupported.md entry claiming `into_raw_value` "remains an assume_specification trust boundary" is now outdated since I've proven it doesn't need to be. I should update that documentation to reflect the fix, and potentially remove the kernel's assume_specification as well since it's now an unnecessary trust boundary on workspace-internal code. Let me test whether removing it would break anything in the kernel.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+[RESULT ✓] bash: backup done
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify-kernel 2>&1 | tail -45
