@@ -531,3 +531,54 @@ Now delete the now-unused `lemma_user_bulk_ok` from the proof file:
 Turn 30
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: Module mm::phys:
+    ⚠️  external_body: 16
+    ⚠️  admit: 4
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - fra...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+4 admits now (bulk_ok eliminated), but 1 verification error. Let me see it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "error\|fail\|invariant not\|postcondition\|line " verus-ai-logs/ve
+
+[THINKING] I've narrowed down the failing proofs to just four lemmas in the manager module, and bulk_ok has been eliminated. Now I need to track down this one remaining verification error.
+[RESULT ✓] bash: 8:1 errors
+30:note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+40:error: invariant not satisfied before loop
+46:error: invariant not satisfied before loop
+111:        (4) use the --trigge...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-09-13.log
+[RESULT ✓] view: 38.     | |__________________________^
+39. 
+40. error: invariant not satisfied before loop
+41.    --> src/kernel/src/mm/phys/manager.rs:238:17
+42.     |
+43. 238 |                 user_addr_set(frames@).finite(),
+44.     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+45. 
+46. error: invariant not ...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+At loop entry I need to establish the empty-set facts. Let me add them to the pre-loop proof block.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The loop invariants for finiteness and length aren't being satisfied at entry because Verus doesn't automatically recognize that an empty frames set is finite with length zero. I need to use a lemma to establish these properties before the loop starts. Adding the lemmas to the proof block...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25

@@ -227,6 +227,8 @@ impl PhysMemoryManager {
         Self::check_user_watermark(count)?;
         proof! {
             lemma_manager_attached(self);
+            lemma_user_addr_set_empty(frames@);
+            lemma_book_all_empty(g_old);
         }
 
         #[cfg_attr(verus_keep_ghost, verus_spec(
