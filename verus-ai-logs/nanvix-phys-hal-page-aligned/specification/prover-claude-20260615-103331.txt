@@ -603,3 +603,170 @@ For the `is_aligned` method, I need to decide whether to model the `Alignment` e
 Turn 28
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tail -35
+[RESULT ✓] bash: ⚠️  admit: 1
+    ⚠️  cfg-gated exec code: 1
+  Affected functions:
+    - page.rs:61 into_raw_value: admit
+  Global: assume=0 external_body=23 admit=1 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  1/17 exec functions have contrac...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "LOG: $f"; grep
+
+[THINKING] I'm getting a compilation error from Verus, so I need to check the actual error message in the log to see if it's related to the View bound issue.
+[RESULT ✓] bash: LOG: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_10-41-46.log
+20:error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+26: 59 | |             result as int == self@,
+31:error: could not compile `kerne...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); sed -n '15,35p' "$f"
+[RESULT ✓] bash: no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.
+   --> src/kernel/src/hal/mem/types/address/...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The whole trait impl must be verified together. Let me check how the verified `phys.rs` handles `impl Address` (same situation, concrete).
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== phys.rs impl Address block + verus_spec ==="; sed -n '125,265p' src/kernel/src/hal/
+
+[THINKING] Ah, so the issue isn't about the View bound at all—Verus is requiring that if I annotate any method in a trait impl block, I need to verify the entire impl, not just individual methods. That means I can't spec `into_raw_value` in isolation; I'd have to verify all the methods in the `impl Address for PageAligned<T>` block together.
+
+The other methods are unlisted functions, so I can't add contracts to them, but I could verify them with default specs (just ensuring they type-check and their bodies execute correctly). Since they call methods on the Address trait which is already verified, they should pass verification with trivial specs. The question is whether verifying them without adding explicit contracts counts as "touching" them—I think it doesn't, since I'm not modifying their bodies or adding requires/ensures clauses.
+
+But I'm still wondering if the View bound issue will resurface once the whole impl is verified, since `self@` in `into_raw_value` might still need that bound to work. So the real constraint is that under `verus_keep_ghost`, I need the `T: View` bound available for specs, but I can't add it as a real supertrait to `Address` without breaking the normal build. The impl block itself can't be cfg-gated differently since it's exec code that defines the trait implementation. I need to find a way to introduce the View bound only in the verification context without changing the trait's actual signature. Maybe I can add a ghost-only `View<V = int>` bound to the trait impl itself using Verus's mechanisms, or I should look at how other generic verified impls in the codebase handle View bounds on exec trait implementations. Let me also check whether the project already uses `vstd::prelude` in normal builds and if View is accessible there, since that might open up a cleaner path forward.
+
+Actually, I'm realizing the core issue: if I add View as a supertrait to Address, all the View impls would need to compile in normal builds too, which means un-cfg-gating them across the entire codebase — a massive change that touches way too much unlisted code and risks breaking the whole kernel build. That's clearly not the intended approach, so I'm probably missing something fundamental about how this is supposed to work.
+
+Let me look for actual examples in the verified parts of the repo where a trait impl with generics has spec methods, particularly in the mm::phys modules. I want to see how PhysicalAddress handles into_raw_value — it's also a trait method in the Address impl, and if phys.rs is verified, I can see exactly how they spec trait methods under the whole-trait-impl rule.
+[RESULT ✓] bash: === phys.rs impl Address block + verus_spec ===
+1:    pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self {
+7:impl Address for PhysicalAddress {
+22:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+40:    fn align_up(&self, align: Alignment) -> Result<Self, Error> {
+67:    fn...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+phys.rs leaves the `Address` trait methods unspecced. Let me check the pipeline's own specification-phase artifacts and the refine reference for guidance.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== specification dir ==="; find verus-ai-logs/nanvix-phys-hal-page-aligned/specificati
+
+[THINKING] I'm noticing that phys.rs implements the Address trait for PhysicalAddress without any verus_spec annotations on the methods, meaning the into_raw_value and other trait methods aren't actually specified despite the module being marked as verified with View and invariant definitions. This sets a precedent—the address modules apparently add View/inv for verification purposes but deliberately leave the Address trait implementation methods unspecced, and these modules still pass verification.
+
+But the task explicitly asks me to spec PageAligned::into_raw_value, which creates tension with this established pattern. The whole-trait-impl rule means speccing into_raw_value would force me to verify all eight methods in the impl Address for PageAligned<T> block, several of which call unverified dependencies and return raw pointers—that's hard and out of scope. Meanwhile, from_address is an inherent method that doesn't trigger the whole-trait-impl rule, so I could spec it alone, but both targets hit the same View bound problem: I need to express postconditions like `result@ == addr@` where addr is of type T and result is PageAligned<T>, but the impl block is generic over `T: Address` without the View bound required for the @ notation.
+
+Adding `T: View<V=int>` to the inherent impl block would restrict from_address and into_inner to only work when T implements View, which breaks the normal build since View is cfg-gated out in non-verification mode—the trait doesn't exist at runtime, so the bound can't be satisfied.
+
+The core issue is that View impls are locked behind cfg(verus_keep_ghost), so I can never reference View in real exec signatures or bounds that persist across both builds. But the specs themselves are erased in normal builds, so they're fine—the problem is purely that under verus_keep_ghost, the spec elaboration needs `T: View` in scope, yet the impl block's where-clause is shared with the normal build.
+
+I'm wondering if there's a way to add a where-clause bound that only exists under verus_keep_ghost, maybe through a verus_spec attribute or some ghost-only mechanism. Or maybe the View impls shouldn't be cfg-gated at all—if they stay inside the verus!{} macro (which handles both modes), they might be erasable in normal build without breaking anything.
+
+Actually, I'm overthinking this. Let me check what the actual verus-ai pipeline expects by looking at the specification outputs it already generated in the logs directory.
+[RESULT ✓] bash: === specification dir ===
+verus-ai-logs/nanvix-phys-hal-page-aligned/specification/prover-claude-20260615-103331.txt
+verus-ai-logs/nanvix-phys-hal-page-aligned/specification/prover-claude-20260615-103331.jsonl
+verus-ai-logs/nanvix-phys-hal-page-aligned/view-design/prover-claude-20260615-103107.txt
+v...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== tail of prover specification log ==="; tail -120 verus-ai-logs/nanvix-phys-hal-page
+
+[THINKING] The refine reference doesn't specify them either since it's just a base. There's a prover log from this run in the specification directory that might show what was attempted before, so I should check that to understand the approach that was being taken.
+[RESULT ✓] bash: === tail of prover specification log ===
+    ///
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== Alignment definition ==="; grep -rn "enum Alignment\|pub enum Al...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Let me look at how verified trait impls are structured in attribute style across the codebase.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== verus_verify on impl blocks ==="; grep -rn "verus_verify" --include=*.rs src | grep
+
+[THINKING] The prover log is capturing my current session recursively, so that's not giving me new information. Let me think through the trait implementation verification requirement independently—Verus requires the entire impl block to be verified together, not individual items, so I need to wrap the whole Page impl in the verus macro.
+
+For the View bound issue: when I reference `self@` in the trait methods, Verus needs `T: View<V=int>` to be satisfied, but adding it to the inherent impl signature might break the normal build. I'm wondering if I can add the View bound to just the inherent impl block without causing issues—the View trait is a real trait in vstd that exists in normal builds, so maybe it won't actually break anything.
+
+But wait, the real problem is that VirtualAddress's View impl is cfg-gated to `verus_keep_ghost`, so in a normal build VirtualAddress doesn't implement View at all. That means callers trying to use `PageAligned::<VirtualAddress>::from_address` would fail because the bound can't be satisfied. The only real solution is to un-cfg-gate the View impls so they're available in both builds. Since vstd's own View impls work in normal builds (the verus! macro handles spec functions by turning them into stubs), removing the cfg gate from PageAligned's View impl should work—but then I'd also need to un-cfg-gate the View impls in virt.rs for the types like VirtualAddress.
+
+I'm now convinced the intended approach doesn't actually require the View bound in the exec signatures. The specs need to express guarantees like `result as int == self@` and `result@ == addr@`, but maybe there's a way to do this without directly referencing `@` on the generic T. The problem is these guarantees fundamentally rely on the `@` operator—there's no way around it for generic code.
+
+Unless... the verification happens in a context where T is concretely View. But the functions are generic, so that doesn't help. Let me step back and reconsider what the actual deliverable is supposed to be—maybe "PageAligned (type)" just means confirming the View and inv already exist, not adding new bounds to the trait impl. I'm wondering if maybe `View` should actually be a supertrait of `Address` itself, and the cfg-gating is the real problem to solve. Let me check whether `make build` would actually survive if I add `View<V=int>` as a non-gated supertrait — it depends on whether vstd's View impls are available during normal builds or if they're just markers. I'm fairly confident the build would fail since the View impls are gated, but I should test this hypothesis directly rather than keep speculating. Alternatively, maybe I can use `assume_specification` to provide the spec for the trait method externally in the spec file instead of trying to annotate it inside the impl. I'm reconsidering whether to verify the whole trait impl as intended, despite the architectural constraints. The error message about wrapping in `verus!` might just be a hint—the real requirement is that Verus processes all methods in the impl. Maybe adding `#[verus_verify]` to the impl block itself, or annotating every method with `#[verus_spec]`, would let me verify the whole impl in attribute style without the macro wrapper. Let me search the codebase for examples of trait impls verified in attribute style to see how they handle this.
+[RESULT ✓] bash: === verus_verify on impl blocks ===
+src/kernel/src/hal/mem/types/region.rs:38:#[verus_verify]
+src/kernel/src/mm/phys/kframe.rs:41:#[verus_verify]
+src/kernel/src/mm/phys/kframe.rs:64:#[verus_verify]
+src/kernel/src/mm/phys/kframe.rs:176:#[verus_verify]
+src/kernel/src/mm/phys/upool.rs:33:#[verus_verify...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== upool.rs Drop trait impl ==="; sed -n '230,275p' src/kernel/src/mm/phys/upool.rs; e
+
+[THINKING] I'm examining the Drop trait implementation in upool.rs around lines 233-260 to understand how trait impls are handled in this codebase, and then I'll compare it with the Drop implementation in kframe.rs.
+[RESULT ✓] bash: === upool.rs Drop trait impl ===
+/// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+///
+#[derive(Debug)]
+#[verus_verify]
+pub struct Upool {
+    /// Private field prevents external construction.
+    _private: (),
+}
+
+#[verus_verify]
+impl Upool {
+    ///
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+The View-bound question is decisive. Let me test it properly by marking the whole trait impl verified.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] Looking at how Verus verification works with trait implementations—when you put `#[verus_verify]` on a trait impl block like Drop, each method needs its own `#[verus_spec]` attribute, so the whole impl gets verified method by method. But for PageAligned's Address impl with 8 methods, putting `#[verus_verify]` on the impl block would require verifying all 8 of them at once, which is a different constraint than the single-method Drop case.
+
+For the other 7 methods in the Address impl, they'd get default specs (ensures true) and their bodies would need to verify—most of them just call through to the underlying T methods or simple operations like from_address, so they should be verifiable with those trivial specs.
+
+The real question is whether adding `#[verus_verify]` to the impl block will let Verus resolve the View bound for `self@` in into_raw_value's ensures clause. The View impl exists conditionally on T: View, but I'm not sure if Verus will automatically apply that bound or error on the missing constraint. I should test it directly.
+
+Actually, thinking through this more carefully — `self@` desugars to `View::view(&self)`, which rustc needs to resolve. Since PageAligned<T> only implements View when T: View, and the impl only has T: Address, rustc will reject it with E0599 before Verus even gets involved. So the View bound is a hard blocker regardless of `#[verus_verify]`.
+
+That means the only way forward is to use `assume_specification` in the cfg-gated spec.rs file where I can actually state the View bound, treating these methods as trusted contracts from a dependency — exactly like kframe does.
+
+But the task explicitly says these functions should be proven, not trusted. There's a real tension here between what the architecture allows and what the task requires. The blocker is genuinely architectural: the View impl is cfg-gated, the trait impl is whole-block, and the generics don't support the bound in the exec code. Rather than keep assuming make build breaks, I should actually test whether adding the View bound to the impl blocks causes a build failure or if vstd handles it gracefully in normal builds.
+
+Actually, let me think through this more carefully. The kernel does import vstd in normal builds (the use statements aren't gated), so vstd is a real dependency. But the View impls themselves are cfg-gated out, so adding a `T: View` bound to an exec impl block would make that bound unsatisfiable in normal builds and break the build.
+
+Given that constraint, I can't add View bounds to the exec impl blocks. So my decision is to use `assume_specification` in the spec file for these two in-scope functions, mirroring the kframe precedent, with the `T: Address + View<V=int>` bound available in the cfg-gated spec context. This gives the caller-facing guarantees they need.
+
+But wait — that creates a problem. The task explicitly says not to add external_body or assume_specification unless the function is in tcb-allowed, and these are the module's own functions that need to be proven, not trusted. So I can't use assume_specification either.
+
+This feels like a genuine architectural conflict — I can't add View bounds to exec (breaks the build), can't trust the functions with assume_specification (violates the rules), and can't prove them without the bounds. Let me test whether rustc actually rejects the `self@` syntax in this context by adding a verus_verify attribute to isolate the issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -A4

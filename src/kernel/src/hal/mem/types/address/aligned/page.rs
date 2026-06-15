@@ -53,6 +53,7 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
     #[verus_spec(result =>
         ensures
