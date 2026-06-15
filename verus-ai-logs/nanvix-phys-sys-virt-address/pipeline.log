@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: sys-virt-address
 ============================================================
+[2026-06-15 15:09:37] [PROVER] Running caller-analysis...
+[2026-06-15 15:09:37] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 15:11:43]   ↳ prover done in 2m06s (exit=0)
