@@ -331,3 +331,17 @@ The body calls `PhysicalAddress::from_raw_value` and `PageAligned::from_address`
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address VERUS_EXECUTABLE_DIR=~/toolchain/v
+[RESULT ✓] bash: error: could not find module hal::mem::types::address specified by --verify-module or --verify-only-module
+       available modules are:
+       - hal::mem::types::address::aligned::page
+       - hal::mem::types::address::aligned::pgtab
+       - hal::mem::types::address::frame
+       - hal::mem::type...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The correct module path is `hal::mem::types::address::frame`. Let me re-run with external_body still removed to capture the real error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address::frame VERUS_EXECUTABLE_DIR=~/tool
+
+[THINKING] I need to correct the module path to `hal::mem::types::address::frame` and run it again with the proper naming.
