@@ -261,3 +261,81 @@ Let me run the baseline verification for this module.
 But wait — `mm::is_aligned` is in alignment.rs, which isn't in scope for this task. The task only lists three functions to work with: `is_aligned`, `into_raw_value`, and `from_raw_value`. These are trait methods in mod.rs, but the actual proof obligations come from their implementations in virt.rs. I'm trying to figure out whether the other functions in virt.rs are also in scope or if I should focus only on those three trait implementations.
 
 Let me just run the verification to see what errors come up and get a clearer picture of what needs to be proven.
+[RESULT ✓] bash: - from
+    - try_from
+    - fmt
+    - to_ne_bytes
+    - from_ne_bytes
+    - from
+    - from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - defaul...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg(not(verus_keep_ghost))\|cfg_gate\|verus_keep_ghost" src/libs/sys/src/sy
+
+[THINKING] The status shows CHEATING_DETECTED with cfg_gate=1 being the culprit, while all other flags are off. The verification output indicates it used a cached result without recompiling, so I need to investigate what this cfg_gate flag represents and whether it's a pre-existing configuration issue.
+
+Looking at the actual verification results, exit 0 means the check passed, but the coverage is extremely low at 2/255 functions with contracts. The real issue is that the trait methods in mod.rs have `#[verus_spec]` ensures clauses, but I need to verify whether the implementations in virt.rs are actually being checked against those specifications. Since the output was cached, I should force a clean verification run to see the actual errors. First, let me search for cfg gates in the address module to understand what's triggering the cheating detection.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+=== full summary log ===
+11:  as...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg_gate\|cfg(not(verus" /home/ruize/verus-ai-exp/verus-ai/scripts/verify.s
+
+[THINKING] I'm trying to trace where cfg_gate=1 originates, likely from the conditional compilation blocks in alignment.rs that wrap the ghost specifications. Let me check the verification script to understand how cfg_gate detection works and whether this is something pre-existing in the codebase.
+
+Actually, the core question is whether verification passes and what needs to be proven. The output shows exit 0 with coverage of only 2/255 functions, which suggests most functions aren't being checked. The trait methods `from_raw_value`, `into_raw_value`, `is_aligned`, and `clone_address` have specs, and the inherent methods in virt.rs also have specs with a View implementation. But I need to verify whether the `impl Address for VirtualAddress` actually gets checked against the trait contracts. Let me force a recompile to see if verification is actually running on those specific implementations, and then examine the verify script's cheating detection logic to understand what cfg_gate means.
+[RESULT ✓] bash: 472:count_cfg_gates() {
+528:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+553:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+578:        echo "  Global: assume=$ASSUME_COUNT external_body=$EXTERNAL_BODY_COUNT admit=$ADMIT_...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '472,520p' /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+[RESULT ✓] bash: count_cfg_gates() {
+    local scan_dir="$1"
+    python3 -c "
+import re, sys
+from pathlib import Path
+
+src_dir = Path('$scan_dir')
+count = 0
+cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+
+for rs_file in sorted(src_dir.glob('**/*.rs')):
+    lines = rs_file.read_text().splitlines()
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg" src/libs/sys/src/sys/mm/address/virt.rs | grep -i "keep_ghost\|verus";
+
+[THINKING] The cfg_gate detection is identifying `#[cfg(verus_keep_ghost)]` attributes that target lines which aren't include/mod/use statements. Looking at the address module, the cfg gates on mod.rs and virt.rs are all pointing to include! directives, so they're being skipped as expected.
+
+But the summary shows cfg_gate=1, which means there's one somewhere else in the module directory that I'm not accounting for. The CHEATING_DETECTED status is also flagged, which is worth investigating. Let me re-examine the actual module-scoped output to see where this cfg_gate count is coming from.
