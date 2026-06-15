@@ -145,3 +145,53 @@ Turn 10
 ────────────────────────────────────────────────────────────
 Both entries registered (lines 285 and 301). Now confirm verification and build still pass.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | grep -iE "stat
+[RESULT ✓] bash: Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=24 admit=1 trusted=0 no_decreases=0 cfg_gate=6
+  status: CLEAN
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verify passes (exit 0, `assume=0`, CLEAN). Since this was a docs-only change, `make build` is unaffected, but I'll confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 ./z build 2>&1 | tail -4
+
+[THINKING] The verification checks out clean since only documentation changed, so now I'll run the build command as instructed to confirm everything compiles properly.
+[RESULT ✓] bash: SCCACHE not available or not configured.
+================================================================================
+
+[OK]    Build complete.
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Both pass. Now write the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/specification/dialogue/turn_001_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/specification/dialogue/turn_001_fixer.md with 3331 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Fixed. The reviewer's item 7 was a TCB-registration gap, not a code defect.
+
+**Change:** Added a new section `## Allowed assume_specification — hal::mem::types::address::frame library edge` to `verus-ai-logs/tcb-allowed.md`, registering both new boundaries by fully-qualified path:
+- `<PhysicalAddress as sys::mm::Address>::from_raw_value` — with its ensures, the `usize as *const u8` cast rationale (cited `verus-unsupported.md`), and the `r@`-vs-`spec_addr` cycle note.
+- `<PageAligned<T> as core::ops::Deref>::deref` — pure-projection ensures, precedent `page.spec.rs`.
+
+Contracts untouched (no weakening).
+
+**Verification:**
+- `grep` now shows both entries (lines 285, 301).
+- `make verify-kernel` → exit 0, `assume=0 external_body=24 admit=1`, **CLEAN**.
+- `./z build` → **Build complete**.
+
+Result: **FIXED**. Response written to `turn_001_fixer.md`.
+
+
+=== Session End ===
+Session: b3e74a41-6a46-4d50-9751-487c7615aaee
+Duration: 99.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-frame-address/specification/dialogue-fixer-t001-claude-20260615-165344.jsonl
