@@ -248,38 +248,33 @@ fn map_range(
     debug_assert!(end.is_aligned(PAGE_ALIGNMENT));
     debug_assert!(start < end);
 
-    // TODO: use batch mmap to map all pages in a single kernel transition.
     let start: usize = start.into_raw_value();
     let end: usize = end.into_raw_value();
-    for vaddr in (start..end).step_by(PAGE_SIZE) {
-        debug_assert!(vaddr != end);
 
-        // Attempt to map page.
-        let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
-        if let Err(error) = __kcall_mmap(pid, vaddr, 1, access) {
-            // Failed to map page, attempt to rollback.
+    // Compute the length of the range using checked arithmetic to avoid wraparound.
+    let len: usize = match end.checked_sub(start) {
+        Some(len) if len != 0 && len % PAGE_SIZE == 0 => len,
+        _ => {
+            ::syslog::warn!("map_range(): invalid range {:X?}..{:X?}", start, end);
 
-            ::syslog::warn!(
-                "map_range(): failed to map page at {:X?}, rolling back (error={:?})",
-                vaddr,
-                error
-            );
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid range"));
+        },
+    };
 
-            // Attempt to unmap pages.
-            if let Err(_error) = unmap_range(pid, VirtualAddress::new(start), vaddr) {
-                // Failed to unmap range, warn.
-                ::syslog::warn!(
-                    "map_range(): failed to unmap pages at {:X?}..{:X?} (error={:?})",
-                    start,
-                    vaddr,
-                    _error
-                );
-            }
+    // Compute the number of pages to map in a single kernel transition.
+    let npages: usize = len / PAGE_SIZE;
 
-            return Err(error);
-        }
+    // Attempt to map all pages at once.
+    // NOTE: pages allocated with __kcall_mmap() are always zeroed.
+    if let Err(error) = __kcall_mmap(pid, VirtualAddress::new(start), npages, access) {
+        ::syslog::warn!(
+            "map_range(): failed to map pages at {:X?}..{:X?} (error={:?})",
+            start,
+            end,
+            error
+        );
 
-        // NOTE: pages allocated with __kcall_mmap() are always zeroed.
+        return Err(error);
     }
 
     Ok(())
