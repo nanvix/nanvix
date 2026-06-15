@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[PIPELINE] NOTE: added cfg-gated include!(page.spec.rs, page.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[2026-06-15 10:29:04] [BRANCH] Base: verus-ai/phys-frame → Verus: verus-ai/hal-page-aligned
+[2026-06-15 10:29:04] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/body_removed_source.rs (6056 -> 5119 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: hal-page-aligned
+Source: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+Crate:  kernel
+Branch: verus-ai/hal-page-aligned (base: verus-ai/phys-frame)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: hal-page-aligned
+============================================================

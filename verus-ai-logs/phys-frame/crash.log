@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 3578, in main
+    success: bool = run_pipeline(
+                    ^^^^^^^^^^^^^
+  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 2977, in run_pipeline
+    dialogue_status: str = _run_dialogue(
+                           ^^^^^^^^^^^^^^
+  File "/home/ruize/verus-ai-exp/verus-ai/workflow.py", line 1835, in _run_dialogue
+    phase_checklist = PHASE_REVIEW_CONTEXT[phase]
+                      ~~~~~~~~~~~~~~~~~~~~^^^^^^^
+KeyError: 'final-review'
