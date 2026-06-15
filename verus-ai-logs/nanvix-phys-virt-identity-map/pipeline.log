@@ -227,3 +227,18 @@ Module: virt-identity-map
 [2026-06-15 13:14:23] Running final comprehensive review...
 [2026-06-15 13:14:23] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 13:22:01]   ↳ review done in 7m38s (exit=0)
+[2026-06-15 13:22:02] [FINAL REVIEW] Result: UNKNOWN (0/5)
+[2026-06-15 13:22:02] [FINAL REVIEW] Cheating report: external_body: 4 (3 on user fns)
+[2026-06-15 13:22:02] [FINAL REVIEW] ⚠ unapproved external_body fn: 3
+[2026-06-15 13:22:02] [FINAL REVIEW] ⚠ unapproved external_body type-spec: 1
+[2026-06-15 13:22:02] [FINAL REVIEW] Done (7m38s)
+
+============================================================
+PIPELINE FINISHED: virt-identity-map (some phases need work)
+  ✅ proving                   dialogue-RESOLVED        36m30s (3 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED        13m18s (1 dialogue turns)
+  ❌ final-review              UNKNOWN                   7m38s
+  ──────────────────────────────────────────────────────────
+  Total: 57m45s
+============================================================
+[2026-06-15 13:22:02] [USAGE] Summary: 15 calls, 0 tokens, 1h48m04s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/usage_summary.json
