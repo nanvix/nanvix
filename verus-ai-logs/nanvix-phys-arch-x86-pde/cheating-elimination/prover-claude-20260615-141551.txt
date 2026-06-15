@@ -597,3 +597,109 @@ Let me first test the minimal change: does `new` actually need the marker? Remov
 Turn 28
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -25
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Let me see the actual compilation error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "error" verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_14-22-59.log | 
+
+[THINKING] Removing just the markers didn't work, so I need to look at what the actual error is.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error[E0425]: cannot find function `new` in this scope
+26:error[E0425]: cannot find function `new` in this scope
+32:For more information about this error, try `rustc --explain E0425`.
+33:error: could not compile `arch` (lib) due to 2 previous errors
+<...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '18,32p' verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_14-22-59.log
+[RESULT ✓] bash: --- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pde.rs:96:12
+   |
+96 |     pub fn new(
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find func...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+The marker is required for `new` (an associated fn) but not for `&self` methods. The clean fix without a cfg-gate: put each `new` in its own `#[verus_verify]` impl block (the macro auto-adds the marker, and only `new` gets verified — not the unspec'd methods). Let me view current state to extract `new`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] The issue is that `#[verus_spec]` without the `is_impl_fn` marker treats `new` as a free function instead of an impl method, causing the macro to rewrite it in a way that breaks the recursive reference. The marker is what signals to the macro that this is an associated function.
+
+I'm wondering why `is_present` worked without the marker — it also uses the `result =>` syntax, but it has `&self` while `new` doesn't. The macro might handle methods with self receivers differently than associated functions, or the generated code might be calling `Self::new` assuming impl context when it shouldn't. Either way, the marker is necessary for `new`.
+
+The two options are adding the marker manually with a cfg attribute, or using `#[verus_verify]` on the impl block to auto-add it to all spec'd methods — though that also triggers verification of all methods in the block, which caused 16 errors earlier.
+
+The better approach is a separate `#[verus_verify]` impl block containing only the spec'd methods, so the marker gets added to `new` and only those methods get verified, leaving the unspec'd methods in their own plain block. I'm checking whether `is_present` and `frame_address` actually verify in the plain impl block in the baseline commit — the baseline showed "41 verified, 0 errors", so yes, they do verify with just `#[verus_spec]` and no marker. The issue is that associated functions like `new` need the marker to be handled correctly, but `&self` methods don't. So the minimal fix is to wrap each `new` method in its own separate `#[verus_verify]` impl block, leaving everything else untouched. Let me extract the exact `new` methods and set up the clean edits.
+[RESULT ✓] view: 60. }
+61. 
+62. impl PageDirectoryEntryFlags {
+63.     ///
+64.     /// # Description
+65.     ///
+66.     /// Constructs a [`PageDirectoryEntryFlags`] with the given flags.
+67.     ///
+68.     /// # Parameters
+69.     ///
+70.     /// - `present`: The present flag.
+71.     /// - `read_write`: The read/...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Moving `new` is invasive. Let me check if `#[verus_verify]` can be applied directly to the `new` method (the base had per-method `#[verus_verify]`). Let me examine the macro entry point.
+[TOOL] bash: grep -rn "fn verus_verify\|pub fn verus_verify\|verus_verify_impl\|VerusVerifyVisitor\|visit_item_impl_mut\|visit_item_f
+
+[THINKING] I'm considering whether I can apply `#[verus_verify]` directly to just the `new` method instead of moving it to a separate impl block, since that would be less disruptive to the code structure. Looking back at the git history, it seems the original version had the attribute on individual methods too, so this approach might actually align with how it was done before.
+[RESULT ✓] bash: 185:    let mut visitor = VerusVerifyVisitor { verify_const: true };
+312:struct VerusVerifyVisitor {
+320:impl VerusVerifyVisitor {
+330:impl VisitMut for VerusVerifyVisitor {
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '150,200p' /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src/attr_rewrite.rs
+[RESULT ✓] bash: let ident = if let syn::Meta::List(list) = arg {
+                    syn::parse2(list.tokens.clone())
+                        .expect("unsupported tokens in verus_verify(dual_spec(...))")
+                } else {
+                    syn::Ident::new(
+                        &format!("{DUAL_SPEC_PREFI...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Let me empirically test the minimal fix: add `#[verus_verify]` directly on each `new` method (the base used per-method `#[verus_verify]`).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm realizing there's a distinction between how the macro handles free functions versus methods inside impl blocks—a `#[verus_verify]` attribute on a standalone function gets parsed as the item the macro is attached to, but you can't directly attach it to a method inside an impl block the same way.
+
+Rather than getting lost in the macro dispatch logic, I should just test empirically: add `#[verus_verify]` directly above the `#[verus_spec]` on each `new` method, matching how the base code had it on `is_present`. If that adds the marker and lets `new` verify independently, that's the minimal fix I need.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -25

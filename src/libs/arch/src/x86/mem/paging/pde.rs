@@ -80,6 +80,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
+    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_flags_new(
@@ -303,6 +304,7 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_new(flags@, frame@),
