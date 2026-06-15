@@ -42,6 +42,17 @@
       "review_file": null,
       "duration_s": 566.0,
       "review_rounds": 2
+    },
+    "proving": {
+      "phase": "proving",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 229.3,
+      "review_rounds": 1
     }
   },
   "prover_session_id": "bfd2985d-aac3-4e33-a635-db2f23f6223c",
@@ -51,7 +62,8 @@
   "phase_boundary_shas": {
     "caller-analysis": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
     "view-design": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
-    "specification": "32d61724c06b162ac3a543f83d09f8ca5cf4a4d2"
+    "specification": "32d61724c06b162ac3a543f83d09f8ca5cf4a4d2",
+    "proving": "46a6823796b74743a4cc2ba6f1a4e4e173f59843"
   },
   "phase_start_shas": {
     "caller-analysis": "5b0379853300830015c683dc213bc0dab81de185",
@@ -100,6 +112,12 @@
       "phase": "proving",
       "event": "start",
       "sha": "25275ea30bc8770592c2421a737deadde3ce0440",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "end",
+      "sha": "46a6823796b74743a4cc2ba6f1a4e4e173f59843",
       "rollback_iter": 0
     }
   ],
