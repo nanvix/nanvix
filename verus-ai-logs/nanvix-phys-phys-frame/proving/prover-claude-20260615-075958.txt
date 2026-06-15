@@ -2907,3 +2907,79 @@ Actually, the real issue might be that `by (compute)` can't handle `usize::MAX` 
 Turn 181
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:181:20
+verification results:: 71 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  1 errors
+  verification: 71 verified, 1 errors (exit 101)
+  status: V...
+
+────────────────────────────────────────────────────────────
+Turn 182
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 178.             assert(mem::MAX_ADDRESS as int == usize::MAX as int);
+179.             assert(mem::FRAME_SIZE as int == 4096);
+180.             assert(FrameNumber::spec_max() == (usize::MAX as int) / 4096 - 1);
+181.             assert((u32::MAX as int) <= (usize::MAX as int) / 4096 - 1) by (compute...
+
+────────────────────────────────────────────────────────────
+Turn 183
+────────────────────────────────────────────────────────────
+The issue is `usize::MAX` is symbolic. Let me check if the build fixes the pointer width:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "arch-word-bits\|word-bits\|word_bits\|pointer.width\|64" Makefile* 
+
+[THINKING] The issue is that `usize::MAX` in Verus is a symbolic constant rather than a concrete value since the architecture width is unspecified, so casting it to `int` fails the compute check. I need to find a way to work with a concrete bound instead of relying on the abstract maximum value.
+
+Looking at the invariants, I have `idx < num_bits` and from `internal_inv`, `idx * 4096 <= usize::MAX`. Since `spec_max = usize::MAX / 4096 - 1`, I can show that `idx <= spec_max + 1`, which gives me the bound I need without explicitly computing `usize::MAX as int`.
+
+The real constraint is that `num_bits < u32::MAX`, so `idx < u32::MAX`, which means I need `usize::MAX >= (u32::MAX - 1) * 4096` — roughly 2^44. This only holds if Verus knows `usize` is 64-bit, which depends on whether the build fixes the architecture. Let me check if there's a configuration flag or if I can use `usize::BITS` to establish this, or look for existing assumptions in the project's setup.
+[RESULT ✓] bash: 346:# dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
+347:# relocation model produces R_X86_64_32 relocations incompatible with PIE.
+348:ifneq ($(TARGET),x86_64)
+577:	@echo "  TARGET          x86, x86_64"
+1011:ifeq ($(TARGET),x86_64)
+1012:NANVIX_TEST_CONFIG := test/test-standalon...
+
+────────────────────────────────────────────────────────────
+Turn 184
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "bits\|word\|RUSTFLAGS\|target_pointer\|cfg" scripts/verify.sh | gre
+[RESULT ✓] bash: 327:#                    verus-side keyword (`verifier` or `verus_verify`)
+----
+<shellId: 107 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 185
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "global\b\|size_of::<usize>\|usize_bits\|MAX_ADDRESS" src/kernel/src
+
+[THINKING] I should test whether Verus actually treats usize as 64-bit in this project, maybe by adding a temporary assertion to check if usize::MAX equals 2^64-1. But first, let me think about whether I can combine the internal_inv bound with the u32 bound differently, or search for a `global` directive that might pin usize to 64 bits.
+[RESULT ✓] bash: src/kernel/src/event/kcall/resume.rs:33:/// This function is unsafe because it operates on global variables.
+src/kernel/src/event/manager.rs:390:    /// This function is unsafe because it operates on global variables.
+src/kernel/src/event/manager.rs:502:    /// This function is unsafe because it ope...
+
+────────────────────────────────────────────────────────────
+Turn 186
+────────────────────────────────────────────────────────────
+Let me empirically test what Verus knows about `usize::MAX`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm reconsidering whether to work around `usize::MAX` directly or look for a tighter bound through `FrameNumber::spec_max()` and its type invariants. The real question is whether `into_frame_number`'s precondition was actually the constraint, or if using `from_raw_value` sidesteps that issue entirely.
+
+Building a `FrameAddress` from a raw address via `from_raw_value(idx * FRAME_SIZE)` would avoid the `spec_max` requirement, but the function can still fail on physical address validation or page alignment checks, leaving me with the same rollback problem if an error occurs. So that doesn't help unless I can prove the error path is impossible.
+
+The core issue is that `from_raw_value(idx)` needs `idx <= spec_max`, and I need to establish what `usize::MAX` actually is in Verus. By default, Verus doesn't fix `usize` to a specific width—it treats it as either 32 or 64 bits depending on the target, which means `usize::MAX` is symbolic with the constraint that it's at least 2^32 - 1. If I can work with that lower bound, I might be able to make progress.
+
+But here's the real constraint: the `internal_inv` requires that for all `i < num_bits`, `frame_addr_of(i) = i * 4096 <= usize::MAX`. This means `idx <= usize::MAX / 4096`, and `spec_max = usize::MAX / 4096 - 1`, so I'm off by one again—`idx` could equal `usize::MAX / 4096` but needs to be strictly less than or equal to `spec_max`.
+
+On 32-bit systems, `usize::MAX = 2^32 - 1`, so `spec_max + 1 = (2^32 - 1) / 4096 ≈ 1048575`, which is well below `u32::MAX`. The `u32::MAX` bound doesn't actually constrain things on 32-bit; the frame address bound is the real limiting factor. So on 32-bit, `idx` could theoretically reach `spec_max + 1`, which would cause `from_raw_value` to return `None`—a genuine edge case, though the kernel target is 64-bit where this isn't practically reachable.
+
+The core issue is the "reserved top-of-memory frame": if the allocator never books that frame (doesn't set its bit), then `alloc` could return that top index, triggering the bound failure. The workaround of using division for address-to-index conversions avoids `into_frame_number`, but `alloc` still needs `from_raw_value` for the index-to-address direction. Whether this is actually reachable depends on runtime behavior—whether the allocator reserves that frame—which the invariant doesn't capture. Let me verify whether Verus is configured for 64-bit here by testing with an assertion.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 187
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
