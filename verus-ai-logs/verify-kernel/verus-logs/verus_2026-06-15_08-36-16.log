@@ -1,0 +1,23 @@
+Timestamp: 2026-06-15_08-36-16
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 0
+11 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=16
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module hal::mem::types::address::aligned::page
+
+verification results:: 11 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.85s

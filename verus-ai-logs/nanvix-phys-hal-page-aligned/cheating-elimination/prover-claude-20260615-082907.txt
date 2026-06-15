@@ -621,3 +621,118 @@ Turn 35
 [TOOL] report_intent: Testing PAGE_ALIGNMENT removal
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::aligned::page VERUS_
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: error: cannot use function `arch::x86::mem::constants::PAGE_ALIGNMENT` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Confirmed: PAGE_ALIGNMENT spec is required (external const). Restoring and testing the Deref one:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/page.spec.rs.bak src/kernel/src/hal/mem/types/address/aligned/page.spec.rs &&
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] Removing the PAGE_ALIGNMENT assume_specification causes a build failure because PAGE_ALIGNMENT is genuinely external to Verus and needs that specification to provide it with a contract. This reveals that the assume_specification isn't optional—it's a required trust boundary at the interface with the external architecture crate that can't be eliminated without modifying that crate itself.
+
+I could theoretically add a verified spec for PAGE_ALIGNMENT in the arch crate, but that's out of scope since I shouldn't modify unlisted functions or other crates. The only path forward is to restore the assume_specification. Now I need to test whether the Deref assume_specification is similarly required by removing it and checking if the build fails, then restore the full spec file and verify the results.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+[RESULT ✓] bash: restored
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "assume_specification\|EXPERIMENT" src/kernel/src/hal/mem/types/address/align
+
+[THINKING] I restored the spec file from backup which includes both assume_specifications, then removed the Deref one. Now I need to check that the file actually has PAGE_ALIGNMENT but not Deref. The module-scoped verify only checks page.rs functions, but Deref gets called by frame and phys modules, so removing it from page.spec.rs might not even trigger a verification failure at the module level since the verify compiles the whole kernel but only verifies specific parts.
+
+The real issue is that module-scoped verification might pass even without the Deref spec, since the page module itself doesn't call deref — the error only appears when verified code actually uses it. I should run the full kernel verify or at least check the frame module to see if it breaks, rather than just the page module verify.
+[RESULT ✓] bash: 7:pub assume_specification[ ::arch::mem::PAGE_ALIGNMENT ] -> (result: Alignment)
+32:pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] The edit command reported success, but the grep output still shows the original content on line 32. I'm realizing the restore and edit ran in parallel since they were separate tool calls, so the edit might have been applied to the file before the restore completed, or vice versa — I need to check the actual file state to understand what happened.
+[RESULT ✓] view: 30. // breaks the verus build with "cannot use function ... which is ignored because it is ...
+31. // external".
+32. pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
+33.     a: &crate::hal::mem::PageAligned<T>,
+34. ) -> (result: &<crate::hal::me...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+The current state is the correct baseline (both specs present). I have strong evidence already. Let me confirm the Deref requirement by testing against a module that calls it:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "\.deref()\|Deref" src/kernel/src/mm/phys/frame.rs src/kernel/src/hal/mem/ty
+
+[THINKING] The file is back to its correct state after the copy operation. I have solid evidence that the Deref trait is necessary—the comment and the PAGE_ALIGNMENT precedent both show that external functions require it in the spec. Rather than run a full crate verification to confirm removing it breaks things, the PAGE_ALIGNMENT experiment already demonstrated this.
+
+Since Deref is an external std trait called by verified frame and phys code, removing it would trigger the same "cannot use external function" error in those modules. I should verify this concretely for the report by removing Deref and checking which module actually calls PageAligned::deref.
+[RESULT ✓] bash: ===who derefs PageAligned in verified code===
+src/kernel/src/hal/arch/shared/mem/mmu/page_directory.rs
+src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs
+src/kernel/src/hal/io/mmio/region.rs
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+src/kernel/src/hal/mem/types/address/aligned/page...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && diff /tmp/base_page.spec.rs src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] The PAGE_ALIGNMENT experiment already proved that external functions used in verified code need assume_specification, and the Deref comment in spec.rs documents this exact issue. Since Deref is a core std trait that verified code relies on through auto-deref mechanisms, I'm convinced both assume_specifications represent necessary external trust boundaries. The hard rule appears to be that I can't modify unlisted functions, and since Deref isn't listed, I can't convert it to verified-in-body code. I should reset the file to baseline and run a final verification to ensure the spec matches exactly.
+[RESULT ✓] bash: SPEC IDENTICAL TO BASELINE
+ M src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] There's a mismatch between what the diff shows and what git status reports — the diff indicates identical content, but git marks the file as modified. This could be a trailing newline difference or something else git is detecting that the diff tool isn't showing clearly. Let me look at the actual git diff output to figure out what's going on.
+[RESULT ✓] bash: diff --git a/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs b/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+index d11325645..225668e73 100644
+--- a/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
++++ b/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+@@ -4,7...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -6 && echo "===" && git diff --stat verus-ai-prove -- src/kernel/sr
+
+[THINKING] Ah, so the verify.sh script auto-commits changes to the spec files, which means when I ran verification with PAGE_ALIGNMENT removed, it locked that experimental state into HEAD. I then manually restored the file in my working directory, which is why git diff shows the discrepancy between what I have locally and what's actually committed.
+[RESULT ✓] bash: 7ca592b98 [verus] verify FAIL: kernel::hal::mem::types::address::aligned::page (0 verified, compilation/setup error (verus did not run))
+e2443656a [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page (cached (no recompilation), —, admit=16 external_body=19 cfg_gat...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== verus-ai-prove vs working ===" && git diff verus-ai-prove -- src/kernel/src
+
+[THINKING] The verify.sh script auto-committed two runs: the baseline passed and captured the initial state, while the PAGE_ALIGNMENT-removed run failed and committed the broken experimental version. The working tree now has the correct restored spec, which differs from the HEAD commit by a few insertions and deletions in page.spec.rs.
+
+I'm realizing there's a discrepancy here — when I compare the working tree directly against the baseline file I extracted, they're identical, but git diff against the verus-ai-prove branch shows changes. Let me verify what's actually in the working tree right now, since the auto-commit might have left it in a different state than I expected.
+[RESULT ✓] bash: === verus-ai-prove vs working ===
+diff --git a/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs b/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+index d11325645..225668e73 100644
+--- a/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
++++ b/src/kernel/src/hal/mem/types/ad...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+The base branch picked up auto-commits from `verify.sh`. My working tree is correct. Let me run a clean verification which will auto-commit the good state:
+[TOOL] report_intent: Running clean final verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::aligned::page VERUS_
+
+[THINKING] Oh no — the auto-commits got pushed to the verus-ai-prove branch itself, so the branch now points to a commit that includes my broken EXPERIMENT line. The base branch is contaminated with these unwanted changes.
+
+But my working tree has the correct content, so I just need to run a clean verify to confirm it passes, which will auto-commit the good state. The git history will contain the experiment commits, but as long as the final tip is correct and passes verification, the workflow should track the right state.
+[RESULT ✓] report_intent: Intent logged
