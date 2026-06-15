@@ -27,31 +27,6 @@ verus! {
 use crate::hal::mem::spec_page_size;
 use crate::hal::mem::spec_addr;
 
-// Clone is value-preserving for the `Address` family: every address type is a
-// newtype over a plain integer, so cloning copies the abstract address. This
-// fact is what `MemoryRegion::start` (`self.start.clone()`) needs to discharge
-// `spec_addr(&result) == self@.start`. It cannot be stated with
-// `assume_specification` because the cloned receiver is a bare type parameter
-// (`<T as Clone>::clone` — Verus rejects generic trait-method specs). It is
-// therefore attached to the `Address` trait via `external_trait_specification`,
-// the Verus-sanctioned mechanism for adding a spec to a trait method that all
-// implementers honor (declared here in the kernel crate so it can reference the
-// crate-local `spec_addr`). `Address: Clone` (supertrait), so `clone` is in the
-// trait's method surface. External impls are trusted; verified impls must prove
-// it — discharged when the `Address` family is verified.
-#[verifier::external_trait_specification]
-#[verifier::external_trait_extension(CloneAddrSpec via CloneAddrSpecImpl)]
-pub trait ExCloneAddr: Sized {
-    type ExternalTraitSpecificationFor: Clone;
-
-    spec fn clone_view(&self) -> int;
-
-    fn clone(&self) -> (result: Self)
-        ensures
-            result.clone_view() == self.clone_view(),
-    ;
-}
-
 // Abstract value of a memory region: the geometry `(start, size)` (in bytes,
 // as mathematical integers) plus the three metadata tags callers observe.
 pub struct MemoryRegionView {

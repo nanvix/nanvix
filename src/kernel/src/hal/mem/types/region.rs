@@ -212,11 +212,13 @@ impl<T: Address> MemoryRegion<T> {
             // Faithful read: the returned address has the same abstract address
             // as the stored `start` (`spec_addr(&result) == self@.start`). `T` is
             // a bare `Address` (no `View` bound), so the value is projected
-            // through the universal `spec_addr`, not `result@`.
+            // through the universal `spec_addr`, not `result@`. `Address: Copy`,
+            // so the field read is identity (`result == self.start`), which
+            // discharges the postcondition by congruence of `spec_addr`.
             crate::hal::mem::spec_addr(&result) == self@.start,
     )]
     pub fn start(&self) -> T {
-        self.start.clone()
+        self.start
     }
 
     /// Returns the size of the target memory region.
