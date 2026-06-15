@@ -220,3 +220,8 @@ Module: phys-frame
 [2026-06-15 11:13:30] [CHEATING] ❌ Hard cheating detected (attempt 3), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating_report_3.md
 [2026-06-15 11:13:30] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 11:21:03]   ↳ cheating-fix done in 7m33s (exit=0)
+[2026-06-15 11:21:03] [CHEATING] external_body: 16 (15 on user fns), admit: 4
+[2026-06-15 11:21:03] ⚠️ [CHEATING] Still has hard cheating after 3 retries — continuing with warning.
+[2026-06-15 11:21:03] ❌ cheating-elimination: FAIL-cheating (0/0)
+[2026-06-15 11:21:03] [GATE] Running build: make build
+[2026-06-15 11:21:04] [GATE] Running verify: make verify
