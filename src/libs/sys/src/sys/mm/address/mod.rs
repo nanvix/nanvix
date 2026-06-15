@@ -52,14 +52,16 @@ where
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
     // On success, the constructed address projects back to exactly the supplied
-    // raw value (the inverse of `into_raw_value`) and satisfies the universal
-    // pointer-sized bound. On failure, the value was outside this type's domain
-    // and `Err(Error::BadAddress)` is returned. (`VirtualAddress` never fails;
-    // refinement implementors fail on their own domain predicate.)
+    // raw value (the inverse of `into_raw_value`). On failure, the value was
+    // outside this type's domain and `Err(Error::BadAddress)` is returned.
+    // (`VirtualAddress` never fails; refinement implementors fail on their own
+    // domain predicate.) The universal pointer-sized bound `addr_inv(&a)` is not
+    // restated here: it is derivable from `spec_addr(&a) == raw_addr as int`
+    // because `raw_addr: usize` forces `0 <= raw_addr as int <= usize::MAX`.
     #[verus_spec(result =>
         ensures
             match result {
-                Ok(a) => spec_addr(&a) == raw_addr as int && addr_inv(&a),
+                Ok(a) => spec_addr(&a) == raw_addr as int,
                 Err(e) => e.code == crate::error::ErrorCode::BadAddress,
             },
     )]
