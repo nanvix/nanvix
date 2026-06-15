@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
-use ::sys::error::ErrorCode;
 use ::sysapi::ffi::{
     c_char,
     c_int,
@@ -65,10 +64,12 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn execv(path: *const c_char, argv: *const *const c_char) -> c_int {
-    // TODO:https://github.com/nanvix/nanvix/issues/588
-    ::syslog::debug!("execv(): not implemented");
+    // SAFETY: the caller upholds the documented C-string invariants. `execv_from_c` returns only
+    // on failure; on success the process image is replaced and control does not return here.
+    let error: ::sys::error::Error =
+        unsafe { crate::unistd::execv_from_c(path, argv, ::core::ptr::null()) };
     unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
+        *__errno_location() = error.code.get();
     }
     -1
 }
