@@ -339,3 +339,179 @@ Turn 11
 [THINKING] The cfg_gate detection is identifying `#[cfg(verus_keep_ghost)]` attributes that target lines which aren't include/mod/use statements. Looking at the address module, the cfg gates on mod.rs and virt.rs are all pointing to include! directives, so they're being skipped as expected.
 
 But the summary shows cfg_gate=1, which means there's one somewhere else in the module directory that I'm not accounting for. The CHEATING_DETECTED status is also flagged, which is worth investigating. Let me re-examine the actual module-scoped output to see where this cfg_gate count is coming from.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+=== run again, capture module section ===
+/home/ruize/nanvix-phy-specs/scripts/verify.sh --crate sys --module mm::address --log-dir verus-ai-logs/verify-sys
+=== Verus Verification (cargo mode) ===
+  Module    : mm::address
+=== Cheating Pattern C...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt 2>/dev/null | head -40
+[RESULT ✓] bash: 
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tmp=$(mktemp -d) && cp src/libs/sys/src/sys/mm/address.rs "$tmp/" 2>/dev/null; cp -r 
+
+[THINKING] The cheating-detail.txt file isn't giving me what I need, so I'm going to look at the script itself to figure out what the module-scoped cfg_gate count represents. The scan copies mod.rs and the address directory, so I'll manually reproduce that count using Python to verify.
+[RESULT ✓] bash: mod.proof.rs
+mod.rs
+mod.spec.rs
+virt.proof.rs
+virt.rs
+virt.spec.rs
+=== run detection ===
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '540,600p' /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+
+[THINKING] When I copy the address directory into a flat tmp directory, the include! macros still resolve by their module names like mod.spec.rs, but the detection found nothing — so the cfg_gate=1 must be coming from address.rs itself. But wait, that file doesn't exist either. The module path is mm::address with MOD_CHEAT_PATH pointing to mm/address, which means it's trying to copy $CRATE_SRC_DIR/mm/address.rs, which also doesn't exist.
+
+I'm getting 0 cfg gates in my reproduction while the script reports 1, and there's a discrepancy I need to resolve. The script's CRATE_SRC_DIR might point somewhere different, or maybe when copying with cp -r, the parent address.rs is also being included somehow. Looking at the verify.sh output, there are two cfg_gate metrics — the module-scoped MOD_CFG_GATE and the global CFG_GATE_COUNT — and I need to figure out which one the summary line is reporting.
+
+Actually, I'm overthinking the cfg_gate issue. The baseline already had cfg_gate=1 before I made any changes, and my job is just to prove the three functions work without increasing the cheating count. As long as verification passes and I don't make things worse, the pre-existing cfg_gate=1 is acceptable.
+[RESULT ✓] bash: echo "  ⚠️  Cheating detection unavailable (tree-sitter required)."
+    echo "     Set VERUS_AI_DIR to the verus-ai tool directory."
+    ASSUME_COUNT=0; EXTERNAL_BODY_COUNT=0; ADMIT_COUNT=0; TRUSTED_COUNT=0; NO_DECREASES_COUNT=0
+    CFG_GATE_COUNT=0
+fi
+
+CHEATING_FOUND=false
+
+if [[ "$CHEATING_AVAILAB...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me check the verification plan and the actual proof obligations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/ 2>/dev/null; echo "=== plan ==="; test -f verus-ai-logs/verificatio
+
+[THINKING] I'm noticing the output format is confusing me—the "cheating:" line with the pattern counts looks like it's coming from the final summary section rather than the module-specific output I was expecting. Let me trace through the actual captured output more carefully to see where this is appearing.
+
+Looking at the structure, it seems like MODULE_CHEATING_DIR might be empty, which would cause the script to fall through to the global cheating check instead of the module-specific branch. That would explain why I'm seeing the global cfg_gate=1 count rather than a module-specific message. The module path resolution for mm/address might be failing because the directory structure doesn't match where the script is looking.
+
+The key insight is that this cfg_gate=1 appears to be pre-existing baseline noise in the sys crate, unrelated to my actual task. The verification itself passed with exit 0, so the real question is whether the trait method implementations in virt.rs are actually being verified against the specs. I'm realizing that the impl block for Address on VirtualAddress doesn't have a `#[verus_verify]` attribute, which might mean Verus is treating it as external and unverified rather than checking it against the trait's spec contracts.
+
+Looking at the code structure, the inherent impl block for VirtualAddress has `#[verus_verify]`, but the trait impl block doesn't. This explains the low coverage and why verification passes trivially. To actually verify the three target functions—is_aligned, into_raw_value, from_raw_value—I'd need to add verification attributes to the trait impl. But there's a dependency issue: proving is_aligned requires mm::is_aligned to have a spec, and alignment.rs isn't in my scope. I need to carefully re-read what the task is actually asking me to prove.
+[RESULT ✓] bash: arch-frame-number
+arch-paging-mod
+arch-paging-table
+arch-x86-pde
+arch-x86-pte
+bump-allocator
+hal-frame-address
+hal-memory-region
+hal-page-aligned
+hal-phys-address
+hal-platform-microvm
+nanvix-phys-arch-frame-number
+nanvix-phys-arch-paging-mod
+nanvix-phys-arch-paging-table
+nanvix-phys-arch-x86-pde
+nan...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/nanv
+[RESULT ✓] bash: No matching modules found.
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -m json.tool verus-ai-logs/nanvix-phys-sys-address-mod/verification-plan.json
+[RESULT ✓] bash: {
+    "target": "src/kernel/src/mm/phys/frame.rs",
+    "entries": [
+        "src/kernel/src/mm/phys/frame.rs:Inner::alloc",
+        "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
+        "src/kernel/src/mm/phys/frame.rs:Inner::free",
+        "src/kernel/src/mm/phys/frame.rs:Inner::share"...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -R verus-ai-logs/nanvix-phys-sys-address-mod/proving/ verus-ai-logs/nanvix-phys-sy
+
+[THINKING] I need to check the proving directory for this specific module to see what approach was intended.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-sys-address-mod/proving/:
+prover-claude-20260615-113944.jsonl
+prover-claude-20260615-113944.txt
+
+verus-ai-logs/nanvix-phys-sys-address-mod/specification/:
+bugs.md
+dialogue
+dialogue-reviewer-t001-claude-20260614-075350.jsonl
+dialogue-reviewer-t001-claude-20260614-075350.txt
+...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "fn is_aligned\|fn into_raw_value\|fn from_raw_value\|admit\|no_method_body\|
+
+[THINKING] I need to check which functions in body_removed_source.rs have had their implementations stripped out, since those are the ones I'll need to prove, and then review the spec dialogue to understand what the intended behavior should be.
+[RESULT ✓] bash: 61:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
+67:    fn into_raw_value(self) -> usize;
+140:    fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
+=== bugs.md (spec phase) ===
+# Bug Awareness — `sys::mm::address` (`Address` trait), specification phase
+
+No fundamentally...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -inE "verification results|errors|verified|address|aligned" verus-ai-logs/verify
+
+[THINKING] I'm realizing that the trait method signatures in mod.rs don't have bodies to begin with, so removing bodies from them doesn't actually change anything—they're just declarations. The body_removed_source version is meant for the prover to fill in implementations, but these trait methods have nothing to fill since they're already abstract.
+
+The actual implementations live in a separate virt.rs module, so for this particular module, there's nothing concrete to prove. The verification task might already be complete since there are no admit() or assume() calls remaining, but the cfg_gate=1 flag is triggering a CHEATING_DETECTED warning that I need to address. I need to verify that the Verus module verification actually ran successfully and check the logs to confirm the trait spec and implementation functions were verified without errors.
+[RESULT ✓] bash: 5:Module: mm::address
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,40p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_11-41-26.log
+[RESULT ✓] bash: Timestamp: 2026-06-15_11-41-26
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: mm::address
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Finished `dev` profile [optimized + debuginf...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Verification was cached. Let me force a fresh run to confirm real results.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs src/libs/sys/src/sys/mm/address/virt.rs 
+
+[THINKING] The verification output showed cached results, so I need to force a fresh run by recompiling. Let me touch the source files to invalidate the cache and re-run the verification to see the actual unverified functions.
+
+Actually, I'm realizing the core question is whether trait impl methods in virt.rs are being verified against the trait spec — the `impl Address for VirtualAddress` block doesn't have `#[verus_verify]` marking. In Verus, trait specs are part of the trait definition, and impls should conform to those specs, but I'm not entirely sure if the impl methods need explicit verification attributes or if they inherit the requirement. Let me step back though — my actual task is just about mod.rs and its three trait methods, and since those are trait declarations with no bodies, there's nothing to actually prove. The verification should pass trivially since trait specs just establish contracts. The real issue blocking clean results is the global cfg_gate setting, which is outside my module's scope anyway.
+
+To be confident the module actually verifies cleanly, I should force a fresh verification run rather than relying on cached results. Let me touch the files and clear any caching to trigger a real recompilation.
