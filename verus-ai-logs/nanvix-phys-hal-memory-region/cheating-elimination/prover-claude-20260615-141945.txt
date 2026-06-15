@@ -282,3 +282,24 @@ Let me verify this is actually necessary by testing whether reverting to `.clone
 Turn 9
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|fail|v
+[RESULT ✓] bash: error: postcondition not satisfied
+218 |             crate::hal::mem::spec_addr(&result) == self@.start,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+221 |         self.start.clone()
+verification results:: 4 verified, 1 errors (partial verification w...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Confirmed — `.clone()` fails the postcondition (no Verus spec for `Clone::clone` preserving `spec_addr` on generic `T`). The copy is required and semantics-preserving. Restoring the verified version.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp /tmp/region.rs.bak src/kernel/src/hal/mem/types/region.rs && grep -n "self.start$\|self.
+
+[THINKING] The issue is that `.clone()` doesn't preserve the `spec_addr` postcondition for generic types in Verus, so I need to use the Copy-based approach with `self.start` instead, which maintains the required semantics.
+[RESULT ✓] bash: 221:        self.start
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now run the full kernel verification and full crate verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel 2>&1 | tail -15
