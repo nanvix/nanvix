@@ -669,3 +669,51 @@ Turn 37
 Turn 38
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -30
+[RESULT ✓] bash: - cache_enabled
+    - new
+    - name
+    - typ
+    - perm
+    - cache_policy
+    - set_cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - new
+    - new_mmio
+    - from_memory_region
+    - name
+    - typ
+    - perm
+    - cache_policy
+    - eq
+    - partial_cmp
+    - cmp
+    - fmt
+    - from_virt...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+`status: CLEAN`, `admit=0`, 0 errors. The fix works. Let me confirm no `region.rs` admit line, then run the full build and `make verify`:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== region admit check (should be empty) ==="; grep -nE "region\.(rs|spec\.rs|proof\.rs
+
+[THINKING] The fix is working perfectly—no admit issues on the region module, all 5 verifications passed with zero errors. Now I need to double-check that there's no region.rs admit in the cheating-detail.txt file, then run the build and full verification suite.
+[RESULT ✓] bash: === region admit check (should be empty) ===
+NONE (good)
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 ./z build -- all 2>&1 | tail -20
+[RESULT ✓] bash: RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "profile-time standalone microvm" -p nanvix-bench
+   Compiling hostfsd v0.16.17 (/home/ruize/nanvix-phy/src/daemons/hostfsd)
+   Compiling uservm v0.16.17 (/home/ruize/nanvix-phy/src/uservm)
+   Compiling nanvix-s...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Build passes. Now the full `make verify` to check for cross-module regressions:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 make verify 2>&1 | tail -25
