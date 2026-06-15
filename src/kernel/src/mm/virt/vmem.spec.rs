@@ -24,6 +24,11 @@ verus! {
 #[verifier::external_body]
 pub struct ExVirtualAddress(VirtualAddress);
 
+#[verifier::external_trait_specification]
+pub trait ExAddress: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord {
+    type ExternalTraitSpecificationFor: Address;
+}
+
 #[verifier::reject_recursive_types(T)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -124,6 +129,26 @@ impl AddrNat for PageAligned<VirtualAddress> {
     uninterp spec fn addr_nat(&self) -> nat;
 }
 
+impl AddrNat for PhysicalAddress {
+    uninterp spec fn addr_nat(&self) -> nat;
+}
+
+impl AddrNat for FrameAddress {
+    uninterp spec fn addr_nat(&self) -> nat;
+}
+
+impl AddrNat for UserFrame {
+    uninterp spec fn addr_nat(&self) -> nat;
+}
+
+impl AddrNat for KernelPage {
+    uninterp spec fn addr_nat(&self) -> nat;
+}
+
+impl AddrNat for PageDirectory<PageDirectoryStorage> {
+    uninterp spec fn addr_nat(&self) -> nat;
+}
+
 /// Projection of the concrete permission encoding to the abstract triple.
 pub trait PermView {
     spec fn perms_view(&self) -> PagePerms;
@@ -140,6 +165,12 @@ impl PermView for AccessPermission {
 /// Page size in bytes (`arch::mem::PAGE_SIZE`).
 pub open spec fn page_size() -> nat {
     4096
+}
+
+/// Abstract permission triple of the hardcoded `AccessPermission::RDWR` constant
+/// (read + write, no execute) used by `map_kpage` when installing kernel pages.
+pub open spec fn rdwr_perms() -> PagePerms {
+    PagePerms { read: true, write: true, execute: false }
 }
 
 /// First user-space byte address (`config::memory_layout::USER_BASE_RAW`).

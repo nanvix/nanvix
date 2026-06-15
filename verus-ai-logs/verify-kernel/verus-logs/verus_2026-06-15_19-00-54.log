@@ -1,0 +1,37 @@
+Timestamp: 2026-06-15_19-00-54
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=54
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=53
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: aborting due to 2 previous errors
+
+
+error: cannot find trait `T18_Address` in this scope
+  --> src/kernel/src/mm/virt/vmem.spec.rs:30:40
+   |
+30 | pub struct ExPageAligned<T: Address>(PageAligned<T>);
+   |                                        ^^^^^^^^^^^
+
+error: cannot find trait `T18_Address` in this scope
+  --> src/kernel/src/mm/virt/vmem.spec.rs:61:50
+   |
+61 | pub struct ExPageTableAligned<T: Address>(PageTableAligned<T>);
+   |                                                  ^^^^^^^^^^^
+
+note: This error was found in Verus's Trait-Conflict-Checker
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

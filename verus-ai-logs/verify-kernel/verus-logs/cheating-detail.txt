@@ -1,43 +1,54 @@
     - macros.rs:252 kpanic_unreachable: external_body
-    - mm/virt/vmem.rs:125 new: external_body, admit
-    - mm/virt/vmem.rs:214 clone: external_body, admit
-    - mm/virt/vmem.rs:267 load: external_body
-    - mm/virt/vmem.rs:275 pgdir: external_body
-    - mm/virt/vmem.rs:307 map_kpage: external_body
-    - mm/virt/vmem.rs:391 allocate_kernel_page_table: external_body
-    - mm/virt/vmem.rs:412 allocate_user_page_table: external_body
-    - mm/virt/vmem.rs:440 map: external_body
-    - mm/virt/vmem.rs:525 is_user_page_mapped: external_body
-    - mm/virt/vmem.rs:540 is_user_addr: external_body
-    - mm/virt/vmem.rs:563 is_user_region: external_body
-    - mm/virt/vmem.rs:578 is_kernel_addr: external_body
-    - mm/virt/vmem.rs:597 is_kernel_region: external_body
-    - mm/virt/vmem.rs:629 is_physical_region: external_body
-    - mm/virt/vmem.rs:656 lookup_user_page_table: external_body
-    - mm/virt/vmem.rs:701 lookup_kernel_page_table: external_body
-    - mm/virt/vmem.rs:755 find_user_frame: external_body
-    - mm/virt/vmem.rs:796 try_find_user_frame: external_body
-    - mm/virt/vmem.rs:847 try_find_user_pte: external_body
-    - mm/virt/vmem.rs:889 for_each_user_mapping: external_body
-    - mm/virt/vmem.rs:951 mark_user_page_cow: external_body
-    - mm/virt/vmem.rs:992 unmark_user_page_cow: external_body
-    - mm/virt/vmem.rs:1030 replace_user_page_cow_frame: external_body
-    - mm/virt/vmem.rs:1089 resolve_cow_at: external_body
+    - mm/virt/vmem.rs:125 new: external_body
+    - mm/virt/vmem.rs:213 clone: external_body
+    - mm/virt/vmem.rs:269 load: external_body
+    - mm/virt/vmem.rs:283 pgdir: external_body
+    - mm/virt/vmem.rs:315 map_kpage: external_body
+    - mm/virt/vmem.rs:399 allocate_kernel_page_table: external_body
+    - mm/virt/vmem.rs:420 allocate_user_page_table: external_body
+    - mm/virt/vmem.rs:448 map: external_body
+    - mm/virt/vmem.rs:533 is_user_page_mapped: external_body
+    - mm/virt/vmem.rs:548 is_user_addr: external_body
+    - mm/virt/vmem.rs:571 is_user_region: external_body
+    - mm/virt/vmem.rs:590 is_kernel_addr: external_body
+    - mm/virt/vmem.rs:613 is_kernel_region: external_body
+    - mm/virt/vmem.rs:645 is_physical_region: external_body
+    - mm/virt/vmem.rs:672 lookup_user_page_table: external_body
+    - mm/virt/vmem.rs:717 lookup_kernel_page_table: external_body
+    - mm/virt/vmem.rs:783 find_user_frame: external_body
+    - mm/virt/vmem.rs:824 try_find_user_frame: external_body
+    - mm/virt/vmem.rs:875 try_find_user_pte: external_body
+    - mm/virt/vmem.rs:921 for_each_user_mapping: external_body
+    - mm/virt/vmem.rs:986 mark_user_page_cow: external_body
+    - mm/virt/vmem.rs:1030 unmark_user_page_cow: external_body
+    - mm/virt/vmem.rs:1083 replace_user_page_cow_frame: external_body
+    - mm/virt/vmem.rs:1149 resolve_cow_at: external_body
+    - mm/virt/vmem.rs:1235 resolve_cow_for_region: external_body
+    - mm/virt/vmem.rs:1303 user_vaddr_to_paddr: external_body
+    - mm/virt/vmem.rs:1346 copy_from_user_unaligned: external_body
+    - mm/virt/vmem.rs:1466 copy_to_user_unaligned_unchecked: external_body
+    - mm/virt/vmem.rs:1631 copy_to_user_unaligned: external_body
+    - mm/virt/vmem.rs:1684 copy_user_to_user: external_body
+    - mm/virt/vmem.rs:1792 memset: external_body
+    - mm/virt/vmem.rs:1841 unmap: external_body
+    - mm/virt/vmem.rs:1936 uctrl: external_body
+    - mm/virt/vmem.rs:2023 kctrl: external_body
+    - mm/virt/vmem.rs:2108 drop: external_body
     - mm/virt/vmem.spec.rs:25 ExVirtualAddress (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:30 ExPageAligned (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:34 ExAccessPermission (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:40 ExPhysicalAddress (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:44 ExFrameAddress (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:48 ExPageAddress (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:52 ExPageTableAddress (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:56 ExPageDirectoryAddress (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:61 ExPageTableAligned (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:68 ExPageDirectory (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:73 ExPageTable (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:77 ExPageDirectoryEntry (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:81 ExPageTableEntry (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:87 ExKernelPage (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:91 ExUserFrame (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:95 ExPhysMemoryManager (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:102 ExRefCell (struct): external_type_spec
-    - mm/virt/vmem.spec.rs:108 ExLinkedList (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:35 ExPageAligned (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:39 ExAccessPermission (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:45 ExPhysicalAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:49 ExFrameAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:53 ExPageAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:57 ExPageTableAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:61 ExPageDirectoryAddress (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:66 ExPageTableAligned (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:73 ExPageDirectory (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:78 ExPageTable (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:82 ExPageDirectoryEntry (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:86 ExPageTableEntry (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:92 ExKernelPage (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:96 ExUserFrame (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:100 ExPhysMemoryManager (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:107 ExRefCell (struct): external_type_spec
+    - mm/virt/vmem.spec.rs:113 ExLinkedList (struct): external_type_spec

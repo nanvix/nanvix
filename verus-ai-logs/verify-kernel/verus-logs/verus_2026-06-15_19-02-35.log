@@ -1,0 +1,45 @@
+Timestamp: 2026-06-15_19-02-35
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=54
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=53
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: external_trait_specification trait bound mismatch
+  --> src/kernel/src/mm/virt/vmem.spec.rs:28:1
+   |
+28 | / pub trait ExAddress: Sized + core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord {
+29 | |     type ExternalTraitSpecificationFor: Address;
+30 | | }
+   | |_^
+   |
+   = help: external_trait_specification requires trait bounds to match exactly but the proxy's trait bounds are:
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::marker::Sized
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::fmt::Debug
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::clone::Clone
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::PartialEq
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::Eq
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::PartialOrd
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::Ord
+           the external trait bounds are:
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::marker::MetaSized
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::fmt::Debug
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::clone::Clone
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::PartialEq
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::Eq
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::PartialOrd
+             - <Self as mm::virt::vmem::ExAddress>::ExternalTraitSpecificationFor: core::cmp::Ord
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

@@ -187,7 +187,6 @@ impl Vmem {
             kpages.push_back(Rc::new(RefCell::new(entry)));
         }
 
-        proof! { admit(); }
         Ok(Self {
             pgdir,
             kernel_page_tables: kpage_tables,
@@ -252,7 +251,6 @@ impl Vmem {
             super::sync_kernel_pdes(target_pd_paddr)?;
         }
 
-        proof! { admit(); }
         Ok(Self {
             pgdir,
             kernel_page_tables,
@@ -263,6 +261,10 @@ impl Vmem {
         })
     }
 
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn load(&self) -> Result<(), Error> {
         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
@@ -271,6 +273,12 @@ impl Vmem {
     }
 
     /// Returns a reference to the underlying page directory.
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            ret.addr_nat() == self@.pgdir,
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn pgdir(&self) -> &PageDirectory<PageDirectoryStorage> {
         &self.pgdir
@@ -296,11 +304,11 @@ impl Vmem {
         ensures
             match ret {
                 Ok(_) => {
-                    &&& self@.kernel_mapped(vaddr.addr_nat())
-                    &&& self@.user == old(self)@.user
-                    &&& self@.pgdir == old(self)@.pgdir
+                    &&& final(self)@ == old(self)@.spec_map_kpage(
+                            vaddr.addr_nat(), kpage.addr_nat(), rdwr_perms())
+                    &&& final(self).inv()
                 },
-                Err(_) => self@ == old(self)@,
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
@@ -429,11 +437,11 @@ impl Vmem {
             match ret {
                 Ok(_) => {
                     &&& spec_is_user_addr(vaddr.addr_nat())
-                    &&& self@.user_mapped(vaddr.addr_nat())
-                    &&& exists|f: nat| self@ == old(self)@.spec_map(
-                            vaddr.addr_nat(), f, access.perms_view())
+                    &&& final(self)@ == old(self)@.spec_map(
+                            vaddr.addr_nat(), uframe.addr_nat(), access.perms_view())
+                    &&& final(self).inv()
                 },
-                Err(_) => self@ == old(self)@,
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
@@ -574,6 +582,10 @@ impl Vmem {
     }
 
     /// Asserts whether an address lies in the kernel space.
+    #[verus_spec(ret =>
+        ensures
+            ret == spec_is_kernel_addr(virt_addr.addr_nat()),
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn is_kernel_addr(virt_addr: VirtualAddress) -> bool {
         !Self::is_user_addr(virt_addr)
@@ -593,6 +605,10 @@ impl Vmem {
     ///
     /// Returns `true` if the entire region lies in kernel space, `false` otherwise.
     ///
+    #[verus_spec(ret =>
+        ensures
+            ret == spec_is_kernel_region(start.addr_nat(), size as nat),
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn is_kernel_region(start: VirtualAddress, size: usize) -> bool {
         // Reject zero-length regions.
@@ -751,6 +767,18 @@ impl Vmem {
     /// Upon success, a reference to the target user page is returned. Upon failure, an error code is
     /// returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            match ret {
+                Ok(f) => {
+                    &&& self@.user_mapped(vaddr.addr_nat())
+                    &&& f.addr_nat() == self@.user[vaddr.addr_nat()].frame
+                },
+                Err(_) => true,
+            },
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn find_user_frame(&self, vaddr: PageAligned<VirtualAddress>) -> Result<FrameAddress, Error> {
         let page_addr: PageAddress = PageAddress::new(vaddr);
@@ -885,6 +913,10 @@ impl Vmem {
     /// Upon success, `Ok(())` is returned. Upon failure, the first error returned by `f`
     /// is propagated.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
     where
@@ -943,8 +975,11 @@ impl Vmem {
             self@.user[vaddr.addr_nat()].perms.write,
         ensures
             match ret {
-                Ok(_) => self@ == old(self)@.spec_mark_cow(vaddr.addr_nat()),
-                Err(_) => self@ == old(self)@,
+                Ok(_) => {
+                    &&& final(self)@ == old(self)@.spec_mark_cow(vaddr.addr_nat())
+                    &&& final(self).inv()
+                },
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
@@ -984,8 +1019,11 @@ impl Vmem {
             self@.user_mapped(vaddr.addr_nat()),
         ensures
             match ret {
-                Ok(_) => self@ == old(self)@.spec_unmark_cow(vaddr.addr_nat()),
-                Err(_) => self@ == old(self)@,
+                Ok(_) => {
+                    &&& final(self)@ == old(self)@.spec_unmark_cow(vaddr.addr_nat())
+                    &&& final(self).inv()
+                },
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
@@ -1026,6 +1064,21 @@ impl Vmem {
     /// at) is returned. The caller is responsible for releasing that reference.
     /// Upon failure, an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            self@.user_mapped(vaddr.addr_nat()),
+        ensures
+            match ret {
+                Ok(old_frame) => {
+                    &&& old_frame.addr_nat() == old(self)@.user[vaddr.addr_nat()].frame
+                    &&& final(self)@ == old(self)@.spec_resolve_cow(
+                            vaddr.addr_nat(), new_frame.addr_nat())
+                    &&& final(self).inv()
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn replace_user_page_cow_frame(
         &mut self,
@@ -1070,19 +1123,26 @@ impl Vmem {
     /// - `Err(_)` if the resolution failed (e.g. out of frames).
     ///
     #[verus_spec(ret =>
+        requires
+            self.inv(),
         ensures
             match ret {
                 Ok(true) => {
                     &&& old(self)@.user_mapped(vaddr.addr_nat())
                     &&& old(self)@.user[vaddr.addr_nat()].cow
-                    &&& exists|f: nat| self@ == old(self)@.spec_resolve_cow(vaddr.addr_nat(), f)
+                    &&& exists|f: nat| #![trigger old(self)@.spec_resolve_cow(vaddr.addr_nat(), f)] {
+                            &&& is_page_aligned(f)
+                            &&& spec_is_physical_region(f, page_size())
+                            &&& final(self)@ == old(self)@.spec_resolve_cow(vaddr.addr_nat(), f)
+                        }
+                    &&& final(self).inv()
                 },
                 Ok(false) => {
-                    &&& self@ == old(self)@
+                    &&& final(self)@ == old(self)@
                     &&& (!old(self)@.user_mapped(vaddr.addr_nat())
                             || !old(self)@.user[vaddr.addr_nat()].cow)
                 },
-                Err(_) => self@ == old(self)@,
+                Err(_) => final(self)@ == old(self)@,
             },
     )]
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
@@ -1158,6 +1218,20 @@ impl Vmem {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            match ret {
+                Ok(_) => {
+                    &&& (size > 0 ==> final(self)@.region_cow_resolved(addr.addr_nat(), size as nat))
+                    &&& (size == 0 ==> final(self)@ == old(self)@)
+                    &&& final(self).inv()
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn resolve_cow_for_region(
         &mut self,
         addr: VirtualAddress,
@@ -1215,6 +1289,17 @@ impl Vmem {
     /// failure, an error is returned instead.
     ///
     #[cfg(feature = "stdio")]
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            ret matches Ok(p) ==> {
+                &&& self@.user_mapped(page_base(vaddr.addr_nat()))
+                &&& p as nat == self@.user[page_base(vaddr.addr_nat())].frame
+                        + page_offset(vaddr.addr_nat())
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn user_vaddr_to_paddr(&self, vaddr: VirtualAddress) -> Result<usize, Error> {
         let page_aligned: PageAligned<VirtualAddress> =
             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
@@ -1248,6 +1333,16 @@ impl Vmem {
     /// - [`ErrorCode::BadAddress`]: The source memory region does not lie in user space.
     /// - [`ErrorCode::BadAddress`]: The destination memory region does not lie in kernel space.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            ret matches Ok(_) ==> {
+                &&& spec_is_user_region(src.addr_nat(), size as nat)
+                &&& spec_is_kernel_region(dst.addr_nat(), size as nat)
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_from_user_unaligned(
         &self,
         dst: VirtualAddress,
@@ -1360,6 +1455,14 @@ impl Vmem {
     ///  When not running in dry-run mode, this function performs a physical memory copy. Any
     ///  errors that occur while copying data will cause this function to panic.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            final(self)@ == old(self)@,
+            final(self).inv(),
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_to_user_unaligned_unchecked(
         &mut self,
         mut dst: VirtualAddress,
@@ -1517,6 +1620,14 @@ impl Vmem {
     /// an error that indicates the reason for the failure.
     ///
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            final(self)@ == old(self)@,
+            final(self).inv(),
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_to_user_unaligned(
         &mut self,
         dst: VirtualAddress,
@@ -1559,6 +1670,17 @@ impl Vmem {
     /// - [`ErrorCode::BadAddress`]: The destination memory region does not lie in user space.
     /// - [`ErrorCode::NoSuchEntry`]: A page in the source or destination region is not mapped.
     ///
+    #[verus_spec(ret =>
+        requires
+            src_vmem.inv(),
+            dst_vmem.inv(),
+        ensures
+            ret matches Ok(_) ==> {
+                &&& spec_is_user_region(src.addr_nat(), size as nat)
+                &&& spec_is_user_region(dst.addr_nat(), size as nat)
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_user_to_user(
         src_vmem: &Vmem,
         src: VirtualAddress,
@@ -1658,6 +1780,15 @@ impl Vmem {
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            self@.user_mapped(dst.addr_nat()),
+        ensures
+            final(self)@ == old(self)@,
+            final(self).inv(),
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
         // Get corresponding user page.
         let uframe: FrameAddress = self.find_user_frame(dst)?;
@@ -1688,6 +1819,25 @@ impl Vmem {
     /// - `Ok(None)` if the page was not present.
     /// - `Err(_)` on unexpected failures.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+        ensures
+            match ret {
+                Ok(Some(f)) => {
+                    &&& old(self)@.user_mapped(vaddr.addr_nat())
+                    &&& f.addr_nat() == old(self)@.user[vaddr.addr_nat()].frame
+                    &&& final(self)@ == old(self)@.spec_unmap(vaddr.addr_nat())
+                    &&& final(self).inv()
+                },
+                Ok(None) => {
+                    &&& !old(self)@.user_mapped(vaddr.addr_nat())
+                    &&& final(self)@ == old(self)@
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn unmap(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1769,6 +1919,20 @@ impl Vmem {
     }
 
     /// Changes access permissions on a page.
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            self@.user_mapped(vaddr.addr_nat()),
+        ensures
+            match ret {
+                Ok(_) => {
+                    &&& final(self)@ == old(self)@.spec_uctrl(vaddr.addr_nat(), access.perms_view())
+                    &&& final(self).inv()
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn uctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1840,6 +2004,22 @@ impl Vmem {
     /// - [`ErrorCode::NoSuchEntry`]: The corresponding page table is not present.
     /// - [`ErrorCode::NoSuchEntry`]: The page table entry was not found (dry run only).
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            spec_is_kernel_addr(vaddr.addr_nat()),
+        ensures
+            match ret {
+                Ok(_) => {
+                    &&& (dry_run ==> final(self)@ == old(self)@)
+                    &&& (!dry_run ==> final(self)@ == old(self)@.spec_kctrl(
+                            vaddr.addr_nat(), access.perms_view()))
+                    &&& final(self).inv()
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn kctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1918,7 +2098,13 @@ impl Vmem {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_verify)]
 impl Drop for Vmem {
+    #[verus_spec(
+        opens_invariants none
+        no_unwind
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn drop(&mut self) {
         while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
             drop(user_page_table);
