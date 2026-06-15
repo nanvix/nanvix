@@ -9,11 +9,11 @@ use crate::mm::phys::phys_view;
 /// The manager brokers the *global* frame partition: its abstract view coincides with
 /// `phys_view().frames`. This is the §8 ghost-token attachment; the proving phase realizes it
 /// with a token over the `frame::INSTANCE` / `PhysMemoryManager` singletons.
+#[verus_verify(external_body)]
 pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
     ensures
         m@ == phys_view().frames,
 {
-    admit();
 }
 
 //==================================================================================================

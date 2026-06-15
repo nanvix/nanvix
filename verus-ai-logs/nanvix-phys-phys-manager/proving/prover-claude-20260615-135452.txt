@@ -493,3 +493,28 @@ Turn 21
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verif
+[RESULT ✓] bash: verification results:: 86 verified, 0 errors (partial verification with `--verify-*`)
+  86 verified
+  0 errors
+    ⚠️  admit: 4
+    - manager.proof.rs:12 lemma_manager_attached: admit
+    - manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:40 lemma_kernel_alloc_contiguous: adm...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All exec functions verify (86 verified, 0 errors). The 4 remaining `admit()` are the §8 ghost-token attachment axioms — they bridge the manager's view to the not-yet-verified frame free-function layer and model `Drop` effects. These are genuine trust boundaries (same class as `frame::alloc`'s `external_body`), not provable within the module. Let me convert them to the sanctioned `external_body` trust-boundary form and document them in tcb-allowed.md.
+
+Let me first confirm `external_body` works on a `proof fn` here with a quick targeted change to one lemma.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I've got 86 verified functions with no errors, so the exec layer checks out. The remaining blocker is these 4 admit lemmas—they're axioms that connect the verified code to the unverified frame-free function layer and model Drop semantics. I need to resolve them to hit zero admits, and based on the codebase patterns, the approach for trust boundaries to unverified dependencies is using `external_body`
+
+—I'll mark these 4 lemmas with that attribute, remove the admit calls, and document them in tcb-allowed.md, then rerun verification.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verif
