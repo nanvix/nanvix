@@ -56,9 +56,7 @@ impl View for UserFrame {
 impl View for Upool {
     type V = FrameAllocView;
 
-    closed spec fn view(&self) -> FrameAllocView {
-        crate::mm::phys::phys_view().frames
-    }
+    uninterp spec fn view(&self) -> FrameAllocView;
 }
 
 } // verus!
@@ -240,6 +238,7 @@ impl Upool {
     // allocator. `external_body` (the `Upool` struct carries no spec-readable state) per
     // `verus-ai-logs/tcb-allowed.md`. The pool introduces no frames of its own; `wf()` is the
     // only fact its boot-time caller needs before handing the pool to `PhysMemoryManager::init`.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result@.wf(),
@@ -260,6 +259,7 @@ impl Upool {
     // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
     // as a watermark-agnostic single-frame allocation over the pool's frame partition. Marked
     // `external_body` until the `frame` free-function layer is verified.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self)@.wf(),

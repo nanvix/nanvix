@@ -244,3 +244,126 @@ Turn 15
 ────────────────────────────────────────────────────────────
 Only comments mention external_body now. Let me run module verification to capture the exact errors.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|fail|up
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:269:17
+    |                   ^^^^^^ failed this postcondition
+279 |       pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+error: postcondition not satisfied
+   --> src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The experiment gives concrete evidence. Two postconditions fail: `Upool::new`'s `result@.wf()` (line 245) and `Upool::alloc`'s `alloc_one` transition (line 269). Critically, redefining the view to `phys_view().frames` is **unsound** for `alloc` (it makes `old(self)@ == final(self)@`, contradicting the `alloc_one` transition). Let me verify this soundness reasoning, then revert.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "Upool::new\|\.alloc()\|Upool::alloc\|upool.alloc\|Upool::" src/kern
+
+[THINKING] I'm identifying the specific contract violations in the Upool implementation. The `new` function fails its postcondition because it can't prove the physical view is properly initialized—there's no precondition establishing this requirement. Similarly, `alloc` is running into issues where the underlying `frame::alloc` contract is too weak, only guaranteeing containment rather than the full set of properties needed.
+
+With 86 functions verified and just these two postconditions blocking progress, I'm realizing the core problem: `new` is the bootstrap point where the pool receives an already-initialized allocator, but there's no global axiom or precondition that captures this invariant. Without either adding a precondition (which changes the spec) or an axiom (which is unsound before initialization), proving `result@.wf()` becomes impossible.
+
+Similarly, `alloc` needs `frame::alloc` to promise the full state transition, but that's an external_body function outside my scope—strengthening it would just shift the trust boundary rather than resolve it. Both blockers trace back to the same ghost-token deferral documented in tcb-allowed.md: the fact that init ran is a ghost token not expressible in the current spec vocabulary.
+
+This is concrete evidence that these postconditions are genuinely unprovable within upool's scope, not a case where more effort will yield a proof. The right move is to revert to the external_body mechanism (the sanctioned trust boundary) and document this blocker in verification_todo.md with this evidence.
+
+But the grader rejected the external_body defense as "hard cheating," so resubmitting the same approach will fail. I need to find a sound path forward. One option: add a precondition to `new` like `requires phys_view().initialized`, which would let the body prove `result@.wf()` holds without needing to know that init ran. But that changes the spec contract, so I need to check whether the caller in manager.rs can supply that precondition and whether `initialized` actually implies `frames.wf()` through the invariant.
+
+Actually, manager::init is marked external_body, so it won't verify its body anyway—adding preconditions to Upool::new wouldn't force the caller to discharge them in verified code. That feels like a loophole though. The real question is whether I can honestly require `phys_view().frames.wf()` at the start of `new` and then prove the result maintains that property, since the body doesn't modify phys_view().
+
+For `alloc`, the issue is trickier: Verus treats `phys_view()` as a constant uninterpreted function across the call to frame::alloc, even though frame::alloc's postcondition references it. That means `final(self)@` and `old(self)@` would both equal the same `phys_view().frames` value, making the transition spec `final(self)@ == old(self)@.alloc_one(uf@)` require that allocating uf@ doesn't actually change the set—contradicting the whole point of the allocation.
+
+This confirms the view can't be tied to the static global without a ghost-token mechanism to track mutations across external calls. `Upool::alloc` is genuinely unverifiable as written. For `Upool::new`, I could add a precondition to make it verifiable, but that changes the contract—I need to check whether callers can satisfy it and whether it's sound to weaken the constructor this way.
+
+Actually, the struct's `external_body` annotation can be removed entirely—my experiment showed it compiles fine with just the two method postconditions failing. Since I've defined the view as `phys_view().frames` rather than leaving it uninterpreted, the constructor `Self { _private: () }` is now constructible in verified code. So that's one annotation genuinely eliminable.
+
+The real question is whether keeping `alloc` as `external_body` while making `new` verified (with a precondition) is the right tradeoff, or if there's a better path forward. So the honest path forward is to eliminate the struct's external_body since that's genuinely verifiable, but `new` and `alloc` represent real ghost-token boundaries that can't be soundly verified without threading permissions from the frame layer. If I redefine the view to `phys_view().frames`, the external_body assumptions become problematic — `alloc`'s contract would assume the frame state equals itself after allocation, which is a contradiction. I need to decide whether to keep the original uninterpreted view with external_body functions, or find a way to make the view redefinition work without creating unsound assumptions. So the real issue is that `alloc` genuinely needs a tracked token from the frame layer to be verifiable, and that's outside the upool scope. The sound approach is to keep the original external_body with the uninterpreted view, document this as a legitimate trust boundary, and revert my experiment rather than introduce unsound proofs. The phase will fail verification, but that's the honest outcome — faking it with admits would be worse than recording the genuine blocker.
+[RESULT ✓] bash: 250:            match self.upool.alloc() {
+254:                        // `self.upool.alloc()` moved `frame@` (free in `g_old`, not yet booked)
+307:        self.upool.alloc()
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "Upool::new\|Upool::default\|= Upool\|upool:" src/kernel/src/mm/phys
+[RESULT ✓] bash: 18:        upool::{
+70:    upool: Upool,
+104:    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "Upool::new\|upool::new\|Upool::" src/kernel/src/mm/phys/mod.rs src/
+
+[THINKING] I need to trace where `Upool::new` gets called and find out who's constructing it, since `init` takes a Upool as a parameter. Let me search through the crate to see where this happens.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.rs:182:    let upool: Upool = Upool::new();
+src/kernel/src/mm/phys/mod.rs:182:    let upool: Upool = Upool::new();
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '150,200p' src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] bash: requires
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        match result {
+            Ok(_) => {
+                &&& phys_view().live()
+                &&& phys_view().frames.all_reserved(
+                    phys_regions_frame_set(&physical_memory_regions))
+                &...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The caller `mm::phys::init` IS verified and calls `Upool::new()` right after `frame::init()` (which establishes `phys_view().frames.wf()`). This is key evidence. Let me restore the original and test targeted, sound eliminations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/upool.rs.bak src/kernel/src/mm/phys/upool.rs; grep -n "external_body"
+
+[THINKING] I'm looking at how `mm::phys::init` is verified—it's a spec function with preconditions and postconditions. After `frame::init` succeeds, we get the guarantee that `phys_view().frames.wf()` holds, which is then available when `Upool::new()` is called next.
+
+But I'm realizing something odd about the design: `phys_view()` is an uninterpreted spec function with no arguments, which means it returns a fixed constant value throughout the entire program. If that's the case, then `phys_view().initialized` and `phys_view().frames.wf()` would be either always true or always false globally—they can't change as the program executes. This seems problematic for a transition system where state should evolve.
+
+The resolution is that external_body functions don't actually mutate `phys_view()`; instead, they *reveal* properties about this constant value through their postconditions. The verifier assumes these postconditions, so after `frame::init` succeeds, it knows `phys_view().frames.wf()` holds. This fact stays in the context at the `Upool::new()` call site, so if I add a precondition requiring `phys_view().frames.wf()`, the verified caller can discharge it. And with that precondition in place, `Upool::new`'s body can prove its result is well-formed, since the view equals `phys_view().frames` and we've established that's well-formed. The only caller is the verified `mm::phys::init`, which already has this property, so adding the precondition shouldn't break anything.
+
+But `alloc` is the real problem: if the view is the constant `phys_view().frames`, then the transition `final(self)@ == old(self)@.alloc_one(uf@)` becomes `phys_view().frames == phys_view().frames.alloc_one(uf@)`, which is a contradiction. So for `alloc` to work, the view must be something mutable per-instance that changes across the `&mut` call—either an uninterpreted function of `self` or an actual ghost field. This creates a fundamental conflict: `new` needs a concrete, readable view to be verifiable, while `alloc` needs a mutable per-instance view to express its transition soundly. The original design sidestepped this by making both uninterpreted with external_body, which is sound but unverifiable. I'm exploring whether I can make the view a real ghost field that's readable as the partition for `new` but updates across `alloc`.
+
+Even with a ghost field, though, there's a deeper issue: `frame::alloc` only promises that the returned frame is now allocated in the global state; it doesn't promise that the frame was free in my pool's ghost snapshot at the time of the call. So I can't prove the precondition `old(self)@.free_frames.contains(uf@)` from `frame::alloc`'s contract alone—there's no link between the frame being free in my ghost state and the frame being free in the global state. That link would require `frame::alloc` to return a token tied to the pool's ghost state, which is out of scope. So `alloc` is genuinely unverifiable with this approach.
+
+But `new` is verifiable, and I could keep `alloc` as external_body while making the struct and `new` verified—that eliminates 2 of 3 external_body declarations. The grader wants all three gone, though. The real blocker is that within the upool module alone, without a deferred ghost token mechanism from the frame layer, there's no way to verify `alloc`. So I need to think about whether a single view definition can serve both `new` and `alloc`, or if I'm truly stuck. I'm realizing that `Upool::alloc` fundamentally cannot be verified within the upool scope alone—it requires the frame layer's ghost token, which is out of scope. So the global cheating gate can't reach zero from just the upool module. Even if I eliminate the cheating for struct and new via a ghost field, leaving alloc as external_body still leaves at least one irreducible external_body. The real risk is that modifying Upool's view representation could cascade into the manager layer, which partially relies on upool's contracts and is already partially verified—changing the abstraction could break that verification.
+
+But my experiment showed something unexpected: when I switched the view to `phys_view().frames` (concrete), the manager and all other functions still verified. Only the two upool postconditions failed. So the view change didn't actually break the manager. The problem is that with a concrete view, `alloc` becomes unprovable because the postcondition assumes the state is unchanged, which contradicts what `alloc_one` actually does to the frame state.
+
+This reveals a critical soundness issue: if I keep `alloc` as external_body with a concrete view, the contract would assume something false (that a frame can be both in free_frames and allocated simultaneously), which would make the whole system unsound. So I can't use a concrete view for `alloc` without either verifying it (impossible) or breaking soundness.
+
+The original design with an uninterpreted self-view and external_body for the whole facade is actually the only sound approach. To break it apart and verify individual functions like `new`, I'd need a ghost field to track the frame state, which would let `new` populate it while keeping `alloc` as external_body over that ghost field.
+
+With a ghost field approach, `alloc` would assume the ghost field evolves correctly (trusting that the real frame allocation matches the ghost transition), which is sound as a trust boundary. This reduces external_body from three functions to just one, but it adds complexity—a new ghost field, modified contracts, and potential ripple effects on the manager code. The real question is whether partial elimination is worth the risk, or if I should just document all three external_body functions as necessary and sanctioned.
+
+The task pushes for zero external_body, but `alloc` itself is provably irreducible within scope. So the cleanest approach might be to eliminate only the struct's external_body while keeping new and alloc external_body intact with the uninterpreted self-view unchanged. That avoids the ghost field complexity and manager verification risk while still making genuine progress. So my plan is to test removing just the struct's external_body annotation while keeping new and alloc external_body with the uninterpreted view intact — if that passes verification, I've eliminated one external_body safely. But I'm realistic about the bigger picture: even if I optimize Upool completely, there are 11 other external_body annotations and 4 admits elsewhere in the codebase that I can't touch, so the gate count won't drop dramatically. Let me run the test and document whatever genuine blockers remain. I should test whether removing just the struct's external_body annotation actually makes a difference given the uninterpreted view is still the underlying model, or if it's just a cosmetic change. Let me restore that specific modification and run verification to see if it holds.
+[RESULT ✓] bash: 54:/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
+55:/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+220:#[verus_verify(external_body)]
+238:    // allocator. `external_body` (the `Upool` struct carries no spec-read...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me test whether the `Upool` struct's `external_body` can be removed soundly on its own (keeping `new`/`alloc` external_body and the uninterp view).
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm tracing through the initialization sequence in `mm::phys::init` to understand the state of the physical memory frames at each step. The critical question is whether `phys_view().frames.wf()` remains valid after creating the `Upool` at step 4, since that's needed before initializing the `PhysMemoryManager`.
+
+Since `phys_view()` is a constant uninterpreted function, once `frame::init` establishes `phys_view().frames.wf()` as a proven fact, it persists in the proof context—the subsequent `book_*` calls don't contradict it, they just add reserved region facts. So yes, `phys_view().frames.wf()` still holds at `Upool::new()`.
+
+This reveals a fundamental tension: `new` wants a concrete readable view of `phys_view().frames`, while `alloc` needs a per-self mutable view. The existing design resolves this by using an uninterpreted self-view plus external_body boundaries. I'm weighing whether to eliminate the struct external_body entirely (if it verifies standalone) and keep only the `new` and `alloc` boundaries as genuine section 8 boundaries, versus committing fully to ghost-field representation to verify the struct itself—but that's riskier for the manager. The pragmatic constraint is the grader's limit of 15 external_body declarations and 4 admits globally across the whole upool.
+
+Even if I eliminate all 3 upool external_body items, that leaves 12 plus 4 admits elsewhere, so the gate still fails. The real bottleneck is the other modules' external_body and admit declarations, which are explicitly in scope but outside my current focus. Given this, my best approach is to maximize sound elimination within upool, document precisely why the remaining items can't reach zero (the section 8 ghost-token in the frame free-function layer), provide concrete Verus error evidence, and ensure verification still passes. I'm going to test incrementally: first remove only the struct external_body while keeping new and alloc as external_body with an uninterpreted view, then run module verification to check for soundness.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verifie
