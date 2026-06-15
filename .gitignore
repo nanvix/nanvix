@@ -18,7 +18,9 @@ toolchain
 
 # Build artifacts
 .venv/
-bin/
+# Anchored to the repository root so the build-output `bin/` is ignored without
+# also hiding in-tree Cargo binary directories (e.g. a crate's `src/bin/`).
+/bin/
 /lib/
 /logs/
 images/

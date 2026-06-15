@@ -1,0 +1,82 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvixd-vmm"
+version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Nanvix daemon (standalone) on top of the OpenVMM virtualization stack"
+
+[[bin]]
+name = "nanvixd-vmm"
+path = "src/bin/nanvixd-vmm.rs"
+
+[[bin]]
+name = "nanvixd-vmm-warmstart"
+path = "src/bin/nanvixd-vmm-warmstart.rs"
+
+[dependencies]
+# Nanvix host-side libraries (reused, not reimplemented): IKC/syscall wire
+# types and the host-side daemons.
+config = { workspace = true, features = ["microvm"] }
+sys = { workspace = true, features = ["std"] }
+syscall = { workspace = true, default-features = false }
+hostfs-api = { workspace = true, features = ["std"] }
+hostfsd = { workspace = true }
+networkd = { workspace = true }
+# Reused for the HTTP control-plane wire types (`UserVmIdentifier`); keeps the
+# NEW/KILL JSON identical to the production `nanvixd` HTTP API without pulling in
+# the `uservm` VMM that this crate replaces.
+user-vm-api = { workspace = true }
+
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+
+# HTTP (standalone) deployment mode: a tokio + hyper control server that mirrors
+# the production `nanvixd` standalone contract (NEW/KILL over `-http-addr` plus a
+# gateway Unix socket carrying the guest's stdio).
+tokio = { workspace = true, features = ["full"] }
+hyper = { workspace = true, features = ["full"] }
+hyper-util = { workspace = true, features = ["full"] }
+http-body-util = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+
+# OpenVMM virtualization libraries, consumed from the upstream GitHub repo
+# pinned to a specific revision. These provide the hypervisor backend (KVM
+# partition, vCPU, guest memory) so that this crate does not reimplement
+# low-level virtualization. The pinned rev must stay in sync with the
+# `[patch.crates-io]` entries in the workspace root (bitvec, pbjson-build),
+# which mirror OpenVMM's own patches.
+guestmem = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+virt = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+virt_kvm = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+vm_topology = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+vmcore = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+x86defs = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+hvdef = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+sparse_mmap = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+pal_async = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+
+# Reuse the in-tree chipset device model for the legacy 8259 PIC + 8254 PIT
+# (interrupt controller and timer) instead of hand-rolling them.
+vmotherboard = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+vmm_core = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+chipset = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+chipset_resources = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+chipset_device_resources = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+state_unit = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+vm_resource = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+mesh = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+
+[build-dependencies]
+build_rs_guest_arch = { git = "https://github.com/microsoft/OpenVMM", rev = "0c806a77376b71403a4331b617f7fb090484a8a5" }
+
+# This crate deliberately does not inherit the workspace lints: it ports code
+# that targets OpenVMM's API surface and conventions, which differ from the
+# guest-facing Nanvix crates.
+[lints.rust]
+warnings = "warn"

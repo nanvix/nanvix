@@ -72,6 +72,7 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "SCCACHE",
         "SYSROOT_DIR",
         "VERUS_EXECUTABLE_DIR",
+        "WITH_OPENVMM",
     }
 )
 
