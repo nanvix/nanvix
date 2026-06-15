@@ -2,6 +2,7 @@ verus! {
 
 use super::FrameAllocView;
 use crate::hal::mem::spec_page_size;
+use ::bitmap::BitmapView;
 use vstd::map::*;
 use vstd::set::*;
 

@@ -4078,3 +4078,41 @@ Let me verify the new lemma compiles before wiring it in:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|verified
 
 [THINKING] I should verify the lemma compiles on its own before relying on it. Running the verification should pass since the admits in the other functions will short-circuit their proofs, and I just need to confirm my new lemma itself is sound.
+[RESULT ✓] bash: error[E0433]: cannot find type `BitmapView` in this scope
+error[E0433]: cannot find type `BitmapView` in this scope
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+  0 verified
+  compilation/setup error (ve...
+
+────────────────────────────────────────────────────────────
+Turn 262
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "BitmapView\|use bitmap\|use ::bitmap\|::bitmap::" src/kernel/src/mm
+
+[THINKING] I need to figure out the proper qualification for `BitmapView` by tracing how it's imported and used across the codebase — checking the bitmap crate's lib.spec.rs to understand the `range_set` method, then looking at how the view's fields like `set_bits` and `num_bits` are accessed in frame.proof.rs to understand the correct reference pattern.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:30:use ::bitmap::Bitmap;
+src/kernel/src/mm/phys/frame.proof.rs:697:            BitmapView::range_set(lo, hi)),
+src/kernel/src/mm/phys/frame.proof.rs:719:        assert(BitmapView::range_set(lo, hi).contains(i) == (lo <= i < hi));
+=== bitmap view type path ===
+16:pub s...
+
+────────────────────────────────────────────────────────────
+Turn 263
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "BitmapView" src/libs/bitmap/src/lib.rs | head -3; grep -rn "pub use
+[RESULT ✓] bash: 319:                        BitmapView::range_set(start as int, start + (size as int)),
+<shellId: 148 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 264
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to use the fully-qualified path `::bitmap::BitmapView` in my lemma to avoid import issues, or alternatively add a `use ::bitmap::BitmapView;` import at the top of frame.proof.rs to handle the references in both the lemma and the requires clause.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 265
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|book_ran
