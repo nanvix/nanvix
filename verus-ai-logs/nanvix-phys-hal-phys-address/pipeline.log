@@ -32,3 +32,10 @@ Module: hal-phys-address
 [2026-06-15 12:03:48] [PROVER] Running view-design...
 [2026-06-15 12:03:48] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 12:08:23]   ↳ prover done in 4m35s (exit=0)
+[2026-06-15 12:08:23] [PHASE] view-design: no-review (4m35s)
+[2026-06-15 12:08:23] ✅ view-design: PASS (0/0)
+
+============================================================
+PHASE: specification
+Module: hal-phys-address
+============================================================
