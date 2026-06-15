@@ -1,0 +1,137 @@
+Timestamp: 2026-06-15_19-17-22
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking vstd v0.0.0-2026-05-31-0205
+error: expected generics to match: 
+        expected 
+        found u8
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+91 | atomic_specs_int!(atomic_specs_u8, AtomicU8, u8);
+   | ------------------------------------------------ in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found u16
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+92 | atomic_specs_int!(atomic_specs_u16, AtomicU16, u16);
+   | --------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found u32
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+93 | atomic_specs_int!(atomic_specs_u32, AtomicU32, u32);
+   | --------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found usize
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+96 | atomic_specs_int!(atomic_specs_usize, AtomicUsize, usize);
+   | --------------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found i8
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+98 | atomic_specs_int!(atomic_specs_i8, AtomicI8, i8);
+   | ------------------------------------------------ in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found i16
+  --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+   |
+16 |         pub struct ExAtomic($at);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+99 | atomic_specs_int!(atomic_specs_i16, AtomicI16, i16);
+   | --------------------------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found i32
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+100 | atomic_specs_int!(atomic_specs_i32, AtomicI32, i32);
+    | --------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found isize
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+103 | atomic_specs_int!(atomic_specs_isize, AtomicIsize, isize);
+    | --------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_int` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected generics to match: 
+        expected 
+        found bool
+   --> /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/std_specs/atomic.rs:16:9
+    |
+ 16 |         pub struct ExAtomic($at);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+105 | atomic_specs_bool!(atomic_specs_bool, AtomicBool, bool);
+    | ------------------------------------------------------- in this macro invocation
+    |
+    = note: this error originates in the macro `atomic_specs_common` which comes from the expansion of the macro `atomic_specs_bool` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `vstd` (lib) due to 9 previous errors

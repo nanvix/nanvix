@@ -816,3 +816,37 @@ src/libs/sys/src...
 ────────────────────────────────────────────────────────────
 Turn 5
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running make verify-sys
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-sys 2>&1 | tail -40
+[RESULT ✓] report_intent: Intent logged
+[TOOL] report_intent: Diagnosing verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && printf 'pinned: '; cat build/verus-version && printf '\ncurrent VERUS_EXECUTABLE_DIR=%s\n' 
+[TOOL] bash: cd /home/ruize/nanvix-phy && rg -n "VERUS_EXECUTABLE_DIR|toolchain/verus|verify-sys|verify.sh" Makefile scripts/verify.s
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Makefile:298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+Makefile:314:# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+Makefile:316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+Makefile:318:  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_D...
+[RESULT ✓] bash: pinned: 0.2026.05.31.5dd6d83
+
+current VERUS_EXECUTABLE_DIR=
+default verus path: /home/ruize/verus-bin/verus
+drwxr-xr-x 1 ruize ruize 450 Jun 15 19:15 /home/ruize/toolchain/verus
+Verus
+  Version: 0.2026.06.14.4ea7d0f
+  Profile: release
+  Platform: linux_x86_64
+  Toolchain: 1.96.0-x86_64-unknown-linux...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
