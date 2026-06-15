@@ -54,3 +54,19 @@ Module: arch-paging-mod
 [2026-06-14 12:07:49] [PHASE] specification: dialogue-RESOLVED (10m55s)
 [2026-06-14 12:07:49] [SPEC DRIFT] (within specification) Comparing 4c73acbb → 6efbee5d
 [2026-06-14 12:07:49] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 15:15:34] [BRANCH] Staying on current branch: verus-ai-prove
+[2026-06-15 15:15:34] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/body_removed_source.rs (2867 -> 2741 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-paging-mod
+Source: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/mod.rs
+Crate:  arch
+Branch: verus-ai-prove (base: verus-ai-prove)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: arch-paging-mod
+============================================================
