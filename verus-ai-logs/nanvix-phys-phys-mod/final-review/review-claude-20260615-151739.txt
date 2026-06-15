@@ -1276,3 +1276,166 @@ Build PASSED (exit 0). Let me attempt the cross-module `make verify` (cached) an
 Turn 33
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 280 make verify 2>&1 | grep -iE "verifying module|error|Exit code|v
+[RESULT ✓] bash: Exit code : 0
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  status: CHEATING_DETECTED
+  Exit code : 0
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  status: CLEAN
+  Exit code : 0
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+I now have all empirical results. Let me verify the exact line numbers for the spec-quality findings and then write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== Err(_) => true occurrences (in-scope) ==="; grep -n "Err(_) => tr
+[RESULT ✓] bash: === Err(_) => true occurrences (in-scope) ===
+70:            Err(_) => true,
+100:            Err(_) => true,
+164:            Err(_) => true,
+=== sed TCB lines 74,82,87 ===
+- `src/kernel/src/mm/phys/mod.spec.rs::ExLinkedList` — `external_type_specification` (with the
+- `src/kernel/src/mm/phys/mod.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review phys-mod, elapsed: 490s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review", tool_calls_completed: 46, (timed out waitin...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The claude agent is writing its final review. I'll wait for the completion notification.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+Now I'll write the comprehensive review.
+[TOOL] report_intent: Writing final review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md with 16857 characters
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Let me clean up the temporary log file I created in the review directory and confirm the final output.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rm -f verus-ai-logs/nanvix-phys-phys-mod/final-review/_verify_kernel.log &&
+[RESULT ✓] bash: total 2572
+drwxrwxr-x 1 ruize ruize     222 Jun 15 15:28 .
+drwxrwxr-x 1 ruize ruize     446 Jun 15 15:17 ..
+-rw-rw-r-- 1 ruize ruize   17023 Jun 15 15:28 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize    8090 Jun 15 15:24 final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 2514031 Jun 15 15:28 review-cl...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Review complete. No source/spec/proof files were modified (clean `git status`). The review is written to `final_review.claude.md`.
+
+## Summary
+
+I performed an independent, strict, review-only audit of the `mm::phys` Verus effort (`init`, `book_physical_memory_regions`, `book_mmio_regions`).
+
+**Mechanical gates — all PASS:**
+- `make verify-kernel MODULE=mm::phys`: exit 0, **0 errors** (86 verified)
+- `./z build -- all`: exit 0
+- `make verify` (cross-module): exit 0, no FAIL
+- AST consistency: 4/4 MATCH, 0 mismatch
+- `spec_drift --before HEAD`: clean (exit 0)
+- In-scope `admit`=0, `assume`=0; all `external_body` (2 fns + `ExLinkedList`) are in `tcb-allowed.md`
+- Caller coverage: 3/3 functions, all expectations have clauses
+
+**Why the strict verdict is FAIL (specification quality, not a cheating-gate breach):**
+1. **Banned `uninterp spec fn`** ×3 (`phys_view`, `phys_regions_frame_set`, `mmio_regions_frame_set`) combined with the `external_body` `book_*` axioms = spec-design anti-pattern #12 (≡ `assume`). The headline safety property ("booked ⇒ never alloc-able") is not verifiably established for any concrete frame — the success clauses quantify over opaque sets untied to actual region contents.
+2. **Tautological `Err(_) => true`** on all three functions (mod.rs:70/100/164).
+3. **Missing frame conditions** on `book_*` (weaker than `view_design.md` §4).
+
+**Result: FAIL** under the strict "all checklist items must pass" standard, with an explicit caveat: every flagged pattern is *pre-sanctioned in the TCB* as the unavoidable consequence of `vstd` lacking a `LinkedList` model (orphan rule). So this is "verifies cleanly but low semantic value for `book_*`, forced by a real toolchain limitation" — not cheating to hide a provable failure. If the project accepts TCB-listed uninterp+external_body boundaries, it would grade PASS-with-caveats.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review phys-mod, elapsed: 538s, total_turns: 0, model: claude-opus-4.8, duration: 538s
+
+Review complete. No source/spec/proof files were modified (clean `git status`). The review ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Both reviews are complete. Let me read both raw reviews to consolidate.
+[TOOL] report_intent: Consolidating sub-agent reviews
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls -la verus-ai-logs/nanvix-phys-phys-mod/final-review/ && echo "===CLAUDE 
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: total 2608
+drwxrwxr-x 1 ruize ruize     222 Jun 15 15:28 .
+drwxrwxr-x 1 ruize ruize     446 Jun 15 15:17 ..
+-rw-rw-r-- 1 ruize ruize   17023 Jun 15 15:28 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize    8090 Jun 15 15:24 final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 2545239 Jun 15 15:28 review-cl...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review (claude-opus-4.8): phys-mod
+2. 
+3. > Independent, strict, review-only verification audit of the Verus effort for the
+4. > `mm::phys` module (`mod.rs`). In-scope functions: `init`,
+5. > `book_physical_memory_regions`, `book_mmio_regions`.
+6. > In-scope files: `mod.rs`,...
+[RESULT ✓] view: 1. # Final Comprehensive Review (gpt-5.3-codex): phys-mod
+2. 
+3. ## Checklist  (mark [x]/[ ] with one-line justification — reproduce full master checklist: Caller Analysis, View Design, Specification, Proving, Cheating Elimination, Bug Recording, every sub-item)
+4. - [x] **Caller Analysis** — caller...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Both independent reviews converge on **FAIL** with consistent mechanical findings. Now consolidating into the master review.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.md
+
+[THINKING] Both reviews reach the same FAIL conclusion with overlapping issues. The difference in coverage counts comes down to granularity—Claude evaluates at the function level while Codex breaks down expectations more granularly, identifying specific gaps like the one-shot initialization precondition and bitmap-seeding relation that Claude's structural assessment doesn't capture.
+
+On the concrete findings, both agree on the zero counts for admit, assume, and assume_specification, the two external execution functions plus one external type specification in the TCB, and that AST consistency, verify-kernel, and build all pass. The spec_drift check before HEAD is clean, and bugs.md shows no code bugs—just one documented limitation and new spec-quality findings that weren't recorded.
+
+The FAIL verdict hinges on spec-quality issues: tautological error arms, missing frame conditions and failure semantics across the error paths, the banned uninterpreted-plus-external-body pattern that violates anti-pattern #12, and the caller coverage gaps that neither review fully documents. I need to consolidate this into the final review with strict adherence to the checklist structure, marking items unchecked where the spec falls short.
+
+Writing the consolidated final_review.md now...
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.md with 16378 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Done. Two independent reviews (claude-opus-4.8, gpt-5.3-codex) completed and consolidated.
+
+**Result: FAIL** (both reviewers concur).
+
+**Files written:**
+- `final-review/final_review.claude.md`
+- `final-review/final_review.codex.md`
+- `final-review/final_review.md` (consolidated)
+
+**Mechanical gates — all PASS:**
+- `verify-kernel MODULE=mm::phys`: 0 errors; `make build`/`make verify`: pass
+- AST consistency: 4/4 match, 0 mismatch
+- `spec_drift --before HEAD`: clean
+- In-scope `admit`=0, `assume`=0, `assume_specification`=0, cfg-gated exec=0
+- `external_body`=3 (2 fns + `ExLinkedList`), **all in `tcb-allowed.md`** → TCB compliant
+- Bugs: 0 code bugs; LinkedList limitation correctly classified
+
+**Why strict FAIL (spec-quality, not a cheating-gate breach):**
+1. Tautological `Err(_) => true` on all three functions (`mod.rs:70,100,164`).
+2. Banned `uninterp spec fn` ×3 + `external_body` `book_*` axioms ≡ anti-pattern #12 — "booked ⇒ never alloc-able" not verifiably tied to any concrete frame.
+3. Dropped `book_*` frame conditions (weaker than `view_design.md` §4).
+4. Caller-coverage gaps: one-shot init, bitmap-seeding, uncovered-MMIO-untouched, helper failure semantics.
+
+**Caveat:** every flagged pattern is pre-sanctioned in the TCB as an unavoidable `vstd`-lacks-`LinkedList` (orphan rule) consequence — i.e. "verifies cleanly, low semantic value for `book_*`," not cheating. If TCB-listed boundaries are accepted, this grades PASS-with-caveats; the strict letter yields FAIL.
+
+
+=== Session End ===
+Session: 263cfe6e-1fa2-4aef-862d-ece3921f5e6b
+Duration: 751.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/review-claude-20260615-151739.jsonl
