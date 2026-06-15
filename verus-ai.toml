@@ -2,10 +2,10 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/kernel/src/mm/phys/kframe.rs`
+background = """File: `src/kernel/src/mm/phys/upool.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`KernelFrame::new`, `KernelFrame::drop`, `KernelFrame::base`
+`UserFrame::share`, `UserFrame::refcount`, `Upool::new`, `UserFrame::leak`, `UserFrame::drop`, `Upool::alloc`, `UserFrame::new`, `UserFrame::address`
 
 Existing spec/view definitions (do not modify):
 `byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
