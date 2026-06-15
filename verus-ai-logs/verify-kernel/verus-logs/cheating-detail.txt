@@ -2,10 +2,9 @@
     - mm/phys/frame.rs:1269 init: external_body
     - mm/phys/frame.rs:1325 alloc: external_body
     - mm/phys/frame.rs:1355 alloc_contiguous: external_body
-    - mm/phys/frame.rs:1376 free_count: external_body
-    - mm/phys/frame.rs:1394 free: external_body
-    - mm/phys/frame.rs:1436 book: external_body
-    - mm/phys/frame.rs:1457 alloc_range: external_body
+    - mm/phys/frame.rs:1397 free: external_body
+    - mm/phys/frame.rs:1439 book: external_body
+    - mm/phys/frame.rs:1460 alloc_range: external_body
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit

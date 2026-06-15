@@ -1366,15 +1366,18 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 /// The number of free frames in the system.
 ///
 // Dependency contract: reports the size of the free partition of the global frame allocator.
-// The bitmap-level count (`number_of_bits - usage`) equals the abstract `free_count()`
-// (`free_frames.len()`); this is bridged in the proving phase.
-#[verus_verify(external_body)]
+// The bitmap-level count (`number_of_bits() - usage()`) equals the abstract `free_count()`
+// (`free_frames.len()`): `instance()` pins `inner@ == phys_view().frames`, and
+// `lemma_free_count_eq` discharges `free_frames.len() == num_bits - usage()`.
 #[verus_spec(result =>
     ensures
         result as nat == crate::mm::phys::phys_view().frames.free_count(),
 )]
 pub(super) fn free_count() -> usize {
     let inner = instance();
+    proof! {
+        lemma_free_count_eq(inner);
+    }
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 

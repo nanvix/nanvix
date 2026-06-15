@@ -497,3 +497,272 @@ docker-retry.sh
 generate-l2-initramfs.sh
 generate-l2-snapshot.sh
 generate-manifest....
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 17
+    ⚠️  admit: 10
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:1242 ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The cheating check scans the whole `mm::phys` module; my scope is `frame.rs` only. The frame.rs `external_body` items are: `instance`, `init` (both tcb-allowed/skip), and `alloc`, `alloc_contiguous`, `free_count`, `free`, `book`, `alloc_range`. Let me check whether `bitmap.usage()` has a Verus spec (needed for `free_count`) and view the `book`/`alloc_range` Inner specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "fn usage\|fn number_of_bits" src/libs/bitmap/src/lib.rs; echo "=== 
+
+[THINKING] The cheating check scans the entire `mm::phys` module, and I'm looking at the frame.rs items that use external_body—most are tcb-allowed, including instance, init, alloc, alloc_contiguous, and free_count.
+
+For my scope in the phys-frame module specifically, I need to address six external_body functions in frame.rs: alloc, alloc_contiguous, free_count, free, book, and alloc_range (with instance and init being explicitly allowed). The other cheating items flagged are in different modules like manager and mod, which are outside my scope. I'm also noticing that assume_specification items in frame.spec.rs weren't flagged as cheating by the script, which is interesting—it seems the script doesn't count them the same way it counts other cheating types.
+
+Now I'm realizing the key tension: while these six functions are legitimately blocked by the instance() pre-state-pinning limitation and can remain external_body under tcb-allowed, the task actually wants me to attempt elimination and document what's genuinely stuck. The phrase "eliminated when their module is verified" suggests the intent is to eliminate them now if possible. My analysis shows they can't be eliminated without introducing a ghost token mechanism—something that would track instance() mutations and tie them to phys_view() updates, which would require changing instance()'s signature to thread a tracked token through the call chain.
+
+The problem is that modifying instance() to return a ghost token and updating phys_view() to derive from it would require adding parameters to the public wrapper signatures, which violates the ast-consistency constraint against changing function signatures. So the ghost token approach is genuinely infeasible within the constraints, meaning these six wrappers truly cannot be verified now.
+
+The correct outcome is to keep them as external_body and document this in verification_todo.md as tcb-allowed. But let me try one more empirical approach: remove external_body from each wrapper and run verification to see the specific errors, starting with the most promising candidates like the Err branches of alloc and book, or the share and refcount functions that already worked elsewhere. This will give me concrete evidence of what's actually blocking verification rather than relying on theoretical reasoning.
+
+Actually, examining the alloc wrapper more carefully: the wrapper postcondition requires `phys_view().frames.allocated_frames.contains(frame@)`, but Inner::alloc only guarantees the frame was in `old(r)@.free_frames`. Since allocated_frames and free_frames are disjoint by the well-formedness invariant, the wrapper's postcondition is literally false — it's not a proof weakness but a fundamental impossibility without changing the signature to use a ghost token. For free_count, it's a pure read where the result should equal the number of free frames, which is a genuine cardinality proof that might be provable if the bitmap spec provides the right lemmas about set bits and free frame counts.
+[RESULT ✓] bash: 211:    pub fn number_of_bits(&self) -> usize {
+232:    pub fn usage(&self) -> usize {
+=== usage verus_spec? ===
+    pub fn usage(&self) -> usize {
+        self.usage
+    }
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 200.     ///
+201.     /// The number of bits in the bitmap.
+202.     ///
+203.     #[verus_spec(result =>
+204.         requires
+205.             self.inv(),
+206.         ensures
+207.             result as int == self@.num_bits,
+208.             result > 0,
+209.             result < u32::MAX as usize,...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "spec fn usage\|fn usage\|set_bits\b" src/libs/bitmap/src/lib.spec.r
+
+[THINKING] I need to verify what `BitmapView::usage()` actually returns — whether it's the length of the set bits collection or the actual count of bits that are set.
+[RESULT ✓] bash: 21:    pub set_bits: Set<int>,
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+27:    pub open spec fn usage(&self) -> int {
+28:        self.set_bits.len() as int
+33:        exists|i: int| 0 <= i < self.num_bits && !self.set_bits.contains(i)
+38:        forall|i: int| 0 <= i < ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`usage() = set_bits.len()`. So `free_count` is genuinely provable (no post-state issue) via a set-cardinality argument, unlike the mutating wrappers. Let me read view_design §8 to confirm the architectural gap, then search vstd for the cardinality lemmas needed for a `free_count` proof attempt.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '/## 8\|section 8\|# 8\|Section 8/,+40p' verus-ai-logs/nanvix-phys-phy
+[TOOL] bash: VSTD=$(find / -path "*/vstd/set_lib.rs" 2>/dev/null | head -1); echo "vstd set_lib: $VSTD"; grep -n "pub proof fn lemma.
+
+[THINKING] So `usage()` returns the count of set bits, and the bitmap's invariant ensures those bits stay within the valid range. For the `free_count` wrapper, I need to show that subtracting the usage from the total number of bits equals the length of the free frames list—essentially proving that the free frames are exactly those bit positions not in the set.
+
+The cardinality argument works: since `frame_addr_of` is injective, the number of free frame addresses equals the number of unset bit indices, which is `num_bits - |set_bits|`. This is provable but requires pulling together several vstd lemmas about set cardinality and injectivity—probably 40-80 lines of real proof work.
+
+This is actually the one wrapper that's genuinely provable without hitting the post-state or signature issues blocking the others, so it might be worth the effort despite being in the TCB.
+
+But I need to double-check `free` one more time: `instance()` calls `panic!()` and has no `no_unwind` annotation, so Verus treats it as potentially unwinding. That means `free` can't claim `no_unwind` soundly—it's genuinely blocked.
+
+So realistically, only `free_count` is achievable; the other five (alloc, alloc_contiguous, book, alloc_range, free) stay as `external_body` in the TCB. Since all remaining external calls are already TCB-allowed and there are no admits or assumes, the module already passes the cheating gate. The question is whether the effort to prove `free_count` is worth it when the phase result doesn't change.
+
+Let me refocus: I should attempt `free_count` seriously since it's the only tractable one, and document the other five with precise blockers in `verification_todo.md`. But first, I need to check whether `(*r)@.free_frames` is even a finite set—it's defined as `Set::new(|addr| exists i ...)`, and if it's not provably finite, the cardinality proof won't work at all.
+
+Given the complexity and the fact that all six wrappers are already tcb-allowed, the pragmatic call is to document all of them precisely with their specific blockers rather than risk a 50-100 line cardinality proof that may not pay off. The task allows tcb-allowed external_body to remain, so zero non-allowed cheating means the phase passes.
+
+Let me actually test this empirically by temporarily removing external_body from free_count and book to see what real Verus errors surface—this will give me ground truth for documentation and might reveal whether free_count is genuinely achievable. I'll start with free_count since it's the most promising candidate for a real proof.
+
+I'm sketching out the proof structure: the key is showing that the free frames set cardinality equals the number of bits minus the set bits, which requires defining the index set of unset bits and mapping it to frame addresses. The usize arithmetic subtraction is safe since usage is guaranteed to be ≤ num_bits, and the lemma needs to establish that free_frames.len() equals this difference.
+
+Defining the index set... I need to be honest about what's actually achievable here. The author clearly intended all six wrappers as proving-phase bridges in tcb-allowed, and my analysis confirms five are architecturally blocked while free_count would require substantial cardinality proofs. Rather than just asserting this, I should make a genuine attempt at free_count to see if it's actually provable—if I succeed, I reduce the scope of what needs to remain external; if I hit a real blocker, I document it precisely. Let me search vstd for the cardinality lemmas and try this empirically.
+[RESULT ✓] bash: === grep ghost token ===
+18:(`free_count`/`refcount`/`is_covered`).
+113:free_count(self)          := free_frames.len()                     // free_count()
+116:user_alloc_ok(self, n)    := free_count() >= n + kernel_watermark  // manager watermark gate
+138:| `free_count` | return `free_count()`; no s...
+[RESULT ✓] bash: vstd set_lib: /mnt/toolchain/verus/vstd/set_lib.rs
+29:    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+92:            self.finite(),
+94:        when self.finite()
+121:            self.finite(),
+123:        when self.finite()
+145:            self.finite(),
+204:        when self.finit...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '125,175p' verus-ai-logs/nanvix-phys-phys-frame/view_design.md; echo "
+[TOOL] bash: VSTD=/mnt/toolchain/verus/vstd/set_lib.rs; grep -n "injective\|lemma_map.*len\|len.*injective\|lemma_set_int_range\|set_
+
+[THINKING] Looking at the function specifications around those line numbers to understand what state changes are expected, particularly for the free_count operation. Then I need to find the right vstd lemma that preserves cardinality under injective maps—something that guarantees if a function is injective on a collection, the mapped result has the same length as the original.
+[RESULT ✓] bash: View terms:
+
+| Op | Ok-transition on `self@: FrameAllocView` | Err |
+|---|---|---|
+| `alloc` | `frame@ ∈ free` → `alloc_one(frame@)` | `free.is_empty()`, state unchanged |
+| `alloc_contiguous` | `frames ⊆ free` → `book_all(frames)` (frames = `{base@+i·PS}`) | state unchanged |
+| `alloc_range` | `fra...
+[RESULT ✓] bash: 489:            lemma_len_subset(self, s2_no_elt);
+939:/// Two sets are equal iff mapping `f` results in equal sets, if `f` is injective.
+940:pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
+942:        super::relations::injective(f),
+961:/// Two sets...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/vstd/set_lib.rs
+
+[THINKING] I'm looking at a few lemmas here—there's one about length differences, another about integer ranges, and then an injective-map cardinality lemma around line 1203 that I want to examine more closely.
+[RESULT ✓] view: 1118. pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
+1119.     requires
+1120.         s2.finite(),
+1121.         s1.subset_of(s2),
+1122.     ensures
+1123.         s1.len() <= s2.len(),
+1124.         s1.finite(),
+1125. {
+1126.     lemma_len_intersect::<A>(s2, s1);
+1127.     assert(s2.inters...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The vstd lemmas exist (`lemma_int_range`, `lemma_set_disjoint_lens`, `lemma_map_size`). `free_count` is genuinely provable. Let me look at existing free_frames-handling lemmas for trigger style, and check `injective_on`.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm working through the verification lemmas I need for this proof. I have the basic range lemma and the map size lemma with injectivity, but I'm running into an issue with the difference operation—I need a lemma that gives me the length of a set difference, but the available one seems incomplete.
+
+I'm reconstructing the argument using set disjointness instead: if I decompose R as the disjoint union of U and set_bits, then the cardinalities add up, so |U| = |R| - |set_bits| = num_bits - usage. Then I can map U through the frame address function (which is injective since PS > 0) to get free_frames with the right cardinality.
+
+Now I'm working out how to formally express that free_frames equals the image of U under the frame address mapping.  I'll need set extensionality and a nonlinear arithmetic lemma to show injectivity. Since the View's closed spec function is accessible within the same module, I can write this proof directly in frame.proof.rs and call it from the free_count lemma. I'm planning to remove the external_body annotation and replace it with the actual proof that computes the free count from the bitmap.
+
+Writing the lemma... Finishing the map size lemma call...
+
+Now I need to verify several key details. First, I'm checking that `lemma_set_disjoint_lens` has the right preconditions—it needs both sets to be finite, and I can derive that `u` is finite since it's the difference of a finite set. For `sb`, finiteness comes from the bitmap invariant. Second, I'm confirming that `u + sb` equals `full` by extensionality, since `sb` is a subset of `full`. Finally, I'm establishing that `inner@.free_frames` matches `u.map(frame_addr_of)` by unfolding the set comprehension definition—the free frames are exactly those addresses corresponding to indices not in `sb`, which is precisely what the mapped set produces.
+
+For injectivity, I need to show that if two indices in `u` map to the same frame address, they're equal. Since frame addresses are computed as `i * page_size`, and page size is positive, equal addresses imply equal indices—nonlinear arithmetic should handle this.
+
+Before writing the proof, I'm looking at how existing lemmas handle `free_frames` to match the style and understand what triggers might be needed, especially given the view closure and the existing trigger on the bitmap's set bits.
+[RESULT ✓] view: 160. // `internal_inv` and recover `wf()` for the `inv()` postcondition through this lemma.
+161. proof fn lemma_internal_inv_implies_wf(inner: &Inner)
+162.     requires
+163.         inner.internal_inv(),
+164.     ensures
+165.         inner@.wf(),
+166. {
+167.     let ps: int = spec_page_size();
+168. ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "spec fn inv\|finite\|wf\b\|set_bits" src/libs/bitmap/src/lib.spec.rs
+
+[THINKING] I'm checking the trigger style pattern used in `free_frames` with the bitmap containment check, then verifying the `injective_on` signature and the well-formedness constraint that `set_bits` stays within the valid range `[0, num_bits)`.
+[RESULT ✓] bash: 21:    pub set_bits: Set<int>,
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+28:        self.set_bits.len() as int
+33:        exists|i: int| 0 <= i < self.num_bits && !self.set_bits.contains(i)
+38:        forall|i: int| 0 <= i < self.num_bits ==> self.set_bits.contains(i)
+43...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "spec fn inv\|set_bits.finite\|num_bits\|wf()" src/libs/bitmap/src/li
+[RESULT ✓] bash: 18:    pub num_bits: int,
+20:    /// Invariant: all elements are in [0, num_bits).
+33:        exists|i: int| 0 <= i < self.num_bits && !self.set_bits.contains(i)
+38:        forall|i: int| 0 <= i < self.num_bits ==> self.set_bits.contains(i)
+58:        forall|i: int| self.set_bits.contains(i) ==> 0 <...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /mnt/toolchain/verus/vstd/set_lib.rs
+[TOOL] view: /mnt/toolchain/verus/vstd/set_lib.rs
+
+[THINKING] I'm tracing through the `Bitmap::inv()` method and its internal invariants—it checks that the well-formedness holds and that `internal_inv()` is satisfied, which enforces constraints like the set bits being within bounds, finiteness, and usage staying under the bit limit. But I'm noticing a potential circularity: `Inner::internal_inv` calls `self.bitmap.inv()` on line 48, which seems to reference the same `inv` method I'm trying to understand.
+
+Now I'm ready to write the `lemma_free_count_eq` proof, which bridges the executable free-frame count (the difference between total bits and used bits) with the abstract `free_frames` set. The proof establishes that the free-frame index set—all indices in `[0, num_bits)` that aren't in `set_bits`—has cardinality equal to `num_bits - usage`, and that mapping this set through the injective `frame_addr_of` function preserves that cardinality and reconstructs `free_frames`.
+
+Writing the proof lemma... Now I'm proving that the frame address function is injective on the index set, using the fact that page size is positive to show that equal addresses imply equal indices. Then I'm applying a lemma about map sizes to establish that the free frames set has the same cardinality as the index set.
+
+The key challenge is proving that the free frames set equals the mapped index set. Both are defined as sets of addresses where some index satisfies certain conditions—the index is in bounds, not in the skip bits, and maps to that address. I need to show these definitions are equivalent by proving both directions with explicit witnesses, using the choose operator to extract the witness from the existential quantifier in each direction. I need to check the actual definition of `Set::map` in the standard library to confirm how membership works — it should be defined as a set comprehension where an element `a` is in the mapped set if there exists some `x` in the original set such that `a == f(x)`.
+[RESULT ✓] view: 29.     pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+30.         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+31.     }
+32. 
+33.     /// `Set::map_by` is like `Set::map`, but `map` only takes a forward function `fwd: spec_fn(A) -> B`,
+34.     /// while `map_by` also t...
+[RESULT ✓] view: 1354. /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
+1355. /// of the union `a + b` is equal to the sum of the lengths of `a` and `b`.
+1356. pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
+1357.     requires
+1358.         a.fin...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+I have everything needed. Let me view the end of the proof file to place the new lemma.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I've got what I need now. Let me write the lemma and update the free_count function in frame.proof.rs, making sure to use the available imports like set and map utilities, plus the BitmapView. I'll add the lemma near the end of the file before the closing brace, using fully-qualified paths for any set_lib lemmas.
+[RESULT ✓] view: 980.         assert(new_inner@.refcounts =~= old_inner@.refcounts.union_prefer_right(
+981.             Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)));
+982.     }
+983. }
+984. 
+985. 
+986. proof fn lemma_full_no_free(inner: &Inner)
+987.     requires
+988.         inner.bitmap@.is_full()...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Now let me add the `lemma_free_count_eq` lemma and update the `free_count` wrapper.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Now update the `free_count` wrapper to remove `external_body` and add the proof:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1368. // Dependency contract: reports the size of the free partition of the global frame allocator.
+1369. // The bitmap-level count (`number_of_bits - usage`) equals the abstract `free_count()`
+1370. // (`free_frames.len()`); this is bridged in the proving phase.
+1371. #[verus_verify(external_body)]...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Now let me verify the `free_count` change compiles and verifies.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+
+[THINKING] I'm working through the invariant for `free_count`: the result should equal the number of free frames in the physical view. Since `result as nat` comes from `number_of_bits() - usage()`, and both operations are well-defined with no underflow risk (usage is always ≤ num_bits), the subtraction gives us `num_bits - usage`, which should match the length of the free frames list. The subtraction should verify without underflow since both `number_of_bits()` and `usage()` come from the same bitmap, with usage guaranteed to be at most num_bits. The precondition for the lemma is satisfied because `instance()` ensures the invariant holds. Let me verify the free_count implementation compiles first before tackling the remaining wrappers, which have architectural constraints around post-state, address bounds, and unwinding behavior.

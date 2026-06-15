@@ -1000,4 +1000,79 @@ proof fn lemma_full_no_free(inner: &Inner)
     };
 }
 
+// `free_count` bridge: the executable free-frame count (`number_of_bits() - usage()`) equals the
+// abstract `free_frames.len()`. The free-frame index set is `[0, num_bits) \ set_bits`, whose
+// cardinality is `num_bits - |set_bits| = num_bits - usage()` (the set bits are a subset of the
+// range). Mapping that index set through the injective `frame_addr_of` (`i |-> i * PAGE_SIZE`)
+// reproduces `free_frames` and preserves cardinality.
+proof fn lemma_free_count_eq(inner: &Inner)
+    requires
+        inner.inv(),
+    ensures
+        inner@.free_frames.finite(),
+        inner@.free_frames.len() == inner.bitmap@.num_bits - inner.bitmap@.set_bits.len(),
+{
+    let ps: int = spec_page_size();
+    let nbits: int = inner.bitmap@.num_bits;
+    let sb: Set<int> = inner.bitmap@.set_bits;
+    assert(ps > 0);
+    assert(inner.bitmap.inv());
+    assert(inner.bitmap@.wf());
+    assert(sb.finite());
+    assert(nbits > 0);
+
+    // `full = [0, num_bits)` (finite, cardinality `num_bits`).
+    let full: Set<int> = vstd::set_lib::set_int_range(0, nbits);
+    vstd::set_lib::lemma_int_range(0, nbits);
+    // Free index set: in-range, unset bits.
+    let idx: Set<int> = full.difference(sb);
+
+    // `set_bits` only holds in-range indices, so it is a subset of `full`.
+    assert(sb.subset_of(full)) by {
+        assert forall|i: int| sb.contains(i) implies full.contains(i) by {
+            assert(0 <= i < nbits);
+        }
+    };
+
+    // `full = idx U sb` with `idx` and `sb` disjoint, hence `|idx| = num_bits - |sb|`.
+    assert(full =~= idx + sb);
+    assert(idx.disjoint(sb));
+    vstd::set_lib::lemma_set_subset_finite(full, idx);
+    vstd::set_lib::lemma_set_disjoint_lens(idx, sb);
+    assert(idx.len() == nbits - sb.len());
+
+    // `frame_addr_of` is injective on integer indices (`PAGE_SIZE > 0`).
+    let f = |i: int| frame_addr_of(i);
+    assert(vstd::relations::injective_on(f, idx)) by {
+        assert forall|x1: int, x2: int|
+            idx.contains(x1) && idx.contains(x2) && #[trigger] f(x1) == #[trigger] f(x2)
+                implies x1 == x2 by {
+            assert(x1 * ps == x2 * ps);
+            assert(x1 == x2) by (nonlinear_arith) requires ps > 0, x1 * ps == x2 * ps;
+        }
+    };
+
+    // `free_frames` is exactly `idx` mapped through `frame_addr_of`.
+    assert(inner@.free_frames =~= idx.map(f)) by {
+        assert forall|addr: int| inner@.free_frames.contains(addr) implies idx.map(f).contains(addr)
+            by {
+            let i = choose|i: int|
+                0 <= i < nbits && !(#[trigger] sb.contains(i)) && addr == frame_addr_of(i);
+            assert(idx.contains(i));
+            assert(idx.map(f).contains(f(i)));
+            assert(f(i) == addr);
+        };
+        assert forall|addr: int| idx.map(f).contains(addr) implies inner@.free_frames.contains(addr)
+            by {
+            let i = choose|i: int| idx.contains(i) && addr == #[trigger] f(i);
+            assert(0 <= i < nbits);
+            assert(!sb.contains(i));
+            assert(addr == frame_addr_of(i));
+        };
+    };
+
+    // Injective image preserves cardinality: `|free_frames| = |idx| = num_bits - usage()`.
+    vstd::set_lib::lemma_map_size(idx, inner@.free_frames, f);
+}
+
 }
