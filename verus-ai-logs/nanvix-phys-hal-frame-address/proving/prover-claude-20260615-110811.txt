@@ -294,3 +294,65 @@ Exit code 0 confirms verification passed. The admit/external_body counts are all
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/address/frame.rs && timeout 580 make verify-kernel
 
 [THINKING] I'll force a clean verification run to get actual results instead of relying on cached output, then trust the script's summary which shows the verification completed successfully with some external bodies and admits flagged. I want to force a fresh verification run to confirm there are no lingering errors, so I'll trigger a rebuild to bypass any caching.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.91s
+
+=== Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+--
+  Unverified functions:
+    - new
+    - into_physical_address
+    - into_page_addres...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Fresh verification: **6 verified, 0 errors**. The module is fully proven. The 4 target functions plus 2 proof lemmas all verify. The CHEATING_DETECTED status comes entirely from out-of-scope `mm/phys/*` files (pre-existing admit/external_body placeholders) — none are in my module.
+
+Let me confirm I haven't modified anything and check git state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short src/kernel/src/hal/mem/types/address/ 2>&1 | head
+
+[THINKING] All six verification targets are complete with no errors—the four core conversion functions and two proof lemmas are fully proven. The module itself is clean with no shortcuts like admit or assume, though there's some unverified code in the out-of-scope physical memory files that's flagged separately.
+
+The unlisted helper functions (new, into_physical_address, into_page_address, fmt, eq) are intentionally outside the verification scope, so I'm leaving them as-is. The specs and proofs were already in place from prior work, so my role was confirming they all check out, which they do. I should run the full verification suite to ensure there are no regressions in the broader build, keeping in mind that the external admits in mm/phys are pre-existing and out of scope.
+
+Let me check git status to make sure I haven't accidentally modified anything beyond the intended touch on frame.rs.
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+No file changes needed — the module's proofs were already complete and verify cleanly.
+
+## Summary
+
+The target module `src/kernel/src/hal/mem/types/address/frame.rs` is **fully proven**:
+
+- **Verification result: 6 verified, 0 errors** (fresh, non-cached run)
+- **0 `admit()`, 0 `assume()`, 0 `external_body`** in the module's files (`frame.rs`, `frame.proof.rs`, `frame.spec.rs`)
+
+All in-scope target functions verify against their unweakened contracts:
+- `FrameAddress::from_raw_value` — page-aligned success ⇒ `inv()` ∧ `fa@ == raw_addr`
+- `FrameAddress::into_raw_value` — `result == self@`
+- `FrameAddress::from_frame_number` — always `Ok`, satisfies `inv()`, abstract value `== frame*PAGE_SIZE`
+- `FrameAddress::into_frame_number` — exact inverse of `from_frame_number`
+
+Supporting proof lemmas (`lemma_frame_base_aligned`, `lemma_aligned_div_mul`) discharge the divisibility obligations via `lemma_mod_multiples_basic` and `lemma_fundamental_div_mod`.
+
+**On the `CHEATING_DETECTED` status:** the reported `admit=12, external_body=19` are entirely in `mm/phys/*` files (verified via the cheating-detail report — zero hits for `types/address/frame`). These are out-of-scope unlisted functions and pre-existing placeholders; I left them untouched per the hard rules.
+
+No bugs found, so `bugs.md` needs no new entries. No spec weakening occurred (git shows no modifications to the module).
+
+[THINKING] The module files remain unchanged since the content is identical, and the proofs were already complete and verifying correctly. I'm confirming that the module-scoped verification is what was needed here, so the task is done. Let me just double-check that the specs haven't drifted or been weakened in any way.
+
+
+=== Session End ===
+Session: 30196b67-c317-4461-8d18-e6a4a95d6c6d
+Duration: 136.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/prover-claude-20260615-110811.jsonl
