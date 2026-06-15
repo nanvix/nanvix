@@ -141,4 +141,16 @@ impl PhysicalAddress {
     }
 }
 
+// `PhysicalAddress` abstracts to a single mathematical integer: the raw physical
+// address, delegated from the inner `VirtualAddress`. Kept here (verification
+// material) rather than in `phys.rs` so the exec source carries no cfg-gated
+// verification constructs.
+impl View for PhysicalAddress {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.0@
+    }
+}
+
 } // verus!

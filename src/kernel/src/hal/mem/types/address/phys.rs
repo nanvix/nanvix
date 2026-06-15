@@ -153,6 +153,9 @@ impl PhysicalAddress {
             result.inv(),
     )]
     pub fn from_number(frame: FrameNumber) -> Self {
+        // VERUS DEVIATION (pre-approved: `f(complex_expr)` -> `let x = complex_expr; f(x)`):
+        // the `frame * FRAME_SIZE` product is bound to intermediate locals so the
+        // proof block below can discharge the no-overflow obligation on them.
         let frame_raw: usize = frame.into_raw_value();
         let page_size: usize = mem::FRAME_SIZE;
         proof! {
@@ -193,6 +196,9 @@ impl PhysicalAddress {
     )]
     pub fn into_frame_number(self) -> FrameNumber {
         let raw_addr: usize = self.0.into_raw_value();
+        // VERUS DEVIATION (pre-approved: `f(complex_expr)` -> `let x = complex_expr; f(x)`):
+        // the shift amount is bound to a local so the proof block can relate
+        // `raw_addr >> shift` to division by `spec_page_size()`.
         let shift: usize = mem::FRAME_SHIFT;
         proof! {
             // `raw_addr >> shift == raw_addr / 2^shift == self@ / spec_page_size()`,
@@ -320,21 +326,6 @@ impl core::fmt::Debug for PhysicalAddress {
     }
 }
 
-//==================================================================================================
-// Material for verification
-//==================================================================================================
-
-#[cfg(verus_keep_ghost)]
-verus! {
-
-impl View for PhysicalAddress
-{
-    type V = int;
-
-    closed spec fn view(&self) -> int
-    {
-        self.0@
-    }
-}
-
-} // end verus!
+// The `View` impl for `PhysicalAddress` is verification material; it lives in
+// `phys.spec.rs` (included only under `cfg(verus_keep_ghost)`) so that no
+// verification-only construct is cfg-gated inside this exec source file.
