@@ -231,6 +231,7 @@ impl PhysMemoryManager {
             lemma_book_all_empty(g_old);
         }
 
+        #[allow(unused_variables)]
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
                 g_old == old(self)@,
