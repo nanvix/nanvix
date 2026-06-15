@@ -45,3 +45,21 @@ Turn 2
 ────────────────────────────────────────────────────────────
 The setup script confirms the toolchain was the wrong version and corrected it to the pinned `0.2026.05.31`. Now re-run the gate commands exactly as the gate does (using the default toolchain dir):
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus 2>&1 | grep -iE "Crate +:|v
+[RESULT ✓] bash: Crate     : bitmap
+  verification: 70 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+  Crate     : sys
+  verification: cached (no recompilation), — (exit 0)
+  status: CLEAN
+  Crate     : nanvix-slab
+  verification: 35 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+  Crate     : bum...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+All crates now compile and verify with **0 errors**. The `CHEATING_DETECTED` flags are pre-existing `cfg_gate`/`external_body` counts in *other* crates (bitmap, nanvix-slab, bump-allocator, kernel) — my `sys` crate is **CLEAN**. Let me confirm exit codes and run both gate commands cleanly:
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== make verify exit code ==="; make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/
+
+[THINKING] All the crates are compiling without errors, though there's some pre-existing `CHEATING_DETECTED` status from other crates that I need to understand. The gate requires fixing both errors and warnings, so I'm checking whether it treats that status as a failure condition. The original gate failure was due to a compilation error, which is now resolved, but I need to verify what the gate actually validates.
