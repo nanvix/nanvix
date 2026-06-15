@@ -233,3 +233,53 @@ Zero diff against base — the module files are unchanged and already verify cle
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel 2>&1 | tail -15
 
 [THINKING] The module is already in a clean state with no differences from the base branch and zero verification issues, so there's nothing to eliminate. I should run the full crate verification to make sure there are no regressions.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=19 admit=12 trusted=0 no_decreases=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  56/1026 exec functions have contracts.
+  Unverified function list written to: verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Full kernel verify passes (exit 0). The global cheating counts (admit=12, external_body=19, cfg=19) are identical to the base branch (commit c4b739de0) — zero regression, and all are in out-of-scope modules. The `hal-memory-region` module has zero cheating with all 4 target functions verified.
+
+Let me write the report.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination
+
+[THINKING] The kernel verification passed with no errors, and the global cheating flags are all accounted for in other modules that are either documented or out of scope—matching the base branch exactly. The region module itself has zero violations across all target functions. Now I'm preparing the fix report and making sure the output directory is ready.
+[RESULT ✓] bash: 
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/fix_report.md
+[TOOL] report_intent: Writing fix report
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/fix_report.md with 3011 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+**Result: PASS** — zero cheating in `hal-memory-region`.
+
+## Summary
+
+The `hal::mem::types::region` module was already free of all cheating. Findings:
+
+- **In-scope cheating counts (all 0):** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0. Verifier reports `✅ No cheating detected`.
+- **Target functions verified:** all 4 (`MemoryRegion::start/size`, `TruncatedMemoryRegion::start/size`) carry real `#[verus_spec]` contracts proven in-body. Forced (non-cached) run: **5 verified, 0 errors**.
+- **AST consistency:** `git diff verus-ai-prove` on the three region files is empty — byte-identical to base, so semantics/complexity trivially preserved. Zero mismatches.
+- **No regression:** full `make verify-kernel` exits 0; global counts (admit=12, external_body=19, cfg=19) are unchanged from base commit `c4b739de0` and live entirely in out-of-scope modules (`mm/phys`, `mm/virt`, `arch`) covered by `tcb-allowed.md`. None are in any `region` file.
+
+No `verification_todo.md` was needed (no proof gaps). Report written to `verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: bdad536f-f7f0-4213-a2b3-32825e743b50
+Duration: 105.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/prover-claude-20260615-100013.jsonl
