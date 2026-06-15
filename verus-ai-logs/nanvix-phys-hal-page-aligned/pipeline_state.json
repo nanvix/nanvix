@@ -2,10 +2,11 @@
   "module_name": "hal-page-aligned",
   "log_name": "nanvix-phys-hal-page-aligned",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs",
-  "current_phase": "view-design",
-  "current_phase_idx": 1,
+  "current_phase": "specification",
+  "current_phase_idx": 2,
   "completed_phases": [
-    "caller-analysis"
+    "caller-analysis",
+    "view-design"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -18,6 +19,17 @@
       "review_file": null,
       "duration_s": 122.3,
       "review_rounds": 0
+    },
+    "view-design": {
+      "phase": "view-design",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 144.2,
+      "review_rounds": 0
     }
   },
   "prover_session_id": "1db606dc-1f14-4e82-9cac-e81288522c9d",
@@ -25,11 +37,13 @@
   "base_branch": "verus-ai/phys-frame",
   "verus_branch": "verus-ai/hal-page-aligned",
   "phase_boundary_shas": {
-    "caller-analysis": "885241c679c7397ce26e508460f4090caf97b62c"
+    "caller-analysis": "885241c679c7397ce26e508460f4090caf97b62c",
+    "view-design": "e15ae657925c965dc4075563c91b0217159c217a"
   },
   "phase_start_shas": {
     "caller-analysis": "1589c21b601b9f4d37ae778396af64996308e3d9",
-    "view-design": "885241c679c7397ce26e508460f4090caf97b62c"
+    "view-design": "885241c679c7397ce26e508460f4090caf97b62c",
+    "specification": "e15ae657925c965dc4075563c91b0217159c217a"
   },
   "phase_history": [
     {
@@ -48,6 +62,18 @@
       "phase": "view-design",
       "event": "start",
       "sha": "885241c679c7397ce26e508460f4090caf97b62c",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "end",
+      "sha": "e15ae657925c965dc4075563c91b0217159c217a",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "e15ae657925c965dc4075563c91b0217159c217a",
       "rollback_iter": 0
     }
   ],
