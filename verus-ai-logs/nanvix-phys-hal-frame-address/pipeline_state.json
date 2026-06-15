@@ -54,6 +54,17 @@
       "review_file": null,
       "duration_s": 897.8,
       "review_rounds": 1
+    },
+    "cheating-elimination": {
+      "phase": "cheating-elimination",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 603.5,
+      "review_rounds": 1
     }
   },
   "prover_session_id": "9f800461-9d25-46d7-8d9e-8a4a5285244c",
@@ -64,7 +75,8 @@
     "caller-analysis": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
     "view-design": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26",
     "specification": "3cb637383670132b13736a84026460b3ff7994bb",
-    "proving": "c22a789005450a9235cb57911b41fd1440ad5dc6"
+    "proving": "c22a789005450a9235cb57911b41fd1440ad5dc6",
+    "cheating-elimination": "24f35252a7221a0f7d171a6550d7a7fad8639630"
   },
   "phase_start_shas": {
     "caller-analysis": "b5ef4dd3bf27dc3d5ebc1594cdfb6c85e36c4e20",
@@ -126,6 +138,12 @@
       "phase": "cheating-elimination",
       "event": "start",
       "sha": "6b129e276403a5a3baa78f9270c02f1e90c7df84",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "end",
+      "sha": "24f35252a7221a0f7d171a6550d7a7fad8639630",
       "rollback_iter": 0
     }
   ],
