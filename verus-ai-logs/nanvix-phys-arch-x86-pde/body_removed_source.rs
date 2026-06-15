@@ -38,6 +38,7 @@ use crate::{
 ///
 /// A type that represents flags of a page directory entry.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub struct PageDirectoryEntryFlags {
     /// Present flag.
@@ -79,6 +80,20 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_flags_new(
+                present,
+                read_write,
+                user_supervisor,
+                page_write_through,
+                page_cache_disable,
+                accessed,
+                dirty,
+                page_size,
+            ),
+    )]
     pub fn new(
         present: PresentFlag,
         read_write: ReadWriteFlag,
@@ -100,6 +115,9 @@ impl PageDirectoryEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
+    #[verus_spec(result =>
+        ensures result == self@.present,
+    )]
     pub fn is_present(&self) -> bool { ... }
 
     ///
@@ -210,6 +228,7 @@ impl PageDirectoryEntryFlags {
 ///
 /// A type that represents a page directory entry.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageDirectoryEntry {
     /// Flags.
@@ -236,6 +255,12 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_new(flags@, frame@),
+            result.inv(),
+    )]
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self { ... }
 
     ///
@@ -286,6 +311,9 @@ impl PageDirectoryEntry {
     /// `true`: If the target page directory entry is marked as present.
     /// `false`: Otherwise.
     ///
+    #[verus_spec(result =>
+        ensures result == self@.flags.present,
+    )]
     pub fn is_present(&self) -> bool { ... }
 
     ///
@@ -308,6 +336,11 @@ impl PageDirectoryEntry {
     ///
     /// The physical address.
     ///
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
+            result as int % (crate::mem::FRAME_SIZE as int) == 0,
+    )]
     pub fn frame_address(&self) -> usize { ... }
 
     ///
