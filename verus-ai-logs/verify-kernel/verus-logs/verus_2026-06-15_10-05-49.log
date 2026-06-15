@@ -1,0 +1,32 @@
+Timestamp: 2026-06-15_10-05-49
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=13
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error[E0433]: cannot find `Idt` in `idt`
+   --> src/kernel/src/hal/platform/microvm/mod.rs:971:14
+    |
+971 |         idt::Idt::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
+    |              ^^^ could not find `Idt` in `idt`
+    |
+help: a struct with a similar name exists
+    |
+971 |         idt::Idte::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
+    |                 +
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
