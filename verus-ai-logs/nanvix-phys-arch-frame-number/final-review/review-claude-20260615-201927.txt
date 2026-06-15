@@ -800,3 +800,246 @@ cfg_not_verus_keep_ghost: ...
 - Functions with changes: 0
 - **Contract drift (⚠ review required): 0**
   - En...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] rg: pub const (MAX_ADDRESS|FRAME_SIZE|PAGE_SIZE|FRAME_SHIFT)|const (MAX_ADDRESS|FRAME_SIZE|PAGE_SIZE|FRAME_SHIFT)
+[TOOL] rg: spec_frame_size\(|spec_max_frame_number\(|FrameNumber::MAX|MAX_ADDRESS / mem::FRAME_SIZE
+[TOOL] rg: VERUS REWRITE
+[TOOL] rg: verus_spec|verifier::type_invariant|impl View|closed spec fn view|pub open spec fn inv|spec_frame_size|spec_max_frame_number
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs:37:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs:52:    // additionally bounds it to `0 ..= spec_max_frame_number()`, which callers
+/ho...
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs:49:pub const PAGE_SIZE: usize = 4096;
+/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs:93:pub const MAX_ADDRESS: usize = usize::MAX;
+/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs:100:pub const FRAME_SHIFT: usi...
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs:52:    // additionally bounds it to `0 ..= spec_max_frame_number()`, which callers
+/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs:55:    #[verus_spec(result =>
+/home/ruize/nanvix-phy/src/libs/arch/src/x8...
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 183s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review file", tool_calls_completed: 15, (timed out w...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The claude agent is finalizing (writing the review file). I'll wait for both agents to complete.
+[TOOL] read_agent: {'agent_id': 'review-gpt', 'timeout': 120, 'wait': True}
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/constants.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 140.     ///
+141.     /// # Returns
+142.     ///
+143.     /// A [`PhysicalAddress`] associated with the given `frame_number`.
+144.     ///
+145.     // The produced address is the frame's base address (`frame * FRAME_SIZE`).
+146.     // The result is page-aligned (`result@ % FRAME_SIZE == 0`) and car...
+[RESULT ✓] view: 290.     ///
+291.     /// # Parameters
+292.     ///
+293.     /// - `value`: The raw value.
+294.     ///
+295.     /// # Returns
+296.     ///
+297.     /// - `Some(`[`PageDirectoryEntry`]`)`: If the raw value is valid.
+298.     /// - `None`: Otherwise.
+299.     ///
+300.     pub fn from_raw_value(value:...
+[RESULT ✓] view: 295.     ///
+296.     /// # Returns
+297.     ///
+298.     /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
+299.     /// - `None`: Otherwise.
+300.     ///
+301.     pub fn from_raw_value(value: PteWord) -> Option<Self> {
+302.         Some(Self {
+303.             flags: PageTableEntryFlag...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.claude.md with 15447 characters
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Review written to `final-review/final_review.claude.md`. Summary:
+
+**Result: PASS.** All tool checks confirmed independently: `make verify-arch` exit 0, status CLEAN (`assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`); `ast_consistency` → "4 functions, 1 structs match" (0 rewrites); `spec_drift` → no contract drift.
+
+Both in-scope functions carry correct, caller-complete contracts; View (`type V=int`, closed) and `inv` (range bound) are sound. Caller coverage 10/10 for the trust boundary. TCB compliant (0 in-module `external_body`; FrameNumber entries are kernel-side).
+
+No `bugs.md` and no genuine code defect: `from_raw_value`'s `value > MAX` guard and `into_raw_value`'s `self.0` projection are both correct (0 true bugs).
+
+Only two non-blocking notes: closed `view()` doesn't expose `NULL@==0` (no verified caller needs it yet), and minor intentional redundancy matching the `tcb-allowed` contract.
+[RESULT ✓] read_agent: Agent is still running after waiting 120s. agent_id: review-gpt, agent_type: general-purpose, status: running, description: Independent final review (gpt), elapsed: 306s, total_turns: 0, model: gpt-5.5, current_intent: "Running validation", tool_calls_completed: 37, (timed out waiting for completion...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The claude review completed. Let me retrieve it and check on the gpt agent.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': False}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 309s, total_turns: 0, model: claude-opus-4.8, duration: 223s
+
+Review written to `final-review/final_review.claude.md`. Summary:
+
+**Result: PASS.** All to...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The claude agent passed. Waiting for the gpt agent to finish its validation run.
+[TOOL] read_agent: {'agent_id': 'review-gpt', 'timeout': 180, 'wait': True}
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-gpt, agent_type: general-purpose, status: running, description: Independent final review (gpt), elapsed: 492s, total_turns: 0, model: gpt-5.5, current_intent: "Running validation", tool_calls_completed: 37, (timed out waiting for completion...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The gpt agent is still running its validation (likely a `make verify` cross-module run). I'll wait for its completion notification.
+[TOOL] read_agent: {'agent_id': 'review-gpt', 'timeout': 180, 'wait': True}
+
+[THINKING] The gpt agent is still stuck on validation with tool_calls at 37, likely waiting for a slow make verify to complete. I'll hold tight for the notification.
+[TOOL] rg: NULL@|NULL\.into_raw_value|FrameNumber::NULL|from_raw_value\(0\)|spec_null|NULL.*0
+[TOOL] rg: MAX as int|FrameNumber::MAX|spec_max_frame_number\(\).*MAX|spec_max_frame_number
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs:39:    pub const NULL: Self = Self(0);
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:20:// `FrameNumber::MAX == mem::MAX_ADDRESS / mem::FRAME_SIZE - 1`. A frame index in
+/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:21:// `0 ..= spec_max_frame_number()` scaled by `spec_frame_s...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing review
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-arch-frame-number/final-review && cat > verus-ai-logs/na
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 264 verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.gpt.md
+# Final Comprehensive Review (gpt-5.5): arch-frame-number
+
+## Checklist
+
+### Caller Analysis (4)
+- [x] Read `caller_analysis.md` and verified the reported public API/caller counts with tool output (`find_callers_output....
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-gpt, agent_type: general-purpose, status: running, description: Independent final review (gpt), elapsed: 676s, total_turns: 0, model: gpt-5.5, current_intent: "Writing review", tool_calls_completed: 40, (timed out waiting for completion) Co...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Progress — the gpt agent is now writing its review. Waiting for completion.
+[TOOL] read_agent: {'agent_id': 'review-gpt', 'timeout': 180, 'wait': True}
+Review written to final_review.gpt.md  
+Verification: PASS (make verify-arch CLEAN)  
+Guardrails/TCB/AST/spec drift: PASS  
+Issue: missing formal NULL sentinel identity coverage  
+Result: FAIL
+[RESULT ✓] read_agent: Agent completed. agent_id: review-gpt, agent_type: general-purpose, status: completed, description: Independent final review (gpt), elapsed: 747s, total_turns: 0, model: gpt-5.5, duration: 747s
+
+Review written to final_review.gpt.md  
+Verification: PASS (make verify-arch CLEAN)  
+Guardrails/TCB/AST/...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Both reviews are in — claude says PASS, gpt says FAIL (both flag the NULL sentinel coverage gap). Let me read both files to reconcile and make a strict final determination.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/nanvix-phys-arch-frame-number/final-review/
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.claude.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.gpt.md
+
+[THINKING] The GPT agent flagged a formal specification gap around NULL sentinel handling that Claude didn't treat as blocking, creating a disagreement on whether this counts as a checklist failure. I need to review both assessment files to make a final determination on this discrepancy. I need to review both the caller_analysis and the checklist to determine whether NULL sentinel coverage is actually a required item that's been checked or if it's missing.
+[RESULT ✓] bash: total 1328
+drwxrwxr-x 1 ruize ruize     218 Jun 15 20:31 .
+drwxrwxr-x 1 ruize ruize     436 Jun 15 20:19 ..
+-rw-rw-r-- 1 ruize ruize   15552 Jun 15 20:25 final_review.claude.md
+-rw-rw-r-- 1 ruize ruize   13717 Jun 15 20:31 final_review.gpt.md
+-rw-rw-r-- 1 ruize ruize 1261093 Jun 15 20:35 review-clau...
+[RESULT ✓] view: 1. # Final Comprehensive Review (claude-opus-4.8): arch-frame-number
+2. 
+3. Independent, tool-verified review of the Verus verification effort for module
+4. `arch-frame-number`.
+5. 
+6. - Source: `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+7. - Spec:   `src/libs/arch/src/x86/mem/paging/frame/n...
+[RESULT ✓] view: 1. # Final Comprehensive Review (gpt-5.5): arch-frame-number
+2. 
+3. ## Checklist
+4. 
+5. ### Caller Analysis (4)
+6. - [x] Read `caller_analysis.md` and verified the reported public API/caller counts with tool output (`find_callers_output.md`, `rg`).
+7. - [x] Checked all 8 external `FrameNumber::from_...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Both independent reviews agree on all tool-verified facts (verification CLEAN, guardrails all-zero, TCB compliant, AST consistent, no spec drift, no bugs). They diverge on exactly one point — the `NULL` sentinel identity. I verified this is a genuine gap: `view()` is `closed`, so callers cannot prove `NULL.into_raw_value() == 0`, yet `caller_analysis.md` explicitly documents it as a caller expectation. Under the strict rule ("PASS only if ALL checklist items checked"), this unchecked caller-coverage item forces FAIL. Let me confirm the gap concretely, then consolidate.
+[TOOL] report_intent: Consolidating final review
+[TOOL] bash: cd /home/ruize/nanvix-phy && D=src/libs/arch/src/x86/mem/paging/frame && echo "=== NULL refs in module ===" && grep -rn 
+
+[THINKING] The two reviewers diverge on how to handle the NULL sentinel value—one considers it a non-blocking issue since the constant isn't exposed through the view boundary, while the other flags it as a missing checklist item because the caller analysis references its behavior without a formal contract backing it.
+
+I need to apply the strict rule: every documented caller expectation must have corresponding requires/ensures clauses. The caller analysis explicitly lists that `NULL.into_raw_value() == 0`, but since the view is closed, callers can't formally verify this property. The question becomes whether this expectation is actually required by any verified caller—and the answer is no, the callers themselves aren't verified. This means the expectation exists in documentation but has no verified consumer depending on it, which technically leaves the checklist item unchecked under the strict interpretation. The core tension is whether NULL counts as a genuine gap in the verification scope. The caller_analysis explicitly documents NULL's behavior as a caller expectation, but with the view closed, there's no formal spec coverage that callers can actually rely on. Given the strict instruction that all checklist items must pass, and given that NULL expectations lack corresponding requires/ensures, this appears to be a legitimate unchecked item—which means the Specification checklist cannot be marked complete. The NULL identity gap is genuine — callers can't formally derive that NULL.into_raw_value() equals 0 from the closed spec, even though it's documented in the analysis. Under strict rules, this unchecked specification item means the verdict is FAIL, and I should report this as the sole blocker rather than attempt to fix the code.
+
+Now I'll write up the consolidated final review document with this FAIL result, clearly noting the reviewer disagreement and that the NULL sentinel coverage is the only remaining gap.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === NULL refs in module ===
+src/libs/arch/src/x86/mem/paging/frame/number.rs:39:    pub const NULL: Self = Self(0);
+=== view visibility ===
+15:pub open spec fn spec_frame_size() -> int {
+24:pub open spec fn spec_max_frame_number() -> int {
+31:// index. `closed` so the `usize`-newtype mapping does no...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Gap confirmed: `NULL = Self(0)` with a `closed` view and no spec exposing `NULL@ == 0`. Writing the consolidated final review.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.md
+
+[THINKING] I've confirmed that NULL maps to `Self(0)` and the view is closed with no spec exposing NULL at that equality point—there's definitely a gap here. Now I'm writing up the consolidated final review document.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/final_review.md with 11969 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Done. Two independent sub-agents reviewed, raw outputs saved, consolidated into `final_review.md`.
+
+**Result: FAIL** (strict grading).
+
+All tool-verified dimensions are clean and agreed by both reviewers:
+- `make verify-arch`: exit 0, CLEAN; `make verify`: all crates pass
+- Guardrails: admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0
+- TCB compliant, AST consistent (4 fns/1 struct MATCH), no spec drift, 0 bugs
+
+**Sole blocker** (gpt-5.5 caught it; claude rated non-blocking): `caller_analysis.md` documents `NULL.into_raw_value() == 0`, but the `closed` view exposes no `NULL@ == 0` fact — so the "each caller expectation has corresponding ensures" checklist item is unchecked → FAIL. Narrow and easily remediable.
+
+Files:
+- `final-review/final_review.md` (consolidated)
+- `final-review/final_review.claude.md`, `final_review.gpt.md` (raw)
+
+[THINKING] I've wrapped up the consolidated review and now I'm preparing a brief summary for the user—the two sub-agents completed their work, the raw reviews are saved, and everything's been merged into the final document.
+
+
+=== Session End ===
+Session: cb4c4ae4-6a11-45b7-ae3b-606c3371122b
+Duration: 1050.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/final-review/review-claude-20260615-201927.jsonl
