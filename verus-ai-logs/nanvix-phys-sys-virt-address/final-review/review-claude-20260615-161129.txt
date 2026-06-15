@@ -944,3 +944,311 @@ Turn 19
 run() { echo "--- $1 ---"; shift; "$@"; code=$?; echo "[exit:$code]"; }
 run "make verify-sys" 
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: --- make verify-sys ---
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compil...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat z; echo "--- try cargo check on sys lib ---"; cd src/libs/sys && timeout 600 cargo buil
+[RESULT ✓] bash: #!/bin/bash
+
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#
+# Thin wrapper that delegates to the unified Python build backend (z.py).
+#
+# Run './z help' for more information on how to use this utility.
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/libs/sys/src/sys/m
+[RESULT ✓] bash: ✅ Consistent: 18 functions, 1 structs match.
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+Virt...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/libs/sys/src/s
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 1
+- **Contract drift (⚠ review required): 1**
+  - Ensures removed: 2
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+Each item below is a potential sp...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verification and build both clean. Let me do a couple final confirmations: VERUS REWRITE comments, the consumer-side assume_specification location, and inv/view correctness.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== VERUS REWRITE in module ==="; grep -rn "VERUS REWRITE\|VERUS BUG FIX\|VERUS DEVIA
+[RESULT ✓] bash: === VERUS REWRITE in module ===
+(none)
+=== consumer-side assume_specification for into_raw_value ===
+100:// `<VirtualAddress as Address>::into_raw_value` is pure newtype identity: the
+107:pub assume_specification[ <VirtualAddress as Address>::into_raw_value ](
+114:// `FrameNumber::into_raw_value` pr...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '100,113p' src/kernel/src/hal/mem/types/address/phys.spec.rs; echo "=== confirm in-s
+[RESULT ✓] bash: // `<VirtualAddress as Address>::into_raw_value` is pure newtype identity: the
+// returned raw `usize` equals the abstract address. It remains an
+// `assume_specification` trust boundary because this trait-impl method cannot be
+// body-verified in `sys` without marking the whole `impl Address for
+//...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== lines mentioning virt address module ==="; grep -nE "virt" verus-ai-logs/verify-s
+[RESULT ✓] bash: === lines mentioning virt address module ===
+=== total unverified count ===
+253 verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+=== does it contain VirtualAddress::new ? ===
+NOT in unverified list -> they ARE verified
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All checks complete. Let me create the review directory and write the final review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-sys-virt-address/final-review && ls verus-ai-logs/nanvix
+[RESULT ✓] bash: review-claude-20260615-161129.jsonl
+review-claude-20260615-161129.txt
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 193s, total_turns: 0, model: claude-opus-4.8, current_intent: "Running analysis scripts and checks", tool_calls_completed: 36, (t...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+I'm waiting for the two independent review agents to finish their analysis. I'll resume and consolidate once they complete.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] rg: \badmit\s*!?\(
+[TOOL] rg: \bassume\s*!?\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: #\[cfg\(
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs:1
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs:4
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review file
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md with 13807 characters
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Review file written. Verdict summary:
+
+## Result: **PASS**
+
+All nine checklist items pass for the `sys-virt-address` Verus effort.
+
+**Key counts (independently verified):**
+- `admit()` = **0**, `assume` = **0**, in-module `external_body` = **0**, `assume_specification` = **0**, cfg-gated exec = **0** (only legitimate `cfg(verus_keep_ghost)` spec/proof includes + `cfg(target_pointer_width)` platform conditionals)
+- **AST consistency:** 18 fns + 1 struct MATCH, 0 mismatch
+- **`make verify-sys`:** exit 0, status CLEAN, 0 errors; `verify.sh` cheating check `assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`
+- **Verified targets:** `VirtualAddress::new` + inherent `from_raw_value` (body-verified, confirmed absent from unverified list)
+- **Build:** `sys` crate compiles (exit 0)
+- **Spec drift vs base branch:** ✅ no contract drift (only strengthening)
+- **Caller coverage:** 4/4 (round-trip, from_raw_value identity, purity, Ord/Eq agreement)
+
+**Notes (non-blocking):**
+- `into_raw_value` is *not* body-verified in this module — held via a documented Verus front-end limitation through a consumer-side `assume_specification` in `kernel/.../phys.spec.rs`, recorded in `tcb-allowed.md` + `verus-unsupported.md`. In scope and sanctioned.
+- `spec_drift.py --before HEAD` reported a false "ensures removed" — a tool artifact from two same-named `from_raw_value` symbols; working tree is byte-identical to HEAD, and the authoritative base-branch comparison is clean.
+- `bugs.md` "None" confirmed accurate.
+
+Full report: `verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md`
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': False}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 269s, total_turns: 0, model: claude-opus-4.8, duration: 267s
+
+Review file written. Verdict summary:
+
+## Result: **PASS**
+
+All nine checklist items pass f...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Claude agent done (PASS). Waiting on the codex agent.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat > verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md <<'EOF'
+[RESULT ✓] bash: 
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Independent Review — `sys-virt-address` (`VirtualAddress`)
+2. 
+3. ## Checklist
+4. - [x] 1) Spec quality reviewed (contracts + View/inv design, closed/open choice, math types)
+5. - [ ] 2) Caller coverage complete for all listed expectations
+6. - [x] 3) Proof completeness checked (`admit`, ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Done. I completed the independent review and wrote:
+
+`/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md`
+
+**Verdict: FAIL** (caller-coverage gap).
+
+Key counts:
+- Caller coverage: **4/6 covered**, **2 missing** (`into_raw_value` purity, Ord/Eq-vs-raw agreement).
+- Guardrails (3 files): `admit=0`, `assume=0`, `external_body=0`, `assume_specification(code)=0`, cfg-gated-exec cheating `=0`.
+- AST consistency (auto-detect): **0 mismatches**, `VERUS REWRITE=0`.
+- `make verify-sys`: **PASS**, error count **0**.
+- `make build`: **PASS**, error count **0**.
+- Bug log reconciliation: “None” is reasonable; limitation classification is documented and allow-listed.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 283s, total_turns: 0, model: gpt-5.3-codex, duration: 283s
+
+Done. I completed the independent review and wrote:
+
+`/home/ruize/nanvix-phy/verus-ai-logs/nanv...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Both agents finished but disagree on caller coverage. Let me read both raw reviews to reconcile fairly before consolidating.
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md
+
+[THINKING] I'm looking at a disagreement between two reviewers on whether this passes testing—one says it covers all four caller expectations, while the other flags two missing ones around the purity of into_raw_value and whether Ord and Eq implementations agree. Let me examine both reviews to understand where they diverge, particularly around how the into_raw_value purity requirement is being verified. The checklist requires all items to be checked, so I need to determine whether these two items are genuinely missing specs or legitimately out-of-scope based on the view design justification. Let me examine both reviews side by side to reach a fair consolidated verdict.
+[RESULT ✓] view: 1. # Final Independent Review — `sys-virt-address` (`VirtualAddress`)
+2. 
+3. ## Checklist
+4. - [x] 1) Spec quality reviewed (contracts + View/inv design, closed/open choice, math types)
+5. - [ ] 2) Caller coverage complete for all listed expectations
+6. - [x] 3) Proof completeness checked (`admit`, ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+
+[THINKING] I'm looking at the Claude review to see how it addresses the purity of into_raw_value and whether Ord and Eq implementations are consistent with each other.
+[RESULT ✓] view: 1. # Final Verification Review — `sys::mm::address::virt` (`VirtualAddress`)
+2. 
+3. - **Reviewer:** Independent strict final verification (review-only; no source/spec/proof files modified)
+4. - **Date:** 2026-06-15
+5. - **Branch:** `verus-ai/sys-virt-address` (base `verus-ai/hal-platform-microvm`), ...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Both agents agree on every mechanical check; they diverge only on the caller-coverage item. Let me adjudicate that disagreement against the authoritative scope rules before consolidating.
+
+The two items codex flags as "missing":
+1. **`into_raw_value` purity** — guaranteed by `VirtualAddress: Copy` + by-value `self` (a type-system guarantee that spec-design says to skip); its *value* identity (`result as int == self@`) is held at the sanctioned consumer-side `assume_specification` (the documented Verus limitation), listed in `tcb-allowed.md`.
+2. **Ord/Eq agreement** — the comparison operators are **out of scope** (derived; hard rule forbids touching unlisted functions); `view_design.md` explicitly classifies this as a derivable consequence, deliberately made *expressible* by `View = self.0 as int`, not an in-scope contract.
+
+Neither is an in-scope function lacking a spec. Codex's FAIL demands specs for out-of-scope/type-system-guaranteed behavior. The claude assessment is correct on the merits. Consolidating as PASS with the dissent recorded.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "VirtualAddress as Address>::into_raw_value" verus-ai-logs/tcb-allowed.md && echo "
+
+[THINKING] I need to work through the disagreement between the two reviewers on the caller-coverage item. They're aligned on all the mechanical checks, but they differ on whether purity and Ord/Eq agreement for `into_raw_value` should count as missing or justified. Let me evaluate this against the authoritative scope document to settle which assessment is correct. The checklist item for caller coverage asks whether each caller expectation has a corresponding spec, and reviewing the scope document and type guarantees, every expectation is either explicitly specced in the in-scope functions, guaranteed by the type system, or an out-of-scope derived property that the View design intentionally makes expressible. So the caller coverage checklist should be marked as passing, making this a PASS overall, though I need to transparently document the reasoning behind this adjudication. The consumer-side ensures for value identity is documented as a limitation and pre-approved, so it satisfies the checklist requirement even though it lives outside this module. I've confirmed the spec_drift check shows no contract drift against the base branch, so I'm ready to write the consolidated final_review.md file with all checklist items marked and notes capturing the minor considerations and the codex dissent.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 266:- `<VirtualAddress as Address>::into_raw_value` — `result as int == addr@`.
+---derive---
+#[verus_verify(external_derive)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VirtualAddress(usize);
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Facts confirmed. Writing the consolidated review.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.md with 11397 characters
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/nanvix-phys-sys-virt-address/final-review/*.md
+
+[THINKING] Now I'm checking that all three files were created successfully.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 13943 Jun 15 16:17 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  5013 Jun 15 16:17 verus-ai-logs/nanvix-phys-sys-virt-address/final-review/final_review.codex.md
+-rw-rw-r-- 1 ruize ruize 11544 Jun 15 16:19 verus-ai-lo...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Done. Two independent reviews (claude-opus-4.8, gpt-5.3-codex) completed and saved, consolidated into `final_review.md`.
+
+**Consolidated result: PASS**
+
+Both agents agreed on every objective check:
+- `make verify-sys`: exit 0, **0 errors**, status CLEAN; `sys` builds.
+- Guardrails: admit=**0**, assume=**0**, external_body=**0**, assume_specification=**0**, cfg-gated exec=**0**.
+- AST consistency: 18 fns + 1 struct MATCH, **0 mismatch**, no `VERUS REWRITE`.
+- TCB: no new in-module trust boundary; `into_raw_value` identity is the pre-approved consumer-side `assume_specification` (`tcb-allowed.md:266`).
+- Spec drift vs base branch: 0 contract drift (strengthening only).
+- bugs.md "None": accurate; the lone unverified item is a documented Verus front-end limitation, not a bug.
+
+**Reconciled disagreement:** codex scored caller coverage 4/6 → FAIL, flagging `into_raw_value` purity and `Ord`/`Eq` agreement. Adjudicated as covered/justified, not missing: purity is a `Copy`/by-value type-system guarantee (spec-design says skip) with its value identity held at the allow-listed consumer boundary; the comparison operators are **derived and out of scope** (hard rule forbids touching them) and `view_design.md` explicitly classifies the agreement as a derivable consequence. No in-scope function lacks a spec.
+
+Files: `final_review.md`, `final_review.claude.md`, `final_review.codex.md` in `verus-ai-logs/nanvix-phys-sys-virt-address/final-review/`.
+
+
+=== Session End ===
+Session: 1cb66052-2ede-4fad-93e9-a13a5c0720e4
+Duration: 508.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/final-review/review-claude-20260615-161129.jsonl
