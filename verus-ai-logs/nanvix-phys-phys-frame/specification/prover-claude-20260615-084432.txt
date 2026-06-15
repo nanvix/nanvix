@@ -717,3 +717,71 @@ Excellent — **32 verified, 0 errors**. All `external_body`/`admit` usages are 
 [TOOL] bash: cd /home/ruize/nanvix-phy && echo "exit code of last verify-kernel:"; timeout 300 make verify-kernel MODULE=mm::phys >/d
 
 [THINKING] We're at 32 verified with zero errors, and the "CHEATING_DETECTED" status is just flagging the external_body and admit usage, which are all properly sanctioned in tcb-allowed.md. I'm now cross-checking that each admit in frame.rs—covering operations like alloc, alloc_contiguous, free, share, refcount, book, is_covered, and alloc_range on Inner—are all listed as allowed. The Inner methods are all listed in tcb-allowed.md, so adding the external_body attribute is correct and required by the task. The admit in the free shim is acceptable per the spec phase guidelines. The alloc shim I added verified cleanly without needing admit, which is good. Now I need to run the full verification suite to check for any regressions in other modules and ensure the build completes successfully. The pre-state fact `free_frames.contains(frame@)` is sound for the alloc spec because the allocator selects a frame that was free before the operation, and this is provable from the inner implementation's ensures clause. Now I'll run make build and make verify to check for regressions.
+[RESULT ✓] bash: exit code of last verify-kernel:
+verify-kernel exit: 0
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+`make verify-kernel` exits 0. Now let me verify dual compilation (`make build`) and run the full `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make build 2>&1 | tail -25; echo "build exit: ${PIPESTATUS[0]}"
+
+[THINKING] Now I'm running the build process with dual compilation, then I'll execute the full verification across all modules.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+build exit: 0
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^build:\|^build :\|build:" Makefile | head; echo "---"; grep -n "^all:\|^kernel:\|
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+---
+411:all: all-nanvix
+485:install: all-nanvix
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/Makefile
+[RESULT ✓] view: 411. all: all-nanvix
+412. 	@$(MAKE_QUIET) update-sysroot-link
+413. 	@$(MAKE_QUIET) dump-sccache-stats
+414. 
+415. # Builds all Nanvix components.
+416. all-nanvix: \
+417. 	init \
+418. 	all-guest-staticlibs \
+419. 	all-guest-binaries \
+420. 	all-kernel \
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+`make build` is a no-op target. The key "dual compilation" check is that the kernel compiles normally (Verus attributes erased). Let me use the project's build tooling.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls z* 2>/dev/null; grep -n "all-kernel:\|^kernel " Makefile | head
+
+[THINKING] I need to figure out how to properly build the kernel—the `make build` target isn't doing anything, so I should check what the `./z build` script does or try `make all-kernel` instead. The real priority here is verifying that the dual compilation still works without Verus.
+[RESULT ✓] bash: z
+z.bat
+z.ps1
+z.py
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build 2>&1 | tail -30; echo "z build exit: ${PIPESTATUS[0]}"
+[RESULT ✓] bash: cp -f --preserve /home/ruize/nanvix-phy/target/debug/nanvixd /home/ruize/nanvix-phy/bin/nanvixd.elf
+# Build the standalone rootfs image from a seed directory using mkramfs.
+/home/ruize/nanvix-phy/bin/mkramfs.elf -o /home/ruize/nanvix-phy/bin/standalone-rootfs.img /home/ruize/nanvix-phy/bin/standalon...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Normal build succeeds (dual compilation works — Verus attributes erased correctly). Now the full `make verify` to check for regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 3000 make verify 2>&1 | tail -60; echo "verify exit: ${PIPESTATUS[0]}"
+
+[THINKING] The dual compilation is working correctly with the Verus annotations being stripped out as expected. Now I'm running the full verification suite to check for any regressions across the other modules.
