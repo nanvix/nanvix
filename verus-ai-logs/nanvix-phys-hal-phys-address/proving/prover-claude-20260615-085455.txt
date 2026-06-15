@@ -879,3 +879,98 @@ Turn 57
 [THINKING] I'm noticing that `lemma2_to64()` is already being invoked within the `into_frame_number` proof block using the fully-qualified path, so calling it again in my lemma shouldn't be a problem. I need to verify there's no import conflict since `pow2` is already imported in spec.rs and I'm working with the same module path.
 
 Now I'm checking the arithmetic: on a 32-bit target, `usize::MAX` is 4294967295, which means `spec_max()` should equal 1048574 after the division and subtraction. The key issue is whether the `usize` division in `spec_max()` matches the `int` division in my code — they should be equivalent for non-negative values, but I need to verify that `spec_max()` unfolds correctly since it's marked `open`, and that the constant definitions align properly when converting between `usize` and `int` arithmetic.
+[RESULT ✓] bash: note: verifying module hal::mem::types::address::phys
+
+verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.08s
+
+=== Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Module verifies cleanly (6 verified, 0 errors). Let me confirm no `admit`/`assume` remain in this module and check AST consistency of the exec change.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "admit()\|assume(" src/kernel/src/hal/mem/types/address/phys.rs src/kernel/s
+
+[THINKING] All 6 files are verified clean with no errors, and the global admit value of 14 is accounted for in other modules. I should double-check that this module itself has no remaining admit references.
+[RESULT ✓] bash: exit: 1
+=== exec diff ===
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short; echo "=== diffs ==="; git --no-pager diff --stat
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-085455.jsonl
+ M verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-085455.txt
+=== diffs ===
+ .../proving/prover-claude-20260615-085455.jsonl    | 33 ++++++++++++++++++++++
+ .../proving/prover-claude-20...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git ls-files --error-unmatch src/kernel/src/hal/mem/types/address/phys.rs 2>&1 | head
+
+[THINKING] I'm noticing that phys.rs shows no changes in the git diff even though I edited it, which is odd. Looking at git status, only the proving log files appear as modified—phys.rs, spec.rs, and proof.rs aren't showing up, so they might not be tracked by git at all.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs
+---proof---
+src/kernel/src/hal/mem/types/address/phys.proof.rs
+--- check ignore ---
+<shellId: 45 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The files are tracked but git diff shows no changes to phys.rs, which is strange since I just edited it. Either my changes got reverted or the working tree was already in that state. Let me check the actual current content of the from_number function to figure out what happened.
+[RESULT ✓] view: 142.     pub fn from_number(frame: FrameNumber) -> Self {
+143.         let addr_raw: usize = frame.into_raw_value();
+144.         proof! {
+145.             lemma_from_number_no_overflow(frame);
+146.         }
+147.         let addr: usize = addr_raw * mem::FRAME_SIZE;
+148.         Self(VirtualAddress...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -5; echo "=== HEAD version of from_number ==="; git --no
+
+[THINKING] I'm noticing that my edit to the `from_number` function appears in the file at lines 142-149, but git diff isn't showing any changes, which suggests the committed version might already have this exact content. That's strange because I definitely rewrote it from a different structure with the proof macro and frame conversion on separate lines. Maybe the working tree version was already committed at some earlier checkpoint before I made my changes.
+
+Let me check the git log to understand what's actually been committed and whether there was an auto-commit that captured my edits.
+[RESULT ✓] bash: 581e64175 [verus] verify PASS: kernel::hal::mem::types::address::phys (6 verified, 0 errors)
+95e475053 [verus] verify FAIL: kernel::hal::mem::types::address::phys (5 verified, 1 errors)
+2893539fb [verus] verify FAIL: kernel::hal::mem::types::address::phys (4 verified, 2 errors)
+9d0034891 [verus] ver...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+Module passes cleanly. No code bugs found — the issues were proof gaps (type-invariant cross-crate access, 32-bit target). Let me record the bugs file and run the full verification to check for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md 2>/dev/null && echo EXISTS || e
+
+[THINKING] The auto-commit is handling everything, so my changes are already saved in the latest commit. Now I need to think through the AST consistency issue—I refactored the exec code in `from_number` by extracting `into_raw_value()` into its own binding before the proof block, which preserves the semantics but does modify the exec layer, and the constraints say to preserve exec code by default.
+
+But actually, is this exec change even necessary? The original order has the proof block calling a lemma that requires `frame@ <= spec_max_frame_number()`, but nothing establishes that bound before the proof block runs—the `into_raw_value()` call that would provide it comes after. So the original order can't actually satisfy the lemma's precondition. I need the bound from `into_raw_value`'s ensures before the proof block, which forces the reorder. The type invariant would work but it's not accessible cross-crate, and I don't see a public lemma on FrameNumber that exposes the bound for spec values. So either I accept the exec reorder or I need to find a different way to establish the bound, but fundamentally the multiply-overflow check needs `into_raw_value`'s postcondition anyway. The lemma can't work without the bound, and there's no public broadcast from the type invariant to make it available before the exec reorder. So keeping the exact original order isn't viable — the reorder is semantically identical and the cleanest solution. I should verify this doesn't violate ast-consistency expectations, but the deviation is benign since it preserves the semantics. unconditionally — that would be false for arbitrary frame values. So the lemma genuinely needs the bound as a precondition, which means it has to be available where I call it. With the original ordering, it isn't available yet. The reorder is the minimal necessary change to make this work, and it preserves the semantics of the code while enabling the proof to go through. This is a benign refactor that's justified by proof requirements. Let me verify the full suite still passes and check for any warnings in this module.
+[RESULT ✓] bash: MISSING
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/bugs.md with 969 characters
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 3000 make verify 2>&1 | tail -30
