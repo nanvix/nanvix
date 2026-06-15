@@ -344,3 +344,241 @@ Turn 12
 In identity_map.rs, lines 24 and 26 have `#[cfg(verus_keep_ghost)]` wrapping `include!()` statements, but the checker skips targets starting with `include!`, so those don't contribute to the count. The test module uses `#[cfg(feature = "test")]`, which the checker doesn't count at all since it's not a verus_keep_ghost gate. So identity_map contributes 0 to the global cfg_gate count of 19, which comes from elsewhere.
 
 For the checklist requirement about zero cfg-gated exec code, the verus_keep_ghost gates here are only on imports (the include! statements), which is allowed, and the test module follows the standard sanctioned pattern. Now I need to run the module-scoped verification to get the per-module cheating counts for a cleaner signal.
+[RESULT ✓] bash: Crate     : kernel
+  Module    : mm::virt::identity_map
+  Source dir : /home/ruize/nanvix-phy-specs/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --targe...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== VERUS REWRITE in module ==="; grep -rn "VERUS REWRITE\|VERUS-REWRITE\|verus
+
+[THINKING] Looking at the module-scoped verification results, all three external functions—ensure_pt, ensure_pte, and identity_map_page—are confirmed to be in the TCB allowed list, along with the ExPageTableBss type specification.
+
+Now I'm working through the verification checklist: the first six items all pass (no admit, assume, trusted functions, no_decreases clauses, cfg-gated code, and all external bodies are properly listed). For the remaining items, I need to check AST consistency and verify that any exec rewrites have the required VERUS REWRITE comments, then run the spec-drift-check and full kernel verification to confirm no specs were weakened and there are no cross-module regressions.
+[RESULT ✓] bash: === VERUS REWRITE in module ===
+=== ast-consistency tooling ===
+=== find skills referenced ===
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== scripts ==="; ls scripts/; echo "=== verus-ai dir ==="; ls /home/ruize/veru
+
+[THINKING] Checking whether there are any exec rewrites marked with VERUS REWRITE comments—since the functions just became external_body without any such annotations, it looks like there are no actual exec rewrites to account for, which means this check passes vacuously.
+
+Now I need to look at the git diff to see what changed during this cheating-elimination phase and whether there are other ast-consistency or spec-drift scripts I should be aware of.
+[RESULT ✓] bash: === scripts ===
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test.py
+run-uservm.py
+setup
+setup-nanvix....
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && echo "=== ast-consistency skill ==="; cat docs/skills/ast-consistency/SKILL.md 2
+[RESULT ✓] bash: === ast-consistency skill ===
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `veru...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git branch --show-current 2>/dev/null; echo "---log---"; git --no-pager log --oneline
+
+[THINKING] I need to locate the original version of identity_map.rs before the verification changes so I can compare them using the ast_consistency checker. Let me check the current git state and determine the base reference point for the comparison.
+[RESULT ✓] bash: verus-ai-prove
+---log---
+83ba1bd15 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (cached (no recompilation), —, admit=4 external_body=23 cfg_gate=19)
+fd3d3c782 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=4 external_body=23 cfg_g...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch -a 2>/dev/null | head; echo "---tags---"; git --no-pager tag | 
+
+[THINKING] I'm on the `verus-ai-prove` branch and need to find the original baseline to compare against. The ast_consistency auto-detection typically works with `verus-ai/*` branches, but since I'm on a different branch name, I'll need to determine the correct base reference—likely on `main` or another baseline. Let me try running ast_consistency with auto-detection and also check what branches or tags are available to find the merge-base.
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+---tags---
+latest
+v0.1.0
+v0.10.0
+v0.11.0
+v0.12.0
+v0.12.278
+v0.12.279
+v0.12.281
+v0.12....
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref dev s
+
+[THINKING] The base branch is probably `dev` since that's where the main development happens. I need to find where the original identity_map.rs code comes from and check the verus-ai workflow configuration to see how it determines the base reference. Let me look for this in the config or experiment setup, then run the ast_consistency check against `dev` as the baseline.
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Cr3Guard::drop                           MATCH                                
+ensure_identity_mapped_range             MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '1,60p' docs/skills/spec-drift-check/SKILL.md 2>/dev/null
+
+[THINKING] The AST comparison shows all functions match with no mismatches, which means the exec code bodies are unchanged and item 8 is satisfied since there are no exec rewrites to annotate. Now I need to confirm that `dev` is actually the right base reference and contains the original file.
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name "pipeline_state.json" 2>/dev/null | grep -v target | head; echo "---try 
+
+[THINKING] I need to locate the baseline SHA for the cheating-elimination phase by checking the pipeline state, then use auto-detection to compare it against the current HEAD.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json
+...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,50p' .github/skills/build/SKILL.md
+
+[THINKING] The spec drift check passed with the baseline commit, and the kernel verification completed successfully with zero warnings. I'm now working through the build checklist to confirm the build command executed without errors or warnings, though I need to clarify what the build step specifically entails in this context.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running kernel build check
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build -- kernel 2>&1 | tail -30
+
+[THINKING] I need to run the build command `./z build -- kernel` to verify there are no errors or warnings, though the verus verification already compiled the kernel crate during its cargo build process.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '50,110p' .github/skills/build/SKILL.md
+[RESULT ✓] bash: Set these as environment variables or pass them after `--` in the `z` command:
+
+| Parameter        | Values                   | Default         |
+|------------------|--------------------------|-----------------|
+| `MACHINE`        | `microvm`                | `microvm`       |
+| `TARGET`         | `...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build -- all 2>&1 | tail -40
+
+[THINKING] The build system has several targets available—`all`, `all-nanvixd`, `all-uservm`, and `guest`—but no standalone kernel target. Since `make verify-kernel` already handles building and verifying the kernel crate, and the verification compile passed, I can rely on that for the build check. The `verus_cmd` compiles the kernel through cargo in Verus mode, while a full non-Verus build would use `./z build -- all` though that's more heavyweight than needed here.
+
+Given that the verification showed a clean compile with no warnings and exit code 0, I should run `./z build -- guest` to do a proper build check of the actual kernel target and confirm there are no errors or warnings in the real build output.
+[RESULT ✓] bash: mkimage: wrote '/home/ruize/nanvix-phy-specs/bin/mount-bench-nostd.initrd' (31944704 bytes, 4 entries)
+/home/ruize/nanvix-phy-specs/bin/mkimage.elf -o /home/ruize/nanvix-phy-specs/bin/hello-rust-nostd.initrd \
+	/home/ruize/nanvix-phy-specs/bin/procd.elf\;procd \
+	/home/ruize/nanvix-phy-specs/bin/mem...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+All checklist items verified. Let me write the review and STOP file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue
+
+[THINKING] The build completed successfully with no compiler warnings or errors. Now I'm going through the checklist to verify all the requirements are met—zero admit calls, zero assume calls, zero trusted functions, and zero exec_allows violations are all confirmed.
+
+I'm also checking that external_body functions are properly listed in the TCB allowlist, AST consistency matches the baseline with no mismatches, and there's no spec drift compared to the previous commit. The full kernel verification passes and all modules compile without issues.
+
+Let me verify the external_body listing matches exactly what's in the TCB file—ensure_pt, ensure_pte, and identity_map_page are all accounted for.
+[RESULT ✓] bash: 
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/turn_001_driver.md with 4518 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Review complete — **RESOLVED**. All 12 checklist items PASS with tool evidence.
+
+**Verified for `mm::virt::identity_map`:**
+- `make verify-kernel` (whole + module-scoped) → exit 0; module counts `assume=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`.
+- 3 `external_body` exec fns (`ensure_pt`, `ensure_pte`, `identity_map_page`) + `ExPageTableBss` type spec — each individually confirmed in `verus-ai-logs/tcb-allowed.md`.
+- AST consistency vs `dev`: 14 functions MATCH, 0 mismatch (exec code unchanged → no rewrites to annotate).
+- Spec drift (baseline `2b02b7917a50` → HEAD): 0 contract drift.
+- Cross-module regression: full kernel verifies, exit 0.
+- `./z build -- all`: exit 0, no code warnings.
+
+Wrote the full review to `turn_001_driver.md` and `STOP` (RESOLVED). No fixes required.
+
+
+=== Session End ===
+Session: 939f6c5c-004a-447a-9849-7c4fcee54815
+Duration: 286.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/dialogue-reviewer-t001-claude-20260615-130927.jsonl
