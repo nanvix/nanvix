@@ -603,3 +603,102 @@ Turn 28
 [THINKING] The module path being passed through the build system might be getting transformed somewhere — `sys::mm::address` is going to verify.sh as `--module sys::mm::address`, then to verus as `--verify-module sys::mm::address`, but the actual error shows just `mm::address`. I'm wondering if the error message I saw is stale from a previous failed compilation, since touching mod.rs would force a recompile but the cached error output might still be showing the old failure.
 
 Let me just run this cleanly from scratch and watch the full output without filtering to see what's actually happening.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate sys --module sys::mm::address --log-dir verus-ai-logs/verify-sys
+  Module    : mm::address
+error: could not find module mm::address specified by --verify-module or --verify-only-module
+       available modules are:
+  0 verified
+  Exit code : 101...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "MODULE#\|MODULE/\|strip\|CRATE_NAME}::\|#\${CRATE\|prefix" /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh 
+
+[THINKING] The script receives `--module sys::mm::address` but transforms it to `mm::address` before passing it to verus, stripping the `sys::` crate prefix somewhere in the process. I can see the MODULE variable gets set at line 67, and the transformed value appears in the output at line 166/192, so there's a transformation happening in between that I need to locate.
+[RESULT ✓] bash: 162:    LABEL="${CRATE_NAME}::${MODULE:-all}"
+376:        if callee.text and callee.text.decode().strip() == "admit":
+485:        stripped = line.strip()
+486:        if not cfg_pat.search(stripped):
+488:        if 'derive(' in stripped or 'feature(' in stripped:
+492:            t = lines[j].strip()
+...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '60,110p' /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+
+[THINKING] I need to locate where the MODULE variable gets its crate prefix stripped, so I'm looking through the code around lines 67-120 to find that transformation.
+[RESULT ✓] bash: shift 2
+            ;;
+        --verus-dir)
+            VERUS_DIR="$2"
+            shift 2
+            ;;
+        --module)
+            MODULE="$2"
+            shift 2
+            ;;
+        --verus-bin)
+            VERUS_BIN="$2"
+            shift 2
+            ;;
+        --log-dir)
+            LOG...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "MODULE" /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh | sed -n '1,40p'
+[RESULT ✓] bash: 24:MODULE=""
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+67:            MODULE="$2"
+157:    if [[ "$MODULE" == "root" ]]; then
+159:    elif [[ -n "$MODULE" ]]; then
+160:        CMD+=(-- --verify-module "$MODULE")
+162:    LABEL="${CRATE_NAME}::${MODULE:-all}"
+166:  ...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+The Makefile uses a project-local `scripts/verify.sh`. Let me check how it handles MODULE.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "MODULE\|strip\|sys::\|prefix\|verify-module" scripts/verify.sh | head -30
+
+[THINKING] I'm noticing a discrepancy in the module name output — the script is being called with `sys::mm::address` but the printed output shows just `mm::address`, which suggests the prefix might be getting stripped somewhere in the verification script's output formatting.
+[RESULT ✓] bash: 24:MODULE=""
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+67:            MODULE="$2"
+157:    MODULE_ARG="$MODULE"
+158:    if [[ -n "$CRATE_NAME" && "$MODULE_ARG" == "$CRATE_NAME"::* ]]; then
+159:        MODULE_ARG="${MODULE_ARG#"$CRATE_NAME"::}"
+161:    MODULE="$MOD...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+The script strips the crate prefix `sys::`, but Verus wants the in-crate module path which also starts with `sys`. Let me check the crate structure.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/libs/sys && cat Cargo.toml | grep -A3 "\[lib\]\|name ="; echo "=== src ==="; ls src/
+
+[THINKING] The verify.sh script is stripping the crate prefix from module paths using a parameter expansion that removes `sys::`, so `sys::mm::address` becomes just `mm::address`. But when it passes `--verify-module mm::address` to verus, the tool rejects it because it actually expects the full qualified path `sys::mm::address`. The script's prefix-stripping logic is causing the verification to fail. So the available modules list shows them with `sys::` prefix, but that's the module path within the crate, not including the crate name itself. If the file structure is `src/sys/mm/address/mod.rs` and lib.rs has `mod sys;`, then the full module path is `sys::mm::address`. When I pass this to `--verify-module`, it should work directly without stripping anything — the leading `sys` is the first module in the path, not a crate prefix to remove.
+[RESULT ✓] bash: name = "sys"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+=== src ===
+exit_status.rs
+lib.rs
+sys
+=== lib root ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//=======================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && timeout 600 make verify-sys MODULE=sy
+
+[THINKING] I see the issue now—the crate has `mod sys;` inside it, so the full module path is `sys::mm::address` where the first `sys` is the in-crate module. The script strips the crate name prefix, which was incorrectly removing the module's first segment. To work around this, I'll pass `MODULE=sys::sys::mm::address` so the script strips the leading `sys::` crate name and leaves `sys::mm::address` for verus to receive.
