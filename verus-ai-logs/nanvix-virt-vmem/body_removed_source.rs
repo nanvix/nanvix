@@ -67,16 +67,16 @@ use ::core::{
     cell::RefCell,
     mem::ManuallyDrop,
 };
-use ::type_safe::{
-    usize_to_const_ptr,
-    usize_to_mut_ptr,
-};
 use ::sys::{
     config,
     error::{
         Error,
         ErrorCode,
     },
+};
+use ::type_safe::{
+    usize_to_const_ptr,
+    usize_to_mut_ptr,
 };
 
 //==================================================================================================

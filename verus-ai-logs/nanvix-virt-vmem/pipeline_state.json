@@ -3,70 +3,22 @@
   "log_name": "nanvix-virt-vmem",
   "source_path": "/home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs",
   "current_phase": "specification",
-  "current_phase_idx": 3,
-  "completed_phases": [
-    "property-analysis",
-    "specification"
-  ],
-  "phase_results": {
-    "property-analysis": {
-      "phase": "property-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 449.4,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 1890.7,
-      "review_rounds": 4
-    }
-  },
-  "prover_session_id": "39676a0f-ac13-4957-95f3-7e5a564a36d1",
-  "completed": true,
+  "current_phase_idx": 2,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
   "base_branch": "virt-mm-ai-spec-property-analysis",
   "verus_branch": "virt-mm-ai-spec-property-analysis",
-  "phase_boundary_shas": {
-    "property-analysis": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327",
-    "specification": "fd044a52c0ea79f1d917c9b6072730ea6077742b"
-  },
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "property-analysis": "379d1c0e12ef8fe83d28c87eac06f3658ab0138d",
-    "specification": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327"
+    "specification": "4fc9255433bd058fef3d554d49a1831a079b9554"
   },
   "phase_history": [
     {
-      "phase": "property-analysis",
-      "event": "start",
-      "sha": "379d1c0e12ef8fe83d28c87eac06f3658ab0138d",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "property-analysis",
-      "event": "end",
-      "sha": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327",
-      "rollback_iter": 0
-    },
-    {
       "phase": "specification",
       "event": "start",
-      "sha": "dffd51f04e6b6cb4a8f683b76a294df28ea6b327",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "fd044a52c0ea79f1d917c9b6072730ea6077742b",
+      "sha": "4fc9255433bd058fef3d554d49a1831a079b9554",
       "rollback_iter": 0
     }
   ],
