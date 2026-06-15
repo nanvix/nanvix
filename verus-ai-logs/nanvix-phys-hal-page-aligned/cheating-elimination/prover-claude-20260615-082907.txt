@@ -405,3 +405,219 @@ Actually, for external trait methods from std, `assume_specification` is the sta
 
 Let me just run the verification on this module directly to see what the cheating report actually shows.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | grep -iA
+
+[THINKING] The module-specific analysis shows only one instance of cfg-gated executable code in the `hal::mem::types::address::aligned::page` module, while the kernel-wide metrics reveal a much broader pattern with external bodies and admitted code. I need to check the detailed breakdown to understand what that single cfg-gate actually represents in this context.
+[RESULT ✓] bash: - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+    - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+    - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+    - hal/mem/types/address/phys.proof.rs:16 lemma_frame_index: admit
+...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "aligned/page\|address/aligned" verus-ai-logs/verify-kernel/verus-logs/cheati
+[RESULT ✓] bash: 
+<shellId: 19 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg\|page" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | grep
+
+[THINKING] The page module itself has no external_body, admit, or assume entries—those global counts are coming from other modules that are out of scope. The only flag for this module is a single cfg-gated exec code issue, so I need to dig into what that cfg-gate actually is.
+[RESULT ✓] bash: 27:    - mm/virt/identity_map.proof.rs:14 lemma_install_page_maps: admit
+28:    - mm/virt/identity_map.proof.rs:23 lemma_install_page_monotone: admit
+29:    - mm/virt/identity_map.proof.rs:32 lemma_install_page_preserves_inv: admit
+30:    - mm/virt/identity_map.proof.rs:45 lemma_map_page_accessible:...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] view: 1.     - hal/mem/types/address/frame.proof.rs:13 lemma_frame_base_aligned: admit
+2.     - hal/mem/types/address/frame.proof.rs:22 lemma_aligned_div_mul: admit
+3.     - hal/mem/types/address/phys.proof.rs:6 lemma_from_number_no_overflow: admit
+4.     - hal/mem/types/address/phys.proof.rs:16 lemma_fra...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg.gate\|cfg_gate\|cfg-gate\|cfg(" scripts/verify.sh | head -30
+
+[THINKING] The global counts are coming from other modules outside the page-aligned scope, while the page module itself only has one cfg-gated exec code instance. I need to track down what that specific cfg_gate detection is flagging—likely a `#[cfg(...)]` attribute on executable code—and identify which line in page.rs is triggering it.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATIN...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show verus-ai-prove:src/kernel/src/hal/mem/types/address/aligned/page.rs > /tmp/p
+
+[THINKING] When the module points to `hal::mem::types::address::aligned::page`, only the `page.rs` file gets copied into the temp directory for scanning—not the accompanying spec or proof files. Looking at the cfg-gated lines in `page.rs`, I can see line 9 starts with a `#[cfg(ver` attribute that's been cut off.
+
+The cfg gate at line 219 guards a `verus! { impl ... }` block containing spec code (the `inv` function), which is only included during verification. This is different from line 234's unguarded `verus! { ... }` block for the View impl. The key insight is that `#[cfg(verus_keep_ghost)]` actually *includes* code during verification rather than hiding it—the opposite of what would constitute cheating. So this isn't hiding exec code from Verus; it's controlling visibility based on whether Verus is running. The issue is that `spec_page_size` might itself be gated to `verus_keep_ghost`, so removing the gate on block 219 could break the normal build. But stepping back, I need to understand what actually determines pass/fail for this phase — the cheating detector flags the cfg gate, but the workflow message shows "PASS (cheating detected)", suggesting detection alone doesn't fail it. The real question is whether the module-scoped cheating count matters, and I'm realizing the scan might only include `page.rs` itself, not the separate `page.spec.rs` and `page.proof.rs` files.
+[RESULT ✓] bash: === diff base vs current page.rs ===
+exit=0
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in page.spec.rs page.proof.rs; do echo "=== $f ==="; git show verus-ai-prove:sr
+
+[THINKING] The page.rs file matches the baseline version, so the cfg-gate was already there. Now I need to compare the spec and proof files against the baseline as well.
+[RESULT ✓] bash: === page.spec.rs ===
+identical
+=== page.proof.rs ===
+identical
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_page_size" src/kernel/src/hal/mem/mod.rs src/kernel/src/hal/mem/*.rs 2
+
+[THINKING] The three files haven't changed from the baseline even though the proving phase passed, which suggests the verification just confirmed the existing specs rather than modifying anything. I'm noticing the module has a configuration gate enabled on the invariant block, and there's an assume statement involved.
+
+Now I need to categorize what counts as cheating: there are two assume_specification instances in the spec file (PAGE_ALIGNMENT and Deref::deref), one cfg-gated execution block, and no admits, assumes, or external_body declarations. The real question is whether these are legitimate trust boundaries or if I can eliminate them. The cfg gate at line 219 is particularly interesting because it gates a spec function with a use of spec_page_size, while a similar ungated block at line 234 compiles fine without it—so I need to figure out if removing that gate is actually feasible or if it violates the consistency rules.
+[RESULT ✓] bash: ===def search===
+src/kernel/src/hal/mem/types/address/aligned/page.rs:222:use crate::hal::mem::spec_page_size;
+src/kernel/src/hal/mem/types/address/aligned/page.rs:228:        self@ % spec_page_size() == 0
+src/kernel/src/hal/mem/types/address/frame.rs:43:pub open spec fn spec_page_size() -> int {
+sr...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 30. /// A type that represents a frame address.
+31. ///
+32. #[verus_verify(external_derive)]
+33. #[derive(Clone, Copy)]
+34. pub struct FrameAddress(PageAligned<PhysicalAddress>);
+35. 
+36. #[cfg(verus_keep_ghost)]
+37. verus! {
+38. 
+39. // The architectural page size, delegating to the `arch` crate's ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "PAGE_ALIGNMENT\|PAGE_SIZE\|spec_align_value" src/libs/arch/src/ src/libs/sy
+
+[THINKING] I see that `spec_page_size` is defined in a `#[cfg(verus_keep_ghost)]` block in frame.rs as a spec function that only exists during verification. Since the `inv` block in page.rs calls `spec_page_size()`, it needs the same cfg-gate to avoid referencing a non-existent function in regular builds.
+
+The second `verus!` block at page.rs:234 doesn't need the gate because it doesn't reference any verus-only spec functions — it uses `View` and `@` which come from vstd and work in both builds. So the cfg-gate on the `inv` block is legitimately required, not a false positive from the cheating detector. The real question is what the cheating-elimination phase actually needs to pass, given that the module already has two assume_specification calls and this one cfg-gate. The assume_specification for PAGE_ALIGNMENT is genuinely required because from_address needs to prove alignment checks against spec_page_size(), and PAGE_ALIGNMENT is an external arch-crate constant that can't be verified in-body. While tcb-allowed.md lists similar external assumptions for other arch constants, the rule about external_body restrictions doesn't apply to assume_specification declarations — those are spec-level trust boundaries that are legitimate when they reference genuinely external constants that the proof depends on. I'm wondering whether I can actually eliminate the Deref assume_specification by verifying the impl directly, and whether PAGE_ALIGNMENT is truly eliminable or if it's a legitimate external dependency. The real question is whether removing these would break other modules that depend on them — the Deref spec serves cross-module callers in the frame layer, so eliminating it might not be feasible within the stated constraints. Let me test by attempting to remove them and seeing what errors surface, though I should also check if there's existing guidance from the prover logs about what was already attempted in this phase.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/constants.rs:39:/// Log2 PAGE_SIZE
+src/libs/arch/src/x86/mem/constants.rs:50:pub const PAGE_SIZE: usize = 4096;
+src/libs/arch/src/x86/mem/constants.rs:51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+src/libs/arch/src/x86/mem/constants.rs:58:pub const PAGE_MASK...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] I'm noticing that `PAGE_ALIGNMENT` is defined as a const in the arch crate, but the assume_specification is treating it like a function that returns an Alignment value. That's an odd mismatch—in Verus, applying assume_specification to a const is unusual.
+
+Now I need to trace through what `spec_align_value(Alignment::Align4096)` actually evaluates to, since that's what's being used in the `from_address` check with `addr.is_aligned(PAGE_ALIGNMENT)`.
+[RESULT ✓] view: 140. 
+141. impl From<Alignment> for usize {
+142.     fn from(align: Alignment) -> Self {
+143.         align as usize
+144.     }
+145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //============...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "as ::core::ops::Deref\|as Deref\|impl.*Deref for\|Deref>::deref" src/ --inc
+
+[THINKING] Both `spec_align_value(Alignment::Align4096)` and `spec_page_size()` evaluate to 4096, so the specification's guarantee that they're equal holds true. Now I'm looking at how `PAGE_ALIGNMENT`, a const in Verus, gets referenced when it's defined as `pub const X: Alignment = Alignment::Align4096`.
+
+The challenge is that `PAGE_ALIGNMENT` lives in an external crate, so Verus treats it as opaque in the exec context where it's actually used (like in `addr.is_aligned(PAGE_ALIGNMENT)`). The `assume_specification` bridges this gap by telling Verus what the value is. I'm wondering if we could reference it directly instead, but `PAGE_SIZE` works in the spec context because it's a simple const expression that Verus can evaluate. For exec code using an external const, the assume_specification is really the standard approach here — trying to eliminate it would require deeper changes to how the arch crate exposes these values.
+
+Looking at the actual constraints: the two assume_specifications are for genuinely external boundaries — `PAGE_ALIGNMENT` from the arch crate and `Deref::deref` from std. These aren't soundness escapes; they're legitimate trust boundaries that can't be verified in-body without modifying external crates. The task wants zero cheating with no exceptions, so I should actually try the escalation ladder to eliminate them and document whether it's feasible.
+
+Let me start by attempting to verify the Deref impl in-body using verus attributes, then check what the prover log shows about this session's constraints.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:147:impl<T: Address> Deref for PageTableAligned<T> {
+src/kernel/src/hal/mem/types/address/aligned/page.rs:172:impl<T: Address> Deref for PageAligned<T> {
+src/kernel/src/mm/phys/kframe.rs:167:impl Deref for KernelFrame {
+src/kernel/src/mm/virt/mod...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "Deref>::deref\|Deref >::deref\|as Deref" src/ --include=*.spec.rs --include
+
+[THINKING] I'm looking at how other modules handle the Deref spec to understand the pattern — checking whether they use verified-in-body implementations or rely on assume_specification and external_body declarations. Let me search through the codebase to see which approach is more common.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:32:pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
+===pgtab spec===
+mod.rs
+page.proof.rs
+page.rs
+page.spec.rs
+pgtab.rs
+---
+<shellId: 27 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me test whether the two `assume_specification` items are genuinely required. First, the PAGE_ALIGNMENT one:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/hal/mem/types/address/aligned/page.spec.rs /tmp/page.spec.rs.bak &&
+
+[THINKING] The pgtab module doesn't have a spec file yet, so only PageAligned's Deref implementation has an assume_specification. I'm going to test whether I can verify the Deref implementation directly in the code by adding verus_verify/verus_spec annotations to page.rs and removing the assume_specification from page.spec.rs, then running a module verification to see if it works.
+
+But wait—the hard rule says not to touch unlisted functions, and Deref isn't in the target list. Modifying the Deref impl block would violate that constraint. Since Deref is a standard library trait and represents a genuine external trust boundary, the assume_specification there is legitimate and I can't eliminate it within scope. I'll document it as such.
+
+For PAGE_ALIGNMENT, it's an external architecture constant that from_address depends on. The assume_specification for it represents an external-bottom trust boundary. Let me test whether removing it breaks verification—maybe Verus can evaluate the constant directly without needing the assumption.
+[RESULT ✓] bash: backed up
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Testing PAGE_ALIGNMENT removal
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::aligned::page VERUS_
+[RESULT ✓] report_intent: Intent logged
