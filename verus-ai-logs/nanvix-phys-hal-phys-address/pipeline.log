@@ -273,3 +273,22 @@ Module: hal-phys-address
 [2026-06-15 13:14:07] Running final comprehensive review...
 [2026-06-15 13:14:07] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 13:22:52]   ↳ review done in 8m44s (exit=0)
+[2026-06-15 13:22:52] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 13:22:52] [FINAL REVIEW] Cheating report: external_body: 2 (1 on user fns)
+[2026-06-15 13:22:52] [FINAL REVIEW] ⚠ unapproved external_body fn: 1
+[2026-06-15 13:22:52] [FINAL REVIEW] ⚠ unapproved external_body type-spec: 1
+[2026-06-15 13:22:52] [FINAL REVIEW] ❌ Overriding to FAIL — cheating: unapproved external_body fn: 1; unapproved external_body type-spec: 1
+[2026-06-15 13:22:52] [FINAL REVIEW] Done (8m45s)
+
+============================================================
+PIPELINE FINISHED: hal-phys-address (some phases need work)
+  ✅ caller-analysis           no-review                 2m22s
+  ✅ view-design               no-review                 4m35s
+  ✅ specification             dialogue-RESOLVED        40m07s (2 dialogue turns)
+  ✅ proving                   dialogue-RESOLVED         8m52s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED        16m22s (2 dialogue turns)
+  ❌ final-review              FAIL                      8m45s
+  ──────────────────────────────────────────────────────────
+  Total: 1h21m26s
+============================================================
+[2026-06-15 13:22:52] [USAGE] Summary: 11 calls, 0 tokens, 1h21m03s total → /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/usage_summary.json
