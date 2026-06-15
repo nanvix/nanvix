@@ -647,3 +647,48 @@ Now let me commit the documentation and run a final confirmation that nothing is
 Turn 36
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== source working tree clean? ==="; git status --porcelain | grep -v
+[RESULT ✓] bash: === source working tree clean? ===
+(empty above = no source changes)
+=== final kframe module check ===
+=== Results ===
+  ✅ No cheating detected in module mm::phys::kframe.
+  status: CLEAN
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Let me clean up temp backups.
+[TOOL] bash: rm -f /tmp/manager.proof.rs.bak /tmp/manager.rs.bak /tmp/kframe.rs.bak /tmp/kframe.spec.rs.bak && echo "cleaned temp bac
+
+[THINKING] Now I'll clean up the temporary backups in /tmp.
+[RESULT ✓] bash: cleaned temp backups
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+## Summary
+
+I investigated the reported "hard cheating" (15 `external_body`, 7 `admit` — the report's "4" was the phys subset; 3 more are in `mm::virt`). Key finding: **none of these items are in the phys-kframe module**, which remains CLEAN and fully verified (`3 verified, 0 errors`, no cheating). Every reported item lives in **unlisted** modules: phys-frame, phys-manager, phys-mod, phys-upool, and the separate `mm::virt` subsystem.
+
+The reviewer's other categories don't exist here: **no** `limitation_assume`, **no** `exec_allows_no_decreases_clause`, **no** `external_body` on proof fns, **no** `trusted`.
+
+**The 7 `admit()`s are genuine architectural blockers.** I reproduced the root cause live: removing `lemma_kernel_alloc_one` makes `alloc_kernel_frame`'s postcondition fail because the body never mutates `self` (kernel frames come from the *global* `frame::alloc()`, not the user pool backing `self@`) — so the lemma stands in for `old(self)@ == old(self)@.alloc_one(addr)`, **false for the implementation**. The deeper cause: `phys_view()` is a stateless `uninterp` constant being used to model a *mutable* global partition.
+
+**No sound, skill-compliant fix exists locally:**
+- admit/assume/`external_body`-proof-fn/`trusted` → all forbidden.
+- Relocating to an `external_body` *exec* wrapper → would trust a provably-false/contradictory contract (lets the module prove `false`) — unsound.
+- Correcting manager specs → unlisted functions (task forbids), and no locally-coherent spec exists.
+- The real fix (ghost-token model of `phys_view()`) → requires exec-signature/struct changes **forbidden by ast-consistency**.
+
+**Result: BLOCKER** for the crate-global gate (needs a human-reviewed ghost-token re-architecture); the **phys-kframe scope itself is CLEAN**. I deliberately did **not** apply an unsound paper-over.
+
+I documented everything with fresh reproduction evidence in `cheating_fix_report_1.md` and the phys-frame `verification_todo.md`, restored all experimental edits (source tree clean, manager re-verifies 18/0), and committed the docs.
+
+
+=== Session End ===
+Session: e9857615-f314-4ade-8efb-abeff55c9270
+Duration: 806.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating-fix-claude-20260615-122118.jsonl
