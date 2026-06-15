@@ -241,3 +241,16 @@ Confirmed the proofs are genuinely active. Let me verify the restore and run the
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && diff /tmp/number.rs.bak src/libs/arch/src/x86/mem/paging/frame/number.rs && echo "RES
 
 [THINKING] The proof removal confirmed that `into_raw_value` is properly verified with its complete contract, so I'm restoring it and running the full verification suite to ensure there are no regressions.
+[RESULT ✓] bash: RESTORE_OK
+verification results:: 48 verified, 0 errors
+  verification: 48 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Restored cleanly, 48 verified / 0 errors. The `CHEATING_DETECTED` is solely from out-of-scope `table.proof.rs` (admit) and `table.rs`/`mod.rs` (external_body) — pre-existing and not in my scope. Let me run the full suite.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | grep -E "verified, .* errors|errors|status:|Summary|=== " | tail -
+
+[THINKING] The verification passed with 48 out of 0 issues, and the CHEATING_DETECTED warning is coming from pre-existing code in the proof module that's outside my scope. Now I'm running the full verification suite to make sure I haven't introduced any regressions.
