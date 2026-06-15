@@ -48,7 +48,6 @@ impl<T: Address> PageAligned<T> {
     // contract as a trust boundary, mirroring `FrameAddress::into_raw_value`. The
     // contract is the real caller guarantee; it is discharged when the `Address`
     // trait and the `Alignment` encoding are verified.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             // `from_address` validates; it never rounds/normalizes. On success the

@@ -115,3 +115,4 @@ Module: hal-page-aligned
 PHASE: proving
 Module: hal-page-aligned
 ============================================================
+[2026-06-15 11:27:01] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
