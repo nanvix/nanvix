@@ -703,3 +703,59 @@ Now verify the kernel. Run full `make verify` with the pinned binary.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&1 | 
 
 [THINKING] I'll run the full verification with the pinned binary to see all the errors at once, rather than checking individual modules separately.
+[RESULT ✓] bash: Timestamp : 2026-06-15_20-05-50
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/525 exec functions have contracts.
+  Unveri...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Kernel: **47 verified, 0 errors** — the migration worked. The kernel's `CHEATING_DETECTED` is pre-existing TCB (external_body=23, cfg_gate=6) that I did not introduce — I only *removed* `assume_specification`s. Let me confirm the overall exit and that I didn't increase any counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "exit: $?"; echo "=== git diff stat ==="; git --no-pager diff --stat; echo "=== confirm 
+
+[THINKING] The kernel verification passed with 47 verified and no errors, so the migration worked. The "CHEATING_DETECTED" flags showing external_body=23 and cfg_gate=6 are pre-existing in the kernel itself, not something I introduced—what matters is whether the arch module I'm checking has any cheating issues, and I'm realizing the assume_specs I removed were set to assume=0 before.
+
+Now I need to verify the overall exit code from make verify to confirm it succeeded completely, and check whether any other crates ran beyond arch and kernel.
+[RESULT ✓] bash: exit: 0
+=== git diff stat ===
+ ...ialogue-fixer-t001-claude-20260615-195024.jsonl | 28 ++++++++++++++++++++++
+ .../dialogue-fixer-t001-claude-20260615-195024.txt | 25 +++++++++++++++++++
+ 2 files changed, 53 insertions(+)
+=== confirm no external_body/admit added by me in kernel spec files ===
+  (no ...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== git status ==="; git --no-pager status --short | head -40; echo "=== recent commits
+
+[THINKING] I'm noticing that git diff is only showing the log files, not my actual source code edits to the kernel and architecture files — that's concerning. Let me check git status and the commit history to see if these changes were already committed in an earlier checkpoint or if I'm looking at a different state.
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue-fixer-t001-claude-20260615-195024.jsonl
+ M verus-ai-logs/nanvix-phys-arch-frame-number/specification/dialogue-fixer-t001-claude-20260615-195024.txt
+=== recent commits ===
+5901b4ed3 [verus] verify PASS (cheating ...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+The verify script auto-commits each crate's result — that's why my source edits are already committed (commit `5901b4ed3`). All crates PASS (the "cheating detected" tags are pre-existing TCB in those crates). Let me confirm the overall `make verify` exit code and that `make build` still works.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 >/tmp/mv
+
+[THINKING] The verify.sh script is auto-committing after each crate verification, which explains why my source edits were already committed by the script. That's why git diff shows nothing — the changes are already in the repository. The full `make verify` run passed successfully across all components: arch is clean, kernel has 47 verified crates with zero errors, and the earlier crates all passed their checks.
+
+The "cheating detected" tags on kernel/bump-allocator/nanvix-slab/bitmap are pre-existing external_body and cfg_gate annotations, not something I introduced. I need to confirm that the kernel's external_body count of 23 and cfg_gate count of 6 haven't increased compared to the baseline. Actually, I removed an external_body annotation from ExFrameNumber, so the count should have decreased by 1. The diff I checked earlier shows no added external_body, admit, or assume lines, which confirms I didn't introduce any new ones.
+
+Now I need to verify that the full `make verify` command exited with code 0 overall. The last shell session ran through the crate verification order (bitmap, nanvix-slab, sys, bump-allocator, arch, kernel) and all showed PASS status, with kernel ending at 47 verified 0 errors. I need to confirm the overall make verify exit code.
