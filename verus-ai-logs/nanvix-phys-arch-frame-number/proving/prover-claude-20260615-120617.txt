@@ -137,3 +137,92 @@ Turn 2
 
 [THINKING] Looking at the proof requirements for this module, I need to verify the invariant properties for the frame number functions. For `into_raw_value`, the type invariant ensures the bounds hold, so the proof just needs to invoke that invariant. Now I'm moving on to analyze `from_raw_value` and what its proof obligations will be.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] I'm looking for the `admit=1` parameter and trying to locate the `admit` and `external_body` variables in this module. The proof file appears to be empty, so I'm checking the cheating-detail.txt file instead.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "admit\|assume\|external_body" src/libs/arch/src/x86/mem/paging/frame/ ; ech
+
+[THINKING] The admit and external_body references are actually in other modules like the paging layer, not in my number.rs file, so that's already isolated. The verification is passing with 48 specs verified and no errors, and the admit=1 constraint is in table.proof.rs which is outside my scope anyway. Let me double-check whether the number.rs module itself is already fully verified.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
+---done---
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The frame/number module already verifies cleanly — no `admit()`, `assume()`, or `external_body` in it (the lone `admit=1` is in `table.proof.rs`, out of scope). Let me confirm the module-scoped state and check nothing is cfg-gated away by confirming the target functions actually carry contracts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "number" verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt 2>/dev/
+
+[THINKING] The frame module itself has no actual admit or assume statements—just a comment. The verification shows 48 verified items with 0 errors, including the frame number functions. The CHEATING_DETECTED status is coming from the table.proof.rs file, which is outside this module's scope. Running the verification command confirms the module passes cleanly.
+[RESULT ✓] bash: 479:  frame_number
+497:  frame_number
+=== contracts coverage check ===
+179:  from_raw_value
+180:  into_raw_value
+181:  from_raw_value
+182:  into_raw_value
+183:  from_raw_value
+184:  into_raw_value
+185:  from_raw_value
+186:  into_raw_value
+187:  from_raw_value
+188:  into_raw_value
+189:  from_raw_valu...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '440,500p' verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+[THINKING] I'm looking at the coverage report to identify which functions are actually covered — specifically the `from_raw_value` and `into_raw_value` methods in FrameNumber, since these appear throughout the codebase in multiple types. The coverage tool is showing that only 18 out of 525 executable functions have contracts, so I need to verify whether these particular conversion functions in number.rs are among the covered ones.
+[RESULT ✓] bash: fmt
+  new
+  into_u8
+  new
+  into_u8
+  from_u8
+  fmt
+  new
+  from_raw_value
+  into_raw_value
+  is_set
+  from_raw_value
+  into_raw_value
+  from_raw_value
+  into_raw_value
+  from_raw_value
+  into_raw_value
+  from_raw_value
+  into_raw_value
+  from_raw_value
+  into_raw_value
+  from_raw_value
+  into_raw_v...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The module already verifies. Let me confirm the target functions are genuinely being checked (not silently skipped) by a quick perturbation test on `into_raw_value`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/arch/src/x86/mem/paging/frame/number.rs /tmp/number.rs.bak && sed -i 's/ 
+
+[THINKING] Looking at this coverage report, I'm realizing the list shows exec function names across different modules without their contracts, and many of these `from_raw_value`/`into_raw_value` functions likely belong to other types like pte, pde, or flags rather than FrameNumber itself. The key question is whether FrameNumber's specific versions are among the 18 verified functions out of the 525 total.
+
+Since the FrameNumber functions have explicit `#[verus_spec(...)]` ensures clauses and `make verify-arch` reports 48 verified with zero errors and no admits or external bodies in the frame module, they should be verified. But to confirm the verification is actually running and not silently skipped, I could test by temporarily removing the `use_type_invariant` call from the proof and seeing if verification fails — that would prove the proofs are genuinely being checked rather than ignored.
