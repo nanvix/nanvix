@@ -342,3 +342,24 @@ A prior phase (phys-frame) already produced a detailed analysis: these 4 admits 
 The real tension here is that the current spec is provably false for the implementation—the manager view doesn't actually track kernel allocations since they bypass the pool—but the spec was written with the intent of tracking global partitions. Fixing it to match what the code actually does means changing the documented contract, which is a judgment call with real semantic implications. The reviewer wants me to eliminate the cheating, and I've been tasked with that, but this decision about what the spec should faithfully represent does belong with human review.
 
 I'm going to take a concrete approach: demonstrate the blocker by attempting to delete one of the admit-lemmas and showing the exact Verus failure, then document this evidence clearly. I won't introduce any unsound workarounds or rewrite the external-facing specs of verified functions without authorization. Instead, I'll hand off with the reproduction evidence and a clear explanation that these are genuine architectural blockers requiring human decision. The core issue is that trusting these contracts via external_body would mean accepting specs that are either provably false for the implementation or contradictory with other verified facts — which is actually unsound, potentially allowing the module to prove `false`. The admits at least isolate the unsoundness to flagged lemmas. So these four admits can't be soundly eliminated within the current scope; the real fix requires an architectural redesign of the spec (like reworking phys_view into a token model or correcting the external manager specs) that's explicitly out of scope. I should produce concrete evidence demonstrating this — starting with a reproduction showing the false-for-implementation behavior in at least one of the lemmas.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys::manager:
+    ⚠️  external_body: 2
+    ⚠️  cfg-gated exec code: 3
+  Affected functions:
+    - manager.rs:104 init: external_body
+    - manager.rs:536 kernel_watermark: external_body
+--
+=...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 300 make verify-ke
+
+[THINKING] I'm noticing a discrepancy in the report — the module-scoped manager shows external_body: 2 and cfg-gated: 3, but the admits from manager.proof.rs aren't appearing in that section, even though the global summary lists admit=7. Let me look more carefully at what the report is actually showing.
