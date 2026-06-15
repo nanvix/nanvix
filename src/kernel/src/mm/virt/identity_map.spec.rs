@@ -31,6 +31,35 @@ verus! {
 use vstd::set::Set;
 use crate::hal::mem::spec_page_size;
 
+// ── Trust-boundary registration of `arch` paging types ────────────────────────
+//
+// `Table`, `TableIndex`, `PageDirectoryEntry` and `PageTableEntry` live in the
+// `arch` crate but are not Verus-annotated (only `FrameNumber` is), so the
+// front-end treats them as external and rejects their appearance in the
+// `ensure_pt` / `ensure_pte` signatures. They are registered here as opaque
+// external datatypes via `external_type_specification` + `external_body`, exactly
+// the idiom already used for `ExLinkedList` (`mm/phys/mod.spec.rs`). Their
+// internals are not modelled; the in-scope shims carry no contract over their
+// per-entry state (the page-table structural level is below this module's
+// page-reachability abstraction — see `view_design.md`).
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExTableIndex(::arch::mem::paging::TableIndex);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageDirectoryEntry(::arch::mem::paging::PageDirectoryEntry);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageTableEntry(::arch::mem::paging::PageTableEntry);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(E)]
+pub struct ExTable<E>(::arch::mem::paging::Table<E>) where E: ::arch::mem::paging::TableEntry;
+
 /// Abstract state of the kernel lazy identity map.
 ///
 /// This is the caller-visible state behind the free functions in

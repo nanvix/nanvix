@@ -1074,3 +1074,43 @@ Duplicate import (both files included in same module). Remove it from proof.rs.
 Turn 62
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -70
+[RESULT ✓] bash: 613 |     pte_idx: TableIndex,
+    |     -------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExTableIndex(arch::mem::paging::TableIndex);
+
+error: cannot use type `arch::x86::mem::paging::p...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+The arch types need `external_type_specification` registration (Verus suggested the exact forms). Let me add them to spec.rs, mirroring the `ExFrameNumber`/`ExLinkedList` pattern.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] The arch types need external type specifications registered with Verus, and it's helpfully suggesting the exact wrapper declarations I need—creating external struct wrappers for `TableIndex` and `Table` with the appropriate trait bounds and verifier attributes. Adding the external type registrations... I'll add the `external_body` attribute to all four wrapper types to keep their internals opaque, following the same pattern as `ExLinkedList` and `ExFrameNumber` in the codebase.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysicalAddress — Specifications
+5. //
+6. // A `PhysicalAddress` abstracts to a single mathematical integer: the raw
+7. // physical address (`PhysicalAddress@ : int`, defined by the `View` impl in
+8. // `ph...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+Let me add the `external_type_specification` registrations for the arch types.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I see that FrameNumber was moved into the Verus-verified arch crate and no longer exists locally, but the tcb-allowed.md still references it. The real issue is that arch types like Table, PDE, PTE, and TableIndex aren't annotated in the arch crate, so they're treated as external types and need ExType wrappers here. I'm going to add the external_type_specification wrappers following the same pattern as ExLinkedList.
+
+Now I'm setting up the wrapper structs using the re-export paths from `::arch::mem::paging` to match what identity_map.rs imports. Writing the external type wrappers...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -70
