@@ -894,3 +894,257 @@ Turn 10
 ────────────────────────────────────────────────────────────
 Turn 11
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help 2
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[TOOL] rg: #\[cfg\(not\(verus_keep_ghost\)\)\]|\badmit\(|\bassume\(|assume_specification\[|#\[verus_verify\(external_body\)\]|#\[verifier::external_body\]
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[TOOL] rg: kframe|KernelFrame::map_frame|assume_specification
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:13:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:14:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+/home/ruize/nanvix-phy-specs-bottom-up/v...
+[RESULT ✓] view: 1.     - mm/phys/frame.rs:1242 instance: external_body
+2.     - mm/phys/frame.rs:1282 init: external_body
+3.     - mm/phys/frame.rs:1338 alloc: external_body
+4.     - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+5.     - mm/phys/frame.rs:1416 free: external_body
+6.     - mm/phys/frame.rs:14...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:34:pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress) -> Result<(), Error>;
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs:94:// empty trusted contract (`assume_specification[ Ke...
+[RESULT ✓] bash: ## KernelFrame::new (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -3,15 +3,7 @@
+         // Deref/DerefMut can safely access it. This lazily installs a page
+         // table entry if needed (page tables come from a BSS pool, so no recursive frame
+         // allocation occurs).
+-        let phys_a...
+[RESULT ✓] bash: ## KernelFrame::drop (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,5 +1,6 @@
+     fn drop(&mut self) {
+         if let Err(e) = super::frame::free(self.base) {
++            
+             error!("failed to free kernel frame: {:?}", e);
+         }
+     }
+<shellId: 29 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== summary vs 114fce7df ==="; python3 /home/ruize/verus-ai-exp/verus-a
+[RESULT ✓] bash: === summary vs 114fce7df ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+KernelFrame::base                        MATCH                                
+KernelFrame::clear  ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== DIFF new ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/as
+[RESULT ✓] bash: === DIFF new ===
+## KernelFrame::new (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -3,15 +3,7 @@
+         // Deref/DerefMut can safely access it. This lazily installs a page
+         // table entry if needed (page tables come from a BSS pool, so no recursive frame
+         // allocation occurs).
+- ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== grep KernelFrame::new in tcb-allowed ==="; grep -n "KernelFrame::ne
+[RESULT ✓] bash: === grep KernelFrame::new in tcb-allowed ===
+95:- `src/kernel/src/mm/phys/upool.rs::Upool` (struct) and `Upool::new` — no specs yet; opaque
+100:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::map_frame` — exec-only helper holding the
+101:  identity-mapping side effect extracted from `KernelFrame::...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] rg: ^\s*admit\(
+[TOOL] rg: \bassume\(
+[TOOL] rg: ^\s*pub assume_specification\[
+[TOOL] rg: #\[verus_verify\(external_body\)\]|#\[verifier::external_body\]
+[TOOL] rg: ^\s*#\[cfg\(not\(verus_keep_ghost\)\)\]
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:34:pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress) -> Result<(), Error>;
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs:203:            #[cfg(not(verus_keep_ghost))]
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] rg: ^\s*pub assume_specification\[
+[TOOL] rg: ^\s*#\[cfg\(not\(verus_keep_ghost\)\)\]
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:1
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs:1
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== tcb-allowed.md diff at a2b7376d8 (kframe verify PASS) ==="; git sho
+[RESULT ✓] bash: === tcb-allowed.md diff at a2b7376d8 (kframe verify PASS) ===
+commit a2b7376d85303fa2135e94ebc41d74b709a9ed4c
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 12:13:39 2026 +0800
+
+    [verus] verify PASS: kernel::mm::phys::kframe (3 verified, 0 errors)
+
+diff --git a/verus-ai-logs/tcb-allowe...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] rg: pub open spec fn inv\(&self\) -> bool
+[TOOL] rg: pub open spec fn inv\(&self\) -> bool
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:20:    pub open spec fn inv(&self) -> bool {
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs-21-        self@ % crate::hal::mem::spec_page_size() == 0
+/home/ruize/nanvix-phy-specs-bottom-up/src/...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs:58:    pub open spec fn inv(&self) -> bool
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs-59-    {
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/fr...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager diff 3b7e25cc23aac07166334c70d3847bdf17635de0 -- src/kernel/
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/kframe.rs b/src/kernel/src/mm/phys/kframe.rs
+index 54b433ec6..a86b761a8 100644
+--- a/src/kernel/src/mm/phys/kframe.rs
++++ b/src/kernel/src/mm/phys/kframe.rs
+@@ -11,6 +11,12 @@
+ // Imports
+ //=========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 183s, total_turns: 0, model: claude-opus-4.8, current_intent: "Reading in-scope files and docs", tool_calls_completed: 25, (timed...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Both reviews are still running. I'll wait for the completion notifications.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+Let me verify the in-scope functions have no admit/external_body, check for reproducers, and examine the full cheating picture.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== external_body/admit/assume/trusted in kframe.rs ==="; grep -nE "ext
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== logs dir listing ==="; ls -la verus-ai-logs/nanvix-phys-phys-kframe
+[RESULT ✓] bash: === external_body/admit/assume/trusted in kframe.rs ===
+src/kernel/src/mm/phys/kframe.rs:94:// empty trusted contract (`assume_specification[ KernelFrame::map_frame ]` in kframe.spec.rs,
+src/kernel/src/mm/phys/kframe.rs:99:// itself need an `assume_specification`; (3) the `error!` logging macros fai...
+[RESULT ✓] bash: === logs dir listing ===
+total 128
+drwxrwxr-x 1 ruize ruize   490 Jun 15 12:45 .
+drwxrwxr-x 1 ruize ruize  1788 Jun 14 12:07 ..
+-rw-rw-r-- 1 ruize ruize  5268 Jun 15 11:34 body_removed_source.rs
+-rw-rw-r-- 1 ruize ruize  3006 Jun 15 11:42 bugs.md
+drwxrwxr-x 1 ruize ruize   136 Jun 14 03:08 caller-an...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/verification_todo.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_fix_report_3.md
+[RESULT ✓] view: 1. # Verification TODO — `mm::phys::kframe`
+2. 
+3. Status of in-scope functions (`KernelFrame::new`, `KernelFrame::base`, `KernelFrame::drop`):
+4. **all three are fully verified in-body** (`make verify-kernel MODULE=mm::phys::kframe` →
+5. `3 verified, 0 errors`, `status: CLEAN`). No `admit()`, no `a...
+[RESULT ✓] view: 1. # Cheating-Fix Pass 3: response to `cheating_report_3.md`
+2. 
+3. `cheating_report_3.md` is **byte-identical** to reports 1 and 2 (`diff` ⇒ no differences): the
+4. same 15 `external_body` + 4 `admit`, all in unlisted sibling modules (`frame`, `manager`, `mod`,
+5. `upool`), **none in `kframe.rs` / ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Let me run spec_drift and the verification build in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== spec_drift git-diff before HEAD ==="; python3 /home/ruize/verus-ai-
+[RESULT ✓] bash: === spec_drift git-diff before HEAD ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.*...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-phys-kframe/final-review && cat > verus-
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.gpt.md
+[RESULT ✓] view: 1. # Final Review (gpt-5.3-codex): phys-kframe
+2. 
+3. ## Checklist — copy the master item list below; mark each [x]/[ ] with justification
+4. 
+5. ### Caller Analysis
+6. - [x] pub fns callers searched (tool-verified) — validated with `caller_analysis.md` and fresh rg on manager/kpage (`src/kernel/src...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now let me run the verification. This may take a while.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== checking make target ==="; grep -n "verify-kernel" Makefile 2>/dev/
+[RESULT ✓] bash: === checking make target ===
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+Makefile
+z
+z.bat
+z.ps1
+z.py
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-kernel MODULE=mm::phys 2>&1 | tail -60; echo "VERIFY_EXIT=${PIPES
