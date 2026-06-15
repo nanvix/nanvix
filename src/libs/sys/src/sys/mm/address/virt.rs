@@ -172,7 +172,6 @@ impl VirtualAddress {
     }
 }
 
-#[verus_verify]
 impl Address for VirtualAddress {
     ///
     /// # Description
@@ -259,10 +258,6 @@ impl Address for VirtualAddress {
         usize::MAX
     }
 
-    #[verus_spec(result =>
-        ensures
-            result as int == self@,
-    )]
     fn into_raw_value(self) -> usize {
         self.0
     }
