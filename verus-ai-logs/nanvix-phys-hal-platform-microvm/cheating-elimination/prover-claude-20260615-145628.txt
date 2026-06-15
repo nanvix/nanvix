@@ -199,3 +199,50 @@ No actual cheating items found — only a comment mentions `admit()`. Let me ver
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
 
 [THINKING] I've confirmed there are no cheating items in the module—the only reference to "admit()" is in a comment. Now I'm running the verification command using `make verify-kernel MODULE=hal::platform::microvm` to confirm it passes.
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Status CLEAN, exit 0. The `external_body=25` and `cfg_gate=7` are crate-wide counts. Let me confirm none are in our module and check the cfg gates.
+[TOOL] grep: cfg\(verus_keep_ghost\)|cfg\(verus\)|cfg_attr
+
+[THINKING] The summary shows a CLEAN status, but those external_body counts of 25 are spread across the entire kernel rather than isolated to this specific module. I need to verify that these external references aren't actually coming from the hal-platform-microvm module itself, since the allowed list in tcb-allowed.md permits them elsewhere.
+
+Now I'm checking whether the cfg_gate counts of 7 are actually affecting executable code in this module or if they're just the standard spec and proof inclusion patterns using cfg(verus_keep_ghost) on the include! directives.
+[RESULT ✓] grep: /home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs:11:#[cfg(verus_keep_ghost)]
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The two cfg gates are standard spec/proof `include!` gating — not exec-code changes. Now let me verify AST consistency of `gva_to_gpa`'s exec body against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git show verus-ai/hal-memory-region:src/kernel/src/hal/platform/microvm/mod.rs 2>/dev/null 
+
+[THINKING] The `cfg(verus_keep_ghost)` gates are wrapping the spec and proof file includes, which is the standard pattern for gating ghost content rather than actual code changes. The target function `gva_to_gpa` has a real implementation body and is fully verified,
+
+with proper ensures clauses and a proof lemma that has a concrete body without any admits. Now I need to check the AST consistency by comparing the current `gva_to_gpa` implementation against the base branch to verify the exec function body hasn't been altered in ways that would violate the verification constraints.
+[RESULT ✓] bash: pub fn gva_to_gpa(gva: usize) -> usize {
+    gva
+}
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Exec body identical to base — zero AST mismatch. Now running full-crate verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -25
+
+[THINKING] The exec body matches the base implementation exactly with no AST differences—the only modifications are in the ghost contract and spec files. Everything checks out cleanly with no shortcuts taken. Now I need to run the full crate verification to confirm there are no regressions before putting together the report.
