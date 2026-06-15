@@ -638,3 +638,62 @@ Turn 31
 ────────────────────────────────────────────────────────────
 Now re-run module verification to see the next set of issues.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[RESULT ✓] bash: |                 ------------------------------------------------
+...
+600 |             debug_assert_eq!(self.refcount[index], 0);
+    |             -----------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_sp...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Progress — `instance`/`init` are now external_body. Now 14 errors in the `Inner::*` method bodies (which tcb-allowed.md says must be `external_body`). Let me see them.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^error\|-->" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_08-49-23.log 
+
+[THINKING] I've marked instance/init as external_body and added a contract to alloc, but now I'm seeing 14 new compile errors from the `Inner::*` method bodies that can't be translated—things like debug_assert_eq!, error!, and arch newtypes. According to tcb-allowed.md, these methods should also be marked as external_body, so I need to examine what's causing the errors.
+[RESULT ✓] bash: 20:error: `core::panicking::assert_failed` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+21:   --> src/kernel/src/mm/phys/fr...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+All 14 errors are in the `Inner::*` method bodies — they use `debug_assert_eq!`/`error!` macros and `arch` newtypes (`FrameNumber`, `FrameAddress`, etc.) that Verus cannot translate. tcb-allowed.md explicitly lists all 8 `Inner::*` methods as allowed `external_body`. Let me add the marker to each (their `#[verus_spec]` contracts are preserved).
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "#\[verus_spec" src/kernel/src/mm/phys/frame.rs | head -8
+
+[THINKING] The errors are all concentrated in the `Inner` method implementations across several lines, specifically within the macro calls and architecture-specific type definitions that the translation rules explicitly prohibit.
+
+According to tcb-allowed.md, all eight `Inner` methods—`alloc`, `alloc_contiguous`, `free`, `share`, `refcount`, `book`, `is_covered`, and `alloc_range`—are approved for external body verification. I need to add the `#[verus_verify(external_body)]` attribute to each of these methods alongside their existing `#[verus_spec]` contracts. While only some methods are currently showing errors (likely because the compiler hit the error cap), the others like `refcount` and `is_covered` also use the problematic architecture newtypes, so marking all eight consistently with the allowed list is the safest approach. I'm realizing the line-number approach gets messy since insertions shift subsequent lines. Better to work from the bottom up so earlier line numbers stay stable, or anchor each insertion on unique content from the ensures block of each method rather than trying to match on the requires clause that repeats across all eight.
+[RESULT ✓] bash: 115:    #[verus_spec(result =>
+180:    #[verus_spec(result =>
+252:    #[verus_spec(result =>
+336:    #[verus_spec(result =>
+407:    #[verus_spec(result =>
+454:    #[verus_spec(result =>
+499:    #[verus_spec(ret =>
+528:    #[verus_spec(result =>
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 - <<'EOF'
+path = "src/kernel/src/mm/phys/frame.rs"
+lines = open(path).read().split(
+[RESULT ✓] bash: done
+115:    #[verus_verify(external_body)]
+116:    #[verus_spec(result =>
+181:    #[verus_verify(external_body)]
+182:    #[verus_spec(result =>
+254:    #[verus_verify(external_body)]
+255:    #[verus_spec(result =>
+339:    #[verus_verify(external_body)]
+340:    #[verus_spec(result =>
+411:    #[verus...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Now re-run module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -55
