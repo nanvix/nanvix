@@ -414,3 +414,55 @@ Turn 21
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+[RESULT ✓] bash: note: verifying module mm::phys::manager
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.rs:376:17
+    |
+376 |                   Ok(kf) => {
+    |                   ^^^^^^ failed this postcondition
+...
+383 |       pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Confirmed: removing the lemma makes `alloc_kernel_frame`'s postcondition fail — the body never mutates `self` (kernel allocation goes through the global `frame::alloc()`, not the user pool backing `self@`). This validates the prior analysis: the lemma asserts `old(self)@ == old(self)@.alloc_one(addr)`, false for the implementation. Let me restore and confirm the build is clean again.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/manager.proof.rs.bak src/kernel/src/mm/phys/manager.proof.rs && cp 
+
+[THINKING] Removing the lemma breaks the postcondition because `alloc_kernel_frame` never actually mutates `self`—the kernel allocation bypasses the user pool entirely. The lemma's assertion that `old(self)@ == old(self)@.alloc_one(addr)` is fundamentally false for this implementation. I need to fix this properly by correcting the specification.
+
+The sound fix is to change the postcondition to `final(self)@ == old(self)@`, which accurately reflects that kernel allocations don't touch the user pool. But this requires checking whether any verified callers depend on the current (incorrect) `alloc_one` transition. The callers are in unverified code and tests, so there's a path forward. Changing an external function's contract to match its actual implementation isn't weakening—it's fixing a spec bug that was only "true" via the admitted axiom. However, there's a deeper concern: if the manager's view is supposed to represent the global partition for watermark coherence, then having kernel allocations not update `self@` means the free count drifts from reality, which would break the soundness of the watermark checks.
+
+Both specs are fundamentally wrong relative to reality unless `self@` actually mirrors the global frame state, but there's no mechanism ensuring that coherence. The architectural incoherence is that `self@ = upool@` is supposed to track `phys_view().frames` globally, yet nothing enforces this invariant. Correcting the kernel alloc spec without fixing the underlying view model would just hide the problem—claiming kernel allocations are free when they actually consume frames. This is exactly why the prior phase deferred it: there's no locally-correct spec without the ghost-token architecture to maintain coherence. This is a genuine blocker that can't be resolved soundly in isolation.
+
+I need to restore the manager files and document this finding clearly.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+restored (no diff = clean)
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm noticing there's a one-line difference in manager.rs that might be from a whitespace change or from the backup being captured after verify.sh auto-committed something. Let me investigate what's actually different.
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/manager.rs b/src/kernel/src/mm/phys/manager.rs
+index 774dd8502..5da9a9d2c 100644
+--- a/src/kernel/src/mm/phys/manager.rs
++++ b/src/kernel/src/mm/phys/manager.rs
+@@ -395,7 +395,7 @@ impl PhysMemoryManager {
+         });
+         proof! {
+             if result is O...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+verify.sh auto-committed my reproduction edit. My restore is now a working-tree change that fixes it back. Let me verify the module is clean again and commit the restoration.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -3 && echo "=== verify manager builds/verifies with resto
+
+[THINKING] I'm realizing the diff is showing the working tree against HEAD—the minus lines are what's in the repository, and the plus lines are my restored backup. So HEAD actually contains the reproduction comment, which means verify.sh must have auto-committed my test code.
+
+Since the reproduction run failed with an error, verify.sh still committed that broken state. Now I have the correct lemma call restored as a working-tree change, so I need to commit this fix to clean up the repository.
