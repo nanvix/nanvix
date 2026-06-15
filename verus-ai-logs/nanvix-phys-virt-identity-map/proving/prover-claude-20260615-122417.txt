@@ -525,3 +525,210 @@ But here's the core issue: I need to prove that `assume_init_mut` and `as_ptr` p
 Turn 27
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -A40 "error\
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+    |
+533 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Two issues: `read` needs the type invariant, and `alloc_as` needs `bump_view().inv()`. Let me check `bump_view` and its `inv`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs
+
+[THINKING] I'm running into two issues with the `ensure_pt` function. First, `pd.read(pde_idx)` requires proof that `index@ < PAGE_TABLE_LENGTH`, which should come from the `TableIndex` type invariant. I need to invoke `use_type_invariant(pde_idx)` at the start to bring that constraint into scope so Verus can use it for the read operation.
+
+The second issue is that `alloc_as` needs `bump_view(PAGE_TABLE_ALLOCATOR).inv()` to hold, but we don't have a precondition establishing this. Since the allocator is a global static, its invariant should theoretically hold, but I need to figure out how to establish it formally. Let me examine what `bump_view.inv()` actually means and whether there's a mechanism to prove it for the global allocator.
+[RESULT ✓] view: 110. //==================================================================================================
+111. 
+112. ///
+113. /// # Description
+114. ///
+115. /// Aligns `value` up to the next multiple of `alignment`.
+116. ///
+117. /// # Parameters
+118. ///
+119. /// - `value`: Value to align.
+120. //...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find src/libs/bump_allocator -name "*.spec.rs" -o -name "*.proof.rs" | head; echo "==
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.proof.rs
+src/libs/bump_allocator/src/lib.spec.rs
+=== bump_view / inv ===
+6:// This file contains the abstract View (`BumpView`), its invariant and geometry
+12:// NOTE: Attaching `BumpView` as the `View` of `FixedSizeBumpAllocator` is a later
+16:// inside the atomics")...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== lib.proof.rs ==="; cat src/libs/bump_allocator/src/lib.proof.rs; echo "=== 
+
+[THINKING] The core issue is that `bump_view` is an uninterpreted function with no constraints on what it returns, so there's no way to prove that `bump_view(PAGE_TABLE_ALLOCATOR).inv()` actually holds. This means `ensure_pt` can't establish the precondition needed to call `alloc_as`.
+
+All three functions are stuck waiting for ghost-token facts that don't exist: `ensure_pt` needs the bump view invariant, `ensure_pte` needs to connect to the identity map, and `identity_map_page` needs accessibility and bump view facts. Without adding preconditions (forbidden), changing signatures (forbidden), or using external_body/admit (forbidden), these seem genuinely unprovable—but I'm reconsidering whether there's a way to assert the invariant of a global static that I'm missing.
+
+The core issue is that `bump_view()` is uninterpreted, so even though `inv()` only constrains the fixed geometry constants (alignment, stride, capacity), there's no axiom linking what `bump_view` returns to those constants. I need to check if the bump_allocator's proof module has a broadcast lemma that establishes this connection.
+[RESULT ✓] bash: === lib.proof.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// FixedSizeBumpAllocator - Proofs
+//
+// Proof-function signatures for the abstract pool model. Bodies are `admit()`
+// placeholders during the specification phase; the proving phase discharges them.
+...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+This is a deep design question. Let me read the view_design doc to understand the intended proof realization.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,250p' verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md
+
+[THINKING] So `bump_view(self).inv()` is a ghost token that can't be obtained anywhere, yet it's a required precondition for both `alloc` and `alloc_as`. This creates a circular dependency where any caller of these functions would need to already possess this invariant, but there's no way to acquire it in the first place. This means `ensure_pt`, which depends on `alloc_as`, is stuck in the same trap.
+
+The core issue is that `bump_view` is uninterpreted, so we have no facts about what it returns and can't prove its invariant holds for any specific instance like `PAGE_TABLE_ALLOCATOR`. The only escape routes would be either introducing a trusted axiom (which violates the TCB constraints) or having the bump_allocator module itself broadcast an axiom that the invariant holds universally — but neither option is available within the current design constraints. I'm wondering if these three functions are genuinely stuck because the abstraction layer (`identity_map_view`) is intentionally decoupled from the concrete state, and reconnecting them would require infrastructure changes that aren't available. But the task expects completion, so maybe I'm being too pessimistic about the proof path. Let me reconsider whether there's a legitimate way to handle the `mapped.contains` obligations—perhaps through a module-level ghost token or by finding an existing pattern in the codebase where similar global-view functions were proven without being in the TCB list.
+
+Looking at how `mm::phys` handles this: methods on concrete structs are verified in-body with access to `self@`, while global wrappers referencing `phys_view()` are all marked as external_body and placed in the TCB. The three identity_map functions are analogous to those global wrappers—they're free functions referencing a global view—yet they're not in the TCB list and I'm forbidden from adding them there. This seems like a fundamental contradiction in the setup. The honest path forward is to prove what's actually provable (the invariant preservation and alignment guarantees) and acknowledge that the remaining obligations around `bump_view.inv()` and `mapped.contains` are genuinely blocked by missing ghost-token facts in the dependency contracts.
+
+Actually, wait—let me think harder about the `bump_view.inv()` blocker. The `alloc_as` function requires this as a precondition, and since `bump_allocator` is verified, that precondition stays in place for all callers. But how is any caller supposed to establish `bump_view(PAGE_TABLE_ALLOCATOR).inv()` without some way to access the underlying facts? The lemmas in `bump_allocator.proof.rs` all *require* `v.inv()` rather than establishing it, and `bump_view` itself is uninterpreted with no axioms to work with. Even if I add lemmas to `identity_map.proof.rs`, I have no way to prove this without either admitting it or marking the function as external_body. This really does seem like a genuine spec gap in the dependency that I can't work around.
+
+But before I concede, let me look at what `view_design.md` says about the intended proof strategy—maybe there's something about how `identity_map_view()` is supposed to be handled that I'm missing.
+[RESULT ✓] bash: # View Design: `mm::virt::identity_map`
+
+## Abstract Resource
+
+To callers, this module is the **kernel's identity map**: a single global,
+write-and-supervisor mapping that answers one question — *"is this physical page
+reachable at its own physical address (V == P) in the kernel address space?"* —
+a...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== lemmas ENSURING bump_view inv (not requiring) ==="; grep -rn "bump_view" sr
+
+[THINKING] The view_design clarifies that how the ghost state is threaded is a specification concern, and spec.rs uses a parameterless `identity_map_view()`. The transitions table specifies `identity_map_page` as `self@ == old@.spec_map_page(...)`, but the actual spec.rs implementation doesn't state this equivalence—instead it only asserts `identity_map_view().inv()` and the accessibility and containment properties.
+
+The discrepancy arises because the parameterless uninterpreted function can't express old versus new states, so the spec phase dropped the transition equality and kept only the post-state facts. However, even those facts about `mapped.contains` and `accessible` can't be proven since the view is an unconstrained constant.
+
+After this analysis, I'm taking a pragmatic stance: the three functions as currently specified require facts about the uninterpreted globals that aren't derivable from any available precondition or contract. The ghost token that would supply these facts hasn't been realized, and realizing it soundly would require threading `Tracked<...>` permissions through signatures—something the spec phase deliberately avoided and I'm forbidden to change. This is the genuinely-stuck proof scenario the proving-guide addresses, which means recording it in verification-todo.md is appropriate, though that doesn't make verification pass. But the task framing suggests these should be provable, so I need to reconsider whether there's still a legitimate path forward.
+
+I'm wondering if there's a way to establish `bump_view(static).inv()` through an axiom or lemma in the codebase that ensures this invariant rather than requiring it. Let me search for any existing lemma that establishes this fact.
+[RESULT ✓] bash: === lemmas ENSURING bump_view inv (not requiring) ===
+=== search establishing identity_map_view facts ===
+src/kernel/src/mm/virt/identity_map.rs:511:        identity_map_view().inv(),
+src/kernel/src/mm/virt/identity_map.rs:519:                &&& identity_map_view().inv()
+src/kernel/src/mm/virt/iden...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Let me check how other callers of the allocator (e.g. `init`) establish `bump_view().inv()`, and look at the full set of in-scope vs out-of-scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "alloc_as\|alloc(\|\.alloc\b\|bump_view\|PAGE_TABLE_ALLOCATOR" src/kernel/sr
+
+[THINKING] I'm realizing there's no actual definition or lemma connecting `bump_view(...).inv()` or `identity_map_view()` beyond what appears in the function contracts. The `identity_map_view()` is only referenced in three function contracts with no concrete implementation backing it up. This creates two critical proof obligations I can't satisfy: the `ensure_pte Ok` case requires proving `identity_map_view().mapped.contains(P)` which is an unconstrained constant, and the `identity_map_page Ok` case needs `identity_map_view().accessible(P)` to equal `!initialized`, but without the underlying definitions I have no way to establish either of these.
+
+The only sound approach would be to give `identity_map_view()` a concrete definition tied to the actual exec effects—the writes through the page table and atomic state—and have the dependency contracts update the corresponding ghost state. But `Table::write` has no ensures clause, and the page-table-memory ghost is uninterpreted and never updated, so even with a concrete definition I couldn't prove the writes actually change the view. The core issue is a deliberate design choice: a deferred ghost token, a parameterless uninterpreted global view, and a write operation with no postconditions. This creates a genuine proof impossibility under the hard constraints, but it's not a code bug—it's a specification and proof infrastructure gap.
+
+Looking at what's actually provable, each function's entire set of ensures must hold to verify without admits. Most have at least one unprovable obligation, but `ensure_pt` is interesting: its only real blocker is the `bump_view(PAGE_TABLE_ALLOCATOR).inv()` precondition from the `alloc_as` dependency contract. If that one fact were available, `ensure_pt` would be fully provable. This suggests the bump allocator's spec design has a gap—it requires callers to establish `bump_view(self).inv()` for the global static but provides no mechanism to do so.
+
+I'm facing a genuine tension: the task demands zero admits and passing verification, but my analysis shows the ghost-token facts are genuinely deferred and can't be supplied without violating the hard rules. I need to reconsider whether I'm missing something about how `external_body` functions and their preconditions actually work at call sites, or whether there's a proof strategy I haven't explored yet. Actually, let me trace through who else calls the allocator and how they handle the bump_view invariant — maybe init or ensure_identity_mapped_range already establish it in a way I can reuse.
+[RESULT ✓] bash: 29:use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
+549:        PAGE_TABLE_ALLOCATOR
+550:            .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+=== check if FixedSizeBumpAllocator has a view/inv-establishing static spec ===
+100:#[verus_verify]
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Let me check the arch table proof file and any broadcast axioms that could establish the connecting facts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== table.proof.rs ==="; cat src/libs/arch/src/x86/mem/paging/table.proof.rs 2>
+
+[THINKING] Only `ensure_pt` in this module calls `alloc_as`, while `init` is out of scope and invokes `ensure_pt` or `ensure_identity_mapped_range` instead. So there's no established pattern for obtaining `bump_view(...).inv()` through the existing code paths. This is the core issue blocking me — I need to figure out if there's a Verus mechanism that would let me get `bump_view(self).inv()` for a global static, and I'm reconsidering whether this is even possible.
+
+The `inv()` of `bump_view` only constrains geometry to compile-time type-level constants, so theoretically a broadcast lemma could establish it unconditionally. But no such lemma exists in the codebase, and adding one to the dependency's proof would require an external_body axiom on an uninterpreted function — exactly the anti-pattern that's forbidden. The spec has a genuine gap: `bump_view` is uninterpreted with an `inv()` that callers can never establish, and this was deliberately deferred to a proving phase that never materialized. The entire chain depends on ghost tokens that were never realized, meaning this module fundamentally cannot be proven in isolation.
+
+Given that I've exhausted proof strategies and confirmed this is a spec/infrastructure gap rather than a code bug, the honest approach is to record these genuinely-stuck proofs in verification-todo.md and leave `admit()` rather than cheat with `assume` or `external_body`. But let me double-check the `mapped.contains` and `accessible` obligations one more time — could the design intend for `identity_map_view()` to have a concrete definition in spec.rs that makes these provable through the page-table-memory ghost, with `Table::write` providing a contents postcondition? No: the TCB note explicitly argues that a contents postcondition on `write` would be unsound for an external_body function, so writes are deliberately unobservable. This means `ensure_pte` cannot prove the page is mapped after writing the PTE, because the spec infrastructure (by sound design) prevents observing writes. The module's functional correctness is blocked by deferred ghost-token infrastructure in the dependency contracts.
+
+Now I'm weighing whether to prove the provable scaffolding and leave minimal, targeted `admit()` calls only for the genuinely-deferred facts with clear documentation, versus accepting that any `admit()` fails the task's success criterion. The better engineering approach is to build the maximal real proof with `admit()` only for irreducible deferred-token facts, but I need to reconsider whether there's a sanctioned way forward that doesn't require weakening the spec.
+
+The task implies proofs should be completable if the spec phase chose the current approach, so maybe I'm missing a legitimate path—perhaps using assertion tactics with dependency lemmas, or finding a connection between `KERNEL_PD_PADDR` and `identity_map_view().initialized`. But checking the actual code, there's no such link; the atomic load returns an arbitrary usize with no spec binding.
+
+I'm reconsidering whether `identity_map_view().mapped.contains(P)` is truly unprovable given that `identity_map_view()` is uninterpreted and returns a fixed value. I need to decide on the deliverable strategy. Since the hard constraints make full verification impossible without the deferred ghost-token connections, I should do the maximum provable work, document the irreducible blockers clearly, and be honest about what can't be completed. But wait—maybe I can realize the ghost token by giving `identity_map_view()` a concrete definition instead of leaving it uninterpreted, though that would require making the atomic values spec-readable somehow, which seems blocked by interior mutability.
+
+Let me reconsider the strategic situation: either the harness is being optimistic about what's provable, or there's a sanctioned mechanism I'm missing. The most likely candidate would be a `broadcast proof fn` axiom-style lemma in the dependency modules that establishes the connecting facts between `bump_view`, `spec_table_word`, and `identity_map_view`. I should search through all the proof files in the dependencies to see if such a lemma already exists that I can use.
+[RESULT ✓] bash: === table.proof.rs ===
+verus! {
+
+// The `TableEntry` round-trip law: decoding a freshly-encoded entry yields it back.
+// This is the abstract contract every `TableEntry` implementor must honour (`raw` is a faithful
+// serialization). Stated as a broadcast lemma so callers obtain the read-after-write...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Let me empirically confirm my analysis: I'll temporarily test whether `ensure_pt`'s alignment obligation is provable if the allocator precondition were available. Let me write the real proof and isolate the blocker.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_page_size\|FRAME_SIZE" src/kernel/src/hal/mem/mod.rs src/kernel/src/ha
+
+[THINKING] I'm noticing that `lemma_entry_roundtrip` relies on an `admit()` in a dependency module—it's a broadcast axiom that's still deferred. Even with that in place, it only establishes the codec round-trip property, not the write-to-spec_table_word update. The comment claims callers get the read-after-write guarantee, but since `write` has no ensures clause updating spec_table_word, that guarantee actually can't be obtained.
+
+This confirms the page-table write effect is unobservable—`ensure_pte` can't prove the page is mapped. After exhausting the investigation, the core issue is clear: these three proofs are blocked by deliberately-deferred ghost-token infrastructure in the dependency contracts. `Table::write` produces no observable state change, and `bump_view`/`identity_map_view` are uninterpreted globals with no facts establishing their invariants. Given the hard constraints—fixed exec signatures, no new trust boundaries, no admits or spec weakening—completion is genuinely impossible.
+
+This isn't a simple proof gap I can strengthen, nor is it a code bug. It's a spec-infrastructure gap in the dependencies. The right path forward is to document this in `verification-todo.md` and do maximal real proof work to reduce admits to the irreducible minimum.
+
+For `ensure_pte` specifically, I'm blocked only by `bump_view(PAGE_TABLE_ALLOCATOR).inv()`—if I had that one precondition, the rest would be fully provable. That's a clean, isolated dependency-spec gap. I could prove the function completely with just that single fact. Since there's no type invariant on the allocator and no way to derive this fact, I'll do the honest proof work, document the irreducible blockers clearly, and report the situation rather than fake a pass with banned constructs. Let me test empirically whether `bump_view(&PAGE_TABLE_ALLOCATOR).inv()` is actually provable by attempting it directly, since the precondition failure might be misleading. If that's truly the only blocker, maybe Verus already knows it from the static's verification attribute. But the failed precondition confirms it's not available. I'm also reconsidering whether I can add a `requires` clause to `ensure_pt` to assume those facts, though that would weaken the function signature and break callers like `init`. Given the hard constraints make genuine completion impossible, my best path forward is to document this as a blocked verification with full technical justification, keep the `admit()` placeholders as an honest representation of the current state, and clearly explain to the user that the module cannot be verified without realizing the deferred ghost token—which would require forbidden signature changes.
+
+But this conflicts with the mandate to eliminate every `admit()`. Let me double-check whether there's a `verification-todo.md` convention or whether I'm missing a legitimate path by reconsidering if the deferred token could be realized through a `Tracked` ghost field on a struct, though these are free functions with no struct to attach it to. Alternatively, maybe the proof is meant to leverage new lemmas in `identity_map.proof.rs` that connect the obligations through `lemma_entry_roundtrip` and a concrete definition of `identity_map_view()`. If I redefine `identity_map_view()` from uninterpreted to concrete, that would strengthen the proof without weakening the spec—but only if the concrete definition doesn't trivialize the ensures clauses. Any definition that makes the ensures vacuously true would be spec drift and unacceptable. I'm now confident this is genuinely blocked, so I need to document it honestly. I'm checking whether any sibling modules in the codebase have successfully proven parameterless global view functions without external_body, and the answer is no—they're all marked as TCB. This actually validates my conclusion: the three identity_map functions belong in the deferred-token category alongside frame::alloc and kframe::new, not as in-body proofs. The task's expectation that they be verified without external_body contradicts the established architecture pattern, so my honest finding is that these are legitimately deferred ghost-token wrappers that can't be completed in-body without signature changes.
+
+Given the hard constraints—can't modify the TCB list, can't change signatures, can't use assume—I'm settling on the clearest approach: keep the blanket admit() at the top of each function as a transparent placeholder, then document the irreducible blocker in verification-todo.md with rigorous justification. This is more honest than targeted admits that inject specific facts, which would just be sneakier versions of assume. I should actually test whether the rest of ensure_pt is provable by writing out the full proof locally with a temporary assumption for the blocker, then removing it to validate my claim that only the bump_view invariant is irreducible.
+[RESULT ✓] bash: === where is spec_page_size defined ===
+src/kernel/src/hal/mem/types/address/frame.rs
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "spec_page_size\|FRAME_SIZE\|PAGE_SIZE" src/kernel/src/hal/mem/types/address/
+[RESULT ✓] bash: 39:// The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
+40:// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+41:// that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+My analysis is now thorough and conclusive. Let me restore the clean baseline and verify it still passes, then document the findings rigorously.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm checking whether `FRAME_SIZE` and `PAGE_SIZE` are equivalent across the crate definitions, since `frame_address()` requires frame alignment while `spec_page_size()` returns the page size constant, and they need to match for consistency.
+
+Rather than keep tracing through the definitions, I'll write out the `ensure_pt` proof structure to test whether the alignment properties work out — specifically checking if the frame address from an existing page directory entry satisfies the spec's page alignment requirement, and whether newly allocated page table addresses also meet that requirement. The key is verifying that the frame size constraint translates to the spec's page size constraint.
+
+For the allocation path, I'm realizing there's a deeper issue: the allocator returns a slot reference with a guaranteed alignment, but connecting that reference's address (via `as_ptr()`) to the uninterpreted `slot_ref_addr` function has no specification — `as_ptr` provides no address guarantee in its assumes, so even with the bump view invariant, I can't establish that the allocated address is actually page-aligned at the spec level.
+
+This means both the bump view precondition and the address connection between `as_ptr` and `slot_ref_addr` are blocking the alloc path. The present-PDE path might be provable if I can establish that `FRAME_SIZE == PAGE_SIZE`, but the alloc path appears fundamentally unprovable under these constraints.
+
+I've confirmed enough blockers across multiple independent issues—the bump view invariant, the unspecified pointer semantics, the unobservable effects of `Table::write`, and the atomic load lacking a spec connection. The decision is clear: I need to restore the clean admit baseline and document why this module can't be verified in-body.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "Exit cod
+
+[THINKING] Let me step back and reconsider whether there's actually a compliant path forward here, since abandoning the approach entirely feels premature. The core issue is that all the blockers trace back to uninterpreted globals and undefined boundaries in the dependency modules, and the constraints prevent me from modifying function signatures or introducing new trust boundaries. But I'm cutting off mid-thought on something important—let me think through what I was about to explore.
+
+The rules explicitly say not to touch unlisted functions in other modules, but what if the intended solution is to recognize the ghost token within identity_map.proof.rs itself by defining a concrete `identity_map_view()` function and proving the connection using existing dependency lemmas like `lemma_entry_roundtrip`? The problem is that `write` doesn't update observable state—there's no ensures clause—so that path is blocked. The lemma only gives me codec roundtrip properties, which doesn't help without `write` actually updating the spec table.
+
+I'm also reconsidering whether the harness expects me to mark these functions as external_body and add them to tcb-allowed.md, but the constraints are clear: I can only add external_body if the function is already listed there, and I'm explicitly forbidden from introducing new trust boundaries. So that's not an option either.
+
+All four mechanisms—admit, assume, external_body, and signature changes—are ruled out. The honest approach is to keep the admit placeholders, document the precise technical reasons in verification-todo.md, note in bugs.md that these aren't code bugs, and report to the user with full justification that these are deferred ghost-token global wrappers that belong in the TCB, just like the already-listed frame::alloc and kframe::new. Let me verify the baseline still passes with the admits in place, then write the documentation.
+
+Actually, I'm reconsidering whether I've truly exhausted all options. The `bump_view(self).inv()` precondition is genuinely unestablishable because `bump_view` is uninterpreted with no type invariant or establishing lemma—this is a legitimate finding worth reporting, since it blocks any in-body verification of callers like `ensure_pt`. But before I give up, let me think about whether "split into smaller functions" from the proving guide could help, or if I can make `identity_map_view()` concrete in a way that's creative but not trivializing. The post-state ensures require the fixed value V to contain every page P that `ensure_pte` might be called with, which is impossible without trivializing. For `accessible(P)` in `identity_map_page`, if V.initialized is always false then accessible is trivially true, but then inv requires mapped to be empty, which contradicts the pre-init state.
+
+I've confirmed no concrete definition works without weakening the contract. Time to run the baseline and write this up.
