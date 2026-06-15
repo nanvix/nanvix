@@ -939,3 +939,165 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Turn 6
 ────────────────────────────────────────────────────────────
+AST is fully consistent. Let me verify the original exec code via git diff and check the `from_number` rewrite semantics.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show verus-ai-prove:src/kernel/src/hal/mem/types/address/phys.rs | sed -n '95,180
+[RESULT ✓] bash: /// Constructs a physical address from a memory-mapped I/O address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: The memory-mapped I/O address.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, a physical address associated with the given memory-mapped I/O address is
+    /// re...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing module artifacts
+[TOOL] rg: admit\(
+[TOOL] rg: assume\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: #\[cfg\(
+[TOOL] rg: VERUS REWRITE
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs:11:#[cfg(verus_keep_ghost)]
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.spec.rs:11:// supersede the former placeholder `assume_specification`s. These helpers re-expose those arch
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.spec.rs:58:// (`result@ == value as int`), so its p...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs:142:    // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs:277:    // VERUS REWRITE (interface addition): `clone_...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysicalAddress::align_down              MATCH                                
+PhysicalAddress::align_up                MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The base branch already contains the annotations. Let me compare exec code against `dev` (pre-verification baseline) to confirm the rewrites preserve original semantics.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== dev from_number/from_mmio/into_frame_number ===" && git show dev:src/kernel
+[RESULT ✓] bash: === dev from_number/from_mmio/into_frame_number ===
+    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+        Ok(Self(addr))
+    }
+
+    pub fn into_virtual_address(self) -> VirtualAddress {
+        self.0
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Construct...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The `verification_todo.md` confirms the `assume_specification` is genuinely required (the concrete `impl Address for VirtualAddress` lacks `#[verus_verify]`, so it doesn't inherit the verified trait contract). Let me read the spec-design and spec-completeness skill criteria while agents run.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && ls; echo "=== spec-completeness exists? ==="; ls spec-completeness 2
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== is sys VirtualAddress impl annotated verus_verify? ==="; sed -n '160,170p' 
+
+[THINKING] The verification_todo.md file makes it clear that the assume_specification for VirtualAddress::into_raw_value is actually necessary—the concrete impl for Address on VirtualAddress isn't marked with #[verus_verify], so it doesn't pick up the trait-level contract, and Verus needs that assumption to handle the self.0.into_raw_value() call within into_frame_number.
+
+This is a legitimate cross-module dependency placeholder, analogous to other accepted patterns in the codebase. The checklist explicitly allows "assume_specification on external dependencies temporarily allowed" as a placeholder until the dependency module (sys's virt module) is verified in-body. The distinction is that cross-module dependencies—even workspace-internal ones—get temporary assume_specification coverage that gets eliminated once their module is verified.
+
+Now I'm checking whether this specific assume_specification for `VirtualAddress::into_raw_value` is actually listed in tcb-allowed.md. Looking through the documented list, I see various sys/arch functions recorded, but this particular one isn't explicitly there. That's a gap in the documentation, though the task's hard blockers only require external_body to be listed in tcb-allowed.md—assume_specification isn't subject to that same "must be documented" rule.
+
+The real tension here is whether the final review should pass or fail given this. The codebase is mid-verification, and the convention allows temporary dependency placeholders like this as cross-module stubs. The framework seems designed to tolerate these gaps during active verification work, with the understanding they'll be resolved later. The checklist itself contains conflicting guidance: one item forbids assume_specification for workspace-internal code, but another explicitly permits it temporarily for external dependencies. The crux is whether sys counts as "external" from kernel's perspective—it's a separate crate in the workspace, and tcb-allowed.md already accepts both cross-crate and intra-crate temporary assume_specification entries, suggesting the repo's policy treats this as acceptable.
+
+The real issue is the bookkeeping gap: this particular assume_specification isn't listed in tcb-allowed.md, which the task emphasizes as the fixed, pre-approved TCB. A strict reading flags this as a violation. However, the assumed spec is identical to the already-verified trait contract in sys, making it soundness-neutral—a documentation shim rather than a genuine new trust boundary.
+
+I'll have the two sub-agents evaluate independently and then consolidate their verdicts, since this hinges on whether the strictness mandate outweighs the fact that it's required, documented elsewhere, and matches verified code.
+
+I shouldn't add the entry to tcb-allowed.md myself—that would be papering over a violation. The task explicitly says not to justify or record new trust boundaries, so I need to report this as a finding instead.
+
+Let me wait for the sub-agents to finish their verification work while I review the spec-design and spec-completeness skill criteria to evaluate the specification quality independently.
+[RESULT ✓] bash: === is sys VirtualAddress impl annotated verus_verify? ===
+    /// returned instead.
+    ///
+    pub fn checked_sub(&self, rhs: usize) -> Option<Self> {
+        self.0.checked_sub(rhs).map(VirtualAddress::from_raw_value)
+    }
+}
+
+impl Address for VirtualAddress {
+    ///
+    /// # Description
+    //...
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+=== spec-completeness exist...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] The concrete trait implementation for `Address` on `VirtualAddress` at line 167 doesn't have the `#[verus_verify]` attribute—that's on a different impl block earlier in the file. This confirms the trait contract doesn't automatically apply to the concrete implementation, so the `assume_specification` is genuinely necessary and aligns with what's documented in verification_todo.md.
+
+Now I want to check the spec-design skill for quality criteria and see what the sub-agent experiments reveal about whether removing this assumption would break verification.
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Exec semantics confirmed equivalent. Now let me count all cheating dimensions in the phys module files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && D=src/kernel/src/hal/mem/types/address; for f in phys.rs phys.spec.rs phys.proof.rs; 
+[RESULT ✓] bash: ===== phys.rs =====
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+===== phys.spec.rs =====
+11:// supersede the former placeholder `assume_specification`s. These helpers re-expose those arch
+58:// (`result@ == value as int`), so its placeholder `assume_specification` was removed — the real
+6...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && sed -n '1,120p' spec-design/SKILL.md
+[RESULT ✓] bash: ---
+name: spec-design
+description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Ve...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address::phys
+[RESULT ✓] report_intent: Intent logged
