@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs
+[PIPELINE] NOTE: added cfg-gated include!(vmem.spec.rs, vmem.proof.rs) to /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs
+[2026-06-15 17:06:31] [BRANCH] Staying on current branch: virt-mm-ai-spec
+[2026-06-15 17:06:31] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-vmem/body_removed_source.rs (71258 -> 23947 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: vmem
+Source: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/vmem.rs
+Crate:  kernel
+Branch: virt-mm-ai-spec (base: virt-mm-ai-spec)
+Phases: caller-analysis → specification
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: vmem
+============================================================

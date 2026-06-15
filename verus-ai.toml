@@ -1,0 +1,16 @@
+# Hand-maintained per-module config for the virt-mm spec-only top-down flow.
+# Lists the top-level spec entry points that the `specification` phase must
+# write contracts for. There are no existing specs in this file yet.
+
+[project]
+background = """File: `src/kernel/src/mm/virt/vmem.rs`
+
+Top-level spec entry points (the only functions in scope for this module — write
+top-level `#[verus_spec(...)]` specifications for exactly these, caller before callee):
+`Vmem::new` (L103), `Vmem::clone` (L177), `Vmem::load` (L226), `Vmem::pgdir` (L233), `Vmem::map_kpage` (L250), `Vmem::map` (L366), `Vmem::is_user_page_mapped` (L443), `Vmem::is_user_addr` (L453), `Vmem::is_user_region` (L471), `Vmem::is_physical_region` (L530), `Vmem::try_find_user_pte` (L736), `Vmem::for_each_user_mapping` (L777), `Vmem::mark_user_page_cow` (L827), `Vmem::unmark_user_page_cow` (L857), `Vmem::resolve_cow_at` (L936), `Vmem::resolve_cow_for_region` (L1008), `Vmem::user_vaddr_to_paddr` (L1065), `Vmem::copy_from_user_unaligned` (L1098), `Vmem::copy_to_user_unaligned_unchecked` (L1210), `Vmem::copy_to_user_unaligned` (L1367), `Vmem::copy_user_to_user` (L1409), `Vmem::memset` (L1508), `Vmem::unmap` (L1538), `Vmem::uctrl` (L1619), `Vmem::kctrl` (L1690)
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- For module-scoped verification, run `make verify-kernel MODULE=mm::virt::vmem` from the project root.
+"""
