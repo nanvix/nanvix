@@ -97,6 +97,12 @@ expected_output = "ok"
 
 [[tests]]
 executor = "http"
+program = "./bin/setenv-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
 program = "./bin/stress-rust.initrd"
 input = "[]"
 expected_output = "ok"
@@ -169,6 +175,11 @@ expected_exit_code = 13
 [[tests]]
 executor = "terminal"
 program = "./bin/waitpid-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/setenv-rust.initrd"
 expected_output = "ok"
 
 [[tests]]

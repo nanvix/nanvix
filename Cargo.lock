@@ -1772,6 +1772,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "config",
+ "libc_stdlib",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -2871,6 +2872,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "setenv-rust"
+version = "0.16.63"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_stdlib",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
 ]
 
 [[package]]

@@ -80,6 +80,7 @@ members = [
         "src/tests/mount-test",
         "src/tests/mount-multipart-test",
         "src/tests/network-rust",
+        "src/tests/setenv-rust",
         "src/tests/snapshot-test",
         "src/tests/stress-rust",
         "src/tests/test-kernel",

@@ -1,14 +1,11 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # Environment-Variable Runtime API Tests (single process)
+//! # `getenv()` / `setenv()` / `unsetenv()` Single-Process Tests
 //!
-//! Exercises the POSIX `getenv()`, `setenv()`, and `unsetenv()` runtime environment API provided
-//! by `libc_stdlib`, within a single process (no `fork()`). The `fork()`-based isolation scenarios
-//! are covered by the standalone `setenv-rust` test, because `fork()` is only available in
-//! standalone mode.
+//! Exercises the POSIX runtime environment API within a single process, before the `fork()`-based
+//! isolation scenarios in [`super::fork`]. Behavior conforms to the POSIX specification:
 //!
-//! Behavior conforms to the POSIX specification:
 //! - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/getenv.html>
 //! - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/setenv.html>
 //! - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/unsetenv.html>
@@ -42,7 +39,7 @@ const NO_OVERWRITE: c_int = 0;
 //==================================================================================================
 
 /// Reads the calling thread's `errno`.
-fn read_errno() -> c_int {
+pub fn read_errno() -> c_int {
     // SAFETY: `__errno_location()` returns a valid pointer to the thread-local `errno`.
     unsafe { *::syscall::errno::__errno_location() }
 }
@@ -60,30 +57,37 @@ fn cstr(bytes: &[u8]) -> *const c_char {
 }
 
 /// Calls `setenv()` with NUL-terminated `name`/`value` byte literals.
-fn do_setenv(name: &[u8], value: &[u8], overwrite: c_int) -> c_int {
+pub fn do_setenv(name: &[u8], value: &[u8], overwrite: c_int) -> c_int {
     // SAFETY: `name` and `value` are NUL-terminated byte literals that outlive the call.
     unsafe { ::libc_stdlib::setenv(cstr(name), cstr(value), overwrite) }
 }
 
 /// Calls `unsetenv()` with a NUL-terminated `name` byte literal.
-fn do_unsetenv(name: &[u8]) -> c_int {
+pub fn do_unsetenv(name: &[u8]) -> c_int {
     // SAFETY: `name` is a NUL-terminated byte literal that outlives the call.
     unsafe { ::libc_stdlib::unsetenv(cstr(name)) }
 }
 
 /// Calls `getenv()` with a NUL-terminated `name` byte literal.
-fn do_getenv(name: &[u8]) -> *mut c_char {
+pub fn do_getenv(name: &[u8]) -> *mut c_char {
     // SAFETY: `name` is a NUL-terminated byte literal that outlives the call.
     unsafe { ::libc_stdlib::getenv(cstr(name)) }
 }
 
-/// Asserts that `getenv(name)` returns the value `expected`.
-fn assert_getenv_eq(name: &[u8], expected: &[u8]) {
+/// Returns whether `getenv(name)` resolves to exactly `expected`.
+pub fn getenv_is(name: &[u8], expected: &[u8]) -> bool {
     let ptr: *mut c_char = do_getenv(name);
-    assert!(!ptr.is_null(), "getenv() returned null for an existing variable");
+    if ptr.is_null() {
+        return false;
+    }
     // SAFETY: a non-null `getenv()` result points to a NUL-terminated C string.
     let value: &[u8] = unsafe { CStr::from_ptr(ptr) }.to_bytes();
-    assert_eq!(value, expected, "getenv() returned an unexpected value");
+    value == expected
+}
+
+/// Asserts that `getenv(name)` returns the value `expected`.
+fn assert_getenv_eq(name: &[u8], expected: &[u8]) {
+    assert!(getenv_is(name, expected), "getenv() returned an unexpected value or null");
 }
 
 /// Asserts that `getenv(name)` returns a null pointer.
@@ -98,13 +102,13 @@ fn assert_getenv_null(name: &[u8]) {
 
 /// Tests that a value set with `setenv()` is retrievable with `getenv()`.
 fn test_set_and_get() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_RT\0", b"value-rt\0", OVERWRITE), 0, "setenv() failed");
-    assert_getenv_eq(b"NANVIX_ENV_RT\0", b"value-rt");
+    assert_eq!(do_setenv(b"SETENV_RT\0", b"value-rt\0", OVERWRITE), 0, "setenv() failed");
+    assert_getenv_eq(b"SETENV_RT\0", b"value-rt");
 }
 
 /// Tests that `getenv()` returns null for a variable that was never set.
 fn test_get_missing() {
-    assert_getenv_null(b"NANVIX_ENV_MISSING\0");
+    assert_getenv_null(b"SETENV_MISSING\0");
 }
 
 /// Tests that `getenv(NULL)` returns null rather than dereferencing the pointer.
@@ -116,60 +120,56 @@ fn test_get_null_name() {
 
 /// Tests that `setenv()` with a non-zero `overwrite` replaces an existing value.
 fn test_overwrite_replaces() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_OW\0", b"first\0", OVERWRITE), 0, "setenv() failed");
-    assert_eq!(do_setenv(b"NANVIX_ENV_OW\0", b"second\0", OVERWRITE), 0, "setenv() failed");
-    assert_getenv_eq(b"NANVIX_ENV_OW\0", b"second");
+    assert_eq!(do_setenv(b"SETENV_OW\0", b"first\0", OVERWRITE), 0, "setenv() failed");
+    assert_eq!(do_setenv(b"SETENV_OW\0", b"second\0", OVERWRITE), 0, "setenv() failed");
+    assert_getenv_eq(b"SETENV_OW\0", b"second");
 }
 
 /// Tests that `setenv()` with `overwrite == 0` keeps an existing value but still succeeds.
 fn test_no_overwrite_keeps() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_NOW\0", b"first\0", OVERWRITE), 0, "setenv() failed");
+    assert_eq!(do_setenv(b"SETENV_NOW\0", b"first\0", OVERWRITE), 0, "setenv() failed");
     assert_eq!(
-        do_setenv(b"NANVIX_ENV_NOW\0", b"second\0", NO_OVERWRITE),
+        do_setenv(b"SETENV_NOW\0", b"second\0", NO_OVERWRITE),
         0,
         "setenv() with overwrite=0 must succeed even when the variable exists"
     );
-    assert_getenv_eq(b"NANVIX_ENV_NOW\0", b"first");
+    assert_getenv_eq(b"SETENV_NOW\0", b"first");
 }
 
 /// Tests that `setenv()` with `overwrite == 0` creates a variable that does not yet exist.
 fn test_no_overwrite_creates() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_NEW\0", b"created\0", NO_OVERWRITE), 0, "setenv() failed");
-    assert_getenv_eq(b"NANVIX_ENV_NEW\0", b"created");
+    assert_eq!(do_setenv(b"SETENV_NEW\0", b"created\0", NO_OVERWRITE), 0, "setenv() failed");
+    assert_getenv_eq(b"SETENV_NEW\0", b"created");
 }
 
 /// Tests that `unsetenv()` removes a variable.
 fn test_unset_removes() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_DEL\0", b"x\0", OVERWRITE), 0, "setenv() failed");
-    assert_eq!(do_unsetenv(b"NANVIX_ENV_DEL\0"), 0, "unsetenv() failed");
-    assert_getenv_null(b"NANVIX_ENV_DEL\0");
+    assert_eq!(do_setenv(b"SETENV_DEL\0", b"x\0", OVERWRITE), 0, "setenv() failed");
+    assert_eq!(do_unsetenv(b"SETENV_DEL\0"), 0, "unsetenv() failed");
+    assert_getenv_null(b"SETENV_DEL\0");
 }
 
 /// Tests that `unsetenv()` of a variable that does not exist still succeeds (POSIX).
 fn test_unset_missing_succeeds() {
-    assert_eq!(
-        do_unsetenv(b"NANVIX_ENV_NEVER\0"),
-        0,
-        "unsetenv() of a missing variable must succeed"
-    );
+    assert_eq!(do_unsetenv(b"SETENV_NEVER\0"), 0, "unsetenv() of a missing variable must succeed");
 }
 
 /// Tests that a value containing `=` is stored and retrieved verbatim.
 fn test_value_with_equals() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_EQ\0", b"a=b=c\0", OVERWRITE), 0, "setenv() failed");
-    assert_getenv_eq(b"NANVIX_ENV_EQ\0", b"a=b=c");
+    assert_eq!(do_setenv(b"SETENV_EQ\0", b"a=b=c\0", OVERWRITE), 0, "setenv() failed");
+    assert_getenv_eq(b"SETENV_EQ\0", b"a=b=c");
 }
 
 /// Tests that the pointer returned by `getenv()` stays valid until the next mutation of that key.
 fn test_pointer_stability() {
-    assert_eq!(do_setenv(b"NANVIX_ENV_PTR\0", b"stable\0", OVERWRITE), 0, "setenv() failed");
-    let ptr: *mut c_char = do_getenv(b"NANVIX_ENV_PTR\0");
+    assert_eq!(do_setenv(b"SETENV_PTR\0", b"stable\0", OVERWRITE), 0, "setenv() failed");
+    let ptr: *mut c_char = do_getenv(b"SETENV_PTR\0");
     assert!(!ptr.is_null(), "getenv() returned null");
 
     // Mutating a *different* key must not invalidate the pointer to this key's value.
-    assert_eq!(do_setenv(b"NANVIX_ENV_PTR_OTHER\0", b"other\0", OVERWRITE), 0, "setenv() failed");
+    assert_eq!(do_setenv(b"SETENV_PTR_OTHER\0", b"other\0", OVERWRITE), 0, "setenv() failed");
 
-    // SAFETY: the pointer is still valid because no mutation touched `NANVIX_ENV_PTR`.
+    // SAFETY: the pointer is still valid because no mutation touched `SETENV_PTR`.
     let value: &[u8] = unsafe { CStr::from_ptr(ptr) }.to_bytes();
     assert_eq!(value, b"stable", "getenv() pointer was invalidated by an unrelated setenv()");
 }
@@ -188,7 +188,7 @@ fn test_setenv_null_value_einval() {
     clear_errno();
     // SAFETY: passing a null value is exactly what this test exercises.
     let ret: c_int =
-        unsafe { ::libc_stdlib::setenv(cstr(b"NANVIX_ENV_NV\0"), ::core::ptr::null(), OVERWRITE) };
+        unsafe { ::libc_stdlib::setenv(cstr(b"SETENV_NV\0"), ::core::ptr::null(), OVERWRITE) };
     assert_eq!(ret, -1, "setenv() with a null value must fail");
     assert_eq!(read_errno(), EINVAL, "setenv() with a null value must set EINVAL");
 }
@@ -203,11 +203,7 @@ fn test_setenv_empty_name_einval() {
 /// Tests that `setenv()` with a `=` in the name fails with `EINVAL`.
 fn test_setenv_equals_name_einval() {
     clear_errno();
-    assert_eq!(
-        do_setenv(b"BAD=NAME\0", b"v\0", OVERWRITE),
-        -1,
-        "setenv() with '=' in the name must fail"
-    );
+    assert_eq!(do_setenv(b"BAD=NAME\0", b"v\0", OVERWRITE), -1, "setenv() with '=' must fail");
     assert_eq!(read_errno(), EINVAL, "setenv() with '=' in the name must set EINVAL");
 }
 
@@ -230,7 +226,7 @@ fn test_unsetenv_empty_einval() {
 /// Tests that `unsetenv()` with a `=` in the name fails with `EINVAL`.
 fn test_unsetenv_equals_einval() {
     clear_errno();
-    assert_eq!(do_unsetenv(b"BAD=NAME\0"), -1, "unsetenv() with '=' in the name must fail");
+    assert_eq!(do_unsetenv(b"BAD=NAME\0"), -1, "unsetenv() with '=' must fail");
     assert_eq!(read_errno(), EINVAL, "unsetenv() with '=' in the name must set EINVAL");
 }
 
@@ -238,8 +234,10 @@ fn test_unsetenv_equals_einval() {
 // Public Entry Point
 //==================================================================================================
 
-/// Runs all environment variable tests.
+/// Runs all single-process environment-variable tests.
 pub fn run() -> Result<(), Error> {
+    ::syslog::info!("setenv-rust: starting single-process getenv/setenv/unsetenv tests");
+
     test_set_and_get();
     test_get_missing();
     test_get_null_name();
@@ -257,5 +255,7 @@ pub fn run() -> Result<(), Error> {
     test_unsetenv_null_einval();
     test_unsetenv_empty_einval();
     test_unsetenv_equals_einval();
+
+    ::syslog::info!("setenv-rust: PASS - single-process tests");
     Ok(())
 }

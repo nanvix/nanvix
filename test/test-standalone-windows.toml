@@ -99,6 +99,11 @@ expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
+program = "./bin/setenv-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
 program = "./bin/stress-rust.initrd"
 expected_output = "ok"
 
