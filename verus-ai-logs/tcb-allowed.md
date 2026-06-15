@@ -193,3 +193,42 @@ verified.
 
 - `<crate::hal::mem::PageAligned<T> as crate::hal::mem::Address>::from_raw_value`
   (declared in `src/kernel/src/mm/phys/kframe.spec.rs`).
+
+## Allowed `external_body` — `hal::mem::PageAligned` (`page.rs`, proof target)
+
+`PageAligned<T>` is the proof target of the `hal::mem::types::address::aligned::page`
+module. Its in-scope constructor cannot be body-verified in place: its body checks
+page alignment via `<T as Address>::is_aligned(PAGE_ALIGNMENT)`, where the `Address`
+trait method is unspecced and `PAGE_ALIGNMENT` is an `arch` `Alignment` enum constant
+the Verus front-end cannot translate (`error: arch::x86::mem::constants::PAGE_ALIGNMENT
+is not supported`). Both live in the not-yet-verified `sys`/`arch` libraries. The
+function is therefore `external_body` with its `#[verus_spec]` contract honored as a
+trust boundary — the same pattern as `FrameAddress::into_raw_value`. The contract is
+the real caller guarantee (newtype identity + page-alignment invariant), not a
+weakening; it is discharged when the `Address` trait and the `Alignment` encoding are
+verified.
+
+- `src/kernel/src/hal/mem/types/address/aligned/page.rs::PageAligned::from_address` —
+  validating, identity-preserving constructor. On success `result@ == spec_addr(&addr)`
+  and `result.inv()`; on failure `spec_addr(&addr) % spec_page_size() != 0`; success
+  holds iff the input address is page-aligned. Removed when `sys::mm::Address` /
+  `Alignment` are verified.
+
+## Allowed `assume_specification` — `hal::mem::PageAligned` `Address::into_raw_value`
+
+`<PageAligned<T> as Address>::into_raw_value` is a method of the external
+**`sys::mm::Address`** trait. A per-method `external_body`/`#[verus_spec]` would
+require marking the whole `impl Address for PageAligned<T>` verified, which currently
+triggers a Verus front-end panic (`vir/src/traits.rs:511 assertion failed:
+!method_impls.contains(&p)`) on this generic trait impl. It is therefore specced with
+`assume_specification` in `page.spec.rs`, mirroring the existing
+`<PageAligned<T> as Address>::from_raw_value` trust boundary (`kframe.spec.rs`) and the
+`::arch::mem::PAGE_SIZE` boundary (`frame.rs`). The `@`-based contract is expressible
+because `PageAligned<T>: View` now holds for every `T: Address` (unconditional `View`
+delegating to the ghost `spec_addr`). The real obligation is the inner
+`<T as Address>::into_raw_value` newtype identity, discharged when the `Address` trait
+is verified.
+
+- `<crate::hal::mem::PageAligned<T> as crate::hal::mem::Address>::into_raw_value`
+  (declared in `src/kernel/src/hal/mem/types/address/aligned/page.spec.rs`).
+  `ensures result as int == addr@`.

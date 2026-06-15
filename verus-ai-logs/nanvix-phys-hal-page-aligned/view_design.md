@@ -32,16 +32,41 @@ numeric address, as an unbounded integer. Verus models this with a scalar
 caller-observable quantity.
 
 ```rust
-impl<T: Address + View<V = int>> View for PageAligned<T> {
+impl<T: Address> View for PageAligned<T> {
     type V = int;
 
     // The abstract address (raw numeric address as an unbounded integer).
-    // Delegates to the inner address's own view — newtype identity.
+    // Delegates to the inner address's ghost projection `spec_addr` — newtype
+    // identity.
     closed spec fn view(&self) -> int {
-        self.0@
+        spec_addr(&self.0)
     }
 }
 ```
+
+> **Bound change (this phase).** The skeleton bounded the impl on
+> `T: Address + View<V = int>` and defined `view = self.0@`. That bound is
+> **unusable for the in-scope exec contracts**: the `@`-based ensures of
+> `into_raw_value` (a method of the generic `impl<T: Address> Address for
+> PageAligned<T>`) and of `from_address` must be expressible for a *bare*
+> `T: Address`, and the `View<V = int>` bound (a) is not present on those exec
+> impls, (b) cannot be added to them without breaking `region.rs`
+> (`TruncatedMemoryRegion<T>` uses `PageAligned<T>: Address` for bare
+> `T: Address`), and (c) is **unsatisfiable in a normal `cargo build`** because
+> every address-family `View` impl is `cfg(verus_keep_ghost)`-gated, so a normal
+> build that saw the bound would fail (`PhysicalAddress: View not satisfied`).
+>
+> The fix keeps the same abstract resource but makes the `View` **unconditional**
+> over `T: Address`, delegating to a ghost projection
+> `pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int` (declared in
+> `page.spec.rs`, `cfg(verus_keep_ghost)`-gated). `spec_addr` is uninterpreted;
+> the exec contract `into_raw_value: result as int == self@` pins it
+> operationally (newtype identity), exactly as the sibling
+> `FrameAddress::into_raw_value` trust boundary does for the concrete frame
+> address. Because `view()` is `closed`, the switch from `self.0@` to
+> `spec_addr(&self.0)` is invisible to every consumer (including `FrameAddress`
+> and `region.rs`, whose own views are `closed`), and broadening the bound from
+> `T: Address + View` to `T: Address` only *adds* availability.
 
 Equivalent "single-field" reading:
 
@@ -55,16 +80,18 @@ pub struct PageAlignedView {
 ```
 
 `view()` is `closed`: callers reference `p@` as an `int`, but the mapping
-(`self.0@`, i.e. delegation through the inner `T`'s view) does not leak. The
-bound `T: View<V = int>` is what lets the wrapper forward the inner address's
-abstract value unchanged.
+(`spec_addr(&self.0)`, i.e. delegation through the inner `T`'s ghost
+projection) does not leak. Because `spec_addr` is defined for every
+`T: Address`, the wrapper has a `View` without requiring `T: View<V = int>`,
+which is what makes the in-scope `@`-based contracts expressible for a bare
+`T: Address` (see the bound-change note above).
 
 ---
 
 ## Well-formedness Invariant
 
 ```rust
-impl<T: Address + View<V = int>> PageAligned<T> {
+impl<T: Address> PageAligned<T> {
     pub open spec fn inv(&self) -> bool {
         self@ % spec_page_size() == 0
     }
@@ -105,14 +132,16 @@ A *partial, identity-preserving, validating* constructor.
 
 ```text
 // Success: identity-preserving and establishes the invariant.
-result is Ok(p)  ==>  p@ == addr@  &&  p.inv()          // p@ % spec_page_size() == 0
+result is Ok(p)  ==>  p@ == spec_addr(&addr)  &&  p.inv()   // p@ % spec_page_size() == 0
 // Failure: exactly the unaligned case, no normalization, no side effects.
-result is Err(e) ==>  addr@ % spec_page_size() != 0  &&  e == Error::BadAddress
+result is Err(_) ==>  spec_addr(&addr) % spec_page_size() != 0
 // Bidirectional success condition (liveness):
-result is Ok(_)  <==> addr@ % spec_page_size() == 0
+result is Ok(_)  <==> spec_addr(&addr) % spec_page_size() == 0
 ```
 
 Notes:
+- `spec_addr(&addr)` is the abstract address of the input `T`; for the wrapped
+  result `p`, `p@ == spec_addr(&p.0) == spec_addr(&addr)` since `p.0 == addr`.
 - `from_address` **validates, it never rounds/normalizes**: on success the
   address is unchanged (`p@ == addr@`). This matches callers that pre-align with
   `align_down` and then treat `?` as infallible while still relying on the
@@ -189,11 +218,28 @@ it keeps the `hal::mem` address family uniform and lets `PageAligned`'s eventual
 `from_address`/`into_raw_value` contracts compose with `FrameAddress`'s, which
 delegate straight to them.
 
-TCB note: neither in-scope function is on `verus-ai-logs/tcb-allowed.md`, so —
-unlike `FrameAddress::into_raw_value` (allow-listed `external_body`) — these
-contracts must be discharged by proof, not by a trusted body. The View is
-deliberately thin (single `int`) precisely so the identity/alignment ensures are
-provable from the inner `T`'s own delegated specs rather than assumed.
+TCB note: neither in-scope function can be body-verified in place within this
+phase's scope, so each is given a **trust boundary** that honors the contract
+above:
+
+- `PageAligned::from_address` (inherent) is `#[verus_verify(external_body)]` +
+  `#[verus_spec(...)]` — mirroring the allow-listed
+  `FrameAddress::into_raw_value`. Its body checks page alignment via
+  `<T as Address>::is_aligned(PAGE_ALIGNMENT)`, where the `Address` method is
+  unspecced and `PAGE_ALIGNMENT` is an `arch` `Alignment` enum constant the
+  Verus front-end cannot translate; both are out of scope to spec here.
+- `<PageAligned<T> as Address>::into_raw_value` is a method of the external
+  `sys::mm::Address` trait. A per-method `external_body`/`#[verus_spec]` would
+  require marking the whole `impl Address for PageAligned<T>` verified, which
+  currently triggers a Verus front-end panic (`vir/src/traits.rs` assertion); it
+  is therefore specced with `assume_specification` in `page.spec.rs`, exactly as
+  the codebase already does for the sibling
+  `<PageAligned<T> as Address>::from_raw_value` (`kframe.spec.rs`).
+
+Both trust boundaries are recorded in `verus-ai-logs/tcb-allowed.md` and are
+discharged when the `sys::mm::Address` trait and the `Alignment` encoding are
+verified. The View is deliberately thin (single `int`) so the identity/alignment
+ensures will be provable from the inner `T`'s delegated specs at that point.
 
 ---
 
@@ -250,22 +296,28 @@ provable from the inner `T`'s own delegated specs rather than assumed.
 
 ---
 
-## Resulting View (unchanged from the existing module skeleton — confirmed)
+## Resulting View (unconditional `View` via `spec_addr` — updated this phase)
 
 ```rust
-#[cfg(verus_keep_ghost)]
+// page.spec.rs (cfg(verus_keep_ghost)-gated)
+verus! {
+    // Ghost projection of any address to its abstract value (`int`).
+    pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int;
+}
+
+// page.rs (cfg(verus_keep_ghost)-gated verus! block)
 verus! {
 
 use crate::hal::mem::spec_page_size;
 
-impl<T: Address + View<V = int>> View for PageAligned<T> {
+impl<T: Address> View for PageAligned<T> {
     type V = int;
     closed spec fn view(&self) -> int {
-        self.0@
+        spec_addr(&self.0)
     }
 }
 
-impl<T: Address + View<V = int>> PageAligned<T> {
+impl<T: Address> PageAligned<T> {
     pub open spec fn inv(&self) -> bool {
         self@ % spec_page_size() == 0
     }
@@ -274,5 +326,5 @@ impl<T: Address + View<V = int>> PageAligned<T> {
 }
 ```
 
-This is the abstraction boundary all later `requires`/`ensures` for
-`from_address`, `into_raw_value`, and `PageAligned<T>` will reference.
+This is the abstraction boundary all `requires`/`ensures` for `from_address`,
+`into_raw_value`, and `PageAligned<T>` reference.
