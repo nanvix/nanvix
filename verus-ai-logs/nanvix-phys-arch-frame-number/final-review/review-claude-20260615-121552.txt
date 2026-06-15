@@ -316,3 +316,478 @@ src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is dischar
 ────────────────────────────────────────────────────────────
 Turn 5
 ────────────────────────────────────────────────────────────
+Clean scan: no cheating patterns in the number files. Now launching the two review sub-agents in parallel.
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] The number files look clean with no problematic configurations—just the standard `cfg(verus_keep_ghost)` for spec and proof includes. Now I'm spinning up both sub-agents in parallel with full context so each can produce their own review.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': 'verify-arch', 'delay': 5}
+[RESULT ✓] read_bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+I'll start by reading all the in-scope files, reference docs, and skills in parallel.
+[TOOL] report_intent: Reading in-scope files and docs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // View
+5. //==================================================================================================
+6. 
+7. impl View for FrameNumber {
+8.     type V = int;
+9. 
+10.  ...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the reference docs and skills in parallel.
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `x86/mem/paging/frame/number` (`FrameNumber`)
+2. 
+3. ## Script Output
+4. 
+5. Source: `find_callers_lsp.py /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs --project-dir /home/ruize/nanvix-phy`
+6. 
+7. | Metric | Count |
+8. |--------|------:|
+9. | Total exe...
+[RESULT ✓] view: 1. # View Design: `FrameNumber` (`x86/mem/paging/frame/number.rs`)
+2. 
+3. In-scope (verification-order) targets: the type `FrameNumber` (its `View` +
+4. `inv`), `FrameNumber::from_raw_value`, and `FrameNumber::into_raw_value`. All
+5. other items (the unit tests, the `NULL`/`MAX` associated constants...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+verify-arch PASSES (exit 0). The crate-wide cheating counts are from other modules. Let me confirm none are in the in-scope number module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===cheating detail===" && cat verus-ai-logs/verify-arch/verus-logs/cheating-det
+
+[THINKING] The verify-arch check passes, but there's crate-wide cheating I need to account for: external_body appears 3 times, admit once, and cfg_gate 4 times. I've confirmed these aren't in the number module files, so I need to verify they're also not in the in-scope module by checking against the tcb-allowed.md documentation and the cheating details to ensure none of these violations are actually in number.rs.
+[RESULT ✓] bash: ===cheating detail===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:8 lemma_entry_roundtrip: admit
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+===any number references?===
+NONE in number modul...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing verification artifacts
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // View
+5. //==================================================================================================
+6. 
+7. impl View for FrameNumber {
+8.     type V = int;
+9. 
+10.  ...
+[RESULT ✓] view: 1. # Caller Analysis: `x86/mem/paging/frame/number` (`FrameNumber`)
+2. 
+3. ## Script Output
+4. 
+5. Source: `find_callers_lsp.py /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs --project-dir /home/ruize/nanvix-phy`
+6. 
+7. | Metric | Count |
+8. |--------|------:|
+9. | Total exe...
+[RESULT ✓] view: 1. # View Design: `FrameNumber` (`x86/mem/paging/frame/number.rs`)
+2. 
+3. In-scope (verification-order) targets: the type `FrameNumber` (its `View` +
+4. `inv`), `FrameNumber::from_raw_value`, and `FrameNumber::into_raw_value`. All
+5. other items (the unit tests, the `NULL`/`MAX` associated constants...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Confirmed: all crate-wide cheating is outside the in-scope `number` module. The number files are fully clean. Now waiting for the two review sub-agents to complete.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] The cheating patterns I found earlier—the admit flags and external_body references in table.proof.rs and invlpg—are all outside the number module I'm reviewing. The number module files themselves are completely clean with no admits, assumes, external bodies, or specification assumptions. The table operations do have external_body entries, but those are already documented in tcb-allowed.md, so they're not a concern for this particular module audit.
+
+Now I'm waiting for the sub-agents to finish their analysis.
+Now let me read the skills in parallel.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me read the spec-design skill and check the helper scripts and git state.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch --show-current && git --no-pager log --oneline -5 && echo "---S
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] bash: verus-ai-prove
+b88e81a76 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, admit=1 external_body=3 cfg_gate=4)
+5a64c8d4a [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=12 external_body=20 cfg_gate=19)
+868639d15 [verus] verify...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/final-review
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: review-claude-20260615-121552.jsonl
+review-claude-20260615-121552.txt
+[RESULT ✓] view: 441. | Nested containers | DeepView (recursive view unwrapping) |
+442. | Smart pointer wrapping | Transparent Wrapper (Box/Rc/Arc → inner type) |
+443. | Internal mutability | Permission Token (vstd PCell) |
+444. | Pointer/memory ops | PointsTo + Logical ID |
+445. | Concurrent data structure | Tokeni...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== fn_coverage --help ===" && python3 /home/ruize/verus-ai-exp/verus-ai/script
+[RESULT ✓] view: 140.    `assume_specification` and `axiom` are unverified axioms.
+141.    See the audit checklist above when writing `assume_specification`.
+142. 3. **Missing Loop Specs** — loops need `invariant` clauses that capture
+143.    the loop's progress and preservation properties. A function with
+144.    l...
+[RESULT ✓] bash: === fn_coverage --help ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file         ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running audit checks
+[TOOL] rg: VERUS REWRITE
+[TOOL] rg: admit\(|assume\(|external_body|assume_specification|cfg\(not\(verus_keep_ghost\)\)
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[TOOL] bash: git -C /home/ruize/nanvix-phy-specs --no-pager diff --name-only verus-ai-prove -- src/libs/arch/src/x86/mem/paging/frame
+[TOOL] bash: git -C /home/ruize/nanvix-phy-specs --no-pager diff verus-ai-prove -- src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] bash: 
+<shellId: 11 completed with exit code 0>
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me read the spec classification section of spec-design and start running the tooling.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design && grep -n "external-top\|external-bottom\|Trust Boundar\|C
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager show verus-ai-prove:src/libs/arch/src/x86/mem/paging/frame/number.rs 2
+[RESULT ✓] bash: 3:description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or reviewing Verus specs."
+8:## Par...
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+[RESULT ✓] view: 1. #!/usr/bin/env python3
+2. 
+3. """
+4. Function coverage analysis for Verus verified code.
+5. 
+6. Compares exec functions between an original Rust source file and a Verus
+7. exec file, classifying each function as MISSING, EXTRA, MATCHED, or
+8. SPEC/PROOF ONLY.  Extra functions are further annotate...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== ADMIT in-scope ===" && grep -rn "admit" src/libs/arch/src/x86/mem/paging/fr
+[RESULT ✓] view: 324. ## Part 2: Spec Classification
+325. 
+326. Specifications fall into three categories with different ownership:
+327. 
+328. ### Internal
+329. 
+330. Specs that exist solely to help the verifier: helper lemmas, loop
+331. invariants, intermediate assertions, proof-function pre/postconditions.
+332. **...
+[RESULT ✓] bash: === ADMIT in-scope ===
+=== ASSUME (not assume_spec) ===
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:25:    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
+=== external_body ===
+=== assume_specification ===
+=== uninterp ===
+src/libs/arch/src/x86/mem/paging/...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai-prove /home/ruize/nanvix-phy-sp
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai-prove /home/ruize/nanvix-phy-sp
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs/src/libs/arch/src/
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/
+[TOOL] rg: admit\(
+[TOOL] rg: assume\(
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: cfg\(not\(verus_keep_ghost\)\)
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] bash: ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs' exists on disk, but not in 'verus-ai-prove'
+<shellId: 16 completed with exit code 2>
+[RESULT ✓] bash: ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs' exists on disk, but not in 'verus-ai-prove'
+<shellId: 17 completed with exit code 2>
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs`
+- **Verus file:** `/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem`
+-...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 18 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All cheating-dimension grep hits are in comments only. Now let me run the helper scripts: fn_coverage, spec_drift, ast_consistency, and start the verification build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== FN COVERAGE ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_co
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== SPEC DRIFT ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_d
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus
+[RESULT ✓] bash: === FN COVERAGE ===
+# Function Coverage Report
+
+- **Source file:** `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+- **Verus file:** `src/libs/arch/src/x86/mem/paging/frame/number.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem`
+- **Parser:** tree-sitter
+
+## Summary
+
+...
+[RESULT ✓] bash: ✅ Consistent: 4 functions, 1 structs match.
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+FrameNumber::from_raw_value              MATCH                                
+Frame...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: === SPEC DRIFT ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 2...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch
