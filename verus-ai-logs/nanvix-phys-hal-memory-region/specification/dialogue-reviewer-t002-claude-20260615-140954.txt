@@ -277,3 +277,16 @@ But I'm noticing something important — the Copy change was added in commit 0d6
 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
 613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 <shellId: 7 completed with exit code 0>
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_14-11-19
+
+    Finished `dev` profile [optimized + debuginfo] t...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+sys verifies CLEAN. Let me run the remaining verified crates for complete cross-module regression coverage.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for c in bitmap nanvix-slab bump-allocator; do echo "=== verify-$c ==="; make verify-$c 2>&
+
+[THINKING] The sys crate verification passed cleanly. The Copy supertrait change looks solid, so now I'm checking whether the other affected crates—bitmap, nanvix-slab, and bump-allocator—have any regressions, though the key modules to verify are sys and kernel which I've already confirmed.
