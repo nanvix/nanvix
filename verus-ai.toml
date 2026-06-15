@@ -2,10 +2,10 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/kernel/src/mm/phys/manager.rs`
+background = """File: `src/kernel/src/mm/phys/mod.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`PhysMemoryManager::init`, `PhysMemoryManager::alloc_user_frame`, `PhysMemoryManager::check_user_watermark`, `PhysMemoryManager::alloc_many_user_frames`, `PhysMemoryManager::alloc_many_kernel_frames`, `PhysMemoryManager::alloc_kernel_frame`
+`init`, `book_mmio_regions`, `book_physical_memory_regions`
 
 Existing spec/view definitions (do not modify):
 `byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
