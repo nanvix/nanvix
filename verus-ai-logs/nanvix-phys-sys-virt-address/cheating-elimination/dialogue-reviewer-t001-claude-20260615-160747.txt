@@ -184,3 +184,215 @@ Let me run the actual verification, build, and check the git diff for what chang
 [THINKING] The grep search confirms there's only a comment mentioning `assume_specification`, so no actual cheating markers in the module itself. Looking at the cfg gates, `verus_keep_ghost` controls the inclusion of spec and proof files, which is fine for imports. The `target_pointer_width = "32"` condition gates both a static assertion and an implementation block that converts `VirtualAddress` to `u32`.
 
 That implementation is executable code behind a cfg gate, which seems to violate the checklist rule about no cfg-gated exec code. But I need to determine if this is pre-existing or newly added — `target_pointer_width` is a standard platform gate, not a verus-specific cheating mechanism like `verus_keep_ghost`. Let me check the git diff to see what's actually new, and then run the verification and build commands to validate everything.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification is CLEAN (exit 0, cfg_gate=0, all cheating counts 0). Let me check the git diff and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -5 2>/dev/null; echo "=== branches ==="; git branch -a 2>/dev/null | head
+
+[THINKING] The verification came back clean with all checks passing, so now I'm running a fresh build and comparing the git diff against the base reference to catch any spec drift or AST inconsistencies.
+[RESULT ✓] bash: 7f47ad4c8 [verus] verify PASS: sys::all (cached (no recompilation), —)
+b93235018 [verus-ai] cheating-elimination scaffold END: sys-virt-address
+7f3ce471e [verus-ai] cheating-elimination prover END: sys-virt-address
+b91b0adaa [verus] verify PASS (cheating detected): kernel::all (cached (no recompilat...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff verus-ai/hal-platform-microvm -- src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] bash: diff --git a/src/libs/sys/src/sys/mm/address/virt.rs b/src/libs/sys/src/sys/mm/address/virt.rs
+index 2da5cf08d..9917c574f 100644
+--- a/src/libs/sys/src/sys/mm/address/virt.rs
++++ b/src/libs/sys/src/sys/mm/address/virt.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //===============================================...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Diff confirms only verus annotations/comments/impl-split — no exec logic changed. Now let me run AST consistency, spec-drift, full cross-module verify, and the build. Let me find the tooling first.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls scripts/ | grep -iE "ast|drift|spec" ; echo "=== tcb ==="; ls verus-ai-logs/ | grep -i t
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls .github/skills/ 2>/dev/null; echo "=== ast skill ==="; find .github -iname "*ast*" 2>/de
+
+[THINKING] The diff only touches annotations and formatting—no actual logic changed. Now I need to run through the verification checklist: AST consistency checks, spec drift analysis, cross-module regression testing with a full verify build, and the standard build command.
+[RESULT ✓] bash: === tcb ===
+tcb-allowed.md
+./verus-ai-logs/tcb-allowed.md
+<shellId: 8 completed with exit code 0>
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+=== ast skill ===
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find / -name "ast_consistency*" 2>/dev/null | head; find / -name "*spec_drift*" 2>/dev/null
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -60
+
+[THINKING] I'm noticing that the ast_consistency.py and spec_drift scripts referenced in the fix_report aren't in the scripts directory, and the skills mention these tools but they're not in .github/skills either. Let me search more broadly through the verus-ai-exp directory and check tcb-allowed.md to track down where these scripts actually are.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve4/tools/ast_consistency
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/tools/ast_consistency
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/__py...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Module has zero external_body, so tcb-allowed isn't relevant here. Now let me run AST consistency, spec-drift, full verify, and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help 2>&1 | head -30
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -30
+
+[THINKING] The module doesn't have any external body, so the tcb-allowed list isn't a concern here. Now I need to run the ast_consistency and spec_drift scripts against the base reference verus-ai/hal-platform-microvm, then execute the full cross-module verification and build. Let me check the Makefile to figure out the build command.
+
+I'll run the spec_drift and ast_consistency checks in parallel to speed things up.
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref verus-ai/ha
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff --help 2>&1 | head
+[RESULT ✓] bash: usage: spec_drift.py git-diff [-h] --before BEFORE [--after AFTER]
+                              [--file-stem FILE_STEM] [-o OUTPUT] [--json]
+                              source
+
+positional arguments:
+  source                Source file path (relative to repo root)
+
+options:
+  -h, --help           ...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+VirtualAddress::add                      MATCH                                
+VirtualAddress::add_assign               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+AST consistency reports 4 MISMATCH. Let me verify whether these are genuine false-positives by examining the per-function diffs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for fn in align_down align_up from_raw_value is_aligned; do echo "############ $fn ########
+
+[THINKING] I'm seeing AST consistency mismatches flagged for align_down, align_up, from_raw_value, and is_aligned, but the fix report dismisses these as false positives due to same-named methods existing in both inherent and trait implementations. However, from_raw_value is genuinely problematic since there are two different versions—one in the inherent impl returning Self and another in the Address trait returning Result—so I need to examine the actual diffs to determine which of these are truly false positives.
+[RESULT ✓] bash: ############ align_down ############
+usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+ast_consistency.py: error: argument command: invalid choice: 'VirtualAddress::align_down' (choose from 'count', 'summary', 'diff', 'repor...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py diff --help 2>&1 | hea
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 -c "import sys; sys.argv=['x','diff','-h']" ; python3 /home/ruize/verus-ai-exp/veru
+
+[THINKING] I'm checking how the diff subcommand handles its arguments—it looks like it takes the source position, then "versus," then "diff," followed by the function name.
+[RESULT ✓] bash: usage: ast_consistency.py [source] verus diff [-h] --name NAME [--full]
+
+options:
+  -h, --help   show this help message and exit
+  --name NAME  Element to diff. Use function name (e.g. 'Bitmap::set') or
+               'struct:Name' for structs (e.g. 'struct:Bitmap').
+  --full       Include spec/proo...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && for fn in align_down align_up from_raw_value is_aligned; do echo "############ $fn ########
+[RESULT ✓] bash: ############ align_down ############
+✅ VirtualAddress::align_down: MATCH
+############ align_up ############
+## VirtualAddress::align_up (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,4 @@
+-    pub fn align_up(&self, align: Alignment) -> Option<Self> {
+-        mm::align_up(self.0, align).map...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The 4 "mismatches" collapse to 2 real name-collisions (align_up, is_aligned) — both are inherent-vs-trait same-named methods, confirmed false-positives (git diff showed zero exec change). Now the full cross-module verify and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^(verify|build|verify-sys|verify-all)" Makefile 2>/dev/null | head -20; echo "===
+
+[THINKING] The diff mode is revealing that these two mismatches are actually false positives—the checker is incorrectly pairing `VirtualAddress::align_up` which returns `Option<Self>` with the trait method `Address::align_up` that returns `Result<Self, Error>`. They're fundamentally different functions that happen to share a name, but the name-keyed matching is conflating them. The summary reported four mismatches by counting both pairings, but the diff shows there are really just two name collisions at play.
+
+Since the git diff proved no execution logic changed—only the impl block was reorganized and annotated—and both versions of these methods exist unchanged in both the original and modified files, this confirms the AST consistency check passes with these documented false positives. Now I need to run the full cross-module verification and build to ensure everything else is solid.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+=== make targets ===
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "VERUS_CRATES" Makefile | head; sed -n '580,640p' Makefile
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+	@echo "  PROFILER        yes, no"
+	@echo "  MAKE_NO_PRINT...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Running full cross-module verification and the build in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "crate|status|cheating|exit|error|warning|PASS|FAIL|====" | hea
