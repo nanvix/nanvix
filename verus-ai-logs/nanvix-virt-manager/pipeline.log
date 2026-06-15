@@ -103,3 +103,6 @@ Phases: property-analysis → specification
 PHASE: property-analysis
 Module: manager
 ============================================================
+[2026-06-16 00:30:48] [PROVER] Running property-analysis...
+[2026-06-16 00:30:48] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-16 00:37:43]   ↳ prover done in 6m54s (exit=0)

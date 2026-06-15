@@ -20,9 +20,12 @@ allocate or free a frame, and reaches zero exactly once (freeing the frame).
   `uframe.leak()`), `unmap` returns the frame (domain shrinks), `map`-on-error
   drops the supplied frame, `Drop` releases everything once (vmem MOD-4,
   FN-8/FN-9/FN-3).
-- **Consumed by** `manager`: fork (`link_user_pages` / `rollback_linked_pages`)
-  and demand allocation (`alloc_upages` / `try_unmap_upage`) rely on map/unmap
-  being exactly balanced so that a rollback restores the starting refcounts.
+- **Consumed by** `manager`: fork (`link_user_pages` / `rollback_linked_pages`,
+  manager FN-9/MOD-5), demand allocation (`alloc_upages` rollback FN-21,
+  `try_unmap_upage` FN-15), kernel-frame allocation (`alloc_kpage` FN-26,
+  `alloc_kpages` FN-30), and `new_vmem`'s page-directory frame (FN-4) all rely on
+  map/unmap/share/drop being exactly balanced so that a rollback restores the
+  starting refcounts and no path leaks or double-frees.
 - **Backed by** `mm::phys` (`UserFrame`/`KernelFrame` RAII) and the `bitmap`
   allocator (a frame is free iff its bit is clear; alloc/free flip exactly one
   bit). Caveat: vmem **SB-2** (empty user page table leaked on `map`'s late
@@ -35,8 +38,9 @@ in-place while still shared; it is privatized first.
 
 - **Invariant link:** a CoW user page is hardware read-only in *every* sharing
   `Vmem` (vmem TYPE-4 / MOD-5: `cow ⇒ ¬write`).
-- **User-mode writes** trap and are resolved lazily: `manager::attempt_cow`
-  (guarded by `spec_is_cow_write_fault`) calls `vmem::resolve_cow_at`
+- **User-mode writes** trap and are resolved lazily:
+  `manager::try_resolve_cow_fault` (manager FN-10, guarded by
+  `spec_is_cow_write_fault`) calls `vmem::resolve_cow_at`
   (vmem FN-14), which privatizes the page (fresh frame + copy, or last-reference
   fast path) and drops the shared reference.
 - **Kernel-side physical-alias writes** must privatize eagerly first:
@@ -44,12 +48,18 @@ in-place while still shared; it is privatized first.
   `copy_to_user_unaligned_unchecked` / `copy_user_to_user` write through the
   physical alias, which bypasses the page-table read-only bit. After it,
   `region_cow_resolved` holds over the write range.
-- **Fork sharing** (`manager::links_child_cow`) sets the CoW marks in both
-  parent and child via `vmem::mark_user_page_cow` (FN-11) for logically-writable
-  pages, preserving TYPE-4 on both sides.
+- **Fork sharing** (`manager::links_child_cow`, manager FN-6/FN-7) sets the CoW
+  marks in both parent and child via `vmem::mark_user_page_cow` (FN-11) for
+  logically-writable pages, preserving TYPE-4 on both sides.
 - Caveat: vmem **SB-3** (dst-side validation skipped in the copy dry run, and
   the committed path mutating CoW state) affects how tightly this property can
   be stated for the kernel-write path.
+- Caveat: manager **SB-1** — on a `link_user_pages` failure handled by
+  `rollback_linked_pages`, parent CoW marks installed by earlier fully-linked
+  chunks are intentionally *not* cleared, so the fork's "full rollback" is only
+  invariant-preserving for the parent (extra harmless CoW faults, never a
+  TYPE-4 violation). This bounds how strong the transactional Err guarantee can
+  be (manager FN-8/MOD-3).
 
 ## GLOBAL-3 — Total user/kernel address partition
 
@@ -74,7 +84,13 @@ page-directory base, which is a valid page-aligned physical frame.
 
 - **Established by** `vmem`: `pgdir().physical_address().addr_nat() ==
   self@.pgdir` (FN-5) with `self@.pgdir` page-aligned and in physical memory
-  (TYPE-6); `clone` guarantees a *distinct* base from its source (FN-2).
+  (TYPE-6); `clone` guarantees a *distinct* base from its source (FN-2). At the
+  manager layer, `new_vmem` (manager FN-2) wraps this: every newly forked address
+  space gets a fresh, distinct, valid page-directory base
+  (`new@.pgdir != vmem@.pgdir`), and no other in-scope manager op changes an
+  existing space's `pgdir` (manager MOD-2). Caveat: manager **SB-2** — the
+  current draft `#[verus_spec]` on `new_vmem` omits the distinctness clause; it
+  must be added so this module actually establishes GLOBAL-4.
 - **Consumed by** `manager`/`pm::process::manager` context switch
   (`pgdir().physical_address()` → CR3) and `vmem::load` (FN-4). The "active CR3"
   is global MMU state modeled outside any single `VmemView`.
