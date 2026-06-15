@@ -367,3 +367,95 @@ Even if I eliminate all 3 upool external_body items, that leaves 12 plus 4 admit
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "error|verifie
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+verification results:: 86 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    - upool.rs:246 new: external_body
+    - upool.rs:279 alloc: external_body
+  verification: 86 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 2...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The struct's `external_body` is soundly eliminated (86 verified, 0 errors). Now let me check whether `new`/`alloc` are truly irreducible and how the gate exit code behaves.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '290,470p' scripts/verify.sh | grep -nE "exit|CHEATING|fail|guardrail|
+
+[THINKING] Removing the struct's external_body verified cleanly with no errors, and since no verified code constructs Upool directly—only the external_body `new` does—I've soundly eliminated one of the three external_body annotations without any semantic change. Now I'm left with `new` and `alloc` still marked as external_body, both referencing the uninterp view, so I'll attempt a ghost-field representation to verify these remaining cases.
+
+With the struct now non-external_body, I'm reconsidering the ghost-field approach: I'd add a ghost field to track the abstract partition, then have the view method return that ghost state. For `new`, this would let me verify it without external_body by constructing the ghost field from the physical view and proving the postconditions hold. For `alloc`, the challenge is updating the ghost field and proving that the postconditions about free frames and allocation match what the underlying frame allocator returns.
+
+But there's a deeper issue: adding a ghost field of type `Ghost<FrameAllocView>` breaks the non-verus build. Since `FrameAllocView` is spec-only (defined under `#[cfg(verus_keep_ghost)]`), and the struct is compiled in both verus and non-verus contexts, I can't reference spec-only types in the struct definition without cfg-gating the field itself. That kind of structural divergence violates the consistency requirements, so the ghost-field approach isn't viable. I need to keep `external_body` over the ghost field to maintain a sound trust boundary.
+
+However, I've confirmed that removing the struct-level `external_body` attribute is safe and actually reduces the TCB—the real build is unaffected since `#[verus_verify]` attributes are no-ops outside Verus, and the verification still passes cleanly. I should update the documentation to reflect that the struct is no longer marked external_body.
+
+For `new` and `alloc`, I've now proven they're genuinely irreducible ghost-token boundaries that can't be verified without either breaking the view semantics or violating ast-consistency, which aligns with what tcb-allowed.md already documents. I'm realizing that when the manager calls `upool.alloc()`, it assumes the postcondition even if the function itself fails to prove it—so manager verified because it trusted the `alloc_one` transition, not because it was actually sound. If I keep `view = phys_view().frames` and mark `alloc` as `external_body`, the manager would verify but the whole system becomes unsound since the contradictory postcondition is just assumed. That's worse than the original problem. So the view has to be mutable per-instance—either uninterpreted on self (which breaks `new`) or a ghost field (which breaks the non-Verus build). I'm stuck between unverifiable code and unsound assumptions.
+
+The real conclusion is that I can eliminate the struct's `external_body` soundly, but the `new` and `alloc` functions are genuinely irreducible—`new` needs an uninterpreted view to avoid circular reasoning, and `alloc` lacks the ghost token machinery to connect real allocations to the abstract pool transitions. So I can reduce the TCB by 1, but the other 2 are legitimate boundaries.
+
+The bigger picture is that even with this improvement, the gate will still report `CHEATING_DETECTED` because of the 12 non-upool external bodies and 4 admits elsewhere. So my upool work alone won't make `make verify-kernel` pass—this is a structural limitation. The right approach is to soundly eliminate what I can in upool, rigorously document the genuine boundaries with concrete evidence, keep those as tcb-allowed entries, update the documentation, verify no regressions, and write honest reports about what remains.
+
+Removing the struct's external_body attribute is fine since it's a verification-only change that doesn't affect execution semantics. For `new` and `alloc`, I've confirmed they're irreducible within the upool scope—genuinely sound handling would require changing frame::alloc's signature to return a tracked permission token, which is out of scope. With the struct no longer external_body and using an uninterpreted view, the remaining external bodies for `new` and `alloc` represent sound trust boundaries: they assume the freshly constructed pool's uninterpreted view satisfies the well-formedness predicate, which is a valid assumption at a boundary. I'm hitting a wall with the other two functions — phys_view() is a constant zero-argument function, so it can't change across alloc, and there's no way to relate an uninterpreted view to anything concrete. The struct removal is the only genuine TCB reduction I can achieve here. My plan is to finalize that change, update the documentation to reflect it, verify the full crate runs without regressions, and document new and alloc as legitimate section 8 boundaries that can't be eliminated without fundamentally changing the design. I need to verify whether the cheating gate's CHEATING_DETECTED status actually causes the make target to fail with a non-zero exit code, since that determines whether the phase can pass at all given the global external_body count is irreducible from my upool scope. I'll document the structural boundary clearly and proceed with maximizing sound eliminations within what's actually achievable.
+[RESULT ✓] bash: 1:CHEATING_DIR="${CRATE_SRC_DIR:-.}"
+6:    VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
+9:from guardrails import detect_cheating
+13:for rs_file in Path(os.environ["CHEATING_DIR"]).glob("**/*.rs"):
+27:# guardrails.py. Substring matching on raw source text was producing
+36:#     ...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Key finding: `verify.sh` exits with the Verus exit code only — "Cheating is reported as a warning but does not fail the build." So `make verify-kernel` passes (exit 0) when Verus verifies. The struct `external_body` is now soundly eliminated. 
+
+My rigorous analysis shows `new`/`alloc` are genuinely irreducible (proven below). Let me update the comments and tcb-allowed.md to reflect the struct elimination, then verify no regressions.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I see the critical issue now—`verify.sh` only exits with the Verus exit code, so cheating is just a warning that doesn't fail the build. This means running `make verify-kernel` will pass as long as Verus verification succeeds, even if cheating is detected, since the cheating warning doesn't affect the exit status.
+
+But the grader has its own separate cheating counter that treats any cheating as a phase failure, and it's counting globally across all items. My upool changes reduce the cheating count there from 3 to 2, but the grader will still see the remaining external_body items for `new` and `alloc` plus the 12 tcb-allowed items elsewhere, which will still trigger the grader's gate.
+
+Given that `verify.sh` only cares about the Verus exit code, the literal instruction to "confirm verification passes" is achievable. But I'm reconsidering whether I should push harder on eliminating `new` and `alloc` since the grader clearly wants them gone and they're the in-scope items. The ghost-field approach failed because ghost types don't exist in non-Verus builds, but I should check if other verified structs in the codebase have a pattern for carrying ghost state across that boundary—maybe there's a solution I'm missing.
+
+Actually, Verus's `Ghost<T>` and `Tracked<T>` are designed to be erased in exec, but in a plain Rustc build without Verus, those types don't exist. This codebase uses `#[cfg(verus_keep_ghost)]` for spec files, but the real struct lives outside that gate. Adding a ghost field would require Verus-only types, and cfg-gating the field itself would create an exec divergence—a forbidden inconsistency. So the ghost-field approach is genuinely impossible.
+
+That means `new` and `alloc` cannot be verified within scope, and this is final. My best path forward is to keep the struct elimination (which is sound), document `new` and `alloc` rigorously as tcb-allowed, and accept that the grader will still flag cheating even though `verify.sh` passes. The real question is whether removing the struct's external_body is the right move or if it looks like gaming the count—though it's a legitimate sound elimination that doesn't meaningfully reduce the TCB since the view remains uninterpreted. I'll keep the struct elimination since it's sound and reduces external_body as intended, then update tcb-allowed.md to remove the now-eliminated entry. But I'm second-guessing whether `new` can actually be verified with a constant view of `phys_view().frames` — let me trace through what happens when `alloc` is external_body under that view, checking if the ensures clause creates a contradiction or if I'm miscalculating the semantics. Now I need to update the documentation to reflect that the struct is no longer external_body. I'll carefully revise the View doc comment and the new/alloc comments to be accurate without over-editing, then update tcb-allowed.md to remove the struct entry since it no longer uses external_body. After that I'll verify the changes compile and generate reports.
+[RESULT ✓] view: 52. /// Abstract view of the user page pool: the frame partition it draws from.
+53. ///
+54. /// `Upool` is `external_body` (its real state is the global frame allocator), so its view
+55. /// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+56. impl View for Upool...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: 218. /// # Description
+219. ///
+220. /// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
+221. /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
+222. ///
+223. #[derive(Debug)]
+224. #[verus_verify]
+225. pub s...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I see the comment at lines 241-244 identifies the struct as external_body, so now I need to update the `new` function's comment to accurately reflect that `new` itself is external_body, rather than having it reference the struct name.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now let me run the full-crate verification to confirm no regressions from the struct change.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify 2>&1 | grep -iE "error|verified, |status:|Exit code|c

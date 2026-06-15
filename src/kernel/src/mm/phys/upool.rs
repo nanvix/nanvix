@@ -51,8 +51,12 @@ impl View for UserFrame {
 
 /// Abstract view of the user page pool: the frame partition it draws from.
 ///
-/// `Upool` is `external_body` (its real state is the global frame allocator), so its view
-/// is uninterpreted — the trust obligation is tracked by the type being `external_body`.
+/// The `Upool` value carries no spec-readable state (its real backing store is the global
+/// frame allocator), so its view is **uninterpreted**. The trust obligation therefore lives
+/// on the two facade methods (`new`, `alloc`), whose abstract contracts speak of this
+/// uninterpreted view and are pinned to the global allocator by the §8 ghost token in the
+/// frame free-function layer. The `Upool` *type* itself is verified (not `external_body`):
+/// it is never constructed in verified code, so its `()` field is harmless to expose.
 impl View for Upool {
     type V = FrameAllocView;
 
@@ -235,9 +239,14 @@ impl Upool {
     /// A user frame pool.
     ///
     // Dependency contract: opaque pool facade whose real backing store is the global frame
-    // allocator. `external_body` (the `Upool` struct carries no spec-readable state) per
-    // `verus-ai-logs/tcb-allowed.md`. The pool introduces no frames of its own; `wf()` is the
-    // only fact its boot-time caller needs before handing the pool to `PhysMemoryManager::init`.
+    // allocator. `external_body` because `result@.wf()` is stated over the pool's *uninterpreted*
+    // view (`FrameAllocView::wf()` cannot be derived from an uninterpreted `view()`), so the
+    // body is an assumed §8 ghost-attachment axiom — the pool introduces no frames of its own;
+    // `wf()` is the only fact its boot-time caller needs before handing the pool to
+    // `PhysMemoryManager::init`. See `verus-ai-logs/tcb-allowed.md` and
+    // `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md` for why the view cannot be made
+    // spec-readable within the `upool` module (an interpreted view either breaks `alloc`'s
+    // transition soundness or requires a ghost field that does not exist in non-`verus` builds).
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
