@@ -253,3 +253,47 @@ For `into_frame_number`, the verification actually succeeded with the bit shift 
 Turn 15
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -12
+[RESULT ✓] bash: - as_ptr
+    - as_mut_ptr
+    - fmt
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 external_body=19 admit=14 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 3/17 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log writ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "error\|use_type_invariant\|cannot\|not found" verus-ai-logs/verify-kernel/ve
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: Verus Internal Error: missing type invariant function
+23:144 |             use_type_invariant(frame);
+26:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+`use_type_invariant` fails cross-crate ("missing type invariant function" — `FrameNumber`'s invariant is private to the `arch` crate). The bound can only enter context via `into_raw_value()`'s postcondition, which requires splitting the call from the multiply so the lemma can be invoked between them. This is a genuine Verus requirement. Let me restore the split form and document it properly.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The issue is that `FrameNumber`'s type invariant lives in the `arch` crate and can't be accessed across crate boundaries—Verus keeps type invariants private to their defining crate. So I need to use a different approach: calling `frame.into_raw_value()` first, which has an `ensures` clause that establishes the bounds `0 <= self@ <= spec_max()`, giving me the invariant I need without relying on cross-crate type invariant access.
+
+The challenge is that in the original code, `frame.into_raw_value() * mem::FRAME_SIZE` happens in a single expression, but Verus checks overflow at the multiply point—the bound from `into_raw_value()`'s postcondition needs to be available before that happens. I can't call an exec function inside a proof block to get the fact, but if I bind the result to a variable in exec, the postcondition should be available for the subsequent multiply operation, though I'd still need to invoke `lemma_from_number_no_overflow` somewhere to establish the product bound.
+
+The solution is to split it into the intermediate binding form: call `into_raw_value()` to establish the bound, invoke the lemma in a proof block, then perform the multiply. This is the verified structure from the original code, so I need to revert to that form and document why the rewrite is necessary.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now `into_frame_number` already matches dev's original. Let me verify and re-run the AST tool.
+[TOOL] report_intent: Verifying and checking AST
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "
+
+[THINKING] The `into_frame_number` function is now restored to match the dev version with a single line that right-shifts the raw address by the frame shift constant, and I've verified it checks out from the earlier run with most cases passing except for one error in the `from_number` direction.
+[RESULT ✓] report_intent: Intent logged

@@ -139,12 +139,19 @@ impl PhysicalAddress {
         ensures
             result@ == spec_from_number(spec_frame_raw_value(frame)),
     )]
+    // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
+    // `into_raw_value()` postcondition (`0 <= self@ <= spec_max()`) lands in context *before* the
+    // overflow-bearing multiply, and `lemma_from_number_no_overflow` can be invoked between them.
+    // The bound cannot be obtained via `use_type_invariant(frame)` because `FrameNumber`'s type
+    // invariant is private to the `arch` crate (Verus: "missing type invariant function"), so the
+    // intermediate `addr_raw` binding is mandatory. Same value, same operations, same complexity.
+    // Reproducer: verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
     pub fn from_number(frame: FrameNumber) -> Self {
+        let addr_raw: usize = frame.into_raw_value();
         proof! {
-            use_type_invariant(frame);
             lemma_from_number_no_overflow(frame);
         }
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+        let addr: usize = addr_raw * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
