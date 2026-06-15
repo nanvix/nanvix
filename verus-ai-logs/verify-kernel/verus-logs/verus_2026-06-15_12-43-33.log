@@ -1,0 +1,49 @@
+Timestamp: 2026-06-15_12-43-33
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=20
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/mm/virt/identity_map.rs:545:19
+    |
+544 |         proof {
+    |         ----- while parsing this struct
+545 |             assert(::arch::mem::FRAME_SIZE == ::arch::mem::PAGE_SIZE) by (compute);
+    |             ------^ expected one of `,`, `:`, or `}`
+    |             |
+    |             while parsing this struct field
+    |
+help: try naming a field
+    |
+545 |             assert: assert(::arch::mem::FRAME_SIZE == ::arch::mem::PAGE_SIZE) by (compute);
+    |             +++++++
+
+error: expected `;`, found keyword `return`
+   --> src/kernel/src/mm/virt/identity_map.rs:547:10
+    |
+547 |         }
+    |          ^ help: add `;` here
+548 |         return Ok(pt_paddr);
+    |         ------ unexpected token
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/virt/identity_map.rs:533:1
+    |
+533 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    | ^^
+
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors

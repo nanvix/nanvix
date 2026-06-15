@@ -170,3 +170,45 @@ Turn 11
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|-
+[RESULT ✓] bash: --> src/kernel/src/mm/virt/identity_map.rs:533:1
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:534:44
+    |             -------------------------------------- failed precondition
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:549:9
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now I have the full error set. Let me address the provable obligations and isolate the irreducible ones. Let me add proofs for the type-invariant preconditions and trivial `inv()` postconditions.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm working through a set of verification errors across two functions. In `ensure_pt`, I need to add type invariants to handle precondition failures on page table reads and fix an allocation postcondition. Similarly, `ensure_pte` has precondition issues on page table element reads that require type invariant annotations.
+
+For `identity_map_page`, there are three postcondition failures related to accessibility that I need to address. Some of these should be provable through type invariants and the fact that `identity_map_view()` is constant, but others like the `bump_view` invariant and `mapped.contains` checks appear more challenging. I'm also noticing that the proof.rs warnings might be trigger-related issues from lemma usage rather than actual errors, so I should get the full output to understand what's actually failing versus what's just a note.
+
+For `ensure_pt`, the core blocker is that `alloc_as` requires `bump_view(self).inv()` as a precondition, but there's no way to establish this without an axiom about the global allocator. Even the reviewer's suggestion to derive from the BSS allocation contract hits this same wall—I'd still need to prove the bump allocator's invariant holds, which requires either a type invariant (which doesn't exist) or an admitted lemma (which is forbidden). This suggests the precondition genuinely cannot be satisfied in-body, so I need to either find a different approach or accept that this particular call requires external justification.
+
+Let me write out the best possible proofs for each function and document exactly where the irreducible errors remain. I'll add proof blocks that establish what *is* provable—the type invariants and postconditions—and isolate the precise failures. For the fast path in `ensure_pt` that returns the existing PDE's frame address, I need to verify alignment: `pde.frame_address()` ensures the result is frame-aligned, but I need to confirm that `FRAME_SIZE == PAGE_SIZE` is known to Verus so the postcondition `spec_is_page_aligned(pt_paddr)` can be satisfied.
+[RESULT ✓] view: 531.         },
+532. )]
+533. fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+534.     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+535.         let reason: &str = "invalid PDE read from kernel PD";
+536.         #[cfg(not(verus_k...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm working through the type invariant proof for the page directory entry, checking whether `use_type_invariant(pde_idx)` is the right precondition for the read operation, and verifying that the fast path requires the frame address to be page-aligned. I need to confirm the correct invariant call matches what's used in the architecture table code.
+
+For the alignment proof, I'm checking whether `spec_is_page_aligned` can be satisfied from the frame address postcondition, which requires proving that FRAME_SIZE and PAGE_SIZE are equivalent constants. I'll add an assertion to test whether Verus can resolve these as equal, and if that works, I can write the full proof for the ensure_pt function covering both the fast path alignment and the type invariant postcondition.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|i

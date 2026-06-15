@@ -531,6 +531,7 @@ fn ensure_identity_mapped_range(
         },
 )]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    proof! { use_type_invariant(pde_idx); }
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
         #[cfg(not(verus_keep_ghost))]
@@ -539,7 +540,12 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
     })?;
 
     if pde.is_present() {
-        return Ok(pde.frame_address());
+        let pt_paddr: usize = pde.frame_address();
+        proof {
+            assert(::arch::mem::FRAME_SIZE == ::arch::mem::PAGE_SIZE) by (compute);
+            assert(spec_is_page_aligned(pt_paddr as int));
+        }
+        return Ok(pt_paddr);
     }
 
     // No PT exists — allocate one from the BSS pool (zeroed = all PTEs absent).
