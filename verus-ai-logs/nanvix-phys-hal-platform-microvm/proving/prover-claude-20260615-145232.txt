@@ -160,3 +160,24 @@ Only a comment mentions `admit()`. Let me run verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
 
 [THINKING] I'll run the verification now.
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Module verification is CLEAN: `admit=0`, `assume=0`, exit 0. The `gva_to_gpa` contract and `lemma_translation_injective` both verify. Let me confirm no regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] The verification checks out cleanly with no assume or admit statements, and the `gva_to_gpa` function's contracts are holding up along with the injective lemma. Coverage is as expected with just the one function in scope, so I should run the full verify to make sure there are no regressions.
