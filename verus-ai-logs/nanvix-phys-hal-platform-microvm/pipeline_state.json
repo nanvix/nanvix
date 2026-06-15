@@ -30,6 +30,17 @@
       "review_file": null,
       "duration_s": 166.5,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 566.0,
+      "review_rounds": 2
     }
   },
   "prover_session_id": "fcbe8d30-9e37-4d9f-a30d-07c850fe07c6",
@@ -38,7 +49,8 @@
   "verus_branch": "verus-ai/hal-platform-microvm",
   "phase_boundary_shas": {
     "caller-analysis": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
-    "view-design": "d9580512007a4cf08140f60a52eebf24e3c98fa8"
+    "view-design": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
+    "specification": "32d61724c06b162ac3a543f83d09f8ca5cf4a4d2"
   },
   "phase_start_shas": {
     "caller-analysis": "5b0379853300830015c683dc213bc0dab81de185",
@@ -74,6 +86,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "32d61724c06b162ac3a543f83d09f8ca5cf4a4d2",
       "rollback_iter": 0
     }
   ],
