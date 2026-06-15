@@ -619,3 +619,61 @@ error: could not compile `kernel` (bin "kernel") due to 1 previous error
 Turn 37
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -A4
+[RESULT ✓] bash: --> src/kernel/src/hal/mem/types/address/phys.proof.rs:18:24
+   |
+18 |     use_type_invariant(frame);
+   |                        ^^^^^
+
+===
+error: expression has mode spec, expected mode proof
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 32 completed with exit ...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "into_raw_value\|from_raw_value\|verus_spec\|ensures\|requires" src/libs/arch
+
+[THINKING] I'm realizing that `frame` parameters in `proof fn` are spec mode by default in Verus, but `use_type_invariant` requires the value to be in proof or tracked mode. Looking at the architecture examples, I see that `use_type_invariant(frame)` calls happen inside `proof!{}` blocks within exec functions, where `frame` is already an exec variable that can be used in that context.
+
+The core issue is that a spec-mode `frame` parameter has no guaranteed type invariant — it could be any FrameNumber value, even invalid ones constructed in ghost code. The type invariant is only enforced for tracked and exec values. Since the actual call in `from_number` passes a real exec `frame`, I should mark the parameter as `tracked` to preserve that invariant, even though it changes the lemma signature. I need to check how similar lemmas like `lemma_frame_address` handle this — they take raw `usize` with explicit preconditions rather than relying on type invariants. I think the cleanest approach is to call `use_type_invariant` directly in the `from_number` proof block to establish the bound, then pass that established fact to the lemma as a precondition rather than relying on the lemma to derive it from the type invariant itself. I'm realizing the core issue: in spec mode, type invariants don't automatically apply to parameters, so the lemma can't assume the bound unless I explicitly pass it via requires. The cleanest approach is to add a requires clause to the lemma stating the bound, then establish it in from_number's proof block with use_type_invariant before calling. Alternatively, I should check if into_raw_value itself carries an ensures that bounds its result, since that might eliminate the need for the extra lemma entirely.
+[RESULT ✓] bash: 39:    #[verus_spec(ensures Self::NULL@ == 0)]
+56:    #[verus_spec(result =>
+57:        ensures
+62:    pub fn from_raw_value(value: usize) -> Option<Self> {
+79:    #[verus_spec(result =>
+80:        ensures
+84:    pub fn into_raw_value(self) -> usize {
+94:/// Tests if [`FrameNumber::from_raw_value()`...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] view: 56.     #[verus_spec(result =>
+57.         ensures
+58.             value as int <= Self::spec_max() ==> (result is Some
+59.                 && (result->Some_0)@ == value as int),
+60.             value as int > Self::spec_max() ==> result is None,
+61.     )]
+62.     pub fn from_raw_value(value: usize...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+The bound comes from `FrameNumber`'s type invariant, which only holds for exec/tracked values. I'll establish it in `from_number`'s proof block and pass it to the lemma via a `requires`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] The `into_raw_value` function guarantees that after calling it, the raw value equals the frame's abstract value and falls within the valid range from 0 to `spec_max()`. This means the bound I need is already available in `from_number`'s execution context through `into_raw_value`. The problem is that the proof block `lemma_from_number_no_overflow(frame)` executes before `into_raw_value()` is called, so the lemma doesn't have access to those bounds yet. I can solve this by adding a `requires` clause to the lemma that specifies `spec_frame_raw_value(frame) <= spec_max_frame_number()`, then calling `use_type_invariant(frame)` in the proof block at the call site to establish that requirement before invoking the lemma.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E 

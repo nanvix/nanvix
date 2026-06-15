@@ -11,12 +11,11 @@ verus! {
 // multiply never overflows. This follows from `FrameNumber::MAX == MAX_ADDRESS / FRAME_SIZE - 1`,
 // hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. Proven in the proving phase.
 pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
+    requires
+        spec_frame_raw_value(frame) <= spec_max_frame_number(),
     ensures
         spec_frame_raw_value(frame) * spec_page_size() <= usize::MAX as int,
 {
-    // The frame index is bounded by `FrameNumber::spec_max()` (its type invariant).
-    use_type_invariant(frame);
-
     let raw: int = frame@;
     let s: int = spec_page_size();
     let m: int = usize::MAX as int;
