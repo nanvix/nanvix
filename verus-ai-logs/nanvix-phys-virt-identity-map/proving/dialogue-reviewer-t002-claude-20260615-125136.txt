@@ -109,3 +109,122 @@ Turn 0
 6. In-scope `admit()` count dropped **8 → 3**. These are genuine `Set<int>`/arithmetic proofs as the reviewer expected:
 7. 
 8. | Lemma | Lin...
+[RESULT ✓] bash: (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+  --> src/kernel/src/mm/virt/identity_map.proof.rs:28:5
+   |...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Fixer proved the 5 lemmas (in-scope admit 8→3). But I see a trigger warning. Let me verify the current state precisely.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -i 'identity_map' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; ec
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] The fixer successfully proved 5 lemmas, reducing the in-scope admits from 8 down to 3 and the crate-wide admits from 12 to 7, though there's a warning flagged in proof.rs at line 28 that I need to investigate. I should verify the remaining admits and check whether proof.rs compiles cleanly, and also examine whether those 3 exec functions are actually still blocked as the fixer claims.
+[RESULT ✓] bash: - mm/virt/identity_map.rs:533 ensure_pt: admit
+    - mm/virt/identity_map.rs:627 ensure_pte: admit
+    - mm/virt/identity_map.rs:718 identity_map_page: admit
+    - mm/virt/identity_map.spec.rs:143 ExPageTableBss (struct): external_type_spec
+===WARN check in log===
+<shellId: 1 completed with exit cod...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // Signatures only during the specification phase; bodies are `admit()` placeholders that the
+7. // proving phase disch...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -inE 'warning|note: automatically|trigger' verus-ai-logs/verify-kernel/verus-log
+
+[THINKING] The five lemmas are properly proven without any admits. I'm checking whether that trigger note about proof.rs is actually flagged as a warning—the grep search came up empty for warnings or errors, so it looks like it's just an automatic trigger inference note rather than a formal warning. The checklist requires zero warnings, so I need to verify this carefully.
+
+Let me examine the full Verus log to confirm.
+[RESULT ✓] bash: 21:note: automatically chose triggers for this expression:
+27:note:   trigger 1 of 1:
+33:note: Verus printed one or more automatically chosen quantifier triggers
+34:      because it had low confidence in the chosen triggers.
+36:        (1) manually annotate a single desired trigger using #[trigger]
+...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The 5 lemmas are genuinely proven. Now I must independently verify the fixer's claim that the 3 exec functions are blocked by deferred ghost-token obligations — not a proof-skill gap. Let me check the dependency specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== bump_view establishing lemma / type_invariant ==="; grep -rn "bump_view" sr
+
+[THINKING] There's a low-confidence trigger note at proof.rs:28 that technically doesn't violate the checklist requirement of zero errors and warnings, but it signals I should add an explicit trigger or `#![auto]` to clean it up. That's minor though—the real problem is the three exec functions that the fixer says can't reach admit=0 without either cross-cutting infrastructure or reclassifying as TCB external_body, which is a justification, not a fix.
+
+I need to evaluate whether the fixer's claim actually holds. They're pointing to three specific blockers: `ensure_pt` is stuck on a precondition from `bump_view(self).inv()` with no type invariant for the bump allocator, `ensure_pte` can't satisfy `mapped.contains` because `Table::write` doesn't track contents and `identity_map_view()` is uninterpreted, and `identity_map_page` can't establish the `accessible` postcondition because there's no connection between atomic loads and the ghost state. The core issue traces back to the deferred ghost-token convention—`identity_map_view()` is specified as an uninterpreted function, and the spec comment says the abstract state transition is "realized in the proving phase by a ghost token." So this *is* the proving phase where that token should be realized, and the fixer is claiming that requires infrastructure beyond this module's scope. But as the reviewer, I need to be strict about whether that's genuinely unavoidable or just a gap in their approach.
+
+Looking at the established pattern in the codebase, functions like `kframe::new` and `frame::alloc` handle similar deferred obligations by being marked `external_body` and listed in tcb_allowed.md with justification. The rule isn't "zero external_body"—it's "zero external_body unless listed in tcb_allowed_file." So the path forward would be converting these three exec functions to `external_body` and adding them to the TCB list with proper justification. But that raises a soundness question: if I mark `ensure_pte` as `external_body`, its postcondition about `identity_map_view()` becomes assumed rather than verified. The TCB note warns that a contents postcondition on `Table::write` would be unsound, but here the postcondition is about the abstract ghost state, not concrete contents—so it might actually be safe to assume. I should verify the fixer's claims independently rather than accepting them at face value — specifically checking whether `bump_view().inv()` has any establishing lemma and whether `Table::write` is truly contents-free, since these are the actual blockers to in-body verification.
+[RESULT ✓] bash: === bump_view establishing lemma / type_invariant ===
+(none above = confirmed)
+
+=== alloc_as requires ===
+src/libs/bump_allocator/src/lib.proof.rs:23:    requires
+src/libs/bump_allocator/src/lib.proof.rs:44:            requires
+src/libs/bump_allocator/src/lib.proof.rs:85:    requires
+src/libs/bump_a...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Both blockers independently confirmed: `bump_view().inv()` has **no** establishing lemma/`type_invariant` anywhere, and `Table::write` is deliberately contents-free. The fixer's technical analysis is correct — but "blocked, leave admit in place" is not an acceptable end state. The established codebase methodology (sibling `mm::phys`) resolves exactly this via external_body + TCB-listing. Let me direct that.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== confirm kframe::new precedent uses external_body + verus_spec ==="; sed -n 
+
+[THINKING] I'm seeing two critical blockers in the verification: the `bump_view().inv()` invariant is missing entirely, so the precondition for `ensure_pt`'s `alloc_as` can't be satisfied in-body, and `Table::write` is deliberately left contents-free with no postcondition about the page-table permissions, which means `ensure_pte`'s `mapped.contains(...)` postcondition can't be derived from it.
+
+The fixer's analysis is technically sound — these three exec functions genuinely can't be verified in-body under the current contracts and the parameter-free `identity_map_view()` accessor. The real question is how to resolve this within the project's constraints: the checklist demands zero admits and zero external_body unless explicitly listed in tcb-allowed.md. The established pattern in the codebase (like in mm::phys with frame::alloc/book/instance) is to mark deferred-ghost-token functions as external_body and justify them in tcb-allowed.md. So the correct path is option (b) — convert the three exec functions to external_body and add detailed entries to tcb-allowed.md, which aligns with the spec.rs documentation and codebase methodology. But I need to verify the soundness: if I mark `ensure_pte` as external_body, its postcondition about `mapped.contains(spec_page_base(phys_addr@))` becomes assumed rather than proven, so the TCB note needs to carefully justify why that assumption is safe.
+
+The key insight is that `identity_map_view()` is the global ghost token accessor returning "the current state," so across different calls with different phys_addr values, the postconditions reference different `spec_page_base` values with no contradiction — this follows the same soundness pattern as `frame::alloc`'s deferred postconditions. So option (b) is both sound and consistent with the established methodology. The fixer should convert the three functions from `proof! { admit(); }` to `#[verus_verify(external_body)]` while keeping their full `#[verus_spec]` contracts, then add detailed justifications to tcb-allowed.md.
+
+Converting to external_body is actually preferable to admit because the methodology explicitly permits external_body when listed in the TCB with justification, whereas admit is always forbidden in the checklist. Since strengthening the dependency contracts would require modifying other modules (bump_allocator, arch::paging) and risk spec drift, option (a) is genuinely out of scope — option (b) is the correct resolution.
+
+The spec.rs comment at line 106 already anticipates these admits, and kframe::new is TCB-listed precisely because it calls identity_map_page needing the unrealized mm::virt token, which strongly implies these three functions belong at the trust boundary. I need to confirm the macro pattern: the functions currently use `#[verus_spec(...)]`, and I'll add `#[verus_verify(external_body)]` alongside it, matching the pattern used on Table::write. I should also address the trigger warning at proof.rs:28 by adding an explicit `#[trigger]` or `#![auto]` to keep the checklist clean.
+
+Writing turn_002_driver.md...
+[RESULT ✓] bash: === confirm kframe::new precedent uses external_body + verus_spec ===
+    // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+        ensures
+            match result ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Precedent confirmed. Writing turn 2 review.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_002_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_002_driver.md with 7469 characters
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Turn 2 review complete.
+
+**Verified fixer's work:**
+- ✅ 5 transition lemmas genuinely proven — `admit()` removed from `proof.rs`, confirmed against `cheating-detail.txt` (in-scope admit 8→3).
+- ✅ Spec-drift still clean, cross-module `<all>` verify exit 0.
+
+**Independently confirmed the fixer's two blocker claims (didn't trust prose):**
+- `bump_view().inv()` precondition on `alloc_as` has **no** establishing lemma/`type_invariant` anywhere → `ensure_pt` genuinely can't discharge it in-body.
+- `Table::write` is deliberately contents-free → `ensure_pte`/`identity_map_page` can't derive their `mapped`/`accessible` postconditions in-body.
+
+**FAIL — 3 `admit()` remain.** The fixer left them with a "guidance request," which is **not a fix**. I pushed back: the resolution is the codebase-established pattern (sibling `kframe::new`/`frame::alloc` are `external_body` + TCB-listed for this exact deferred-ghost-token reason — `kframe::new` is listed *specifically because* it calls `identity_map_page`). The "Zero external_body **unless** listed" rule permits this.
+
+**Fix request:** convert the trio to `#[verus_verify(external_body)]` (drop `admit()`, keep contracts verbatim), add three justified entries to `tcb-allowed.md`, attempt removal of the 5 cfg-gates, and silence the low-confidence trigger note at `proof.rs:28` (blocks the 0-warnings item). No `STOP` written.
+
+
+=== Session End ===
+Session: 7cf89740-a886-4ecb-b45f-dcada16aea8a
+Duration: 139.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue-reviewer-t002-claude-20260615-125136.jsonl
