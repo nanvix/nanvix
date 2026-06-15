@@ -140,3 +140,28 @@ This is trivial - the function returns `gva` and spec is identity. Let me verify
 
 [THINKING] The function just returns its input unchanged, so the specification that it equals the input is trivially satisfied. Let me run the verification to check if it passes without needing any proof steps.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification is CLEAN (exit 0). The target `gva_to_gpa` has a contract and verifies. The remaining `admit=12`/`external_body=19` are in out-of-scope unlisted functions. Let me confirm no regressions with full verify.
+[TOOL] report_intent: Running full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -25
+
+[THINKING] The verification came back clean with exit code 0 — my target function `gva_to_gpa` has a contract and passes verification, even though there are other functions with unresolved issues that fall outside my scope. The summary confirms only one of the executable functions has a contract, and that's the one I'm working with.
+
+Now I'm running the full verification suite to make sure there are no regressions.
+[RESULT ✓] report_intent: Intent logged
