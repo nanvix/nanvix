@@ -558,3 +558,25 @@ Any `external_body` outside this list must be removed.
 
 - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
   module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -type f -name '*SKILL.md' | sort
+[RESULT ✓] bash: ./.github/skills/benchmarking/SKILL.md
+./.github/skills/build/SKILL.md
+./.github/skills/ci-cd-pipeline/SKILL.md
+./.github/skills/coding-standards/SKILL.md
+./.github/skills/daemon-development/SKILL.md
+./.github/skills/gdb-debugging/SKILL.md
+./.github/skills/kernel-development/SKILL.md
+./.github/skill...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: /home/ruize/.openclaw/workspace/skills/ast-consistency/SKILL.md
+/home/ruize/.openclaw/workspace/skills/bug-reporting/SKILL.md
+/home/ruize/.openclaw/workspace/skills/spec-design/SKILL.md
+/home/ruize/.openclaw/workspace/skills/verus-constraints/SKILL.md
+/home/ruize/verus-ai-improve/docs/skills/ast-con...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
