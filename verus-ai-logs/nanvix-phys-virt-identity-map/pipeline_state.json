@@ -1,97 +1,24 @@
 {
   "module_name": "virt-identity-map",
   "log_name": "nanvix-phys-virt-identity-map",
-  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
-  "completed_phases": [
-    "caller-analysis",
-    "view-design"
-  ],
-  "phase_results": {
-    "caller-analysis": {
-      "phase": "caller-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 114.4,
-      "review_rounds": 0
-    },
-    "view-design": {
-      "phase": "view-design",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 259.1,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 2664.4,
-      "review_rounds": 2
-    }
-  },
-  "prover_session_id": "6c6af863-09de-46af-bd04-8709950c5d50",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai/arch-frame-number",
-  "verus_branch": "verus-ai/virt-identity-map",
-  "phase_boundary_shas": {
-    "caller-analysis": "16f981e9ee7ed4b4d2408971229186c6bd61985e",
-    "view-design": "2a2e4f41b5d8e51482253395507d3a92c04420ab",
-    "specification": "2e24b1f9ce0f384c05eaf2eff3e6943507d6b1a7"
-  },
+  "base_branch": "verus-ai-prove",
+  "verus_branch": "verus-ai-prove",
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "caller-analysis": "ae3fdde99ae262127edf3665bfaa06e3d6f8f3da",
-    "view-design": "16f981e9ee7ed4b4d2408971229186c6bd61985e",
-    "specification": "2a2e4f41b5d8e51482253395507d3a92c04420ab"
+    "proving": "725c7655a0781169de85c7f91c0797390a758ed0"
   },
   "phase_history": [
     {
-      "phase": "caller-analysis",
+      "phase": "proving",
       "event": "start",
-      "sha": "ae3fdde99ae262127edf3665bfaa06e3d6f8f3da",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "caller-analysis",
-      "event": "end",
-      "sha": "16f981e9ee7ed4b4d2408971229186c6bd61985e",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "start",
-      "sha": "16f981e9ee7ed4b4d2408971229186c6bd61985e",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "end",
-      "sha": "2a2e4f41b5d8e51482253395507d3a92c04420ab",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "start",
-      "sha": "2a2e4f41b5d8e51482253395507d3a92c04420ab",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "2e24b1f9ce0f384c05eaf2eff3e6943507d6b1a7",
+      "sha": "725c7655a0781169de85c7f91c0797390a758ed0",
       "rollback_iter": 0
     }
   ],
