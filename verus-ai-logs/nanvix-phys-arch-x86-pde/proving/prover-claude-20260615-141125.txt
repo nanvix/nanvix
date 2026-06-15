@@ -186,3 +186,28 @@ Turn 5
 
 [THINKING] I realize the PDE proof file is already complete with the necessary lemmas and inline proof bodies, so I should just run the verification command to check the current state.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The verification passed and it's cached, so no recompilation happened. I'm seeing external_body=3 flagged globally by the cheating check, but I need to focus specifically on the pde module. Let me verify that the pde functions themselves don't have any admit or assume statements, and check where external_body is actually being used in the pde files.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The pde module has no admit/assume/external_body. The flagged cheating items are all in other files (mod.rs, table.rs) outside my scope. Let me force a clean re-verification of pde to confirm it genuinely passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/arch/src/x86/mem/paging/pde.rs && make verify-arch 2>&1 | tail -25
+
+[THINKING] The external_body and assume statements are actually in mod.rs and table.rs/table.proof.rs, not in pde.rs, so my scope is clean. The cheating counts seem to be from a different scope even though they mention an assume in table.proof.rs. Let me force a clean verification to double-check that the pde module is fully verified and not relying on any cached results.
