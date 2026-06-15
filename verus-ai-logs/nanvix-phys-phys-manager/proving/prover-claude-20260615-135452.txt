@@ -751,3 +751,16 @@ Turn 42
 ────────────────────────────────────────────────────────────
 Let me do a final confirmation run of the module and verify there are no in-module admits/assumes and that exec functions verify cleanly.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified, 0
+[RESULT ✓] bash: Global: assume=0 external_body=18 admit=3 trusted=0 cfg_gate=12
+  cheating: assume=0 external_body=18 admit=3 trusted=0 no_decreases=0 cfg_gate=12
+  status: CHEATING_DETECTED
+=== in-module admit/assume in manager files ===
+src/kernel/src/mm/phys/manager.proof.rs:17:// they remain `external_body`. (T...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+The only `admit` match is in a comment. Let me confirm the verification result line and that module mm::phys has 0 admit.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified|Mo
+
+[THINKING] I see the "admit" reference was just in a comment, not actual code. Let me pull up the verification result line to confirm it shows zero errors.
