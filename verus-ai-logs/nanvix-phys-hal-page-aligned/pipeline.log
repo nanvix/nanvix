@@ -109,3 +109,9 @@ Module: hal-page-aligned
 [2026-06-15 11:26:51] ✅ specification: PASS (0/0)
 [2026-06-15 11:26:51] [GATE] Running build: make build
 [2026-06-15 11:26:52] [GATE] Running verify: make verify
+[2026-06-15 11:27:01] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PHASE: proving
+Module: hal-page-aligned
+============================================================

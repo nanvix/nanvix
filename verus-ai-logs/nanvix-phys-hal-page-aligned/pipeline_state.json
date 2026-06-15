@@ -2,11 +2,12 @@
   "module_name": "hal-page-aligned",
   "log_name": "nanvix-phys-hal-page-aligned",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "1589c21b601b9f4d37ae778396af64996308e3d9",
     "view-design": "885241c679c7397ce26e508460f4090caf97b62c",
-    "specification": "e15ae657925c965dc4075563c91b0217159c217a"
+    "specification": "e15ae657925c965dc4075563c91b0217159c217a",
+    "proving": "5320f77ec840c885265afc8ff72d9cba1c4dec4b"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "2a118cbbd911901e53c8b1f158c64ba4ae47c30b",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "5320f77ec840c885265afc8ff72d9cba1c4dec4b",
       "rollback_iter": 0
     }
   ],
