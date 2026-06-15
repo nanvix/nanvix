@@ -2,12 +2,13 @@
   "module_name": "sys-virt-address",
   "log_name": "nanvix-phys-sys-virt-address",
   "source_path": "/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -69,7 +70,8 @@
     "caller-analysis": "114ada83b8af6301f5bd49aa1fa8d6569dd1e2e6",
     "view-design": "366921ffd81cb66dac7a97e1b3423d7ebb900a4b",
     "specification": "7aa98c0aaef7a9d5d4e30f328a6c8b4e4bf71d11",
-    "proving": "819d903e2c7eedee38667f48ccc9ab5cb4163311"
+    "proving": "819d903e2c7eedee38667f48ccc9ab5cb4163311",
+    "cheating-elimination": "bfa7c047b743fff0252685d178e3c998c15a0a5e"
   },
   "phase_history": [
     {
@@ -118,6 +120,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "9aa90742020c38aca9945a1c0b336b9be0a4a793",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "bfa7c047b743fff0252685d178e3c998c15a0a5e",
       "rollback_iter": 0
     }
   ],
