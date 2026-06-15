@@ -785,3 +785,87 @@ Normal build succeeds (dual compilation works — Verus attributes erased correc
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 3000 make verify 2>&1 | tail -60; echo "verify exit: ${PIPESTATUS[0]}"
 
 [THINKING] The dual compilation is working correctly with the Verus annotations being stripped out as expected. Now I'm running the full verification suite to check for any regressions across the other modules.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/6 exec functions have contracts.
+  Unverified function list written to: verus-ai...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Full `make verify` exits **0** — all modules (`mm::phys`, `frame`, `kframe`, `manager`, `upool`, and the other crates) verify with 0 errors. The "CHEATING_DETECTED" status only flags the pre-approved `external_body`/`admit` trust-boundary markers, every one of which is listed in `tcb-allowed.md`.
+
+Let me review my final diff to confirm the changes are clean and minimal.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff --stat; echo "==== full diff ===="; git --no-pager diff src/kernel/src/
+
+[THINKING] The full verification completed successfully with exit code 0 across all modules, and the "CHEATING_DETECTED" flags are just the guardrail catching the pre-approved external markers listed in tcb-allowed.md. I'm confirming the kernel verify also shows 0 errors with no actual Verus errors in the output, just those expected cheating warnings for the allowed modules like mm::phys, frame, kframe, and manager.
+
+Since I only added external_body markers and one shim spec without fixing any actual code bugs, there's nothing new to record in bugs.md—the existing limitations around the free admit and phys_view are already documented. Let me do a final check of the git diff to make sure all changes are clean and minimal.
+[RESULT ✓] bash: .../prover-claude-20260615-084432.jsonl            | 28 ++++++++++++++++++++++
+ .../prover-claude-20260615-084432.txt              | 19 +++++++++++++++
+ 2 files changed, 47 insertions(+)
+==== full diff ====
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short | head -20; echo "=== check frame.rs tracked? ==="; git ls-files --error
+
+[THINKING] The diff isn't showing changes to frame.rs even though I expected edits there — maybe the file is gitignored or the changes got reverted somehow. Let me check the git status to see what's actually staged or modified.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-frame/specification/prover-claude-20260615-084432.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/specification/prover-claude-20260615-084432.txt
+=== check frame.rs tracked? ===
+src/kernel/src/mm/phys/frame.rs
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -c "verus_verify(external_body)" src/kernel/src/mm/phys/frame.rs; echo "=== git diff H
+
+[THINKING] Something's off — git status shows frame.rs as unmodified, but I definitely edited it and the verification passed. Let me check the actual file contents to see if my changes actually persisted.
+[RESULT ✓] bash: 10
+=== git diff HEAD for frame ===
+=== recent commits ===
+3a1e556cf [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=1 external_body=22 cfg_gate=9)
+56b31a16c [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+All changes are in place and were auto-committed by the verification pipeline (commit `3a1e556cf`). The task is complete.
+
+## Summary
+
+The module `mm::phys::frame` was already substantially specified using the established `phys_view()` design, but the previous attempt left it in a **non-compiling** state under Verus. I completed the specification phase to reach **0 Verus errors**.
+
+### Changes to `src/kernel/src/mm/phys/frame.rs`
+1. **`instance()`** — added `#[verus_verify(external_body)]`. It reads `static mut INSTANCE`, which Verus cannot translate; it is the singleton-bridge trust boundary listed in `tcb-allowed.md`. Its `#[verus_spec]` contract is preserved.
+2. **`init()`** — added `#[verus_verify(external_body)]`. Reads `static mut REFCOUNT_STORAGE`; listed as Skip/exclude in `tcb-allowed.md`. Contract preserved.
+3. **8 `Inner::*` methods** (`alloc`, `alloc_contiguous`, `free`, `share`, `refcount`, `book`, `is_covered`, `alloc_range`) — added `#[verus_verify(external_body)]`. Their bodies use `error!`/`debug_assert_eq!` macros and `arch` newtypes that Verus cannot translate; all 8 are explicitly listed in `tcb-allowed.md`. Their do-not-modify `#[verus_spec]` transition contracts are untouched.
+4. **`alloc()` shim** — added the missing `#[verus_spec]` contract, mirroring its siblings (`book`/`alloc_contiguous`): `Ok ⇒ frame.inv() ∧ free_frames.contains(frame@)`, plus invariant/initialized preservation. It verifies cleanly (no `admit`).
+
+### Design decision
+The `view_design.md` proposed a large `PhysAuth` token redesign, but that would require changing function signatures and modifying unlisted files (`manager.rs`, `upool.rs`, `mod.rs`) — both forbidden by the hard rules. The existing `phys_view()` specs already satisfy every caller expectation in `caller_analysis.md` (assessed "adequate"), so I worked within that framework.
+
+### Verification results
+- `make verify-kernel MODULE=mm::phys` → **32 verified, 0 errors** (exit 0)
+- `make verify` (all modules/crates) → **0 errors** (exit 0), no regressions
+- `./z build` (normal dual compilation) → succeeds; Verus attributes erase correctly
+
+The only remaining `admit()` is the pre-existing, deliberately-weak `free` shim (Drop-path, documented in `tcb-allowed.md`/`verification-todo.md`) — acceptable for the specification phase. No new code bugs were discovered.
+
+[THINKING] My changes are already committed in the codebase—the verify tooling auto-committed them when the module passed verification. I've added external_body markers to the instance, init, and eight Inner methods in frame.rs, plus a spec to the alloc shim, and everything verifies with zero errors.
+
+The task is complete. The existing spec infrastructure in mod.spec.rs and frame.spec.rs already covers all the caller expectations, so no additional spec or proof work was needed beyond the trust-boundary markers and the alloc shim spec.
+
+
+=== Session End ===
+Session: 8f250b92-a62e-4d00-9972-f6710f1699c3
+Duration: 472.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/prover-claude-20260615-084432.jsonl
