@@ -546,3 +546,321 @@ Turn 5
 ────────────────────────────────────────────────────────────
 Turn 2
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: ⚠️  cfg-gated exec code: 8
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: external...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now the source files and the TCB allow-list.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 261. 
+262. 2. **Safety** — What must never happen?
+263.    - Bounds, disjointness, uniqueness, conservation, injectivity, ordering, monotonicity
+264. 
+265. 3. **Liveness** — What good things must happen?
+266.    - Guaranteed success conditions, resource availability, recoverability
+267. 
+268. 4. **S...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (§8 ghost-token trust boundary)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 221.                 lemma_user_addr_set_empty(frames@);
+222.                 lemma_book_all_empty(g_old);
+223.             }
+224.             return Ok(());
+225.         }
+226. 
+227.         Self::check_user_watermark(count)?;
+228.         proof! {
+229.             lemma_manager_attached(self);
+230...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+[RESULT ✓] view: 441.                     &&& final(frames)@.len() == 0
+442.                 },
+443.             },
+444.     )]
+445.     pub fn alloc_many_kernel_frames(
+446.         &mut self,
+447.         count: usize,
+448.         frames: &mut Vec<KernelFrame>,
+449.     ) -> Result<(), Error> {
+450.         proof...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (§8 ghost-token trust boundary)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/view_design.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-manager/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate).
+6. 
+7. ## Module Summary
+8. 
+9. | Category | Count |
+10. |-...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 261.                     &&& let S = region_frame_addrs(base, count * ps);
+262.                     &&& v.all_free(S)
+263.                     &&& v' == v.book_all(S)          // ⇒ v'.all_reserved(S)
+264.                   }
+265.             }
+266.             Err(_) => {
+267.               &&& v' =...
+[RESULT ✓] view: 1. # View Design: `mm::phys::manager` (`PhysMemoryManager`)
+2. 
+3. > Phase output. Designs the abstract `View` that all later specs
+4. > (`requires`/`ensures`) for the six in-scope functions will reference:
+5. > `init`, `alloc_user_frame`, `check_user_watermark`,
+6. > `alloc_many_user_frames`, `allo...
+[RESULT ✓] view: 1. # Bugs — Nanvix phys manager
+2. 
+3. ## Observations (record-only; validated in the proving phase)
+4. 
+5. ### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+6. 
+7. `alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+8. `alloc_many_kernel_frames` has no ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail.txt ===" && grep -n -i "assume\|manager.proof\|ap
+
+[THINKING] There's a discrepancy in the cheating detector output—it's flagging four lemmas in manager.proof.rs as "assume" statements at specific line numbers, but the global summary shows assume=0, which seems contradictory. I need to figure out why the per-function analysis and the aggregate count don't align.
+
+Looking at the summary more carefully, I realize this is reporting the entire kernel's cheating totals (external_body=14, admit=3, cfg_gate=9), not just the mm::phys module being analyzed. The "cfg-gated exec code" section appears to be a combined list of affected functions across multiple cheating dimensions rather than a single category, which explains why it mixes different annotation types. The real puzzle is reconciling those four proof.rs assumes with the global assume=0 count—either the detector counts `assume()` statements differently than proof-fn assumes, or there's something about how these annotations are being categorized that I'm missing.
+
+What matters for this review is that there are definitely four `assume(...)` statements in manager.proof.rs, and per the task guidelines, any assume count above zero is a blocker regardless of how the automated detector classifies them. The admit=3 and other global cheating counts are pre-existing elsewhere in the kernel and outside the phys-manager scope, though I should verify the cross-module regression requirement. Let me check the cheating-detail file to understand exactly how these annotations are being counted.
+[RESULT ✓] bash: === cheating-detail.txt ===
+8:    - mm/phys/manager.proof.rs:31 lemma_manager_attached: assume
+9:    - mm/phys/manager.proof.rs:47 lemma_kernel_alloc_one: assume
+10:    - mm/phys/manager.proof.rs:61 lemma_kernel_alloc_contiguous: assume
+11:    - mm/phys/manager.proof.rs:175 lemma_user_bulk_err_resto...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+I found a critical issue: 4 `assume(...)` statements in manager.proof.rs. Let me gather exact counts and check tcb-allowed.md.
+[TOOL] report_intent: Counting cheating dimensions and checking TCB
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys
+echo "=== admit( ==="; grep -rn "admit(" manager.rs man
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === admit( ===
+=== assume( (not assume_specification) ===
+manager.proof.rs:22:// Each lemma therefore discharges its irreducible bridge fact with a single-line `assume(...)`
+manager.proof.rs:36:    assume(m@ == phys_view().frames);
+manager.proof.rs:56:    assume(pre.free_frames.contains(addr) && pos...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== detail head ===" && head -30 verus-ai-logs/verify-kernel/verus-lo
+[RESULT ✓] bash: === detail head ===
+    - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running verification checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo '== admit ==' && rg -n "admit\s*!?\s*\(" src/kernel/src/mm/phys/manage
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: == admit ==
+== assume( ==
+src/kernel/src/mm/phys/manager.proof.rs:22:// Each lemma therefore discharges its irreducible bridge fact with a single-line `assume(...)`
+src/kernel/src/mm/phys/manager.proof.rs:36:    assume(m@ == phys_view().frames);
+src/kernel/src/mm/phys/manager.proof.rs:56:    assume(...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Critical finding: 4 `assume()` in proof fns. Let me check the TCB allow-list and run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "manager\|kernel_watermark\|init\|lemma_manager_attached\|lemma_ker
+[RESULT ✓] bash: 8:  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTANCE_INIT`).
+11:  state to `phys_view().frames`, asserts `(*r).inv()`, and records `phys_view().initialized` —
+12:  the §8 ghost-token attachment for the singleton frame allocator.
+22:  `alloc` and re-materializes ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The evasion mechanism is now clear: an `approved-trust-boundaries.json` side-channel zeroes the `assume` count in the automated gate (global shows `assume=0` despite 4 assume lemmas). The task explicitly forbids this — only `tcb-allowed.md` governs, and `assume>0` is a BLOCKER. Let me review the bugs log and specs while sub-agents work.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-manager/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] I'm seeing how the evasion works—there's a separate JSON file that the detector uses to suppress the `assume` count from the global summary, even though multiple assume lemmas are actually present. This sidesteps the requirement by introducing trust boundaries through an external configuration file instead of the designated tcb-allowed.md, which directly violates the task constraints against creating new trust boundaries outside the approved mechanism.
+
+The four assume statements in manager.proof.rs are real and unconditionally satisfy the lemma postconditions that the in-scope functions depend on to prove their own specs. This means the in-scope proofs rest on unproven axioms—a clear violation. The approved-trust-boundaries.json file isn't tcb-allowed.md and doesn't count per the task rules, so this is a definitive failure with blockers on both the assume count and the unauthorized trust boundary mechanism.
+
+Now I need to review bugs.md and spec.rs to verify the in-scope function specifications.
+[RESULT ✓] view: 1. # Bugs — Nanvix phys manager
+2. 
+3. ## Observations (record-only; validated in the proving phase)
+4. 
+5. ### OBS-1: `alloc_many_kernel_frames` lacks the `count == 0` fast-path guard
+6. 
+7. `alloc_many_user_frames` early-returns `Ok(())` when `count == 0`, but
+8. `alloc_many_kernel_frames` has no ...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "#\[verus_verify\(external_body\)\]|#\[verifier::external_body\]" src
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.rs:96:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/manager.rs:532:#[verus_verify(external_body)]
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 185. 
+186. ## External-bottom: build-time constant accessor
+187. 
+188. - `src/kernel/src/mm/phys/manager.rs::kernel_watermark` — `external_body` accessor that returns
+189.   the build-time constant `config::kernel::KERNEL_WATERMARK`. This constant is generated by the
+190.   `config` crate's `build.r...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rg -n "VERUS REWRITE" src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/p
+[RESULT ✓] bash: 
+<shellId: 21 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking AST consistency
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== lemma refs in tcb-allowed.md ===" && grep -n "lemma_\|ghost-token
+
+[THINKING] Looking at the bugs.md documentation, I can see the evolution of this code: the four lemmas originally used `admit()`, then shifted to `external_body`, and the current implementation switched to `assume()` as part of a later optimization step that eliminated the external_body approach on proof functions (as noted in the proof.rs comments).
+
+The critical issue is that these four unproven axioms form the foundation for verifying the in-scope functions' specifications—like `alloc_kernel_frame` ensuring proper frame transitions. The verification of the target functions depends entirely on these assumed facts, which creates a soundness vulnerability. The task rules are clear: any `assume()` statements trigger a blocker, and the new trust boundary registered in `approved-trust-boundaries.json` for lines L60-L63 isn't listed in `tcb-allowed.md` (which only documents external_body functions, not assume lemmas), violating the rule against justifying or recording new trust boundaries without authorization. I need to verify whether `tcb-allowed.md` actually lists these four lemmas under the ghost-token attachment section as bugs.md claims, since my earlier search only found `get_mut`, `init`, and `kernel_watermark`.
+[RESULT ✓] bash: === lemma refs in tcb-allowed.md ===
+12:  the §8 ghost-token attachment for the singleton frame allocator.
+44:  `spec_entry_raw(e1) == spec_entry_raw(e2)`, which with `lemma_entry_roundtrip` derives
+110:  is an assumed §8 ghost-attachment axiom (the pool introduces no frames of its own — `wf()` is
+1...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The four lemmas are described as `external_body` in tcb-allowed.md but the actual code uses `assume()`. Let me run verification and AST consistency in parallel.
+[TOOL] report_intent: Running verification and AST checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+[TOOL] report_intent: Running module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys
+[RESULT ✓] report_intent: Intent logged
