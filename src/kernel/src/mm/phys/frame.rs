@@ -731,9 +731,10 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 #[verus_spec(result =>
     with Tracked(auth): Tracked<&mut PhysAuth>
     requires
+        phys_view().initialized,
         old(auth)@.initialized,
         old(auth)@.inv(),
-        old(auth)@.frames == phys_view().frames,
+        old(auth)@ == phys_view(),
     ensures
         final(auth)@.initialized,
         final(auth)@.inv(),

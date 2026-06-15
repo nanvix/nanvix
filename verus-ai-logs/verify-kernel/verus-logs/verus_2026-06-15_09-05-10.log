@@ -1,0 +1,70 @@
+Timestamp: 2026-06-15_09-05-10
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+31 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> src/kernel/src/mm/phys/upool.rs:268:5
+    |
+268 |     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:261:17
+    |
+261 |                   Ok(uf) => {
+    |                   ^^^^^^ failed this postcondition
+...
+268 |       pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+    |  _________________________________________________________-
+269 | |         let addr: FrameAddress = frame::alloc()?;
+270 | |         Ok(UserFrame::new(addr))
+271 | |     }
+    | |_____- at the end of the function body
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:269:34
+    |
+269 |         let addr: FrameAddress = frame::alloc()?;
+    |                                  ^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.rs:732:5
+    |
+732 |     with Tracked(auth): Tracked<&mut PhysAuth>
+    |     ---- failed precondition
+
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/upool.rs:270:12
+    |
+ 56 |             addr.inv(),
+    |             ---------- failed precondition
+...
+270 |         Ok(UserFrame::new(addr))
+    |            ^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors

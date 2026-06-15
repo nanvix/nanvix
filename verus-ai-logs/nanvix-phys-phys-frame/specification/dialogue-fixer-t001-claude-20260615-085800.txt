@@ -328,3 +328,59 @@ Need `final(auth)@` instead of bare `auth@` in postconditions (mutable-ref disam
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "^error\|^warning\|-->\|veri
+[RESULT ✓] bash: 16:note: verifying module mm::phys
+18:note: verifying module mm::phys::frame
+20:note: verifying module mm::phys::kframe
+22:note: verifying module mm::phys::manager
+24:note: verifying module mm::phys::upool
+26:note: function body check: not all errors may have been reported; rerun with a higher value...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now I have real verification errors. The key finding: threading `with Tracked(auth)` into `frame::alloc` **breaks the verified caller** `Upool::alloc` in `upool.rs` (the bare call now resolves to the `requires false` unverified version). Let me examine that caller.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] I'm hitting a verification error in the frame.rs `alloc` shim where the `instance()` call at line 754 isn't satisfying its precondition that `phys_view().initialized` must be true. The shim establishes that `old(auth)@.initialized` holds and `old(auth)@.frames == phys_view().frames`, but I need to connect this to the `phys_view().initialized` requirement that `instance()` demands.
+
+The fix is to strengthen the shim's requires clause to include `old(auth)@ == phys_view()` — this would give me both the initialized flag and frames in one go. But then I need to verify the postcondition: after the proof sets `auth.v.frames = (*r)@`, I'm claiming `final(auth)@ == old(auth)@.spec_alloc_one(frame@)`, which means checking that the frames transformation from the inner allocator matches what the outer spec expects.
+
+Now I'm seeing there are also compilation errors in upool.rs around the `Upool::alloc` method that calls into `frame::alloc()`.  The issue is that adding the `with` clause to `frame::alloc` means the bare call without the clause now resolves to an unverified version with `requires false`, which breaks the precondition. Since `Upool::alloc` is itself verified (not external_body), it would need to pass a PhysAuth token to the call, but `Upool` is stateless with no fields to hold such a token. This creates a cascading problem: threading the token through `frame::alloc` forces `Upool::alloc` to require it, which forces `Upool` itself to hold it, which propagates up to all its callers in the manager module — exactly the kind of multi-file subsystem rewrite the design doc warned about.
+
+Let me verify that `Upool::alloc` is actually verified and examine its implementation.
+[RESULT ✓] view: 230.     ///
+231.     /// A user frame pool.
+232.     ///
+233.     #[verus_verify]
+234.     pub(super) fn new() -> Self {
+235.         Self { _private: () }
+236.     }
+237. 
+238.     ///
+239.     /// # Description
+240.     ///
+241.     /// Allocates a single user frame from the user frame pool.
+242....
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Confirmed: `Upool::alloc` is a **verified** caller in `upool.rs` (outside my frame.rs scope). Let me first confirm the `alloc` shim itself verifies by fixing the `instance()` precondition bridge, isolating the frame.rs-internal proof from the caller cascade.
+[TOOL] edit: 
+
+[THINKING] I see that `Upool::alloc` is a verified function in upool.rs that calls `frame::alloc()`, and its specification is defined over `phys_view()`. Since upool.rs is off-limits per my constraints, I can only work with functions in frame.rs. When I added `with Tracked(auth)` to `frame::alloc`, the bare call at upool.rs:269 became problematic because it wasn't passing the required authentication parameter.
+
+The real issue is that fixing this properly would require threading the `Tracked<&mut PhysAuth>` token all the way up the call stack — from `Upool::alloc` to `manager::alloc_user_frame` to wherever the token originates at initialization. But `Upool` is stateless and can't hold a token, so it would need a new parameter, which cascades the change outward into manager.rs (tcb-allowed external_body functions that the reviewer wants removed) and beyond. This would also require rewriting all the `phys_view()`-based specifications across upool, manager, mod, and kframe — essentially dismantling the entire subsystem's contract structure.
+
+Let me isolate the core feasibility question by fixing just the frame.rs-internal precondition issue (adding `phys_view().initialized` to the requires clause) to verify that the alloc shim itself can prove the strong postcondition, independent of whether callers can adopt it. This will confirm whether the proof chain works at the frame level before worrying about the caller cascade.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "^error\|-->\|verified,\|sta
