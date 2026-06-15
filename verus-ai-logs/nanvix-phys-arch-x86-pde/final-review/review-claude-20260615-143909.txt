@@ -1137,3 +1137,249 @@ Turn 11
 [TOOL] report_intent: Verifying arch module
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && set -o pipefail && make verify-arch VERUS_EXECUTABLE_DIR=$HOME/toolchain/verus 2>&1 |
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : arch
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/libs/arch/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --targ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== full log tail ==="; tail -40 verus-ai-logs/verify-arch/verus-logs/verus_202
+[RESULT ✓] bash: === full log tail ===
+Timestamp: 2026-06-15_14-43-16
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Finished `dev` profile [opt...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "verified, 0 errors|0 errors|error" verus-ai-logs/verify-arch/verus-logs/verus_
+[RESULT ✓] bash: 
+<shellId: 41 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The cached run doesn't show the verified count. Let me check the most recent fresh log that actually compiled.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE "verification results|verified|[0-9]+ errors" verus-ai-logs/verify-arch/veru
+[RESULT ✓] bash: 48 verified
+0 errors
+verification results:: 48 verified, 0 errors
+===14-25===
+48 verified
+0 errors
+verification results:: 48 verified, 0 errors
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "verify-arch|cache|VERUS" Makefile scripts -g '*.mk' -g '*.py' -g 'Makefile'
+[TOOL] view: /home/ruize/nanvix-phy-specs/Makefile
+[RESULT ✓] view: 1. # Copyright(c) The Maintainers of Nanvix.
+2. # Licensed under the MIT License.
+3. 
+4. .DEFAULT_GOAL := all
+5. 
+6. #===================================================================================================
+7. # Build Options
+8. #===========================================================...
+[RESULT ✓] bash: Makefile:112:# Disable sccache unconditionally for these targets to avoid intermittent
+Makefile:113:# sccache server crashes inside Docker BuildKit containers (see #1395).
+Makefile:121:WHICH_SCCACHE = $(shell p=$$(which sccache 2>/dev/null) && \
+Makefile:127:# Default target ('all') produces artifac...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/Makefile
+[RESULT ✓] view: 580. 	@echo "  PROFILER        yes, no"
+581. 	@echo "  MAKE_NO_PRINT   yes, no"
+582. 
+583. # Verifies all Verus-annotated crates.
+584. .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585. verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+586. 
+587. # Ensures the correct Verus version is...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] rg: cache|cached|CHEATING_DETECTED|errors|no recompilation|--no-cache
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/scripts/verify.sh:230:ERRORS="$(grep -oP '\d+ errors' "$TMPFILE" | tail -1)"
+/home/ruize/nanvix-phy-specs/scripts/verify.sh:233:#   1. VERUS_EXIT == 0: genuine cache hit — Verus skipped re-verification.
+/home/ruize/nanvix-phy-specs/scripts/verify.sh:235:# Only case 1 is ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 210. fi
+211. 
+212. # Capture output for logging and analysis.
+213. TMPFILE="$(mktemp)"
+214. trap 'rm -f "$TMPFILE"' EXIT
+215. 
+216. set +e
+217. set -o pipefail
+218. RUSTC_BOOTSTRAP=1 "${CMD[@]}" 2>&1 | tee "$TMPFILE"
+219. VERUS_EXIT=$?
+220. set +o pipefail
+221. set -e
+222. 
+223. echo ""
+224. 
+225. #...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running drift checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/libs/arc
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 44 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All data gathered: **48 verified, 0 errors**. Let me create the final review directory and write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-arch-x86-pde/final-review && echo created; head -6
+[RESULT ✓] bash: created
+// Minimal reproducer for the `PageDirectoryEntry::frame_address` VERUS REWRITE.
+//
+// Models the real situation: `FrameNumber` is an opaque newtype whose bound
+// (`self@ <= spec_max()`) is *only* exposed through the postcondition of its exec
+// method `into_raw_value()` — exactly as in the...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] rg: \#\[verus_spec\(|requires|ensures|pub open spec fn inv|spec_pde_flags_new|spec_pde_new
+[TOOL] rg: PageDirectoryEntryFlags::new|PageDirectoryEntry::new|PageDirectoryEntry::is_present|PageDirectoryEntryFlags::is_present|PageDirectoryEntry::frame_address|invariant 1|invariant 2|invariant 3|invariant 4|invariant 5|invariant 6|Constructor fidelity|Presence delegation|Frame alignment|Purity/totality|Encoding independence
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md:18:- `PageDirectoryEntryFlags::new`
+/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md:19:- `PageDirectoryEntry::new`
+/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.spec.rs:88:    pub open spec fn inv(&self) -> bool {
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.spec.rs:95:pub open spec fn spec_pde_flags_new(
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.s...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && if [ -f verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/repro/frame_addre
+[RESULT ✓] bash: reproducer:present
+<shellId: 46 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] rg: x86/mem/paging/mod\.rs::invlpg|x86/mem/paging/table\.rs::Table::<E>::read|x86/mem/paging/table\.rs::Table::<E>::write|x86/mem/paging/table\.proof\.rs::lemma_entry_roundtrip
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md:37:- `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::read` — reads a `TableEntry` from a
+/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md:47:- `src/libs/arch/src/x86/mem/paging/table.rs::Table::<E>::write` — writes a `TableEn...
+[RESULT ✓] view: 1.     - x86/mem/paging/mod.rs:80 invlpg: external_body
+2.     - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+3.     - x86/mem/paging/table.rs:209 read: external_body
+4.     - x86/mem/paging/table.rs:246 write: external_body
+5. 
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in src/libs/arch/src/x86/mem/paging/pde.rs src/libs/arch/src/x86/mem/paging/pde
+[RESULT ✓] bash: == src/libs/arch/src/x86/mem/paging/pde.rs ==
+admit:0
+assume:0
+external_body:0
+assume_specification:0
+cfg_not_verus_keep_ghost:0
+cfg_verus_keep_ghost:2
+== src/libs/arch/src/x86/mem/paging/pde.spec.rs ==
+admit:0
+assume:0
+external_body:0
+assume_specification:0
+cfg_not_verus_keep_ghost:0
+cfg_verus_keep...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The reproducer exists and substantiates the deviation. Now I'll write the final review.
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude.md with 11013 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 200s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review report", tool_calls_completed: 29, (timed out...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/caller_analysis.md
+[RESULT ✓] view: 56. ## Caller Expectations
+57. 
+58. ### `PageDirectoryEntryFlags::new(present, read_write, user_supervisor, page_write_through, page_cache_disable, accessed, dirty, page_size)`
+59. - **Callers assume:** the returned flags value faithfully *records each of the 8
+60.   flag arguments*, so that a subse...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The claude reviewer is finishing up (writing its report). I'm waiting for both sub-agents to complete; I'll consolidate once they finish.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 120, 'wait': True}
+Review complete. Raw report written to `verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude.md`.
+
+## Summary — Result: **PASS**
+
+I independently verified each task with tools (not your summary):
+
+**Exact counts (three pde files):** `admit=0`, `assume=0`, `external_body=0`, `assume_specification=0`, `uninterp=0`, cfg-gated **exec**=0. (The two `#[cfg(verus_keep_ghost)]` at pde.rs:9/11 only gate the `include!` of spec/proof bodies — standard, not exec gating.)
+
+**Verification:** `make verify-arch` → exit 0, **48 verified, 0 errors**. Spec drift → exit 0, no contract weakening.
+
+**TCB:** The arch crate's only trusted items (`invlpg`, `Table::read`, `Table::write` = external_body; `lemma_entry_roundtrip` = assume) are **all in `tcb-allowed.md`** and **none are in pde**.
+
+**AST consistency:** Exactly **1 MISMATCH** — `PageDirectoryEntry::frame_address`, the `f(complex_expr)` → `let raw = …; raw << …` intermediate-binding (a pre-approved, semantically-equivalent deviation needed to invoke `lemma_frame_address` between the exec call and the shift). `// VERUS REWRITE` comment present; reproducer confirmed present (4436 B). **PASS.**
+
+**Caller coverage:** **6/6** numbered invariants + **5/5** per-function expectations covered. None missing.
+
+**Spec quality:** All 5 contracts correct, declarative, mathematical-typed, closed View; `inv()` meaningful. **Bugs:** "no bugs" claim accurate — `frame_address` overflow is genuinely proven, and zero external_body means no defect is masked.
+
+**Only finding (non-blocking):** comment uses prefix `VERUS REWRITE` vs codified `VERUS DEVIATION` — nomenclature nit, no impact.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cargo clean -p arch >/dev/null 2>&1 || true && set -o pipefail && make verify-arch VE
