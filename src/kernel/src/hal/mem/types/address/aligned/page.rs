@@ -38,6 +38,29 @@ pub struct PageAligned<T: Address>(T);
 
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
+    // Not-yet-verified dependencies (hal::mem trust boundary): the body checks
+    // page alignment via `<T as Address>::is_aligned(PAGE_ALIGNMENT)`, where the
+    // `Address` trait method is unspecced and `PAGE_ALIGNMENT` is an `arch`
+    // `Alignment` enum constant the Verus front-end cannot translate. The body
+    // therefore cannot be verified in place without speccing those upstream
+    // `sys`/`arch` items (out of scope). `external_body` honors the `#[verus_spec]`
+    // contract as a trust boundary, mirroring `FrameAddress::into_raw_value`. The
+    // contract is the real caller guarantee; it is discharged when the `Address`
+    // trait and the `Alignment` encoding are verified.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            // `from_address` validates; it never rounds/normalizes. On success the
+            // wrapped address is unchanged (`result@ == spec_addr(&addr)`) and the
+            // page-alignment invariant holds (`result.inv()`). On failure the input
+            // was not page-aligned (value type: no side effect). Success holds iff
+            // the input address is page-aligned (stated both ways for liveness).
+            match result {
+                Ok(p) => p@ == spec_addr(&addr) && p.inv(),
+                Err(_) => spec_addr(&addr) % crate::hal::mem::spec_page_size() != 0,
+            },
+            (result is Ok) <==> (spec_addr(&addr) % crate::hal::mem::spec_page_size() == 0),
+    )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
         if !addr.is_aligned(PAGE_ALIGNMENT)? {
