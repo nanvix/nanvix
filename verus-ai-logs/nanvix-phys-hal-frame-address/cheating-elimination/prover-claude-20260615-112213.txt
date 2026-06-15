@@ -421,3 +421,80 @@ Working tree is byte-identical to the original baseline (empty diff). AST consis
 
 [THINKING] The working tree now matches the original baseline exactly with no differences, confirming that the frame module's AST is consistent and byte-identical to the starting point. I'm running a final verification to ensure the module compiles cleanly before documenting the results.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module hal::mem::types::address::frame --log-dir verus-ai-logs/verify-kernel
+note: verifying module hal::mem::types::address::frame
+verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+  5 verified
+  0 er...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Frame module: **5 verified, 0 errors**. The only cheating is `from_raw_value: external_body` (TCB-allowed). The Global counts are crate-wide aggregates from out-of-scope modules. Working tree is byte-identical to baseline. Let me write the report and TODO.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-hal-frame-address/ 2>/dev/null; mkdir -p verus-ai-logs/n
+
+[THINKING] The frame module checks out with 5 verified items and no errors—the only cheating flagged is the TCB-allowed external_body call in frame.rs. The broader crate-wide metrics showing external_body and admit counts are from other modules outside my scope, so what matters for this module is the single allowed external_body and zero violations for admit or assume.
+
+Since my changes are empty (working tree matches baseline), there's no regression risk. The cfg-gated includes in frame.rs follow the standard spec/proof pattern for ghost-only code, not exec code that varies between builds, so they're not a new concern—they're part of the original baseline.
+
+Now I'll write up the report: the module passes verification with all 5 functions checking out, zero errors, and the single external_body (from_raw_value) being TCB-allowed. I should also note the deferred verification item for the PhysicalAddress Address impl, then create the report file.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+dir ready
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/verification_todo.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/verification_todo.md with 1694 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/fix_report.md with 3379 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating-elimination for **hal-frame-address**:
+
+**Result: PASS** — frame module verifies with **5 verified, 0 errors**.
+
+**In-scope cheating counts (frame.rs/.spec.rs/.proof.rs):**
+| Item | Before | After |
+|------|--------|-------|
+| admit() | 0 | 0 |
+| assume() | 0 | 0 |
+| external_body | 1 | 1* |
+| assume_specification | 0 | 0 |
+| cfg-gated exec | 0 | 0 |
+
+\* The single `external_body` is `FrameAddress::from_raw_value`, which is **TCB-allowed** (explicitly listed in `tcb-allowed.md`).
+
+**Findings:**
+- The four verifiable in-scope functions (`into_raw_value`, `from_frame_number`, `into_frame_number`, struct `FrameAddress`) already carry real specs/proofs and verify in-body — no admit/assume/assume_specification anywhere.
+- I followed the escalation ladder on `from_raw_value`: removing `external_body` fails to compile because its callee `<PhysicalAddress as Address>::from_raw_value` (out-of-scope, spec-less, `external`). The only Verus-suggested fix is an `assume_specification` (cheating, and deliberately removed earlier). The legitimate fix lives in an unlisted function. So the TCB-listed `external_body` is the sanctioned choice and was restored verbatim.
+
+**AST consistency:** Zero mismatches — working tree is byte-identical to baseline (empty `git diff`).
+
+Reports written to `fix_report.md` and `verification_todo.md` under `verus-ai-logs/nanvix-phys-hal-frame-address/`.
+
+[THINKING] I've confirmed the kernel verification passed with zero errors, and since my working tree matches the baseline exactly, there's no regression risk—but I should still verify the frame module compiles cleanly. I'm a bit concerned that the harness auto-committed that broken FAIL state into git history, though the current working tree is clean.
+
+The restored external_body matches the baseline, and my final verify-kernel run confirmed everything passed. I've cleaned up the temporary backup file, so the task is complete—the in-scope module has zero non-allowed cheating.
+
+
+=== Session End ===
+Session: 10ed7ab5-4692-4673-a5c2-6ab5945c119f
+Duration: 290.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/cheating-elimination/prover-claude-20260615-112213.jsonl
