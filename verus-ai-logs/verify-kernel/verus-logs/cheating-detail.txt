@@ -1,4 +1,3 @@
-    - hal/mem/types/address/aligned/page.rs:62 into_raw_value: admit
     - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
     - mm/phys/frame.rs:137 alloc: external_body
     - mm/phys/frame.rs:210 alloc_contiguous: external_body
