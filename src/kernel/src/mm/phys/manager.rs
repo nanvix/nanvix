@@ -232,7 +232,7 @@ impl PhysMemoryManager {
         }
 
         #[allow(unused_variables)]
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 g_old == old(self)@,
                 g_old.wf(),
@@ -242,7 +242,7 @@ impl PhysMemoryManager {
                 user_addr_set(frames@).len() == i,
                 g_old.all_free(user_addr_set(frames@)),
                 self@ == g_old.book_all(user_addr_set(frames@)),
-        ))]
+        )]
         for i in 0..count {
             proof_decl! {
                 let ghost frames_pre = frames@;
@@ -470,14 +470,14 @@ impl PhysMemoryManager {
 
         let base_addr: FrameAddress = frame::alloc_contiguous(count)?;
         let base_raw: usize = base_addr.into_raw_value();
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 g_old == old(self)@,
                 g_old.wf(),
                 self@ == g_old,
                 base_raw as int == base_addr@,
                 base_raw as int + (count as int) * spec_page_size() <= usize::MAX as int,
-        ))]
+        )]
         for i in 0..count {
             proof! {
                 lemma_contig_no_overflow(base_raw, i, count);
@@ -489,7 +489,7 @@ impl PhysMemoryManager {
                     // Drop already-wrapped frames (frees them via KernelFrame::Drop).
                     frames.clear();
                     // Free remaining un-wrapped frames from the contiguous allocation.
-                    #[cfg_attr(verus_keep_ghost, verus_spec(
+                    #[verus_spec(
                         invariant
                             g_old == old(self)@,
                             g_old.wf(),
@@ -497,7 +497,7 @@ impl PhysMemoryManager {
                             base_raw as int == base_addr@,
                             base_raw as int + (count as int) * spec_page_size()
                                 <= usize::MAX as int,
-                    ))]
+                    )]
                     for j in i..count {
                         proof! {
                             lemma_contig_no_overflow(base_raw, j, count);

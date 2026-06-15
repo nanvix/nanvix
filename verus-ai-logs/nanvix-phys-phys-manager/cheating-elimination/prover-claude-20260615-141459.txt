@@ -314,3 +314,346 @@ Let me run the baseline module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] The referenced skills seem to be conceptual rather than actual files, so I'll move forward with them as guidance. Now I'm running the baseline verification for the module.
+[RESULT ✓] bash: ⚠️  cfg-gated exec code: 11
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: externa...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "admit" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] The cheating detector is reporting 3 admits globally, along with cfg_gate=12 and external_body=18, but I need to focus on just the manager module since that's the task scope. The other modules like frame.rs, mod.rs, and upool.rs are contributing to these global counts, and while some external_body entries are in tcb-allowed, I'm trying to locate where those 3 admits are actually coming from by checking the detail file.
+[RESULT ✓] bash: 19:    - mm/virt/identity_map.rs:533 ensure_pt: admit
+20:    - mm/virt/identity_map.rs:627 ensure_pte: admit
+21:    - mm/virt/identity_map.rs:718 identity_map_page: admit
+=== manager refs in detail ===
+8:    - mm/phys/manager.proof.rs:24 lemma_manager_attached: external_body
+9:    - mm/phys/manager....
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The 3 admits are in `mm::virt` (out of scope). For the manager module, all 6 external_body are in tcb-allowed.md. Let me investigate the 3 `assume_specification`s and cfg-gates to see if they can be eliminated. First, search vstd for existing specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find / -path "*/vstd/std_specs/*" -name "*.rs" 2>/dev/null | head; echo "--
+
+[THINKING] The admits I found are actually in the virtual memory module, not the manager module I'm focusing on, so they're outside my scope. For the manager module specifically, the cheating items are the four external_body calls in manager.proof.rs and the two in manager.rs (init and kernel_watermark), all of which are already in the tcb-allowed list, plus the manager.spec file.
+
+Now I'm noticing the cfg_gate count of 12 globally — these are the conditional compilation gates around logging macros that create differences between verus and non-verus builds, which relates to the ast-consistency concern. But I need to check whether these are pre-existing in the base code or something I introduced.
+
+Looking at the in-scope functions in manager.rs, they do have these cfg gates wrapping error and warn logging calls. This is a standard pattern since logging macros aren't verus-compatible, but the detector still counts them as cfg_gate violations. The real question is whether this is considered cheating that needs fixing or if it's an accepted pattern like the external_body functions already documented in tcb-allowed.md.
+
+Let me think through what's actually eliminable here. For the three assume_specification instances on standard library functions, I should search vstd to see if those specs already exist there. For the cfg-gated logging, the issue is trickier — the gates are on in-scope functions, so they do affect ast-consistency between exec and ghost builds, but they're only removing logging side-effects that wouldn't verify anyway.
+
+The real question is whether the phase is scoped to just the manager module or the whole crate. If it's just the manager module, then the 6 external_body items are all allowed by tcb-allowed.md, so they're not blockers. The assume_specification and cfg-gates are the actual cheating items to investigate. The external_body items are documented as legitimate ghost-token trust boundaries that can't be eliminated until the frame free-function layer is verified from the bottom up.
+
+Let me take a more practical approach: search vstd to see if I can find specifications for those 3 assume_specification items, check whether the cfg-gates are actually required by Verus, and document the external_body as allowed exceptions.
+[RESULT ✓] bash: /mnt/toolchain/verus/vstd/std_specs/default.rs
+/mnt/toolchain/verus/vstd/std_specs/clone.rs
+/mnt/toolchain/verus/vstd/std_specs/control_flow.rs
+/mnt/toolchain/verus/vstd/std_specs/convert.rs
+/mnt/toolchain/verus/vstd/std_specs/atomic.rs
+/mnt/toolchain/verus/vstd/std_specs/result.rs
+/mnt/toolchain/ve...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd && grep -rn "and_then\|inspect_err" std_specs/result.rs; echo "=== capacity in vec ==="; gr
+[RESULT ✓] bash: === capacity in vec ===
+<shellId: 12 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /mnt/toolchain/verus/vstd && grep -rn "and_then\|inspect_err\|fn capacity" std_specs/ 2>/dev/null | head; echo "=== e
+
+[THINKING] I need to verify that vstd doesn't include specifications for `and_then`, `inspect_err`, or `Vec::capacity` across the entire codebase.
+[RESULT ✓] bash: std_specs/option.rs:221:// and_then
+std_specs/option.rs:222:pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then ](
+=== exit 0 ===
+--- which vstd does build use ---
+316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+318:  VERUS_PATH_PREFIX = $(VERUS_EXECUT...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+vstd has `Option::and_then` but not `Result::and_then`/`inspect_err`/`Vec::capacity` — these three are genuinely needed. Let me examine the cfg-gate detail and how the gate scopes pass/fail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] vstd provides specs for `Option::and_then` but not for `Result::and_then`, `Result::inspect_err`, or `Vec::capacity`, so these three `assume_specifications` are genuinely necessary. They follow the standard verus pattern of searching vstd first, then using `assume_specifications` as the idiomatic way to provide specs for external std functions—this isn't cheating with admit or assume, it's the proper mechanism.
+
+The cheating gate doesn't separately count `assume_specification` (the detector shows `assume=0`), so it only flags `assume()`, `admit()`, `external_body` functions not in tcb-allowed, and `cfg_gate`. For the manager module, the external_body functions are all in tcb-allowed and there are no admits or assumes, but I need to check whether the cfg_gate detections (the logging gates) actually affect the in-scope functions or if they're all in external code.
+[RESULT ✓] bash: - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/frame.rs:1458 book: external_body...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me find the verify script to understand the cheating gate logic and tcb-allowed handling.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "VERUS_AI_VERIFY_SCRIPT\s*=\|VERUS_AI_DIR\s*=" Makefile | head
+
+[THINKING] I need to track down the verification script that calculates the cfg_gate counts and determines which gate value applies, since the detail file doesn't directly show which functions trigger cfg_gate=12. Understanding how tcb-allowed.md factors into this validation will clarify what's actually being checked.
+[RESULT ✓] bash: 619:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+627:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "VERUS_AI_VERIFY_SCRIPT|VERUS_AI_DIR|VERUS_MODULE_ARG" Makefile | 
+[RESULT ✓] bash: 325:export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+326:export VERUS_AI_DIR ?= /home/ruize/verus-ai-exp/verus-ai
+329:  VERUS_MODULE_ARG := --module $(MODULE)
+331:  VERUS_MODULE_ARG :=
+619:	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --l...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rln "cfg_gate\|cfg-gated\|CHEATING_DETECTED\|tcb-allowed" scripts/ /h
+[RESULT ✓] bash: scripts/verify.sh
+/home/ruize/verus-ai-exp/verus-ai/.git/logs/refs/heads/planning-phase
+/home/ruize/verus-ai-exp/verus-ai/.git/logs/HEAD
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/proving-guide/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+/home/ruize/verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Found the skills. Let me read verus-constraints, ast-consistency, and the cheating-gate logic.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n "cfg_gate\|cfg-gated\|tcb-allowed\|tcb_allowed\|CHEATING_DETECTED\|allow
+
+[THINKING] I've located the skills directory and I'm now examining the verus-constraints skill along with the cheating detection logic in verify.sh to understand how cfg_gate and tcb-allowed are used for gating.
+[RESULT ✓] bash: 470:# Count cfg-gated exec code (cheating indicator).
+472:count_cfg_gates() {
+528:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+553:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+570:        [[ $MOD_CFG_GATE -gt 0 ]] && ec...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+[RESULT ✓] view: 660.         echo "$COVERAGE_JSON" | python3 -c "import sys,json; [print(f'    - {n}') for n in json.load(sys.stdin)['unverified_fns']]"
+661.     else
+662.         # Whole-crate: too many to list inline — write to file.
+663.         COVERAGE_FILE="${LOG_DIR:-.}/verus-logs/coverage-unverified.txt"
+66...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -n "CHEATING_FOUND\|MODULE_CHEATING\|tcb" scripts/verify.sh
+
+[THINKING] I need to trace how CHEATING_FOUND gets set and check whether tcb-allowed.md plays a role in that determination.
+[RESULT ✓] bash: 508:MODULE_CHEATING_DIR=""
+511:        MODULE_CHEATING_DIR=""  # root has no separate dir; skip module-scoped
+516:            MODULE_CHEATING_DIR="$(mktemp -d)"
+517:            trap "rm -rf '$MODULE_CHEATING_DIR'" EXIT
+518:            [[ -f "$CRATE_SRC_DIR/$MOD_CHEAT_PATH.rs" ]] && cp "$CRATE_SRC_DI...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+[RESULT ✓] view: 505. }
+506. 
+507. # --- Determine module-scoped cheating dir (if MODULE is set) ---
+508. MODULE_CHEATING_DIR=""
+509. if [[ -n "$MODULE" && -n "$CRATE_SRC_DIR" ]]; then
+510.     if [[ "$MODULE" == "root" ]]; then
+511.         MODULE_CHEATING_DIR=""  # root has no separate dir; skip module-scoped
+512....
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The gate counts cheating across the whole `mm::phys` dir and doesn't consult tcb-allowed. The task's authority defines scope as the manager files. Let me check how `assume_specification` and `cfg_gate` are counted.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+
+[THINKING] The gate doesn't reference tcb-allowed.md at all—it only checks the module's own files for signs of cheating: assumptions, external bodies, admissions, trusted markers, no-decreases, and config gates. If the sum of these indicators is positive, it marks cheating as detected. For the manager module specifically, I'm looking at manager.rs, manager.spec.rs, and manager.proof.rs as the relevant files, since the physical directory doesn't actually exist.
+
+Wait, I need to reconsider the scope. The make command specifies `MODULE=mm::phys`, which means the module path is `mm/phys/` as a directory. That directory contains multiple files—frame.rs, manager.rs, mod.rs, upool.rs, kframe.rs—and the gate scans all of them together. The output I saw earlier showed the module-level breakdown with cfg-gated exec code and affected functions, which means the sum across all those files triggered the cheating flag. So the gate will report cheating for mm::phys because files like frame.rs, mod.rs, and upool.rs all have external_body declarations, even though those are listed in tcb-allowed.md. The gate doesn't consult that allowlist, so it flags them as violations regardless.
+
+But actually, the task scope is narrower than the whole directory. The verification-order target functions are specific to manager.rs—init, alloc_user_frame, check_user_watermark, and the alloc functions. So the actual scope for this phase is just the manager files (manager.rs, manager.spec.rs, manager.proof.rs), not the entire mm::phys directory. The other files like frame.rs, mod.rs, and upool.rs are separate modules with their own phases. For the phys-manager phase specifically, I only care about cheating in those manager files. Looking at what's there: 6 external_body declarations, all of which are in tcb-allowed.md, so they're allowed. There are also 3 assume_specification entries, which aren't counted by the gate since it looks for assume() macro calls, not assume_specification. And there are cfg gates in manager.rs. I need to check whether the cheating scanner actually counts assume_specification or just the assume() calls.
+[RESULT ✓] view: 470. # Count cfg-gated exec code (cheating indicator).
+471. # When MODULE is set, counts only for module files; otherwise whole crate.
+472. count_cfg_gates() {
+473.     local scan_dir="$1"
+474.     python3 -c "
+475. import re, sys
+476. from pathlib import Path
+477. 
+478. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The cfg-gate counter skips logging macros and `include!`. Let me run the actual scanners on just the manager files to get the true scoped counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "run_cheating_scan()\|get_cheating_detail()\|guardrails\|cheating" 
+
+[THINKING] I'm noticing that `count_cfg_gates` actually skips over cfg-gates targeting logging macros like `debug_assert`, `info`, `error`, `warn`, `trace`, and `debug`, which means those error and warn calls in manager.rs don't count toward the cfg gate tally. Looking at what actually does get counted there, the include! macros on lines 8 and 10 with the `verus_keep_ghost` condition are being filtered out.
+
+But then there are these `cfg_attr` attributes on lines 235, 473, and 492 that wrap `verus_spec` invariant annotations on for loops — those would normally be counted since they're not logging macros or includes, but they're really just essential ghost annotations for loop invariants, not exec code that differs between builds. The counter would still pick them up though, which is throwing off my understanding of where the actual cfg gate count of 11 is coming from versus the global count of 12.
+
+Let me just isolate the manager module files and run the scanning tools directly on them to get the exact cheating count for that scope.
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+51:  VERUS_AI_DIR           Path to verus-ai tool directory (for guardrails/tree-sitter).
+103:# Determine verification mode and source directory for cheating detection.
+266:    echo "=== Summary (pre-guardrails; verify f...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/verify.sh
+[RESULT ✓] view: 287. run_cheating_scan() {
+288.     local scan_dir="$1"
+289.     VERUS_AI_DIR="$VERUS_AI_DIR" CHEATING_DIR="$scan_dir" python3 -c '
+290. import sys, os, json
+291. sys.path.insert(0, os.environ["VERUS_AI_DIR"])
+292. from guardrails import detect_cheating
+293. from pathlib import Path
+294. 
+295. combi...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Let me run the exact scanners on just the manager files to get the scoped counts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && TMP=$(mktemp -d) && cp src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/
+
+[THINKING] The `run_cheating_scan` function counts specific keywords like assume, external_body, admit, trusted, and no_decreases, but deliberately excludes assume_specification from the count. Now I'm setting up a temporary directory with just the manager files to run both scanners and get the precise module-level numbers.
+[RESULT ✓] bash: === cheating scan ===
+{"assume": 0, "external_body": 6, "admit": 0, "trusted": 0, "no_decreases": 0}
+=== cfg gate count ===
+  cfg_gate at manager.rs:235 -> invariant
+  cfg_gate at manager.rs:473 -> invariant
+  cfg_gate at manager.rs:492 -> invariant
+TOTAL cfg_gate: 3
+<shellId: 21 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Module-scoped manager: `external_body=6` (all tcb-allowed), `cfg_gate=3` (loop-invariant `cfg_attr`s), assume/admit/trusted=0. Let me read the verus-constraints and ast-consistency skills for guidance on the loop-invariant cfg pattern.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && wc -l verus-constraints/SKILL.md ast-consistency/SKILL.md spec-desig
+
+[THINKING] Looking at the module-scoped metrics, most constraints are satisfied, but there's an issue with three cfg_gate instances—these are loop invariants marked with cfg_attr that need attention.
+
+The detector flags these as cfg-gated exec code because it sees the `invariant` target line without matching skip patterns. However, these are standard Verus loop invariant annotations that only add ghost code in the verus build; the actual exec behavior remains identical between builds. The real question is whether there's a way to write loop invariants without requiring cfg-gating, since `verus_spec` is a proc-macro that only exists under certain build conditions. The proving phase already passed, so this is the output I'm working with. Now the cheating-elimination phase is trying to reduce the cheating score, and those cfg-gated loop invariants (cfg_gate=3) are the main target to eliminate. I need to check the verus-constraints and ast-consistency skills to see if there's a way to write loop invariants without the cfg-gating, or if that pattern is actually necessary.
+[RESULT ✓] bash: 239 verus-constraints/SKILL.md
+   84 ast-consistency/SKILL.md
+  467 spec-design/SKILL.md
+  790 total
+=== cfg/loop refs in verus-constraints ===
+47:constructs are erased during normal `cargo build` via cfg-gating. Keep changes
+71:**Never cfg-gate away and duplicate exec definitions.** Adding
+72:`#[cf...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Line 117 is decisive: wrapping `#[verus_spec(...)]` in `cfg_attr(verus_keep_ghost, ...)` is redundant and wrong — these macros self-erase in non-Verus builds. The 3 cfg-gates are the eliminable cheating. Let me check how other modules in this repo write loop invariants.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== bare verus_spec invariant on loops (no cfg) ==="; grep -rn "verus
+
+[THINKING] I'm seeing that line 117 emphasizes a critical rule: Verus attributes and proof macros like `#[verus_spec(...)]` should never be wrapped in `cfg_attr(verus_keep_ghost, ...)` because these constructs are already ghost code—they erase themselves during normal builds and only activate under the `verus_keep_ghost` flag, making an extra gate redundant and incorrect. I should write them directly without the wrapper.
+
+So the three loop invariant gates currently wrapped as `#[cfg_attr(verus_keep_ghost, verus_spec(invariant ...))]` need to be converted to bare `#[verus_spec(invariant ...)]` instead. The skill says this works in both Verus and non-Verus builds because the macro erases itself automatically, though I want to verify this actually works—I'll need to test that Verus still verifies and that a non-Verus `cargo build` succeeds. Let me check if other modules in the repo use bare `#[verus_spec(invariant...)]` on loops to confirm this pattern is safe.
+[RESULT ✓] bash: === bare verus_spec invariant on loops (no cfg) ===
+src/libs/bitmap/src/lib.rs:5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+src/libs/slab/src/lib.rs:9:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+=== cfg_attr verus_s...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== bitmap lib.rs top comment ==="; sed -n '1,20p' src/libs/bitmap/sr
+[RESULT ✓] bash: === bitmap lib.rs top comment ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+// we need `proc_macro_hygiene`.
+#![cfg_attr(verus_keep_gh...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+The loop-invariant cfg_attr requires the `proc_macro_hygiene` nightly feature, which is only enabled under verus. Let me confirm the kernel crate's feature gating and re-read the relevant skill guidance.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "proc_macro_hygiene" src/kernel/src/*.rs src/kernel/src/**/*.rs 2>
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+
+[THINKING] The key issue is that applying attributes like `#[verus_spec(invariant ...)]` to statements requires the `proc_macro_hygiene` feature, which is only enabled in the verus build via `#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]`. In a non-verus build, this feature isn't available, so the attribute would fail to compile on loop statements.
+
+That's why loop invariants must be wrapped in `#[cfg_attr(verus_keep_ghost, verus_spec(...))]` — the attribute is conditionally applied only when the feature is enabled. This differs from `verus_spec` on items like functions, which can erase themselves without needing the feature. For statements, the cfg-gating is semantically required by Rust's feature system, not optional.
+
+Now I need to revisit the ast-consistency skill to understand what counts as a legitimate deviation and whether this loop-invariant pattern is pre-approved.
+[RESULT ✓] view: 85.   `#[verus_verify]` to the defining module. Never
+86.   `#[cfg(not(verus_keep_ghost))]` the original constant.
+87. 
+88. **Allowed additions:** `#[verus_spec(...)]` and `#[verus_verify]` attributes,
+89. `proof! { }` / `proof_decl! { }` / `proof_with! { }` macros, `#[verus_spec(...)]`
+90. on loops...
+[RESULT ✓] bash: src/kernel/src/kmain.rs:20:#![feature(proc_macro_hygiene)] // Verus uses this for verus_spec
+=== kernel crate root feature gates ===
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+`kmain.rs:20` enables `#![feature(proc_macro_hygiene)]` **unconditionally**, so the kernel crate supports `#[verus_spec(...)]` on loop statements in both builds. Per skill line 117, the `cfg_attr(verus_keep_ghost, verus_spec(...))` wrappers are redundant and should be written directly. Let me view exact lines and convert them.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm noticing that `proc_macro_hygiene` is unconditionally enabled in kmain.rs line 20, which means it's active for both verus and non-verus kernel builds. This suggests the cfg_attr guard on loop invariants in manager.rs might not actually be necessary for feature-gating purposes, unlike the bitmap and slab modules which properly gate it under verus_keep_ghost.
+
+According to the skill guidelines, I should write `#[verus_spec(invariant ...)]` directly on loops without wrapping them in cfg_attr. Since the macro erases itself in non-verus builds and proc_macro_hygiene is already unconditionally enabled, I can safely convert those three cfg_attr-wrapped invariants to bare `#[verus_spec(invariant ...)]` attributes in manager.rs. I should verify this works by testing the non-verus build, though the fact that function-level verus_spec attributes already exist unconditionally in the file suggests the macro handles both build modes correctly. Before making these changes, I should verify this is actually the right approach and won't break anything. The key insight is that the cfg_gate count for the manager module is currently 3, which triggers the cheating detection—I need to get it to 0. Since proc_macro_hygiene is already unconditionally enabled, removing the cfg_attr wrapper is valid and should work. The important thing to confirm is that the executable code stays identical: with bare `#[verus_spec(invariant...)]`, the macro erases in non-verus builds, leaving a plain for loop, which is the same result as before. Let me view the exact lines and make the edits, then test both the verus build and the non-verus executable build to ensure both work correctly.
+[RESULT ✓] view: 234.         #[allow(unused_variables)]
+235.         #[cfg_attr(verus_keep_ghost, verus_spec(
+236.             invariant
+237.                 g_old == old(self)@,
+238.                 g_old.wf(),
+239.                 self@.wf(),
+240.                 frames@.len() == i,
+241.                 user_addr...
+[RESULT ✓] view: 473.         #[cfg_attr(verus_keep_ghost, verus_spec(
+474.             invariant
+475.                 g_old == old(self)@,
+476.                 g_old.wf(),
+477.                 self@ == g_old,
+478.                 base_raw as int == base_addr@,
+479.                 base_raw as int + (count as int) *...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+I'll convert the three loop-invariant `cfg_attr` wrappers to direct `#[verus_spec(...)]`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm making three edits to convert the attribute syntax from `#[cfg_attr(verus_keep_ghost, verus_spec(` to the simpler `#[verus_spec(` format, starting with the first change around lines 235-245 that updates the invariant declarations. The inner content differs between these edits due to indentation and line wrapping, so I need to ensure the old_str patterns are unique to match correctly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Now let me verify the module still verifies and check the cfg_gate count dropped to 0.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "manager|cfg
