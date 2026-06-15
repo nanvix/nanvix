@@ -634,3 +634,23 @@ Actually, thinking through this more carefully — my change just restores an ex
 Turn 37
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel 2>&1 | tail -25
+[RESULT ✓] bash: 1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.25s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheati...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Full kernel verification passes (exit 0, no errors). The flagged `external_body=14`/`admit=3` are all pre-existing TCB-allowed trust boundaries and unrelated `mm::virt` admits — no regressions from my change. Let me run the complete `make verify` to confirm the ultimate goal across all crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify 2>&1 | grep -iE "Results|verified|errors|Exit code|s
+
+[THINKING] The kernel verification passed with no errors introduced by my change—the "CHEATING_DETECTED" flag comes from pre-existing external code that's already TCB-approved. I'm about to run the full verification suite across all crates to be thorough, though it'll take a bit since it compiles everything including VERUS_CRATES, but my modification is isolated to just the kernel module so I'm confident there won't be regressions.
