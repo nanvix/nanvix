@@ -474,3 +474,73 @@ Makefile
 Turn 31
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_contiguous: external_body
+    - frame.rs:1416 free: external_body
+    - frame.rs:1458 book: external_body
+    - frame.rs:1479 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - ...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Phase A verified: 0 errors, contig proof passed, init ensures work. But global shows admit=9 while only 6 are listed. Let me check the full detail and grep for all admits.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== grep admit across module ==="; grep -rn "admit(" src/kernel/src/mm/
+
+[THINKING] Phase A reduced the admits from 10 down to 6 remaining in manager.proof.rs, but the count shows 9 instead—I need to recount what I actually eliminated versus what's still there. The six admits left are lemma_manager_attached, lemma_free_count_bounded, lemma_kernel_alloc_one, lemma_kernel_alloc_contiguous, lemma_user_bulk_ok, and lemma_user_bulk_err_restored.
+
+There's a discrepancy between the detail list showing 6 admits and the global count reporting 9. Either the count tool is measuring something different, there are admits elsewhere in the codebase I haven't accounted for, or the detail list is truncated. Let me check the full detail file and grep the entire module to see where the extra admits are coming from.
+[RESULT ✓] bash: === grep admit across module ===
+src/kernel/src/mm/phys/manager.proof.rs:16:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:25:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:44:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:64:    admit();
+src/kernel/src/mm/phys/manager.proof.rs:112...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+The 6 remaining mm::phys admits: 4 are genuinely stuck (incoherent immutable-`phys_view()` model), 2 are attemptable (`free_count_bounded`, `user_bulk_ok`). The 3 mm/virt admits are a different module, out of scope. Let me attempt `free_count_bounded` first — view check_user_watermark.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I see the issue now—the 6 admits in mm::phys are separate from the 3 in mm::virt::identity_map, but the global count combines both modules since they're all part of the kernel crate. When I filtered by MODULE=mm::phys, it should only show the 6 from my module, not the 9 total.
+
+Looking at the remaining 6 admits in mm::phys, I've got a mix of stuck and attempted proofs: the manager_attached lemma is blocked on uninterp==uninterp, the free_count_bounded one I tried reordering, and three others (kernel_alloc_one, kernel_alloc_contiguous, and user_bulk_ok) are stuck because the specs don't match the implementations.
+
+I'm reconsidering whether I can move these bridging facts into external_body postconditions instead, but the kernel path lemmas are genuinely stuck—there's no way to establish a self@ transition when no external_body on that path touches self. For manager_attached specifically, I'd need check_user_watermark to take &self and work with self@ instead of phys_view().frames, but it's a static function that calls a global, so that won't work.
+
+Let me focus on the two attemptable lemmas. For free_count_bounded, I can try binding free_count early before checked_add. If I capture the free count upfront as `free as nat == phys_view().frames.free_count()`, then in the overflow branch where checked_add fails, I have `free <= usize::MAX < spec_kernel_watermark() + count`, which satisfies the error postcondition. This should work without needing the lemma at all.
+[RESULT ✓] view: 300.     /// # Parameters
+301.     ///
+302.     /// - `count`: Number of user frames the caller intends to allocate.
+303.     ///
+304.     /// # Returns
+305.     ///
+306.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+307.     ///
+308.     #[verus_spec(result...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Applying the `free_count_bounded` elimination: bind `frame::free_count()` early (pins `free_count() ≤ usize::MAX` from its `usize` type) and remove the admit lemma.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm reordering the logic to bind `free` from `frame::free_count()` first, then perform the checked addition, then compare—this removes the need for the `lemma_free_count_bounded` lemma entirely. The function makes the same number of calls to `frame::free_count()` in the success path, so it's semantically equivalent. Now I'm rewriting the function body to reflect this change. The reorder is the cleanest approach, so I'll move forward with it. For `user_bulk_ok`, proving it via loop invariants would reduce the admit count by one, but `alloc_many_user_frames` still can't fully verify because it depends on two stuck admits that are genuinely impossible to resolve without external changes. Since the directive requires eliminating all admits and I can't reach zero anyway due to those four stuck ones, the effort to prove `user_bulk_ok` alone doesn't move the needle on the overall phase failure. The directive is clear that I need to eliminate as many admits as genuinely possible, and any remaining one still fails the phase. So I should prioritize free_count_bounded since it's high-confidence and achievable, then reassess user_bulk_ok by examining whether I can inline the loop invariants that already exist in the function rather than keeping it as a separate lemma.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Verifying the `free_count_bounded` elimination before assessing the remaining four.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -20
+
+[THINKING] Let me run the module verification to confirm that eliminating free_count_bounded works correctly, which should reduce the admits in mm::phys from 6 down to 5 (manager_attached, kernel_alloc_one, kernel_alloc_contiguous, user_bulk_ok, and user_bulk_err_restored).

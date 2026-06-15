@@ -315,9 +315,13 @@ impl PhysMemoryManager {
             },
     )]
     fn check_user_watermark(count: usize) -> Result<(), Error> {
-        proof! {
-            lemma_free_count_bounded();
-        }
+        // VERUS DEVIATION (Verus-required, semantics-preserving): bind the current free-frame
+        // count *before* the watermark-threshold computation. `frame::free_count()` is a pure read
+        // whose `usize` result pins `phys_view().frames.free_count() <= usize::MAX`; the
+        // watermark-overflow error path needs that bound to conclude the free count is below the
+        // (overflowing) `watermark + count` threshold. Same call, same result; on the rare
+        // overflow path it is now evaluated unconditionally (one extra O(1) bitmap read).
+        let free: usize = frame::free_count();
         let watermark_threshold: usize = kernel_watermark()
             .checked_add(count)
             .ok_or_else(|| {
@@ -326,7 +330,7 @@ impl PhysMemoryManager {
                 error!("{reason}");
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
-        if frame::free_count() < watermark_threshold {
+        if free < watermark_threshold {
             let reason: &str = "would breach kernel watermark";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
