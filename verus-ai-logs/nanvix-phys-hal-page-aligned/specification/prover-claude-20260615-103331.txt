@@ -1685,3 +1685,70 @@ Confirmed — the inherent impl needs `#[verus_verify]`. Adding it:
 Turn 95
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
+[RESULT ✓] bash: ⚠️  admit: 2
+    ⚠️  cfg-gated exec code: 1
+  Affected functions:
+    - page.rs:57 from_address: admit
+    - page.rs:86 into_raw_value: admit
+  Global: assume=0 external_body=23 admit=2 trusted=0 cfg_gate=9
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage =...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iB1 -A12 "error\[E\|error:" /tmp/verify3.log | head -60
+[RESULT ✓] bash: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `kernel` (bin "kernel")
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name kernel --edition=2021 src/kernel/src/kmain.rs --...
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iB1 -A14 "panic\|thread 'main'\|error: internal\|unsupported\|note:" /tmp/verify3.log |
+[RESULT ✓] bash: thread 'rustc' (3041116) panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `kernel` (bin "kernel")
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/tool...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+A Verus internal panic (`vir/src/traits.rs:511 assertion failed`) — marking the generic `Address` trait impl as verified is a hard Verus limitation. This is exactly why tcb-allowed.md says trait methods use `assume_specification` instead.
+
+The key insight: now that `View` is **unconditional** (`T: Address`), I can write `assume_specification` with the *exact* `T: Address` bound AND still reference `@` — which failed before only because of the extra `View` bound. Reverting the trait-impl annotations and using `assume_specification` for `into_raw_value`:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm hitting a Verus internal panic in the trait implementation code—specifically when marking a generic `impl Address for PageAligned<T>` as verified. The issue seems to stem from the `Address` trait itself being marked for verification but having unspecified methods, which causes a conflict when a generic implementation tries to verify those same methods.
+
+This aligns with the documented constraint that trait method contracts can't be specified in-place without verifying the entire trait impl block, which apparently triggers this internal Verus limitation. The established pattern in the codebase (like in phys.rs) confirms that `Address` trait methods typically remain unspecced. So I need to either leave `into_raw_value` unspecced or remove the verification markers from the trait impl entirely, while keeping the inherent `from_address` method specced separately since that works without hitting this panic.
+
+Actually, there's a potential workaround: I can use `assume_specification` for `into_raw_value` with the exact same bounds as the external function. Since `View` is now unconditional for `T: Address`, I can write the assumption with just `<T: Address>` bounds and still reference the `@` notation. This avoids the trait impl verification path entirely while still providing a contract for the method.
+
+But I need to check whether `assume_specification` is allowed here — it's a trust boundary like `external_body`, and the task restricts those to tcb-allowed functions. The kframe precedent uses `assume_specification` for `PageAligned::from_raw_value` (also in the same crate), and that's documented in tcb-allowed.md, so it seems this pattern is accepted. The question is whether I can both define `into_raw_value` in page.rs and assume its specification, or if that creates a conflict. So the key insight is that `assume_specification` is the governed mechanism for trait methods since I can't use `external_body` on them — I'd remove the `#[verus_spec]` and `#[verus_verify]` annotations from the trait impl and instead declare the spec via `assume_specification` in page.spec.rs with the postcondition that the result equals the address. For `from_address`, since it's an inherent method rather than a trait method, I can keep it as `#[verus_spec]` with the admit body, or move it to `assume_specification` for consistency — I need to decide which approach is cleaner.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+Now add the `assume_specification` for `into_raw_value` to page.spec.rs:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+
+[THINKING] I need to look at the spec file instead—the spec_addr definition is in page.spec.rs, not page.rs.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp

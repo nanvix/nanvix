@@ -73,22 +73,8 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
-#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
-    #[verus_spec(result =>
-        ensures
-            // Pure newtype identity projection: the returned raw `usize` is
-            // exactly the abstract address. In-page offset math and page walking
-            // performed by callers require an identity projection (no
-            // masking/shifting).
-            result as int == self@,
-    )]
     fn into_raw_value(self) -> usize {
-        proof! {
-            // Discharged in the proving phase once `Address::into_raw_value`
-            // carries its newtype-identity spec.
-            admit();
-        }
         self.0.into_raw_value()
     }
 

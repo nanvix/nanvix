@@ -30,4 +30,28 @@ verus! {
 // Ghost projection of any address to its abstract value (`int`).
 pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int;
 
+// `<PageAligned<T> as Address>::into_raw_value` is a method of the external
+// `sys::mm::Address` trait. A trait-impl method cannot be body-verified in place
+// without marking the whole `impl Address for PageAligned<T>` verified, which
+// pulls every sibling method into scope and currently triggers a Verus
+// front-end limitation (`vir/src/traits.rs` assertion). It is therefore specced
+// here with `assume_specification`, mirroring the trust boundary the codebase
+// already draws for `<PageAligned<T> as Address>::from_raw_value`
+// (`kframe.spec.rs`) and `::arch::mem::PAGE_SIZE` (`frame.rs`). The bound is
+// exactly `T: Address` (matching the external signature), and the `@`-based
+// contract is expressible because `PageAligned<T>: View` now holds for every
+// `T: Address`. The real proof obligation is the inner
+// `<T as Address>::into_raw_value` newtype identity, discharged when the
+// `Address` trait itself is verified.
+//
+// Pure newtype identity projection: the returned raw `usize` is exactly the
+// abstract address. Callers' in-page offset math and page walking require an
+// identity projection (no masking/shifting).
+pub assume_specification<T: Address> [
+    <PageAligned<T> as Address>::into_raw_value
+](addr: PageAligned<T>) -> (result: usize)
+    ensures
+        result as int == addr@,
+;
+
 } // verus!
