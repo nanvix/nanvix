@@ -117,3 +117,56 @@ Turn 7
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error|ve
+[RESULT ✓] bash: verification results:: 9 verified, 0 errors (partial verification with `--verify-*`)
+  9 verified
+  0 errors
+  Exit code : 0
+    ⚠️  admit: 3
+    - identity_map.rs:533 ensure_pt: admit
+    - identity_map.rs:627 ensure_pte: admit
+    - identity_map.rs:718 identity_map_page: admit
+  Global: assume=0 e...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+5 lemmas proven (in-scope admit 8→3). Now the 3 exec functions. Let me genuinely attempt each and capture exact errors. First let me check key facts (FRAME_SIZE vs PAGE_SIZE).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "PAGE_SIZE\|FRAME_SIZE\|FRAME_SHIFT\|PAGE_SHIFT\|PGTAB" src/libs/arch/src/x8
+
+[THINKING] The lemmas are now passing with the admit count reduced significantly. Three exec functions still need to be verified. I'm refocusing on the core issue: `identity_map_view()` is a parameter-free uninterpreted spec function, and both the pre-state and post-state in the exec function ensures reference this same function, which creates the fundamental constraint I need to work through.
+
+For `ensure_pte`, the postcondition requires that `identity_map_view().mapped` contains a specific page, but since it's a constant, this must follow from the invariant `identity_map_view().inv()` — which doesn't actually guarantee membership of any particular page. The reviewer suggests threading a page-table token transition, but there's no token parameter in the signature, and changing it would break the callers. I'm realizing this might be a case where the spec design itself requires infrastructure I haven't implemented yet, but the task is clear: eliminate all admits without changing signatures. Let me attempt each exec function directly and see what the exact errors reveal. I need to actually attempt the proofs for `ensure_pt` to see where they fail. The invariant preservation is straightforward since `identity_map_view()` is constant, but the alignment requirement depends on establishing facts about the bump allocator that I don't have access to. Let me work through the proof attempt and document exactly where it breaks down.
+[RESULT ✓] bash: 39:/// Log2 PAGE_SIZE
+42:pub const PAGE_SHIFT: usize = 12;
+50:pub const PAGE_SIZE: usize = 4096;
+51:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+58:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+63:/// Log2 [`PGTAB_SIZE`].
+66:pub const PGTAB_SHIFT: usize = 22;
+74:pub const PGTAB_SIZE: ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+FRAME_SIZE = PAGE_SIZE (alias). Now let me empirically attempt all three exec functions. First, remove all three admits to capture the full error set.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -i 's/    proof! { admit(); }\n//' src/kernel/src/mm/virt/identity_map.rs; grep -
+
+[THINKING] I'm checking whether these constants are visible to Verus and whether it can verify that FRAME_SIZE equals PAGE_SIZE. Since they're plain pub const declarations, Verus needs to evaluate both to establish the equivalence, and I'm looking at how the frame_address function uses FRAME_SIZE in its specification compared to how PAGE_SIZE is defined in the architecture module.
+
+Rather than getting bogged down in the constant visibility question, I should just remove all three admits and run the proof to see what exact errors surface. That'll give me a clearer picture of what's actually provable versus what's hitting fundamental blockers.
+[RESULT ✓] bash: 534:    proof! { admit(); }
+632:    proof! { admit(); }
+719:    proof! { admit(); }
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && perl -0pi -e 's/\{\n    proof! \{ admit\(\); \}\n/\{\n/g' src/kernel/src/mm/virt/iden
+[RESULT ✓] bash: all removed
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|-
