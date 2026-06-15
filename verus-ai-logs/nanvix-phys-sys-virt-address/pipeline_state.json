@@ -2,9 +2,11 @@
   "module_name": "sys-virt-address",
   "log_name": "nanvix-phys-sys-virt-address",
   "source_path": "/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "447bd232c8cb37b4040751addaa8377a0af67d50"
   },
   "phase_start_shas": {
-    "proving": "c738ce2c19567660c01b06ab7fa15a7b427abd12"
+    "proving": "c738ce2c19567660c01b06ab7fa15a7b427abd12",
+    "cheating-elimination": "b841740f913664dba113e89a88add7ab317dfa63"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "447bd232c8cb37b4040751addaa8377a0af67d50",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "b841740f913664dba113e89a88add7ab317dfa63",
       "rollback_iter": 0
     }
   ],
