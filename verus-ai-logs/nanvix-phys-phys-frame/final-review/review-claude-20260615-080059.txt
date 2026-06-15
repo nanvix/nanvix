@@ -1,0 +1,325 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T08:00:59.419343
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are performing a comprehensive final review of the entire verification
+effort for phys-frame. All phases (caller analysis → view design →
+specification → proving → cheating elimination → polish) have completed.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
+
+
+Source file: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+Spec file:  /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+Caller analysis: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+View design: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+Verus command: make verify-kernel
+Base branch: verus-ai-prove
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: spec quality and classification
+- **verus-constraints** — MUST follow: forbidden patterns
+- **ast-consistency** — MUST follow: AST consistency checks
+
+== SUB-AGENT POLICY ==
+
+Sub-agents are allowed. Use ONLY these models:
+  - **claude-opus-4.8** (preferred default) — for all tasks.
+  - **gpt-5.3-codex** — for all tasks.
+When diversity is needed (e.g. independent parallel analysis), use a different model per sub-agent.
+
+== TASK ==
+
+Use **2 sub-agents** (one per model from the sub-agent policy) to independently
+review. Each sub-agent should cover ALL of the following:
+
+1. **Spec quality** — are external-top specs (API contracts) correct, complete,
+   understandable? Follow **spec-design** skill criteria.
+2. **Caller coverage** — does every caller expectation from /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+   have a corresponding spec? Are any important properties missing?
+3. **Proof completeness** — count remaining `admit()` and `external_body`.
+   Any remaining admit() is a BLOCKER. Any external_body not in /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+   is a BLOCKER — they must all be eliminated (the TCB is fixed in advance; no
+   new trust boundaries may be introduced).
+4. **TCB compliance** — every `external_body` must already be listed in the
+   pre-approved /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md. Do NOT justify or record new trust
+   boundaries. Any external_body not in the allowed list is a BLOCKER.
+5. **AST consistency** — run the AST consistency checks per the **ast-consistency** skill.
+   Check all `// VERUS REWRITE` comments for semantic equivalence. Any MISMATCH is a blocker.
+6. **Verification** — run `make verify-kernel` to confirm 0 errors.
+7. **Guardrails compliance** — count ALL cheating dimensions:
+   `admit`, `assume`, `external_body`, `assume_specification`, `cfg-gated exec`.
+   Report exact counts. Any `admit > 0` or `assume > 0` is a **BLOCKER**.
+   `external_body` not listed in /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md is a **BLOCKER** — every
+   external_body must either be eliminated or already be in the pre-approved TCB.
+8. **Bug reconciliation** — read /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/bugs.md and reconcile against the final
+   code state. For each entry: is it still valid? Was it fixed? Were any bugs
+   discovered during proving/integrity that were not recorded? Ensure every
+   surviving verification failure that was NOT resolved is classified per the
+   **bug-reporting** skill.
+
+Save each sub-agent's raw review next to /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.md with the model name
+appended (e.g., `final_review.claude.md`). Then consolidate into a single review.
+
+== OUTPUT ==
+
+Write to /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.md:
+```markdown
+# Final Comprehensive Review: phys-frame
+
+## Checklist
+### Caller Analysis
+- [ ] All pub functions have callers searched (tool-verified, not manual claim)
+- [ ] Caller expectations (success + failure) documented for each pub function
+- [ ] Abstract resource identified
+- [ ] Pre-existing specs assessed (if any exist from upstream verification)
+
+### View Design
+- [ ] Every field passes the substitution test (survives a complete rewrite)
+- [ ] All caller-observable state represented (no missing fields)
+- [ ] No implementation-specific fields (only caller-observable state)
+- [ ] inv() encodes real constraints (not trivially true)
+- [ ] Mathematical types used (int/Seq/Set/Map; exception: addresses keep usize)
+
+### Specification
+- [ ] Every in-scope exec function has requires/ensures (run `fn_coverage.py`)
+- [ ] Caller coverage: read /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md, verify each caller expectation has corresponding requires/ensures
+- [ ] View consistency: read /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/view_design.md, verify specs reference View fields and maintain inv()
+- [ ] No tautological ensures (e.g., `Err(_) => true`)
+- [ ] No subsumed ensures (derivable from inv() + other ensures)
+- [ ] Error paths have meaningful ensures (match style: Ok => ..., Err => ...)
+- [ ] No assume_specification for workspace-internal code
+- [ ] vstd searched before any assume_specification
+- [ ] Specs written for the caller (usable directly in caller proofs)
+- [ ] Trait obligations satisfied (specs match trait-level semantic contracts)
+- [ ] Spec completeness (advisory): run **spec-completeness** skill; intentional nondeterminism acceptable if it matches caller expectations
+- [ ] Loop invariants: every loop has an `invariant` clause (Verus requires it); define complex invariants as `spec fn` in spec/proof files
+- [ ] No cheating on module's own functions: grep for `admit`, `assume`, `external_body`, `trusted` and report counts. `assume_specification` on external dependencies temporarily allowed
+- [ ] No specs weakened: run `python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs --before HEAD` and review the output. Original guarantees (ensures, requires, spec function contracts) must not be weakened. If a spec is incorrect, replace it with an equally strong (not weaker) correct spec
+- [ ] Bug awareness: check for fundamentally incorrect code, record in /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+- [ ] Cross-module regression: run `make verify` — all verified modules must pass, not just current
+- [ ] Verification: run `make verify-kernel` and `make build`, report pass/fail and error count
+
+### Proving
+- [ ] No specs weakened: run `python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs --before HEAD` and review the output. Original guarantees must not be weakened. If a spec is incorrect, replace it with an equally strong (not weaker) correct spec (see **spec-drift-check** skill)
+- [ ] Zero remaining admit()
+- [ ] Zero external_body unless the function is listed in `/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md` — HARD RULE (see verus-constraints)
+- [ ] Zero assume/assume_specification (only external-bottom trust boundaries for std/external crates allowed)
+- [ ] No cfg-gated exec code (branches, expressions, match arms)
+- [ ] Cheating audit: count `admit`, `external_body`, `assume`, cfg-gated exec code — report exact counts and locations
+- [ ] Any claimed Verus limitation has an **isolated** reproducer for the specific construct — not just the full failing expression
+- [ ] Exec rewrites are minimal and semantically equivalent; check `// VERUS REWRITE` comments
+- [ ] Cross-module regression: run `make verify` — all verified modules must pass, not just current
+- [ ] Verification: run `make verify-kernel` and `make build` — 0 errors, 0 warnings
+
+### Cheating Elimination
+- [ ] Zero admit() remaining
+- [ ] Zero assume() remaining
+- [ ] Zero trusted functions
+- [ ] Zero exec_allows_no_decreases_clause
+- [ ] Zero cfg-gated exec code (only imports/derives/debug_assert/logging allowed)
+- [ ] Zero external_body unless the function is listed in `/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md` — any unlisted external_body is a blocker
+- [ ] AST consistency: zero mismatches (run **ast-consistency** skill; only semantically-equivalent rewrites for verified Verus limitations)
+- [ ] All exec rewrites have VERUS REWRITE comment and minimal reproducer
+- [ ] For each surviving external_body: confirm it is listed in `/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md`; if not, it must be eliminated
+- [ ] No specs weakened: run `python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs --before HEAD` and review — original guarantees must not be weakened (see **spec-drift-check** skill)
+- [ ] Cross-module regression: run `make verify` — all verified modules must pass
+- [ ] Verification: run `make verify-kernel` and `make build` — 0 errors, 0 warnings
+
+### Bug Recording
+- [ ] bugs.md exists if bugs were found (no file needed if no bugs)
+- [ ] Each bug is a real code defect (logic error, safety violation, incorrect behavior) — not a verification limitation or missing spec
+- [ ] Each bug entry has: What / Why / How Verus Helped / Severity / Suggested Fix
+- [ ] No external_body used to mask a code defect
+- [ ] Bug entries include provenance (which phase discovered it)
+
+## Spec Quality
+- [assessment of public API specs: correctness, completeness, readability]
+
+## Caller Coverage
+- Covered: N / Total
+- Missing: [list uncovered caller expectations]
+
+## Proof Completeness
+- Remaining admit(): N [list locations — each is a BLOCKER]
+- Remaining external_body not in /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md: N [list — each is a BLOCKER]
+
+## TCB Compliance
+- All external_body listed in /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md: YES / NO [list any not in the approved TCB — each is a BLOCKER]
+
+## Guardrails Compliance
+- admit: N, assume: N, external_body: N, assume_specification: N, cfg-gated exec: N
+
+## AST Consistency
+- AST check: PASS / FAIL
+
+## Verification
+- verus: PASS / FAIL
+
+## Bug Summary
+- Total bugs recorded: N
+- True Bugs: N [list each with severity]
+
+## Issues (highest priority first)
+- ...
+
+## Result: PASS / FAIL
+```
+
+== RESULT ==
+
+Be strict: PASS only if ALL checklist items are checked. Any unchecked item is FAIL.
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by exploring the project state and the key files before launching the review sub-agents.
+[TOOL] report_intent: Gathering project state
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git branch --show-current && git log --oneline -5 && echo "---TCB---" && cat verus-ai
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-phys-frame/ && echo "---final-review dir---" && ls -
+
+[THINKING] I'll start by exploring the project structure to get a sense of what we're working with.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: total 172
+drwxrwxr-x 1 ruize ruize   490 Jun 15 08:00 .
+drwxrwxr-x 1 ruize ruize  1788 Jun 14 12:07 ..
+-rw-rw-r-- 1 ruize ruize 24780 Jun 15 04:45 body_removed_source.rs
+-rw-rw-r-- 1 ruize ruize  9649 Jun 15 07:24 bugs.md
+drwxrwxr-x 1 ruize ruize   136 Jun 14 03:30 caller-analysis
+-rw-rw-r-- 1 ruize...
+[RESULT ✓] bash: verus-ai-prove
+0e9ae3fb5 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=16 external_body=19 cfg_gate=19)
+614164d58 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, admit=1 external_body=3 cfg_gate=4)
+778b8bc1a [verus] verify...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== frame.rs ===" && grep -nE "admit\(|assume\(|assume_specification|external_b
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cfg gate exec in frame.rs ===" && grep -nE "cfg\(" src/kernel/src/mm/phys/f
+
+[THINKING] I need to examine the key files like frame.rs, spec, and proof, while also checking the cheating counts and reviewing the existing final-review files to understand the relevant skills.
+[RESULT ✓] bash: === frame.rs ===
+1401:#[verus_verify(external_body)]
+1430:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+1435:#[verus_verify(external_body)]
+1489:// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+1491:#[verus_veri...
+[RESULT ✓] bash: === cfg gate exec in frame.rs ===
+src/kernel/src/mm/phys/frame.rs:49:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:52:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:167:                #[cfg(not(verus_keep_ghost))]
+src/kernel/src/mm/phys/frame.rs:186:        #[cfg(not(verus_keep...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for ln in 1401 1435 1491 1519 1548 1564 1603 1622 1643 1662; do echo "=== line $ln ==
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' verus-ai-logs/tcb-allowed.md | tail -40; echo "=== full tcb grep frame
+
+[THINKING] I'm scanning through frame.rs to locate all the `external_body` instances and map them to their containing functions, then cross-referencing against the TCB to understand which target functions are affected. The verification-order target functions I need to focus on are the free functions.
+[RESULT ✓] bash: `bump_allocator::alloc` (`usize as *mut`) and `frame::instance`. See
+  `nanvix-phys-arch-paging-table/verus-unsupported.md`. **The function is not contract-free:** it
+  carries a full `#[verus_spec]` pinned to the global page-table-memory ghost — `requires index@ <
+  PAGE_TABLE_LENGTH`, `ensures res...
+[RESULT ✓] bash: === line 1401 ===
+#[verus_verify(external_body)]
+#[verus_spec(r =>
+    ensures
+        (*r).inv(),
+=== line 1435 ===
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        match result {
+=== line 1491 ===
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        ma...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "pub fn |fn " src/kernel/src/mm/phys/frame.rs | awk -F: '$1>=1400 && $1<=170
+
+[THINKING] I'm checking the tcb-allowed.md file to verify that all the external_body free functions listed in frame.rs are properly documented in the TCB list. Looking at lines 106-139 in the frame.rs section, I need to confirm which functions like alloc, alloc_contiguous, and free_count are included.
+
+Now I'm identifying the exact external_body functions by their line numbers in frame.rs—there are 10 total across lines 1401, 1435, 1491, 1519, 1548, 1564, 1603, 1622, 1643, and 1662—and I need to match each one with its function name to ensure complete coverage.
+[RESULT ✓] bash: 1408:fn instance() -> &'static mut Inner {
+1446:pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
+1502:pub(super) fn alloc() -> Result<FrameAddress, Error> {
+1532:pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
+1553:pub(super) fn free_count() -> usize {
+1...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+All 10 `external_body` in frame.rs map to TCB-listed functions (instance, init, alloc, alloc_contiguous, free_count, free, book, alloc_range, share, refcount); `is_covered` is verified in-body. Let me verify the assume_specification status, check scripts, and look at the existing review artifact.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== actual assume_specification (non-comment) in spec.rs ==="; grep -nE "^[^/]*
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && head -60 verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+
+[THINKING] I'm checking which external_body functions in frame.rs are properly defined in the TCB, going through each one from line 1408 onwards—instance, alloc, alloc_contiguous, free_count, and free all check out, but now I need to verify whether is_covered at line 1593 is actually in the TCB or if I'm missing something. So is_covered at line 1593 doesn't have the external_body attribute—it's verified inline instead. That means all ten functions marked with external_body (instance, init, alloc, alloc_contiguous, free_count, free, book, alloc_range, share, refcount) are accounted for in the TCB list. No assume_specification statements appear in the actual frame.spec.rs code, only in comments. Now I need to check the existing review file to see if it's leftover from a partial run, then launch the two sub-agents to generate the final reviews and save them properly.
+[RESULT ✓] bash: # Bugs / Suspicious code — `mm::phys::frame`
+
+## [open] `Inner::alloc_range`: possible off-by-one between body and spec
+
+- Body (frame.rs:588-589, 598, 626):
+  - `start_frame_number = region.start().into_frame_number().into_raw_value()`
+  - `end_frame_number = start_frame_number + region.size() / me...
+[RESULT ✓] bash: === actual assume_specification (non-comment) in spec.rs ===
+=== scripts present ===
+fn_coverage.py
+spec_drift.py
+=== existing review head ===
+=== Copilot Session ===
+Timestamp: 2026-06-15T08:00:59.419343
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --outp...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Good context. Now let me run the baseline verification and read the rest of bugs.md / caller analysis in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '60,200p' verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+
+[THINKING] I see there's an existing review file from a previous Copilot session, but I need to proceed with launching my own sub-agents—one using Claude Opus 4.8 and another with GPT 5.3 Codex—to generate fresh reviews that I'll then consolidate. First, let me run the kernel verification myself to establish a baseline before spinning up the agents.
+[RESULT ✓] bash: all in-range frames). The existing downstream guards then reject the out-of-range top frame
+cleanly with `Err`/`false`, matching each method's `Err`/coverage postcondition.
+
+**Auto-Fixed**: Yes — replaced `X.into_frame_number().into_raw_value()` with
+`X.into_raw_value() / mem::FRAME_SIZE` at the six...
