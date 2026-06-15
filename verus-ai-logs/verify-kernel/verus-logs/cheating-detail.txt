@@ -1,6 +1,7 @@
     - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
     - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
     - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - hal/mem/types/region.rs:219 start: admit
     - mm/phys/frame.rs:137 alloc: external_body
     - mm/phys/frame.rs:210 alloc_contiguous: external_body
     - mm/phys/frame.rs:290 free: external_body

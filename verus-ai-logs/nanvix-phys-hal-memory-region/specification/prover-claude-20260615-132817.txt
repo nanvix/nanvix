@@ -752,3 +752,24 @@ Now let me run verification to see the result:
 [THINKING] I need to figure out whether `#[verus_spec]` alone is sufficient for verification or if I also need `#[verus_verify]` on the impl blocks. Based on the syntax documentation, `#[verus_spec]` by itself marks functions for verification without requiring additional specs.
 
 Looking at page.rs, the impl block has `#[verus_verify]` on line 38, but I'm not sure if that's necessary for region.rs. Let me just run the verifier and see what happens.
+[RESULT ✓] bash: error: postcondition not satisfied
+217 |             crate::hal::mem::spec_addr(&result) == self@.start,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+verification results:: 4 verified, 1 errors (partial verification with `--verify-*`)
+error: could no...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+4 verified, 1 error. The `MemoryRegion::start` postcondition fails because Verus has no spec that `T::clone` preserves the address (a proving-phase concern — `Clone` for these newtypes is identity). I'll add an `admit()` placeholder per the spec-phase workflow.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] I'm looking at the verification results: four checks passed, but there's one failing on the `MemoryRegion::start` method at line 217. The issue is that Verus can't prove the clone operation preserves the `spec_addr` property—it doesn't automatically know that cloning maintains the specification address. The other three verifications went through because they either check the size properties or delegate to `MemoryRegion::start` with a spec that directly relates the result back to the original address.
+
+For the clone problem, I have a couple of options. I could add a `proof! { admit(); }` block as a placeholder, which is allowed during the specification phase and will be filled in during proving. Alternatively, I could try to provide a clone specification for the generic type, but that gets messy since there's no existing spec for `Clone::clone` on the address types—they're newtypes where clone is just identity. The cleanest approach is to use the admit placeholder, since this is a real proof gap that belongs to the proving phase. I'll add the proof block to `MemoryRegion::start`'s body. I'm realizing that `MemoryRegion::start` genuinely needs the `admit()` placeholder since there's no default clone spec in Verus to satisfy the faithful-read guarantee. The `TruncatedMemoryRegion::start` is already verified because it uses the spec rather than the body, so only this one function body needs the admission. Let me add `proof!{admit();}` to mark this as a proving-phase concern.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|warning|

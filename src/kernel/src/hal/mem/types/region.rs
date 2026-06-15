@@ -217,6 +217,11 @@ impl<T: Address> MemoryRegion<T> {
             crate::hal::mem::spec_addr(&result) == self@.start,
     )]
     pub fn start(&self) -> T {
+        // The `Address: Clone` impl is value-preserving (newtype identity), but
+        // no clone spec is in scope yet, so `spec_addr(&clone) == spec_addr(&orig)`
+        // is not derivable here. Discharged in the proving phase (clone spec on
+        // the `Address` family); `admit()` is the specification-phase placeholder.
+        proof! { admit(); }
         self.start.clone()
     }
 
