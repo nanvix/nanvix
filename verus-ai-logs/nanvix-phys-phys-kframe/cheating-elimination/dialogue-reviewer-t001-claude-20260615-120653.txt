@@ -266,3 +266,133 @@ __pycac...
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys::kframe 2>&1 | tail -40
+[RESULT ✓] bash: (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn 'fn identity_map_page' src/kernel/src/mm/virt/ 2>/dev/null; echo "
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null 
+
+[THINKING] Looking at the module-scoped verification results for mm::phys::kframe, there are no integrity violations detected, though the coverage shows only 3 out of 7 executable functions have contracts defined. The global metrics span across the entire kernel rather than being isolated to this module.
+
+The four unverified functions—map_frame, clear, deref, and deref_mut—are handled differently: clear, deref, and deref_mut exist outside the Verus verification boundary entirely (they lack the #[verus_verify] annotation), while map_frame carries an assume_specification in the spec file. Interestingly, the tooling doesn't flag the assume_specification as a trusted function, so the module reports zero trusted functions and passes the cheating detection check.
+
+But here's the real issue: even though the tool counts it as clean, the assume_specification on map_frame is fundamentally a trusted, unverified contract. The refactoring moved trust from KernelFrame::new (which was external_body in tcb-allowed) into map_frame's assume_specification—a legitimate TCB-shrinking technique, but only if the new trusted item gets documented. Since map_frame isn't listed in tcb-allowed.md, this violates the tracking requirement that every surviving trusted contract must be explicitly recorded. The real issue is that tcb-allowed.md is now stale — it still lists `KernelFrame::new` as an external_body function that's been eliminated, but doesn't list the new `map_frame` assume_specification that replaced it. So I have a clear failure: the trusted contract inventory doesn't match the actual code, which violates the checklist requirement for consistency. The original `new` function had a weaker spec with just `ensures Ok(kf) => kf@ == base@`, but the verified version strengthens it to also require `kf.inv()`, which is fine. The real blocker is that `map_frame` uses `assume_specification` but isn't listed in tcb-allowed.md—every other module documents their trusted contracts there, so this is a genuine gap. I'm wondering if `map_frame` could be eliminated entirely, but the cross-module limitation with `identity_map_page`'s precondition seems to justify the trust; it just needs to be formally documented. I need to verify the actual signature of identity_map_page to ground my review in concrete evidence rather than assumptions about what the cross-module limitation might be.
+[RESULT ✓] bash: === full admit/trusted lines ===
+    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - mm/phys/manager.proof.rs:153 lemma_user_bulk_err_restored: adm...
+[RESULT ✓] bash: src/kernel/src/mm/virt/identity_map.rs:718:pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+--- spec ---
+18:    /// `identity_map_page` is a successful no-op, so this flag selects which transition applies.
+76:    /// `mapped`. This is the headline resou...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '700,740p' src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] The seven admit instances are scattered across other modules like manager.proof.rs and identity_map.rs, so they're outside the scope of this kframe review. Now I need to verify the identity_map_page signature and its cross-module preconditions.
+[RESULT ✓] bash: identity_map_view().inv(),
+    ensures
+        identity_map_view().inv(),
+        match result {
+            // The page containing `phys_addr` is reachable at its own physical address. After init
+            // this means it is present (writable, supervisor) in the kernel page directory; before
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn 'VERUS REWRITE\|REWRITE\|reproducer\|verus-unsupported' src/kernel
+
+[THINKING] I'm realizing that `identity_map_page` requires `identity_map_view().inv()` as a global invariant in the mm::virt module, which means calling it from a verified mm::phys function would need to discharge that invariant — something mm::phys can't establish. This makes map_frame a justified trusted boundary, but it absolutely needs to be documented in tcb-allowed.md. Though I'm wondering if `new` could instead call `identity_map_page` directly with just an assume_specification on the cross-module call.
+
+Actually, the trusted boundary is definitely at map_frame. Either way, there's a trusted contract required. The current design seals it there with an empty assume_specification, which is a deliberate choice. My job as reviewer is to track where trust lives, not redesign it.
+
+So the verdict is clear: `KernelFrame::map_frame` has an assume_specification that isn't listed in tcb-allowed.md, and the tcb-allowed entry for `KernelFrame::new` is now stale since new is fully verified. This is a failure on the trusted functions checklist — the assume_specification makes map_frame a trusted function that needs proper documentation.
+
+The remaining checklist items need attention too. The placeholder commands for spec-drift and full regression weren't substituted, so I'll note those as tooling gaps but focus the actionable blocker on the map_frame issue. I should write up the driver doc with the full checklist walk and a concrete fix request, then check if there are any VERUS REWRITE comments I've missed.
+[RESULT ✓] bash: exit=1
+--- check for kframe verus-unsupported doc ---
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verification_todo.md
+view-design
+view_design.m...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -8 -- src/kernel/src/mm/phys/kframe.rs src/kernel/src/mm/
+
+[THINKING] I need to check the cheating-elimination directory to see if there's a prior turn, verify whether tcb-allowed needs updating, and understand what the original state of `new` was before this phase. Let me also look at the git diff for kframe.rs and spec.rs to see what changed during the cheating-elimination process.
+[RESULT ✓] bash: cf2b02367 [verus] verify PASS: kernel::mm::phys::kframe (3 verified, 0 errors)
+4602cbfc0 [verus] verify FAIL: kernel::mm::phys::kframe (0 verified, compilation/setup error (verus did not run))
+c2b1aab67 [verus] verify PASS (cheating detected): kernel::mm::phys (85 verified, 0 errors, admit=7 externa...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All evidence gathered. The kframe module verifies (exit 0, tool reports "CLEAN"), but a strict read finds a trusted contract that is **not tracked** in the TCB list. Writing the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && mkdir -p verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogu
+
+[THINKING] I've found the smoking gun: the `assume_specification[ KernelFrame::map_frame ]` was introduced to replace the old `external_body` mechanism on `new`, but the tcb-allowed.md documentation was never updated to reflect this change, leaving the stale entry for `new` still sitting there. Now I have enough to make my final determination and document the findings.
+
+Going through the verification checklist for mm::phys::kframe, most items pass cleanly—no admits, no assumes, no decreases clauses, no cfg-gated exec code—but item 3 is a hard fail: there's a trusted contract on `map_frame` that isn't tracked in tcb-allowed.md. Item 9 compounds this: the surviving trusted contract for `map_frame` isn't documented, and the stale `KernelFrame::new` entry needs to be removed or updated. The refactoring from `new` to `map_frame` also lacks a VERUS REWRITE comment and minimal reproducer, though that's secondary to the core TCB tracking failure. I'll defer on AST consistency since I don't have the tooling, and I can't fully verify spec-drift without deeper analysis.
+
+The actionable fix is path (B): add `KernelFrame::map_frame` to tcb-allowed.md with a clear description of the assume_specification, explain the cross-module boundary with identity_map_view().inv(), note when it'll be eliminated once mm::virt is verified, and remove or replace the now-inaccurate `KernelFrame::new` entry that claims it's external_body when it's actually verified.
+[RESULT ✓] bash: ok
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue/turn_001_driver.md with 6063 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Turn 1 review complete. Did not create `STOP` — one item FAILs.
+
+**Verdict (scoped to `mm::phys::kframe`):**
+
+| Item | Result |
+|---|---|
+| Zero admit() | ✅ PASS (0; the 7 global admits are in `manager.proof.rs`/`identity_map.rs`) |
+| Zero assume() | ✅ PASS |
+| Zero exec_allows_no_decreases | ✅ PASS |
+| Zero literal external_body | ✅ PASS |
+| Zero cfg-gated exec (beyond allowed) | ✅ PASS (only `include!` imports + `error!` logging) |
+| **Zero trusted functions** | ❌ **FAIL** |
+| AST consistency / rewrites / spec-drift / cross-module / build | ⏳ deferred until FAIL resolved |
+
+**The FAIL:** This phase replaced the old `external_body` on `KernelFrame::new` with `pub assume_specification[ KernelFrame::map_frame ]` (`kframe.spec.rs:34`). That's a trusted, assumed contract — but `map_frame` is **not listed** in `verus-ai-logs/tcb-allowed.md`, and the file is now stale (lines 92-93 still list `new` as `external_body`, which is no longer true). The tool reports `trusted=0` only because it doesn't count `assume_specification`; the repo convention requires every trusted contract to be tracked.
+
+Fix request written to `turn_001_driver.md`: either eliminate the `assume_specification` (with a proven reproducer), or add a `map_frame` entry to `tcb-allowed.md` and remove the stale `new` entry — plus a `// VERUS REWRITE` marker on the `new`→`map_frame` split. Verification commands specified.
+
+[THINKING] I've completed the review and identified an unresolved failure, so I won't mark this as done yet. My role here is to present the findings clearly—the fixer will address them in the next turn.
+
+
+=== Session End ===
+Session: 83ec2814-ac6f-4734-8ef3-5fe4a91c5e79
+Duration: 228.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue-reviewer-t001-claude-20260615-120653.jsonl
