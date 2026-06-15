@@ -36,6 +36,7 @@ use ::vstd::prelude::*;
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
+#[verus_verify]
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
     // Not-yet-verified dependencies (hal::mem trust boundary): the body checks

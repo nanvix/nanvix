@@ -2196,3 +2196,42 @@ Since `inv()` already uses `spec_page_size` internally and the `from_address` en
 Turn 131
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
+[RESULT ✓] bash: error[E0425]: cannot find function `from_address` in this scope
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+    ⚠️  ex...
+
+────────────────────────────────────────────────────────────
+Turn 132
+────────────────────────────────────────────────────────────
+Same E0425 — the inherent impl block needs `#[verus_verify]` to enable verus processing. Let me check FrameAddress's exact impl-block annotation:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^impl FrameAddress\|^#\[verus_verify\]\|external_body" src/kernel/src/hal/mem/types/
+
+[THINKING] I'm seeing the coverage increase to 1/17 with `from_address` now recognized, but I'm hitting that E0425 error again where the function can't be found in scope. The issue seems to be that when I use `#[verus_verify(external_body)]` on the function instead of just `#[verus_spec]`, the inherent impl block needs different handling than before when adding plain `#[verus_verify]` fixed it.
+
+Let me trace through whether the impl block containing `from_address` actually has `#[verus_verify]` on it, and whether that annotation can coexist with `external_body` on individual functions inside it.
+[RESULT ✓] bash: 51:impl FrameAddress {
+64:impl FrameAddress {
+102:    #[verus_verify(external_body)]
+=== context around the into_raw_value impl ===
+//==================================================================================================
+
+impl FrameAddress {
+    pub fn new(address: PageAligned<PhysicalAd...
+
+────────────────────────────────────────────────────────────
+Turn 133
+────────────────────────────────────────────────────────────
+FrameAddress is concrete; my generic impl needs `#[verus_verify]` on the block (as my earlier `#[verus_spec]` test confirmed). `external_body` functions coexist with `#[verus_verify]` impl blocks (e.g., `KernelFrame::clear`). Adding it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm noticing that FrameAddress's concrete implementation works fine without the `#[verus_verify]` attribute, but my generic PageAligned implementation is hitting an E0425 error on `from_address`. The key difference is that FrameAddress is a concrete type while mine is generic over T, and I'm also referencing `from_address` in multiple places within the impl block—in `from_raw_value`, `align_up`, and `align_down`—which might be causing the compiler to struggle with the generic context.
+
+Earlier when I had `#[verus_spec]` on `from_address` plus `#[verus_verify]` on the impl block, it compiled past the E0425 error (the failure was later in PAGE_ALIGNMENT translation). So adding `#[verus_verify]` to the impl block seems to resolve this issue. Even though `from_address` is marked `external_body`, the impl-level attribute should handle the scope resolution. The `into_inner` method in that block is trivial, so verifying it alongside the external body shouldn't cause problems.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
