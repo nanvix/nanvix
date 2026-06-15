@@ -323,3 +323,205 @@ Now let me run the module verification.
 [TOOL] report_intent: Verifying phys module with Verus
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -60
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== phys.rs/spec/proof: admit/external_body/assume/cfg/trusted ==="; grep -nE "
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail.txt (filter phys) ==="; grep -i "phys" verus-ai-logs/verify
+
+[THINKING] The module itself passes verification with no cheating detected, but I'm noticing the global counts show significant cheating across other modules in the kernel crate—admit=14, external_body=19, cfg_gate=19. The key distinction is that those global numbers come from modules already in the TCB, while this particular module (phys.rs) is what I'm currently verifying and it shows zero violations.
+
+Let me search through the phys files to confirm none of those cheating patterns appear here and identify where they're actually coming from in other modules.
+[RESULT ✓] bash: === phys.rs/spec/proof: admit/external_body/assume/cfg/trusted ===
+src/kernel/src/hal/mem/types/address/phys.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/phys.rs:11:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/phys.spec.rs:11:// supersede the former placeholder...
+[RESULT ✓] bash: === cheating-detail.txt (filter phys) ===
+=== assume_specification in phys.spec.rs ===
+11:// supersede the former placeholder `assume_specification`s. These helpers re-expose those arch
+58:// (`result@ == value as int`), so its placeholder `assume_specification` was removed — the real
+61:pub assume_...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "fn into_raw_value\|fn new\|VirtualAddress" src/libs/sys/src/mm/ 2>/dev/null
+
+[THINKING] Looking at the phys.rs/spec/proof file, there are no `admit` statements, no `external_body` declarations, and just one `assume_specification` for the `into_raw_value` method. The cfg-gated lines are include macros for spec and proof files rather than executable code.
+
+Now I need to evaluate whether this `assume_specification` violates the checklist requirement about zero assume statements outside of std/external crate boundaries. The key question is whether `VirtualAddress::into_raw_value` from the `sys` crate has a verified spec that should supersede this assumption, or if it's a legitimate trusted boundary for an unverified workspace crate. I should check the sys crate to see if there's a real `#[verus_spec]` for this method that would make this assumption redundant.
+[RESULT ✓] bash: === find VirtualAddress def ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs
+src/libs/sys/src/sys/mm/address/virt.rs
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "into_raw_value\|verus_spec\|fn new\|assume_specification\|impl Address" src/
+[RESULT ✓] bash: 48:    #[verus_spec(result =>
+52:    pub const fn new(value: usize) -> Self {
+65:    #[verus_spec(result =>
+167:impl Address for VirtualAddress {
+253:    fn into_raw_value(self) -> usize {
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 240.     ///
+241.     /// # Description
+242.     ///
+243.     /// Returns the maximum address for [`VirtualAddress`].
+244.     ///
+245.     /// # Returns
+246.     ///
+247.     /// The maximum [`VirtualAddress`].
+248.     ///
+249.     fn max_addr() -> usize {
+250.         usize::MAX
+251.     }
+252. 
+...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; echo "=== skills ==="; find /home/ruize/verus-ai-exp/verus-ai -iname 
+
+[THINKING] I'm noticing that `VirtualAddress as Address>::into_raw_value` lacks a `#[verus_spec]` contract in the sys crate, making it an unverified function from a different workspace dependency. This means the `assume_specification` call in phys.spec.rs is establishing a trusted contract for something that hasn't been verified yet, and I need to check whether this violates the checklist requirement about limiting assume/assume_specification to only external trust boundaries for standard library and external crates—since `sys` is an internal workspace crate.
+
+Looking at the tcb-allowed.md documentation, the listed assume_specifications cover `arch` and `kernel` crate functions, but `sys::VirtualAddress::into_raw_value` isn't explicitly documented there. However, from the kernel crate's perspective, `sys` is technically an external dependency, so this could qualify as a legitimate external-crate trust boundary. The spec file notes that `VirtualAddress::new` had its assume_specification removed once a real verified spec was added, but `into_raw_value` still lacks that verified spec in the sys crate, so it remains as a trusted boundary for now.
+
+I should check the verus-constraints and spec-drift-check skills in the verus-ai directory to clarify the exact policy on external-bottom trust boundaries.
+[RESULT ✓] bash: EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.py
+=== skills ===
+/home/...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && echo "=== verus-constraints (assume/external_body policy) ==="; grep -niE "assum
+[RESULT ✓] bash: === verus-constraints (assume/external_body policy) ===
+3:description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '1,60p' docs/skills/spec-drift-check/SKILL.md
+
+[THINKING] The `assume_specification` policy allows this annotation for standard library and external functions, and also for dependency functions in other modules as a temporary placeholder until verification is complete. Since `sys::VirtualAddress::into_raw_value` is from a separate crate that hasn't been verified yet, using `assume_specification` here is acceptable.
+
+I should verify that the dependency actually lacks a `#[verus_spec]` annotation — checking confirms it doesn't, so the assumption is legitimate. The spec itself is strong and faithful, ensuring the result matches the address value, so nothing is weakened.
+
+For the cfg-gated code, those two `#[cfg(verus_keep_ghost)]` includes are conditional loads of spec and proof files, which is the standard pattern and passes. Now I need to check the spec-drift — whether any specs were modified during the proving phase rather than just having proofs added. Let me run the spec-drift check to compare against the baseline.
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running spec-drift check
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name pipeline_state.json 2>/dev/null | grep -v target | head; echo "==="; pyt
+
+[THINKING] I'm checking the spec-drift baseline by looking at pipeline_state.json to find the baseline SHA, then running the auto-detect check against the "specification END" proving phase baseline.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json
+...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff phys.rs ==="; git --no-pager diff 670499c050a3 -- src/kernel/src/hal/m
+
+[THINKING] The spec drift check passes with no drift detected, but I'm realizing the tool only scans the source file itself—it's not catching the spec and proof files. The actual contract definitions with `#[verus_spec]` attributes are in phys.rs, while the spec functions like `inv` and `spec_frame_number` live in phys.spec.rs, so I should verify those files for drift as well even though the automated detection focuses on the source.
+
+I need to manually diff the spec and proof files between the baseline commit and HEAD to ensure the proving process didn't inadvertently weaken any of the specifications.
+[RESULT ✓] bash: === diff phys.rs ===
+diff --git a/src/kernel/src/hal/mem/types/address/phys.rs b/src/kernel/src/hal/mem/types/address/phys.rs
+index 7cfac57ce..5e89b455f 100644
+--- a/src/kernel/src/hal/mem/types/address/phys.rs
++++ b/src/kernel/src/hal/mem/types/address/phys.rs
+@@ -140,8 +140,11 @@ impl PhysicalAddr...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff phys.proof.rs ==="; git --no-pager diff 670499c050a3 -- src/kernel/src
+
+[THINKING] Looking at the diffs across the Rust verification files—the main change in phys.rs is just the body of the from_number function where I'm binding addr_raw before the proof, while the spec contract stays the same. The spec file itself has no changes, so I should check what's different in proof.rs next.
+[RESULT ✓] bash: === diff phys.proof.rs ===
+diff --git a/src/kernel/src/hal/mem/types/address/phys.proof.rs b/src/kernel/src/hal/mem/types/address/phys.proof.rs
+index 68ab1dfa9..07b6a9936 100644
+--- a/src/kernel/src/hal/mem/types/address/phys.proof.rs
++++ b/src/kernel/src/hal/mem/types/address/phys.proof.rs
+@@ -1,13...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== VERUS REWRITE comments ==="; grep -rn "VERUS REWRITE\|VERUS-REWRITE" src/ke
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -45
+
+[THINKING] I've replaced the placeholder proofs in proof.rs with actual implementations, but I'm noticing something about the lemma for `from_number_no_overflow` — I added a `requires` clause that specifies the frame value must not exceed the maximum. This is a precondition that callers now have to satisfy, which means `from_number` in phys.rs will need to handle this constraint.
+
+Looking at how `from_number` calls this lemma, it doesn't have an explicit precondition itself, so the requirement must be coming from FrameNumber's type invariant — the type system guarantees that any FrameNumber instance is already bounded by the maximum value. Since the module verifies cleanly, that invariant is indeed being enforced automatically.
+
+The key question is whether adding a `requires` to an internal proof lemma counts as spec drift. It doesn't, because spec drift only checks the public API contracts in phys.rs, and those haven't changed — the lemma is just a proof helper in proof.rs, not part of the module's external interface.
+
+Going through the verification checklist: public specs are unchanged (spec_drift reports 0), both `admit()` calls have been replaced with actual proofs, there's no `external_body` in phys.rs, and the one `assume_specification` is for `sys::VirtualAddress::into_raw_value`, which is an external crate boundary that's allowed under the trust constraints.
+
+The module is clean on cheating metrics: zero admits, zero external_body, one allowed assume_specification, and no cfg-gated exec code. The exec rewrite in `from_number` appears minimal and semantically equivalent, with the binding of `addr_ra` being the key change.
+
+Now I need to search for any VERUS REWRITE comments in the module and then run the full kernel verification to check for cross-module regressions, followed by a build to ensure zero errors and warnings.
+[RESULT ✓] bash: === VERUS REWRITE comments ===
+(none above = none)
+=== confirm zero admit in module ===
+src/kernel/src/hal/mem/types/address/phys.rs:0
+src/kernel/src/hal/mem/types/address/phys.spec.rs:0
+src/kernel/src/hal/mem/types/address/phys.proof.rs:0
+<shellId: 23 completed with exit code 1>
