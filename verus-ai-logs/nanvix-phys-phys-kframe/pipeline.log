@@ -213,3 +213,4 @@ Module: phys-kframe
 [2026-06-15 12:34:44] [CHEATING] external_body: 15 (14 on user fns), admit: 4
 [2026-06-15 12:34:44] [CHEATING] ❌ Hard cheating detected (attempt 2), report: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating_report_2.md
 [2026-06-15 12:34:44] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 12:41:48]   ↳ cheating-fix done in 7m04s (exit=0)

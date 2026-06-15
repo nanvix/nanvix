@@ -382,3 +382,27 @@ kframe module is **CLEAN** (0 cheating, `assume=0 trusted=0 no_decreases=0` — 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add verus-ai-logs/ && git commit -q -m "docs(phys-kframe): pass-2 cheat
 
 [THINKING] The kframe module is clean with no cheating detected. Looking at the global configuration, external_body is set to 15 with 7 admits, all out-of-scope, and cfg_gate is 12. The driver's limitations around assumption, execution allowances, and trusted settings aren't present here. I'm ready to commit the documentation.
+[RESULT ✓] bash: ec5fb1e3e docs(phys-kframe): pass-2 cheating-fix response; ledger ExLinkedList type-spec
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Done. Summary of this pass:
+
+**phys-kframe scope: CLEAN** (3 verified, 0 cheating; `assume=0 trusted=0 no_decreases=0 cfg_gate=0`).
+
+**The reported global items are all in unlisted sibling modules:**
+- **15 `external_body`** — all on exec fns / type-specs (none on proof fns). Verified each is in `tcb-allowed.md`; added the one missing entry (the `ExLinkedList` `external_type_specification`). Policy-permitted per verus-constraints ("only if user prompt permits" → ledgered).
+- **4 `admit()`** (manager) — genuine blocker. Re-attempted the fix this pass: redefining `PhysMemoryManager::view` to `phys_view().frames` makes `lemma_manager_attached` reflexive but **breaks** the proven user alloc paths (which need `self@ == self.upool@`). Both views can only coexist via the §8 ghost-token invariant — a forbidden exec-signature change. Self-authoring the axiom is also forbidden. Live-reproduced the kernel-path admit failure.
+
+The report's mentions of `limitation_assume`/`exec_allows_no_decreases`/`trusted` don't exist in this scope (all zero).
+
+**Result: BLOCKER** for the crate-global gate (the 4 admits need human approval of an axiom or the §8 `tracked`-token re-architecture); **phys-kframe scope CLEAN**. Documented in `cheating_fix_report_2.md`, committed as `ec5fb1e3e`. No source changes.
+
+
+=== Session End ===
+Session: e9857615-f314-4ade-8efb-abeff55c9270
+Duration: 424.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating-fix-claude-20260615-123444.jsonl
