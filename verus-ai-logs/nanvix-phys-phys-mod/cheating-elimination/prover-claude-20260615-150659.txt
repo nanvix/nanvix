@@ -355,3 +355,171 @@ Turn 19
 ────────────────────────────────────────────────────────────
 Now let me run the module verification to establish baseline:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 14
+    ⚠️  cfg-gated exec code: 8
+  Affected functions:
+    - frame.rs:1242 instance: external_...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but cheating detected across the module. Let me examine the detail to reconcile the counts (admit=3, the manager.proof.rs "assume" entries).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] The verification passes but the module-scoped check is flagging cheating across the entire `mm::phys` module rather than just the phys-mod files I'm focused on. Looking at the reported items, most of the external_body functions in frame.rs are already listed in tcb-allowed.md, so they shouldn't be flagged as violations.
+
+The discrepancy is puzzling though — the global count shows assume=0 and external_body=14, but the affected functions list shows manager.proof.rs lemmas as "assume" rather than external_body, and there's an admit=3 somewhere that I need to track down. Since my actual scope is just the three phys-mod files (mod.rs, mod.spec.rs, mod.proof.rs) with only three in-scope functions, I need to figure out where these admit violations are coming from and whether they're actually blocking my task or if they're in out-of-scope files.
+[RESULT ✓] bash: - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/frame.rs:1458 book: external_body...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The 3 `admit`s are in `mm/virt/identity_map.rs` — a different module (`mm::virt`), out of my `mm::phys` scope. Let me check the pipeline state to understand the phase's pass criteria.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+
+[THINKING] I see the confusion now—those `admit=3` entries are actually in `mm/virt/identity_map.rs`, which is a different module than `mm::phys`, so it's odd they're being counted in the `mm::phys` section. It looks like the cheating gate might be scanning entire files rather than respecting module boundaries, or perhaps the global count is aggregating across the whole crate while the module-specific sections show different metrics.
+
+For my actual scope (`phys-mod`), I need to focus only on the cheating items in `mod.rs`, `mod.spec.rs`, and `mod.proof.rs`. The `external_body` entries in `mod.rs` for `book_physical_memory_regions` and `book_mmio_regions` are already allowed by `tcb-allowed.md`, and I'm checking the `ExLinkedList` external type in `mod.spec.rs`.
+
+The remaining cheating items across other files belong to different phases and aren't my responsibility. The real question is whether this phase passes if the in-scope functions are clean—and they are, since all the external_body entries here are TCB-allowed. The external_body items that are TCB-allowed (book_mmio_regions, book_physical_memory_regions, ExLinkedList) should remain in scope for this phase. The admits in mm/virt are pre-existing cheating from a different module that shouldn't block phys-mod's verification, since the cheating scanner counts globally across the crate even though MODULE=mm::phys only verifies specific functions. The real question is whether those out-of-scope admits should actually prevent this phase from passing, or if the exception clause in tcb-allowed.md means only the listed functions are exempt. Looking at the pipeline_state.json to see how the phase determines pass or fail criteria, since the cheating gate is flagging issues outside my scope.
+[RESULT ✓] bash: {
+  "module_name": "phys-mod",
+  "log_name": "nanvix-phys-phys-mod",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs",
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
+  "phase_results": {
+    "prov...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The module `mm::phys` report shows no `admit`/`assume` — only `external_body` (all TCB-allowed) and `cfg_gate=8`. The admits are in `mm::virt` (out of scope). Let me examine the cfg-gated exec code detections.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "cfg_gate\|cfg-gate\|cfg(" verus-ai-logs/verify-kernel/verus-logs/*.
+
+[THINKING] I'm looking at the cheating-elimination phase for the phys-mod module, which focuses on the init, book_mmio_regions, and book_physical_memory_regions functions in mod.rs. The key distinction is that this phase only covers the phys-mod scope—the mm/virt admits and other mm/phys files' external bodies are handled separately, so the cheating gate here specifically evaluates disallowed cheating within these in-scope functions.
+
+For the phys-mod phase to pass cleanly, all cheating items in scope must be tcb-allowed external_body, and init must verify. Since the remaining global cheating (mm/virt admits and other external bodies) belongs to different modules or later phases, and I can't touch unlisted functions like those in identity_map.rs, the phys-mod phase itself is already clean—only tcb-allowed external_body remain, and init's proof depends on those tcb-allowed functions. The admits in mm/virt are outside the phys-mod scope and don't block this phase's cleanliness. Looking at the module-scoped report for mm::phys specifically, it shows only external_body (all tcb-allowed) and cfg_gate — no admits or assumes listed under that module. So phys-mod itself has zero disallowed cheating.
+
+Now I need to investigate those cfg_gate=8 detections to see if they're legitimate (like feature gates or ghost-code gates) or actual violations of the no-exec-code-changes-via-cfg-gates rule.
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-13_23-26-35.log:16:  cfg_gate=5
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-13_23-35-50.log:16:  cfg_gate=5
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-13_23-37-13.log:16:  cfg_gate=5
+verus-ai-logs/verify-kernel/verus-logs/verus_...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "cfg(" src/kernel/src/mm/phys/*.rs | grep -v "feature = \"test\"" 
+
+[THINKING] I need to track down the cfg-gate detection details in the module source files since the summary mentioned 8 instances but didn't list them explicitly. Let me search through the verify script to understand what qualifies as cfg-gated exec code and locate the actual occurrences.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs:49:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:52:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/frame.rs:147:                #[cfg(not(verus_keep_ghost))]
+src/kernel/src/mm/phys/frame.rs:153:        #[cfg(not(verus_keep_ghost))]
+src/kernel/src/mm/phys/f...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+In-scope files have only TCB-allowed `external_body` and the standard harness cfg gates (include spec/proof). Let me confirm `init` verifies and check the diff against the base branch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== diff mod.rs vs base branch ==="; git --no-pager diff verus-ai-prove
+
+[THINKING] Looking at the cfg gates in mod.rs, I see they're conditionally including the spec and proof files only when the `verus_keep_ghost` feature is enabled, which is a standard pattern for separating verification code from the main implementation.
+
+The real concern about cfg-gated exec code divergence applies to other files like frame.rs and manager.rs that use `cfg(not(verus_keep_ghost))` to change actual runtime behavior, but mod.rs doesn't have that kind of gating — it only has the standard harness includes.
+
+So my conclusion is that within the scope of mod.rs, mod.spec.rs, and mod.proof.rs, there are no admits, assumes, or cfg-gated exec code divergences to worry about, just the three external_body declarations for TCB-allowed functions, and the init function verifies cleanly with a real contract.
+
+The question now is whether this counts as a PASS for the phase. The module-scoped verification still reports CHEATING_DETECTED because the scanner runs crate-wide, but the actual cheating in mm::phys is all TCB-allowed external_body, while the admits are in mm::virt which is out of scope. I need to verify how the pipeline determines whether a phase passes — whether it's checking the whole crate or just the module in question.
+
+Let me also double-check that init's body has no hidden assume/admit blocks and that it actually verified cleanly, then compare what's changed in the in-scope files since the phase started.
+[RESULT ✓] bash: === diff mod.rs vs base branch ===
+=== EXITCODE-only check: is init verified? grep log ===
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== diff all three in-scope files vs base ==="; git --no-pager diff --s
+
+[THINKING] The mod.rs file hasn't changed between branches, so it was already in this state before the proving and cheating phases. Let me look at what's in the log.
+[RESULT ✓] bash: === diff all three in-scope files vs base ===
+=== verus log tail ===
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1187:38
+     |
+1187 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+     |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus p...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; head -20 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_15-08-38.log
+
+[THINKING] The in-scope files haven't changed from the base branch, which means the proving phase completed its work on other files like frame.rs while leaving these mod files in their correct final state. The verification passed successfully, so I should check the log to confirm the number of verified functions and ensure there are no errors.
+[RESULT ✓] bash: Timestamp: 2026-06-15_15-08-38
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+note: verifying module mm::phys
+
+===
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -iE "verified|error" verus-ai-logs/verify-kernel/verus-logs/verus_2026-0
+
+[THINKING] I need to run a clean verification without caching to get the actual verified count and confirm the module really passes verification, since the earlier run showed exit code 0 but with a CHEATING_DETECTED status that's making me uncertain about the results.
+[RESULT ✓] bash: 
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -nE "^verification results|funct.*verified|[0-9]+ verified" verus-ai-log
+[RESULT ✓] bash: --- run forced verus to confirm init verifies ---
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Let me force a fresh (non-cached) verification to get explicit "verified, 0 errors" confirmation:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; touch src/kernel/src/mm/phys/mod.rs; timeout 900 make verify-kernel MODULE=mm
+
+[THINKING] The cached run didn't output the verification summary line, so I need to force a fresh run to confirm the init module verifies cleanly. Let me touch the file to invalidate the cache and get explicit confirmation that verification succeeded with zero errors.
