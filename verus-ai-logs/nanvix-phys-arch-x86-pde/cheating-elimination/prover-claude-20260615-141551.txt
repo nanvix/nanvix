@@ -1,0 +1,196 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T14:15:51.049554
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are performing cheating elimination for arch-x86-pde. The goal is to
+**eliminate all cheating** — replace every `assume`, `admit`,
+and `external_body` with real proofs so that `make verify-arch` passes cleanly.
+The only exception: if `/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md` exists, functions listed there
+are allowed to keep `external_body`. Any `external_body` on a function NOT
+in that file is a blocker and must be eliminated.
+
+Follow the **verus-constraints** escalation ladder: search vstd, write an
+isolated reproducer, try equivalent rewrites.
+
+== PROJECT CONTEXT ==
+
+File: `src/libs/arch/src/x86/mem/paging/pde.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`PageDirectoryEntry::new`, `PageDirectoryEntryFlags::new`, `PageDirectoryEntry::is_present`, `PageDirectoryEntryFlags::is_present`, `PageDirectoryEntry::frame_address`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Source file: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+Source directory: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging
+Spec file:  /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+Verus command: make verify-arch
+Base branch: verus-ai-prove
+
+== SKILLS ==
+
+Follow strictly:
+- **verus-constraints** — MUST follow: forbidden patterns, escalation ladder
+- **spec-design** — reference: trust classifications (external-top, external-bottom)
+- **ast-consistency** — reference: no exec code changes via cfg gates; workarounds must preserve semantics, time complexity, and space complexity
+
+== TASK ==
+
+Eliminate all cheating items. Zero cheating must remain — no exceptions.
+
+1. **Cheating detection**: Run `make verify-arch` and count: admit, assume,
+   external_body, assume_specification, cfg-gated exec code.
+
+2. **Plan**: List every cheating item across source, spec, and proof files
+   (function name, file, cheating type). Plan an elimination order.
+
+3. **Eliminate each item**: For every cheating item:
+   - Follow **verus-constraints** escalation ladder: search vstd, write
+     isolated reproducer, try equivalent rewrite.
+   - `external_body` — remove every instance.
+   - **Proof gap** (verifiable but not yet proven): must be eliminated.
+     If you cannot resolve it now, record in /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/verification_todo.md as
+     a remaining item, but keep trying — the goal is zero proof gaps.
+     Recording here does NOT make this phase pass: any remaining `admit()`
+     or `assume()` still trips the cheating gate and the phase FAILs.
+     The file is an honest hand-off of genuinely-stuck proofs, not a way out.
+   - admit/assume → must be eliminated, no exceptions.
+
+4. **AST consistency**: Run checks per the **ast-consistency** skill.
+   For each mismatch: if it matches a pre-approved deviation, document it.
+   Otherwise, provide evidence that the change is required by Verus
+   (e.g., error message without it) and confirm it preserves
+   semantics, time complexity, and space complexity. If no evidence,
+   restore the original
+   from `git show verus-ai-prove:/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs` and fix the proof
+   strategy instead.
+
+5. **Full-crate verification**: Re-run `make verify-arch` to confirm 0 errors,
+   then `make verify` to ensure no regressions across the full crate.
+
+== OUTPUT ==
+
+Write to /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md:
+```markdown
+# Cheating Elimination Report: arch-x86-pde
+
+## Cheating Counts (before → after)
+| Item | Before | After | Eliminated |
+|------|--------|-------|------------|
+| admit() | N | N | N |
+| assume() | N | N | N |
+| external_body | N | N | N |
+| assume_specification | N | N | N |
+| cfg-gated exec | N | N | N |
+
+## Items Eliminated
+- [each item: what it was, how it was eliminated]
+
+## Verification TODOs (/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/verification_todo.md)
+- [each: function, specific Verus error or code pattern blocking the proof]
+
+## AST Consistency
+- Zero mismatches confirmed: YES / NO
+
+## Result: PASS / BLOCKER
+```
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by exploring the relevant files and understanding the current state.
+[TOOL] report_intent: Detecting cheating in pde
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I'll start by looking at the relevant files to understand what needs to be done.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::bits::lemma_usize_shl_is_mul;
+4. use vstd::arithmetic::power2::{pow2, lemma2_to64};
+5. use vstd::arithmetic::div_mod::{
+6.     lemma_fundamental_div_mod,
+7.     lemma_mod_bound,
+8.     lemma_mod_multiples_basic,
+9. };
+10. use vstd::arithmetic::mul::lemma_mul_inequality;
+...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Flag projection helpers
+5. //==================================================================================================
+6. 
+7. // Each paging-control enum is two-valu...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+No obvious cheating in these three files. Let me search the source directory and check the tcb-allowed file and run verification.
+[TOOL] grep: assume|admit|external_body|assume_specification
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md 2>/dev/null || echo "NO TCB FILE"
+
+[THINKING] I'm checking the source files to see if they contain any shortcuts like `external_body`, `assume`, or `admit` that would indicate incomplete proofs, then I'll search for any other instances of cheating across the codebase.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs:13:// approved limitation assume (replacing the former `external_body`, which is illegal on a proof
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs:14:// fn): the assumed proposition is exactly ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The pde files themselves have no cheating. The grep hits are all in other files (table, mod, number) which are out of scope. Let me confirm pde is clean and run verification.
+[TOOL] grep: assume|admit|external_body|assume_specification|cfg
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git branch --show-current && git log --oneline -3
+
+[THINKING] The pde.rs, pde.spec.rs, and pde.proof.rs files are clean with no cheating items, while the grep results flagged issues in other files that fall outside the scope of this task. I should run the verification command to confirm these files pass the checks.
+[RESULT ✓] bash: verus-ai-prove
+3e590bcac [verus-ai] cheating-elimination START: arch-x86-pde
+ac1d49082 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=4 external_body=23 cfg_gate=19)
+588fcd522 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —,...
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs:11:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs:83:    #[cfg_attr(verus_keep_ghost, al...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+pde files are clean — the only `cfg` hits are the standard spec/proof include pattern. Let me run verification to confirm the current state.
+[TOOL] report_intent: Running verify-arch baseline
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff verus-ai-prove -- src/libs/arch/src/x86/mem/paging/pde.rs src/lib
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -40
+
+[THINKING] The cfg gates in pde.rs follow the standard include pattern with `#[cfg(verus_keep_ghost)]` for spec and proof code, along with `cfg_attr` for verus markers—these aren't the problematic cfg-gating approach. Now I need to clarify what "cfg-gated exec code" actually means in this context.
+
+The ast-consistency skill prohibits using cfg gates to change exec code behavior, but these attributes are just for including spec/proof files and managing allow directives, so they're legitimate. The pde files look clean already, so my focus should be on getting `make verify-arch` to pass. Let me check what's changed from the base branch to see what work has already been done.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 2 completed with exit code 0>
