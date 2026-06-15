@@ -541,3 +541,30 @@ Turn 15
 ────────────────────────────────────────────────────────────
 Turn 16
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && head -15 verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt; echo "..."; grep -in 
+
+[THINKING] The coverage file has 253 lines but no "mm/address" entries, so the coverage tool must be using a different path format. I should examine a few lines to figure out what format it's actually using.
+[RESULT ✓] bash: # Unverified exec functions: 252/254
+  as_u32
+  ok
+  to_ne_bytes
+  from_ne_bytes
+  from
+  from
+  from
+  from
+  from
+  into_raw
+  new
+  id
+  event
+  is_interrupt
+...
+162:  is_aligned
+168:  is_aligned
+187:  is_aligned
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
