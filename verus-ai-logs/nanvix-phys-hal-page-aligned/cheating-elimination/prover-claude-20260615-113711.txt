@@ -519,3 +519,71 @@ Turn 27
 Turn 28
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -iE "panic|as
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+thread 'rustc' (3101989) panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `kernel` (bin "kernel")
+  process didn't exit suc...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Confirmed — the documented Verus front-end panic is real and reproducible:
+```
+thread 'rustc' panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+```
+Body-verifying `<PageAligned<T> as Address>::into_raw_value` (marking the trait impl verified) is genuinely blocked by this Verus front-end bug. The `assume_specification` is the necessary workaround. Let me restore the files.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp /tmp/page.rs.bak src/kernel/src/hal/mem/types/address/aligned/page.rs && cp /tmp/page.sp
+
+[THINKING] I'm seeing a panic in the Rust compiler that matches the documented assertion failure in the traits module. The issue occurs when trying to verify the body of a method implementation, specifically for the `into_raw_value` method on `PageAligned<T>` as an `Address` trait implementation.
+
+The `assume_specification` workaround is the approved solution for this front-end limitation. Let me restore the modified files now.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs      | 4 ----
+ src/kernel/src/hal/mem/types/address/aligned/page.spec.rs | 8 +++++++-
+ 2 files changed, 7 insertions(+), 5 deletions(-)
+restored
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short src/kernel/src/hal/mem/types/address/aligned/ && echo "---diff vs HEAD--
+
+[THINKING] I'm checking whether the diff output is showing uncommitted changes or if the files actually match what's been committed to HEAD.
+[RESULT ✓] bash: M src/kernel/src/hal/mem/types/address/aligned/page.rs
+ M src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+---diff vs HEAD---
+ src/kernel/src/hal/mem/types/address/aligned/page.rs      | 4 ----
+ src/kernel/src/hal/mem/types/address/aligned/page.spec.rs | 8 +++++++-
+ 2 files changed, 7 inser...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Let me restore directly from git to be certain.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git checkout HEAD -- src/kernel/src/hal/mem/types/address/aligned/page.rs src/kernel/src/ha
+
+[THINKING] I'm realizing the backup might not have been as clean as I thought — let me trace back through when it was taken and whether the working tree was actually in sync with HEAD at that point.
+[RESULT ✓] bash: clean check done
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -c "assume_specification" src/kernel/src/hal/mem/types/address/aligned/page.spec.rs &&
+
+[THINKING] The working directory is clean now after the git checkout. Let me verify the spec file still contains the assume_specification as expected.
+[RESULT ✓] bash: 2
+47:    // `sys`/`arch` items (out of scope). `external_body` honors the `#[verus_spec]`
+51:    #[verus_verify(external_body)]
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Files restored to HEAD. Now let me run the full `make verify-kernel` to confirm the whole-crate state is clean (exit 0).
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | grep -iE "exit cod
+
+[THINKING] Now I'm running the module verification again to confirm the baseline is restored, then executing the full kernel verification across the entire crate to check for any regressions before writing up the report.
