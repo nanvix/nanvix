@@ -54,13 +54,13 @@ impl<T: Address> PageAligned<T> {
             // `from_address` validates; it never rounds/normalizes. On success the
             // wrapped address is unchanged (`result@ == spec_addr(&addr)`) and the
             // page-alignment invariant holds (`result.inv()`). On failure the input
-            // was not page-aligned (value type: no side effect). Success holds iff
-            // the input address is page-aligned (stated both ways for liveness).
+            // was not page-aligned (value type: no side effect). Liveness is carried
+            // by the `Err` arm: since `Result` is total, `Err => unaligned` is
+            // equivalent to `aligned => Ok`.
             match result {
                 Ok(p) => p@ == spec_addr(&addr) && p.inv(),
                 Err(_) => spec_addr(&addr) % crate::hal::mem::spec_page_size() != 0,
             },
-            (result is Ok) <==> (spec_addr(&addr) % crate::hal::mem::spec_page_size() == 0),
     )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
