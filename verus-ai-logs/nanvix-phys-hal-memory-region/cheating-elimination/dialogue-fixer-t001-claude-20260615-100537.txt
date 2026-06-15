@@ -146,3 +146,16 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Comment placed correctly. Now verify.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/region.rs && timeout 600 make verify-kernel MODULE
+[RESULT ✓] bash: verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+  5 verified
+  0 errors
+  ✅ No cheating detected in module hal::mem::types::region.
+  Unverified functions:
+  verification: 5 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=19 admit=12 trusted=0 no_d...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Module still CLEAN (5 verified, 0 errors). Now run full `make verify-kernel` and `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel 2>&1 | grep -E "verified, 0 errors|status:|cheating:|e
