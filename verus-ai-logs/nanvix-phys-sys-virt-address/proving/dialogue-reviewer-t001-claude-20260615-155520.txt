@@ -479,3 +479,21 @@ Since the baseline-to-HEAD comparison is authoritative and shows no drift, I can
 === build skill ===
 2:name: build
 3:description: Guide for...
+[RESULT ✓] bash: Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_15-57-57
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== R...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All modules pass (exit 0). The kernel/bump-allocator `external_body` counts are pre-existing and governed by `tcb-allowed.md` — not part of this proving target, and the baseline→HEAD diff touched only logs (no source change). Now let me force a fresh (non-cached) verify-sys and run the build to confirm 0 warnings.
+[TOOL] report_intent: Forcing fresh verify and build
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "clean|fresh|no-cache|--features|fingerprint" scripts/verify.sh 2>/dev/null | head
+
+[THINKING] All modules are passing verification with clean exit codes. The detected issues in bump-allocator and kernel are pre-existing violations already documented in tcb-allowed.md, so they're not blocking the sys-virt-address proving target. The cross-module regression test confirms everything is working correctly. For the sys crate itself, the status is completely clean with no violations across any category.
+
+Now I need to verify that the pre-existing cheating in kernel and bump-allocator are actually listed in the tcb-allowed file to confirm they're legitimate exceptions, then decide whether to run a fresh verification or trust the cached result. Since the proving phase only touched logs and didn't modify any source files, the cached verification should be valid, but I should probably force a fresh build to be thorough and confirm there are truly zero warnings.
+[RESULT ✓] report_intent: Intent logged
