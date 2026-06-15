@@ -624,3 +624,88 @@ But here's the catch: adding `external_body` to a new function requires it to be
 Turn 29
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -25
+[RESULT ✓] bash: - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mmio_regions: external_body
+    - mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - upool.rs:221 Upool (struct): external_body
+    - upool.rs:246 new: external_body
+    - upool.rs:279 alloc: external_body
+  Gl...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Verification passes (85 verified, 0 errors). The remaining `external_body`/`admit` counts are all in **other** out-of-scope files. Let me confirm kframe.rs's own status.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -i "kframe" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] I'm seeing 85 verified checks with no errors, though there's a "CHEATING_DETECTED" flag triggered by external_body and admit counts across the broader module—but those are in other files outside my scope. Looking specifically at kframe.rs, I've got one external_body in the new function and zero admits or assumes, which aligns with what I'm checking.
+[RESULT ✓] bash: - mm/phys/kframe.rs:94 new: external_body
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+kframe.rs has exactly one sanctioned `external_body` (`new`), with `base` and `drop` fully verified in-body (0 admit, 0 assume). The remaining module-wide `admit`/`external_body` are all in out-of-scope files. Let me confirm my changes match the known-good state and run a normal build for dual-compilation safety.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== diff kframe.rs vs known-good fd6f040cf ==="; git --no-pager diff fd
+
+[THINKING] The kframe.rs module has one sanctioned cheating entry that's allowed by the spec, while base and drop are properly verified inline. The remaining violations in other modules fall outside the task scope, so I'm leaving those untouched as instructed. Now I need to verify the normal build works too, since there were dual-compilation concerns mentioned in the bugs. Let me check what's changed in kframe.rs and kframe.spec.rs compared to the baseline commit to make sure there are no new warnings or unused imports.
+[RESULT ✓] bash: === diff kframe.rs vs known-good fd6f040cf ===
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+No diff — my kframe files now exactly match the known-good PASS commit `fd6f040cf`. The broken `strip-external-body` step was the only regression, and it's reverted. Let me record the decision in bugs.md and run the full `make verify` to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager status --short
+
+[THINKING] My kframe files now match the known-good commit fd6f040cf, so I've successfully reverted the breaking change from the strip-external-body step. Let me run the full build and broader verification to check for any regressions, then update the bugs documentation with what I've learned about the error macro issue.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-kframe/proving/prover-claude-20260615-113406.jsonl
+ M verus-ai-logs/nanvix-phys-phys-kframe/proving/prover-claude-20260615-113406.txt
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "HEAD commit:"; git --no-pager log --oneline -1; echo "=== HEAD new attr
+
+[THINKING] I'm noticing that git status shows no changes to kframe.rs or the spec files, which is strange since I thought I'd edited them. The HEAD commit is "verify FAIL" with a compilation error, so if my edits resulted in no net change, that means the current state still has that same error. Let me verify what HEAD actually contains for those files.
+[RESULT ✓] bash: HEAD commit:
+c2b1aab67 [verus] verify PASS (cheating detected): kernel::mm::phys (85 verified, 0 errors, admit=7 external_body=16 cfg_gate=13)
+=== HEAD new attrs ===
+78:    // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
+81:    #[verus_verify(external_b...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+The pipeline auto-committed the PASS (HEAD `c2b1aab67`: 85 verified, 0 errors). `new` is sanctioned `external_body`; `base` and `drop` are verified in-body. Let me record the decision in bugs.md, then run full `make verify` for regression confirmation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat >> verus-ai-logs/nanvix-phys-phys-kframe/bugs.md <<'EOF'
+
+## Proving-phas
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "^verify:" Makefile; sed -n '/^verify:/,/^$/p' Makefile | head -20
+
+[THINKING] The verification pipeline auto-committed my changes after passing with 85 verified and 0 errors, so kframe is now committed as an external_body. The working tree is clean with no outstanding diffs.
+
+Now I need to update bugs.md to document why the new function remains external_body (the strip-external-body attempt didn't work out), then run the full `make verify` to confirm no regressions across other modules. Since my change restored a known-passing state and the scope is limited to kframe, regressions elsewhere are unlikely, but I should verify this thoroughly per the task requirements.
+[RESULT ✓] bash: appended
+<shellId: 26 completed with exit code 0>
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "VERUS_CRATES" Makefile | head
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | tail -60
+
+[THINKING] Running `make verify` will check bitmap, sys, nanvix-slab, bump-allocator, arch, and then the entire kernel with all modules—which could take a while and potentially expose issues in other modules. Since my changes are isolated to mm::phys and already verified, I'll kick off the full verification in the background with a generous timeout to let it run asynchronously.
