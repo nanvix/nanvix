@@ -2251,3 +2251,192 @@ Actually, I can skip the standalone forall assertion entirely—Verus understand
 Turn 136
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: verification results:: 60 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  verification: 60 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 81 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+`free` (60 verified). Now let me examine `bitmap.clear` and `bitmap.set` specs, which `free` and `alloc` depend on:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== clear spec ==="; sed -n '/pub fn clear/,/^    {/p' src/libs/bitmap/
+
+[THINKING] Now I'm walking through the `free` function logic—it extracts the frame number from the physical address, checks that it's within bounds and has a non-zero reference count (returning an error otherwise), decrements the count, and clears the bitmap bit once the count reaches zero.
+
+For the case where the old refcount is greater than 1, after decrementing it stays positive and the bit remains set, which I can verify using the existing bump lemma with the new decremented value. But when the refcount was exactly 1, decrementing brings it to zero and triggers the bitmap clear—this is the actual release case where I need to remove the frame from allocated, add it to free, and remove it from the refcount map entirely. There's a timing subtlety here since the code decrements first, then conditionally clears based on the result.
+
+The tricky part is that if the bitmap clear operation fails after I've already decremented the refcount, the state becomes inconsistent—the refcount is zero but the bit is still set. The ensures clause for the Err case claims the final state equals the old state, which would be violated. However, if the clear operation only fails on out-of-bounds access and the frame number is guaranteed to be within bounds (since it's allocated), then clear should always succeed here, making that error branch unreachable. I need to check the specification for the bitmap clear operation to confirm it always succeeds under these conditions.
+[RESULT ✓] bash: === clear spec ===
+    pub fn clear(&mut self, index: usize) -> Result<(), Error> {
+        // TODO: remove this runtime check once all callers are verified and we add a
+        // precondition to this function requiring the bit to already be set.
+
+        // Check if the bit is already cleared.
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== clear verus_spec ==="; grep -n "pub fn clear" src/libs/bitmap/src/l
+
+[THINKING] I need to look at the ensures clauses in the verus_spec for the clear and set operations.
+[RESULT ✓] bash: === clear verus_spec ===
+604:    pub fn clear(&mut self, index: usize) -> Result<(), Error> {
+        proof! {
+            old_self.lemma_set_bit_preserves_inv(self, word as int, bit as int, index as int);
+        }
+
+        self.usage = self.usage + 1;
+
+        Ok(())
+    }
+
+    ///
+    /// # Descr...
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "pub fn set(" src/libs/bitmap/src/lib.rs; sed -n '500,545p' src/libs/
+
+[THINKING] I'm working through the logic of the clear operation in relation to the bitmap state. The preconditions ensure that clear fails only if the bit isn't set or the index is out of range. In the free case, since the bit is allocated and within bounds, clear's error condition becomes impossible—so it must succeed. But I need to account for the fact that the decrement happens before clear is called, which changes what the bitmap looks like at that point.
+
+Now I'm checking the set operation's specification to understand its ensures clause.
+[RESULT ✓] bash: 543:    pub fn set(&mut self, index: usize) -> Result<(), Error> {
+        Err(Error::new(ErrorCode::OutOfMemory, reason))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets a bit at a given index in the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit to set.
+...
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+Now let me view the current `free` and `book` implementations and their specs:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn free\b\|fn book\|fn alloc\b\|fn alloc_range\|fn alloc_contiguous\
+
+[THINKING] I need to check the current state of the `free` and `book` functions in frame.rs to see their implementations and compare them against the locked specifications.
+[RESULT ✓] bash: 136:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+213:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+298:    fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+379:    fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
+487:    fn...
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 298.     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+299.         proof! { admit(); }
+300.         let frame_number: usize = frame.into_frame_number().into_raw_value();
+301. 
+302.         if frame_number >= self.refcount.len() {
+303.             let reason: &str = "frame number ou...
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+Now let me view free's locked spec:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking the locked spec for the `free` function around line 298 to understand its constraints.
+[RESULT ✓] view: 247.         }
+248.     }
+249. 
+250.     ///
+251.     /// # Description
+252.     ///
+253.     /// Frees a frame that was previously allocated.
+254.     ///
+255.     /// # Parameters
+256.     ///
+257.     /// - `frame`: Address of the frame to free.
+258.     ///
+259.     /// # Returns
+260.     ///
+26...
+
+────────────────────────────────────────────────────────────
+Turn 143
+────────────────────────────────────────────────────────────
+Now let me view the View definitions and existing lemmas in frame.proof.rs:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] So the free operation has two error cases: out-of-bounds when the frame number exceeds the refcount array length, and double-free when the refcount is already zero. Both of these conditions mean the frame wasn't allocated in the first place. There's a third potential error path if the clear operation fails, but I need to prove that's actually unreachable. Either way, when free returns an error, the state remains unchanged and the frame definitely wasn't in the allocated set.
+
+Now I'm designing the lemmas to support the free proof. I need lemma_refcount_clear to handle the decrement-to-zero case, similar to how lemma_refcount_bump handles the increment case in share. The preconditions will establish that we're working with a valid frame that's currently allocated with a refcount of 1, so decrementing it to 0 is safe. After the refcount decrement, the bitmap clear operation removes the frame from set_bits while preserving the invariant that refcount[fnn]==0 and fnn is no longer in the bitmap—these facts are consistent and sufficient for proving internal_inv. For the case where refcount stays positive after decrementing, I'll use a different lemma that updates the refcount map while keeping allocated and free frames unchanged. Now I need to write the lemma for the clear operation itself.
+
+I'm verifying that allocated_frames equals old.allocated with the frame address removed by checking both directions: any frame in new.allocated must have been in old.allocated but not equal to the cleared address, and conversely any frame in old.allocated except the cleared address must be in new.allocated since it's still in set_bits. For free_frames, I'm establishing the same relationship...
+
+Now checking refcounts: the domain shrinks from old to new by removing the freed address, and for all remaining addresses the refcount values stay the same since they correspond to indices that weren't modified.
+
+I need to write the lemma for refcount_clear now. Let me look at the existing refcount_bump lemma and the View structure to match the exact field names and proof pattern.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use vstd::map::*;
+6. 
+7. /// Helper: convert a bitmap index to a frame (physical) address.
+8. pub open spec fn frame_addr_of(i: int) -> int {
+9.     i * spec_page_size()
+10. }
+11. 
+12. impl View for Inner {
+13. ...
+
+────────────────────────────────────────────────────────────
+Turn 144
+────────────────────────────────────────────────────────────
+Let me check the relationship between `is_bit_set` and `set_bits.contains` in BitmapView:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "is_bit_set\|set_bits" src/libs/bitmap/src/lib.spec.rs | head -30
+
+[THINKING] I'm adding the lemma_refcount_clear function before the closing brace, and I need to establish the key invariants: that the bitmap's set bits change by removing the freed node number, the total bit count decreases accordingly, and the new bitmap's inverse property holds.
+
+Now I'm verifying the internal invariants for the new state — checking that the refcount array length and bounds are preserved, that the set membership equivalence with positive refcounts holds (with the freed node now having zero refcount), that bounded refcounts remain in range, and that the tail-zero property is maintained since the freed node index is within the active bit range.
+
+I need to formalize the lemma for this refcount clearing operation, using set equality proofs with extensionality to show how allocated, free, and refcount sets transform — the allocated set loses the freed page, the free set gains it, and the refcount array updates that entry to zero.
+
+Writing the lemma structure... Verifying the invariants for the new state... Verifying the free frames set equivalence by proving both directions: that new free frames are contained in the old set with the freed address inserted, and vice versa, handling the special case where the freed frame index matches the one being deallocated. Continuing the refcount verification...
+
+I'm checking that the refcounts map correctly computes values through its closure—when accessing `new.refcounts[addr]`, it should resolve to `new.refcount@[addr/ps]`, which equals the old refcount at that index since we're only removing the freed frame. The domain and value equality conditions I've established should satisfy Verus's map equivalence requirements. For the membership relationship, I'm relying on the set remove semantics that Verus knows about, so the standalone assertion that `new.set.contains(i)` is equivalent to `old.set.contains(i) && i != fnn` should hold. Now I need to verify the case where the old refcount at the freed frame is greater than one.
+
+Writing the free function body... Writing verification logic... I'm realizing that `old_self` captures the state before any mutations, so after the `-=1` operation, `self.refcount@` should equal `old_self.refcount@` with the frame number index updated to the decremented value. Since we're in the branch where the result is 0, the original value must have been 1, so I need Verus to recognize that the slice index assignment produces an update operation—and since the direct assignment `self.refcount[idx] = val` already verified with update semantics, the compound `-=` operator should work the same way.
+
+For the bitmap check in the clear error branch, I need to verify that `is_bit_set` and `set_bits.contains` are equivalent—they should be the same predicate, so I might need a lemma or check if it's definitional in the BitmapView spec. The error condition requires either the index is out of bounds or the bit isn't set, so to reach the error path I need the index to be valid and the bit to actually be set.
+[RESULT ✓] bash: 21:    pub set_bits: Set<int>,
+26:    /// Requires set_bits to be finite (enforced by Bitmap::inv()).
+28:        self.set_bits.len() as int
+33:        exists|i: int| 0 <= i < self.num_bits && !self.set_bits.contains(i)
+38:        forall|i: int| 0 <= i < self.num_bits ==> self.set_bits.contains(i)
+43...
+
+────────────────────────────────────────────────────────────
+Turn 145
+────────────────────────────────────────────────────────────
+Now let me add `lemma_refcount_clear` and rewrite `free`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The bit-setting logic checks out—`is_bit_set` should match what's in the set. Now I'm adding the `lemma_refcount_clear` lemma to the proof file and rewriting the free function body, placing the new lemma before the closing brace.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 146
+────────────────────────────────────────────────────────────
+Now rewrite the `free` body:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 147
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
