@@ -488,3 +488,691 @@ Running both concurrently risks build races. Let me serialize — stop build, ru
 ────────────────────────────────────────────────────────────
 Turn 14
 ────────────────────────────────────────────────────────────
+I'll launch both review sub-agents now (parallel, different models) to work while verification completes. They'll do analytical review + read-only checks; I provide central verification results to avoid build races.
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] I'm setting up independent reviews by launching two sub-agents with the ground-truth data I've collected, instructing them to reason separately while avoiding build races by providing them with the verification results instead of having them run those commands themselves. They'll write their raw reviews to the final-review directory and can execute read-only scripts as needed. I'll go ahead and launch both sub-agents now so they can work through the analytical review in parallel while I wait for verification to finish.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Verify finished. Let me check its result and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== make verify result ==="; tail -25 /tmp/verify_all.log | grep -iE "verified|error|
+[RESULT ✓] bash: === make verify result ===
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+  verification: cached (no recompilation), — (exit 0)
+EXIT=0
+=== EXIT ===
+EXIT=0
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+I'll start by reading all the relevant files and running the read-only scripts. Let me begin gathering information in parallel.
+[TOOL] report_intent: Reading source, spec, proof, and analysis files
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // Memory Region — Specifications
+5. //
+6. // A memory region is a contiguous, non-wrapping half-open byte interval of the
+7. // address space, `[start, start + size)`, tagged with metadata
+8. // (type / permi...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "error|fail|verified:|cheating|0 errors|FAILED" /tmp/verify_all.log | grep -ivE "U
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build > /tmp/build.log 2>&1; echo "EXIT=$?" >> /tmp/build.log; echo "=== build tail ==
+
+[THINKING] I need to ensure the verify step completes successfully, then examine its output for any errors or issues before proceeding with the build.
+[RESULT ✓] bash: <command started in background with shellId: buildsh2>
+[RESULT ✓] bash: cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+=== Cheating Pattern Check ===
+  cheating: assume=0 ext...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Now let me read the analysis files, skills, and run the scripts in parallel.
+[TOOL] report_intent: Reading analysis docs and skills, running scripts
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/bugs.md 2>&1 || echo "BUGS_MD_ABSENT"
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: cat: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/bugs.md: No such file or directory
+BUGS_MD_ABSENT
+<shellId: 15 completed with exit code 0>
+[RESULT ✓] view: 1. # Caller Analysis: hal::mem::types::region
+2. 
+3. ## Script Output
+4. 
+5. Raw `find_callers_lsp.py` report: `/tmp/callers_out.md` (regenerated on demand).
+6. Command:
+7. 
+8. ```bash
+9. python scripts/find_callers_lsp.py \
+10.   src/kernel/src/hal/mem/types/region.rs --project-dir /home/ruize/nanv...
+[RESULT ✓] view: 1. # View Design: hal::mem::types::region
+2. 
+3. Status: **review & refinement** of the View already present in the in-file
+4. `verus! { }` block of `src/kernel/src/hal/mem/types/region.rs`. The existing
+5. `MemoryRegionView` is sound and caller-abstract; this document confirms each
+6. field against...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+bugs.md is absent. Now let me read the skills and run the read-only scripts in parallel.
+[TOOL] report_intent: Reading skills and running verification scripts
+[TOOL] bash: for f in spec-design verus-constraints ast-consistency bug-reporting; do echo "===== $f ====="; cat /home/ruize/verus-ai
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===== address Copy bound =====" && sed -n '25,45p' src/libs/sys/src/sys/mm/address/mo
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ===== address Copy bound =====
+
+//==================================================================================================
+// Traits
+//==================================================================================================
+
+#[verus_verify]
+pub trait Address
+where
+    Self: core:...
+[RESULT ✓] bash: Output too large to read at once (43.4 KB). Saved to: /tmp/copilot-tool-output-1781505244785-pnbmkd.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing region verification
+[TOOL] bash: set -e; ls -l /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs /home/ruize/nanvix-phy/src/kernel/src/hal/me
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize    21 Jun 15 14:13 /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.proof.rs
+-rw-rw-r-- 1 ruize ruize 15680 Jun 15 14:27 /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+-rw-rw-r-- 1 ruize ruize  5276 Jun 15 14:13 /home/ruize/nanvix-phy/src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+make verify (all) PASS, exit 0. The cheating counts are pre-existing TCB items. Let me confirm none originate from the region module.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== region in kernel cheating-detail? ==="; grep -i "region" verus-ai-logs/verify-ker
+
+[THINKING] The verification passed successfully, and the "CHEATING_DETECTED" labels are pre-existing TCB items from the kernel with external_body=25 and cfg_gate=7, which are already approved in tcb-allowed.md. The region module itself contributes nothing to these counts since its files have zero external_body and adm values.
+[RESULT ✓] bash: === region in kernel cheating-detail? ===
+    - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:117 book_mmio_regions: external_body
+exit=0
+=== external_body locations in kernel (sample) ===
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== hal/mem/types/region in cheating detail? ==="; grep -c "hal/mem/types/region" ver
+
+[THINKING] The grep results were picking up `book_physical_memory_regions` and `book_mmio_regions` from the mm/phys/mod.rs file rather than our actual target in `hal/mem/types/region.rs`. I'm verifying that the region.rs module doesn't appear in the cheating-detail matches, and the build has finished successfully.
+[RESULT ✓] bash: === hal/mem/types/region in cheating detail? ===
+0
+=== build result ===
+EXIT=0
+make: Nothing to be done for 'build'.
+EXIT=0
+=== build warnings ===
+0
+<shellId: 20 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 221.         // VERUS REWRITE: original exec body was `self.start.clone()`.
+222.         // Verus limitation: `Clone::clone` on a generic `T: Address` has no spec
+223.         // relating `spec_addr(&result)` to `spec_addr(&self.start)`, so the
+224.         // postcondition `spec_addr(&result) == se...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // Memory Region — Specifications
+5. //
+6. // A memory region is a contiguous, non-wrapping half-open byte interval of the
+7. // address space, `[start, start + size)`, tagged with metadata
+8. // (type / permi...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: hal::mem::types::region
+2. 
+3. ## Script Output
+4. 
+5. Raw `find_callers_lsp.py` report: `/tmp/callers_out.md` (regenerated on demand).
+6. Command:
+7. 
+8. ```bash
+9. python scripts/find_callers_lsp.py \
+10.   src/kernel/src/hal/mem/types/region.rs --project-dir /home/ruize/nanv...
+[RESULT ✓] view: 1. # View Design: hal::mem::types::region
+2. 
+3. Status: **review & refinement** of the View already present in the in-file
+4. `verus! { }` block of `src/kernel/src/hal/mem/types/region.rs`. The existing
+5. `MemoryRegionView` is sound and caller-abstract; this document confirms each
+6. field against...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Confirmed `Address: ... + Copy` at line 33. Let me read key skill sections and run the scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== AST CONSISTENCY SUMMARY ====="
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/a
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== GUARDRAIL COUNTS across 3 region files ====="
+for f in region.rs region.spec.rs re
+[RESULT ✓] bash: ===== GUARDRAIL COUNTS across 3 region files =====
+--- region.rs ---
+admit: 0
+0
+assume: 0
+0
+external_body: 0
+0
+assume_specification: 0
+0
+--- region.spec.rs ---
+admit: 0
+0
+assume: 0
+0
+external_body: 0
+0
+assume_specification: 0
+0
+--- region.proof.rs ---
+admit: 0
+0
+assume: 0
+0
+external_body: 0
+0
+assume...
+[RESULT ✓] bash: ===== AST CONSISTENCY SUMMARY =====
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+MemoryRegion::cache_policy               MATCH                                
+MemoryRegion:...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 201.     invariant — move it to `inv()` and maintain it in `ensures`.
+202. 12. **`uninterp` as Verification Escape** — using `uninterp spec fn` to
+203.     avoid writing a concrete spec definition, then injecting properties
+204.     via `external_body` proof axioms. This combination is equivalent to...
+[RESULT ✓] view: 401. **Do NOT** also list individual field changes as separate ensures — the
+402. spec transition already captures the complete state change.
+403. 
+404. When modifying a collection element without a spec transition, state the
+405. frame explicitly:
+406. `forall|i: int| i != changed_idx ==> new@[i] =...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Region module is clean (0 entries in cheating detail). Let me confirm the cfg_gate sources exclude region and gather final ground truth.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cfg_gate detail (kernel) ==="; grep -iE "cfg.gate|cfg_gate|cfg-gate" verus-ai-log
+
+[THINKING] The `make build` command returned "Nothing to be done for 'build'" because the build target already completed during the verify step, but I want to confirm the kernel actually compiles from scratch rather than just reusing existing artifacts.
+
+Looking at the Makefile and the `z` build tool mentioned in the custom instructions, I'm checking whether the region module is properly included and whether the cfg_gate=7 setting excludes it as expected. The region.rs file has a cfg gate for including ghost spec files, which is the standard allowed pattern and doesn't gate any executable code, so that should be fine.
+[RESULT ✓] bash: === cfg_gate detail (kernel) ===
+=== any cfg in region.rs ===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+491:// (included at the top of this file under `cfg(verus_keep_ghost)`).
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+All guardrail counts are zero. AST mismatch is exactly the expected `.clone()`→field-read rewrite. Let me run the remaining scripts and check skill standards.
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== SPEC DRIFT ====="
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py 
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== ast-consistency skill: rewrite policy ====="
+sed -n '1,120p' /home/ruize/verus-ai-
+[RESULT ✓] bash: ===== ast-consistency skill: rewrite policy =====
+44:These minimal exec changes are known Verus limitations — no full deviation
+52:| `#[derive(Clone, ...)]` | `#[cfg(not(verus_keep_ghost))] #[derive(...)]` | cfg-gating incompatible derives |
+77:3. **Verify it's a real Verus limitation.** Before acce...
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== full kernel cheating-detail ==="; cat verus-ai-logs/verify-kernel/verus-logs/chea
+
+[THINKING] Looking at the region.rs file, the `#[cfg(verus_keep_ghost)]` annotations on the spec and proof file includes are the standard pattern for ghost code inclusion, not cfg-gated exec code. The distinction matters because cfg-gated exec means conditional branches within executable code itself, whereas including ghost files is the canonical allowed approach. The region module appears to follow this correctly.
+
+Now I need to examine the full cheating-detail file to trace where those cfg_gate=7 sources are coming from and get a complete picture for the report.
+[RESULT ✓] bash: === full kernel cheating-detail ===
+    - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/frame.rs:137 allo...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: ===== SPEC DRIFT =====
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+===== FN COVER...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running consistency checks
+[TOOL] bash: set -e; cd /home/ruize/nanvix-phy; echo '=== AST SUMMARY ==='; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_con
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === AST SUMMARY ===
+ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs' exists on disk, but not in 'verus-ai/hal-phys-address'
+<shellId: 27 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me check the ast-consistency skill's allowed-rewrites section and verify spec_addr exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== ast-consistency allowed rewrites table ====="
+sed -n '40,95p' /home/ruize/verus-ai
+[RESULT ✓] bash: ===== ast-consistency allowed rewrites table =====
+`ast_report`) with the same auto-detection.
+
+## Pre-Approved Deviations
+
+These minimal exec changes are known Verus limitations — no full deviation
+process needed, but still document with a comment:
+
+| Original | Verus Version | Reason |
+|----------...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo '=== AST SUMMARY ==='; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency
+[RESULT ✓] bash: === AST SUMMARY ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+MemoryRegion::cache_policy               MATCH                                
+MemoryRegion::cmp            ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All kernel `external_body`/cfg entries are from other (TCB-listed) modules — region module contributes zero. Ground truth complete. Now waiting on the two review sub-agents.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+
+[THINKING] Looking at the external_body entries across the kernel, they're all coming from other modules like page.rs, frame.rs, kframe.rs, manager.rs, mod.rs, and identity_map.rs — all of which are already in tcb-allowed.md. The region module itself isn't contributing any external_body, admit, assume, or cfg-gated exec entries. I notice kframe.rs has deref and deref_mut listed in tcb-allowed but they're not showing up in this analysis, which is odd.
+
+The verification results are solid: region.rs passes all checks with zero admits, assumes, and external_body entries. The AST consistency shows 27 matches with just one mismatch on MemoryRegion::start, which is documented as a semantically equivalent Verus rewrite since Address is Copy. All 17 in-scope functions have proper ensures clauses, there's no contract drift, and no bugs were found since all four target functions are pure accessors. TCB compliance is trivially satisfied with no external_body in the region module.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo '=== SPEC DRIFT ==='; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py gi
+[RESULT ✓] bash: === SPEC DRIFT ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+=== FN COVERAGE ==...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Let me verify the `crate::hal::mem::spec_addr` / `spec_page_size` re-exports used in the ensures are valid.
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== re-exports of spec_addr / spec_page_size in hal::mem ====="
+grep -rn "spec_addr\|s
+[RESULT ✓] bash: ===== re-exports of spec_addr / spec_page_size in hal::mem =====
+===== git log target file (recent) =====
+c10a6e7c1 [verus] verify PASS (cheating detected): kernel::all (41 verified, 0 errors, external_body=25 cfg_gate=7)
+63131fc55 [verus] verify PASS (cheating detected): kernel::all (41 verified, 0...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The re-exports aren't in mod.rs directly. Let me locate where `crate::hal::mem::spec_addr` resolves and investigate the "cheating detected" log note.
+[TOOL] bash: cd /home/ruize/nanvix-phy
+echo "===== where spec_addr / spec_page_size are made available under hal::mem ====="
+grep -rn
+[RESULT ✓] bash: ===== where spec_addr / spec_page_size are made available under hal::mem =====
+src/kernel/src/hal/mem/types/region.spec.rs:15:// (defined in `page.spec.rs`, `pub uninterp spec fn spec_addr<T: Address>`),
+src/kernel/src/hal/mem/types/region.spec.rs:28:use crate::hal::mem::spec_addr;
+===== spec_page_s...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] rg: \badmit\b
+[TOOL] rg: \bassume\b
+[TOOL] rg: external_body
+[TOOL] rg: assume_specification
+[TOOL] rg: #\[cfg\(
+[TOOL] rg: #\[cfg_attr\(
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: No matches found.
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:11:#[cfg(verus_keep_ghost)]
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing guardrails
+[TOOL] bash: python3 - <<'PY'
+import re
+from pathlib import Path
+files=[
+'/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: [admit] count=0
+[assume] count=0
+[external_body] count=0
+[assume_specification] count=0
+[cfg_attr] count=0
+[cfg] count=2
+  /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:9: #[cfg(verus_keep_ghost)]
+  /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:11: #[cfg(verus_keep_gh...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+I have all the information I need. Let me verify the output directory exists and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-hal-memory-region/final-review && ls -la verus-ai-logs/n
+[RESULT ✓] bash: total 1340
+drwxrwxr-x 1 ruize ruize     136 Jun 15 14:30 .
+drwxrwxr-x 1 ruize ruize     392 Jun 15 14:30 ..
+-rw-rw-r-- 1 ruize ruize 1299296 Jun 15 14:35 review-claude-20260615-143003.jsonl
+-rw-rw-r-- 1 ruize ruize   66467 Jun 15 14:35 review-claude-20260615-143003.txt
+verus-ai/hal-memory-region
+<sh...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] rg: hal/mem/types/region
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] rg: #\[verus_spec
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:210:    #[verus_spec(result =>
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:237:    #[verus_spec(result =>
+/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs:388:    #[verus_spec(result =>
+/home/ruize/nanvix-ph...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All evidence gathered. Writing the final review.
+[TOOL] report_intent: Writing final review file
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md with 11713 characters
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -la verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md && e
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 11829 Jun 15 14:36 verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md
+---TAIL---
+single AST mismatch is a verified semantically-equivalent rewrite for a genuine
+Verus limitation, all critical caller expectations are covered, and central
+verificat...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Review complete and written to:
+`/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.claude.md`
+
+## Summary — Verdict: **PASS**
+
+Strict findings across all 8 dimensions:
+
+1. **Spec quality** — 4 ensures are faithful, minimal, non-tautological. `start`: `spec_addr(&result) == self@.start`; `size`: `result as int == self@.size`. Both match the closed View exactly.
+2. **Caller coverage** — **9/9** caller expectations covered (ensures + `inv()`); none missing.
+3. **Proof completeness** — `admit() = 0`; `region.proof.rs` empty; no stubs. No blocker.
+4. **TCB** — **0** `external_body` in the 3 region files; nothing to reconcile.
+5. **AST consistency** — `27 matched / 1 mismatch`. The one mismatch (`MemoryRegion::start`: `self.start.clone()` → `self.start`) is independently verified semantically equivalent: `Address: Copy` (mod.rs:33), so clone ≡ bitwise copy. Genuine Verus limitation, documented with reproducer. **Not a blocker.**
+6. **Verification** — Relied on authoritative central result (module PASS, 0 errors); did not run locally.
+7. **Guardrails** — `admit/assume/external_body/assume_specification` all **0**; only cfg lines are the standard spec/proof includes.
+8. **Bugs** — `bugs.md` correctly absent; targets are pure accessors with no defect; the rewrite is a Verus limitation, not a bug.
+
+No blockers found. Supplementary: spec_drift = 0 contract drift; fn_coverage = 17/17 matched.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 179s, total_turns: 0, model: claude-opus-4.8, duration: 179s
+
+Review complete and written to:
+`/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memor...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Claude review done (PASS). Now the codex review.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+[TOOL] report_intent: Writing final review
+[TOOL] bash: set -e; mkdir -p /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review; cat > /home/ruize/nanv
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: WROTE /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.codex.md
+119 /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.codex.md
+<shellId: 36 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Independent Verification Review — `hal-memory-region`
+2. 
+3. Reviewer mode: independent, strict, skeptical.
+4. Scope-limited targets: `TruncatedMemoryRegion::start`, `MemoryRegion::start`, `TruncatedMemoryRegion::size`, `MemoryRegion::size`.
+5. 
+6. ## 1) Spec quality
+7. 
+8. ### Target acc...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Completed. I performed the independent strict review and wrote the raw report to:
+
+`/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.codex.md`
+
+The report includes all requested dimensions, exact guardrail counts/locations, AST mismatch analysis (including `Address: Copy` equivalence check), caller-coverage accounting, TCB/proof checks, bug reconciliation, and final verdict (`## Result: PASS`).
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 201s, total_turns: 0, model: gpt-5.3-codex, duration: 201s
+
+Completed. I performed the independent strict review and wrote the raw report to:
+
+`/home/ruize...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Both reviews complete (both PASS). Let me read both raw files to consolidate accurately.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "############## CLAUDE ##############"; cat verus-ai-logs/nanvix-phys-hal-memory-regio
+[RESULT ✓] bash: ############## CLAUDE ##############
+# Final Verification Review — `hal-memory-region`
+
+- **Reviewer:** Independent strict final verification (Claude)
+- **Date:** 2026-06-15
+- **Branch under review:** `verus-ai/hal-memory-region`
+- **In-scope target functions (the ONLY functions in scope):**
+  - `Tr...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Both independent reviews reached **PASS** and corroborate my central ground truth. Now consolidating into the final review.
+[TOOL] report_intent: Writing consolidated review
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.md
+
+[THINKING] Both reviewers confirmed the work passes, with only a non-blocking note about the Ord-by-start contract being out of scope. I'm now consolidating everything into the final review document using the prescribed template and marking off all checklist items—everything checks out, including the one expected AST rewrite that both reviewers and I confirmed is acceptable.
+
+Writing final_review.md...
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/final_review.md with 10295 characters
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Final review complete. Verdict: **PASS**.
+
+## Summary
+
+Two independent sub-agents (claude-opus-4.8, gpt-5.3-codex) reviewed `hal-memory-region`, both reaching **PASS**. I corroborated with centrally-executed authoritative checks. Outputs:
+- `final-review/final_review.claude.md`, `final_review.codex.md` (raw reviews)
+- `final-review/final_review.md` (consolidated, full checklist)
+
+### Key findings (all 8 dimensions clean)
+- **Specs**: 4 faithful accessor contracts — `start`: `spec_addr(&result) == self@.start`; `size`: `result as int == self@.size`. No tautological/subsumed/weakened ensures.
+- **Caller coverage**: 9/9 in-scope expectations covered (ensures + `inv()`/`wf_geometry`).
+- **Proof completeness**: `admit=0`, `external_body=0` (proof file empty; accessors body-verified).
+- **Guardrails**: admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0.
+- **TCB**: 0 external_body in region files — none needed in tcb-allowed.md. The kernel's `external_body=25` are pre-existing TCB items in other modules; region contributes 0.
+- **AST**: 27 MATCH / 1 documented rewrite (`self.start.clone()` → `self.start`), independently verified semantically equivalent (`Address: Copy` at mod.rs:33) — not a blocker.
+- **Verification**: `make verify-kernel` PASS, `make verify` (all modules) exit 0, `make build` exit 0. spec_drift = 0; fn_coverage = 17/17.
+- **Bugs**: bugs.md correctly absent (pure accessors, no defects).
+
+Only note: `Ord::cmp` has no formal contract — out of scope (not one of the four target functions), non-blocking.
+
+**Result: PASS** — all checklist items checked.
+
+
+=== Session End ===
+Session: e2057c66-774f-4cb6-b0e8-74650e968783
+Duration: 496.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-memory-region/final-review/review-claude-20260615-143003.jsonl
