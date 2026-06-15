@@ -42,12 +42,33 @@ this module (`sys::mm::address` cheating counts are all zero).
 ## Environment notes (infrastructure, not project bugs)
 
 - The pinned Verus is `build/verus-version = 0.2026.05.31.5dd6d83`, whose
-  matching `vstd = 0.0.0-2026-05-31-0205` is what `Cargo.toml` requires.
-  The pre-existing local install at `~/toolchain/verus` was a newer build
-  (`0.2026.06.14`) that cannot compile the pinned `vstd`. Installing the
-  correct pinned release via `./scripts/setup/verus.sh <dir>` and running with
-  `VERUS_EXECUTABLE_DIR=<dir>` resolves it. All results above use the pinned
-  `0.2026.05.31` Verus.
+  matching `vstd = 0.0.0-2026-05-31-0205` is what `Cargo.toml` requires (plain
+  registry dependency, **no** `[patch.crates-io]`). This is the canonical setup
+  produced by `./scripts/setup/verus.sh <dir>`.
+
+### `make verify` gate failure (2026-06-15) — toolchain/`vstd` mismatch (RESOLVED)
+
+- **Symptom:** `make verify` failed while compiling `vstd 0.0.0-2026-05-31-0205`
+  with `error: expected generics to match … found u8` in `std_specs/atomic.rs`
+  (`ExAtomic` newtype), then later `feature ‘…’ is declared but not used` errors
+  in the `error` crate (`warnings = "deny"`).
+- **Root cause:** the active toolchain at `~/toolchain/verus` had been clobbered
+  to a newer build `0.2026.06.14.4ea7d0f` (backup left as
+  `~/toolchain/verus-06.14-clobber-bak`), which does **not** match the project
+  pin `0.2026.05.31`. A prior automated prover commit (`70a9ec9d0`) then changed
+  `Cargo.toml` to `vstd = 0.0.0-2026-06-14-0213` + a `[patch.crates-io]`
+  redirect to `/tmp/verus-crates` to chase the wrong toolchain, leaving an
+  inconsistent state that fails to build for the `x86-kernel` target (which
+  rebuilds `vstd` from source via `-Z build-std`).
+- **Fix (config restore, no spec change):**
+  1. Repointed `~/toolchain/verus` → `verus-pinned-0531`
+     (`0.2026.05.31.5dd6d83`), the pinned release already cached locally.
+  2. Reverted `Cargo.toml`/`Cargo.lock` to the matched config #1:
+     `vstd = 0.0.0-2026-05-31-0205`, no `[patch.crates-io]`.
+- **Result:** `make verify-sys` → `6 verified, 0 errors` (CLEAN). `make verify`
+  → bitmap `70`, sys `6`, nanvix-slab `35`, kernel `47` verified, `0 errors`,
+  exit `0`. The kernel `external_body=24` / `cfg_gate=6` counts are pre-existing
+  TCB items, unrelated to this module.
 - With this Verus build, module paths passed to `make … MODULE=` must be
   crate-qualified as seen by Verus (`sys::mm::address`). The `scripts/verify.sh`
   helper strips one leading `<crate>::`, so module-scoped runs were invoked as
