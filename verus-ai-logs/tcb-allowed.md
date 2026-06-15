@@ -88,15 +88,39 @@ Any `external_body` outside this list must be removed.
   `ensures` states that, on `Ok`, every *covered* frame in `mmio_regions_frame_set(mmio_regions)`
   becomes reserved (uncovered MMIO frames are skipped, matching the `frame::is_covered` gate).
 
+## `external_body` thin-facade trust boundaries in `mm::phys::upool` (permanent until the frame free-function layer is verified)
+
+`upool` *is* the module under verification, so these three are **not** "trusted until upool
+is verified" — they are design-forced thin-facade boundaries over the global frame allocator,
+the same wording class as the `frame.rs` singleton wrappers (`frame::alloc` … "external_body
+until the free-function layer is verified"). The verified part of `upool` is everything that
+reasons through `UserFrame` (its `view`/`inv`, `new`, `address`, `leak`, `share`, `refcount`,
+`drop` — all machine-verified); only the `Upool` facade, whose abstract state *is* the global
+`FrameAllocView` it does not own, stays trusted.
+
+- `src/kernel/src/mm/phys/upool.rs::Upool` (struct) — `external_body` opaque type. Its `View`
+  is `uninterp spec fn view() -> FrameAllocView` (the pool carries no spec-readable field; its
+  real backing store is the global frame allocator). With an uninterpreted view the constructor
+  `Self { _private: () }` is unconstructible in verified code and no body can connect the view
+  to the allocator, so the type is opaque by design.
+- `src/kernel/src/mm/phys/upool.rs::Upool::new` — carries the **real** contract
+  `ensures result@.wf()`. `FrameAllocView::wf()` is a non-trivial conjunction (page-alignment,
+  allocated/free disjointness, allocated↔refcount consistency, u8-bounded refcounts) over the
+  pool's *uninterpreted* `view()`; it is **unprovable from an uninterpreted view**, so the body
+  is an assumed §8 ghost-attachment axiom (the pool introduces no frames of its own — `wf()` is
+  the one fact its boot-time caller needs before handing the pool to `PhysMemoryManager::init`).
+- `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — delegates to `frame::alloc` (itself
+  `external_body`). Its postcondition speaks of `self@` (the uninterpreted pool view: the
+  `alloc_one` free→allocated transition plus the empty-pool `Err` arm `free_count() == 0`),
+  whereas `frame::alloc`'s contract speaks of `phys_view().frames`. Bridging `self@` to
+  `phys_view().frames` is the **deferred §8 ghost token in the frame free-function layer**, so
+  `alloc` stays `external_body` *until the frame free-function layer is verified* — exactly like
+  its `frame.rs` siblings (`frame::alloc`/`book`/`share`), NOT "when upool is verified".
+
 ## Cross-module dependencies trusted until their module is verified (`external_body` / `assume_specification`)
 
 - `src/kernel/src/mm/phys/frame.rs::init` — also listed under skip; callable from verified `init`.
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — no specs yet; opaque callee.
-- `src/kernel/src/mm/phys/upool.rs::Upool` (struct) and `Upool::new` — no specs yet; opaque
-  type/callee needed so verified `init` can construct the user page pool.
-- `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — pool allocation primitive the manager's user
-  paths call. `ensures` describes the free→allocated transition (`alloc_one`) and the empty-pool
-  `Err` arm (`free_count() == 0`). Verified when `upool` is.
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::map_frame` — exec-only helper holding the
   identity-mapping side effect extracted from `KernelFrame::new`. Declared in
   `kframe.spec.rs` as `pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress)
