@@ -616,3 +616,116 @@ Spec drift: **PASS** (0 contract drift). Now cross-module regression and build.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | grep -iE "Crate|Exit code|cheating:|status:|error|Summ
 
 [THINKING] The spec drift check passed with no contract drift, which is good. Now I need to run the full cross-module regression with `make verify` across all crates and then build, checking that everything passes verification and compiles with zero errors and warnings. I'm aware that `make verify` includes the kernel verification which has 26 admits, so that's expected.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating:...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+All crates verify with exit 0 — no regressions. Other crates' CHEATING_DETECTED flags are their own in-progress states, unrelated to sys-virt-address. Now the build check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "build|make|cargo
+
+[THINKING] All the verified crates are passing with exit code 0, so there are no verification errors. The "CHEATING_DETECTED" statuses I'm seeing on other crates like bitmap, bump-allocator, and arch are pre-existing states from those modules, not regressions caused by sys-virt-address. The key check is that all previously verified modules still pass verification, and they do—sys itself exits with 0 and cfg_gate is at 1.
+
+The cfg_gate value in sys comes from alignment.rs, which is outside the scope of sys-virt-address changes. Now I need to verify the build succeeds with no errors or warnings. I'm looking at what the proper build command is for this repo—whether it's a targeted cargo build of the sys crate or a full kernel/guest build through make. Let me check the build configuration to run the appropriate build verification.
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operation...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build -- kernel 2>&1 | tail -40
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '60,140p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "z build|target
+[RESULT ✓] bash: ./z build -- all RELEASE=yes LOG_LEVEL=error
+./z build -- all
+./z build -- all RELEASE=yes LOG_LEVEL=panic
+./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=yes
+On Windows 11, the `z.ps1` PowerShell script provides the same CLI interface. Guest components are
+.\z.ps1 build -- all
+# Build on...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build -- all 2>&1 | tail -40
+
+[THINKING] The `./z build -- kernel` command isn't finding the right make target, so I should check what targets are actually available or just compile the sys crate directly with cargo. Since the verus verification already successfully compiles the sys crate, I could use that as proof of a clean build, or try running `./z build -- all` with a timeout to build all the guest components.
+[RESULT ✓] bash: mkimage: wrote '/home/ruize/nanvix-phy-specs/bin/mount-bench-nostd.initrd' (31944704 bytes, 4 entries)
+/home/ruize/nanvix-phy-specs/bin/mkimage.elf -o /home/ruize/nanvix-phy-specs/bin/hello-rust-nostd.initrd \
+	/home/ruize/nanvix-phy-specs/bin/procd.elf\;procd \
+	/home/ruize/nanvix-phy-specs/bin/mem...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Build succeeded. Let me confirm zero warnings, focused on the sys crate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build -- all 2>&1 | grep -iE "warning|error\[|^error" | grep -v "Warn
+
+[THINKING] The build completed without errors, so I should verify there are no warnings specific to the sys crate. I can see it compiled as part of the guest build, but I need to search through the full output for any warnings—since I only have the tail end of the logs, I'll need to either re-run a focused build of just the sys crate or grep for warnings in the complete build output.
+[RESULT ✓] bash: === exit done; warnings above (if any) ===
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Build is clean (the only "Warning" is a benign sysroot-symlink note, unrelated to compilation). Let me do a final textual confirmation of cheating patterns across the sys crate, then write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit/assume/external_body/no_decreases in sys crate ==="; grep -rnE "\badm
+
+[THINKING] The build completed successfully with no relevant warnings or errors. Now I'm pinpointing where the cfg_gate=1 originates for the sys crate—it's coming from the ghost specification functions in alignment.rs, which is outside the scope of what I'm investigating with sys-virt-address.
+
+Looking at the target module virt.rs specifically, the only cfg gates are on include! statements that import verification material, which fall under the allowed exemptions. So within the actual scope of this review, there's zero cfg-gated exec code, meaning the checklist item passes. The alignment.rs pattern is a pre-existing, out-of-scope artifact involving ghost code that I shouldn't modify per the hard rule about not touching unlisted functions—I'll document it as a noted tooling artifact rather than a violation requiring a fix.
+
+Now I'm finalizing all the checklist items: admit, assume, trusted functions, no_decreases clauses, cfg-gated exec code, external_body usage, AST consistency, and VERUS REWRITE comments all check out as passing with the evidence documented.
+
+I need to write the turn_001_driver.md file and mark the outcome as RESOLVED, but first let me verify the admit/assume/external_body grep results one more time in the sys crate to be absolutely certain.
+[RESULT ✓] bash: === admit/assume/external_body/no_decreases in sys crate ===
+NONE FOUND
+=== confirm spec_drift baseline ===
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+All checklist items verified. Writing the review and STOP file.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/dialogue/STOP with 9 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/dialogue/turn_001_driver.md with 5103 characters
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Review complete. All 12 checklist items **PASS** with concrete evidence → **RESOLVED**.
+
+Key findings (target: `virt.rs`):
+- **admit/assume/trusted/no_decreases/external_body = 0** — confirmed by `make verify-sys` scan and textual grep of the sys crate.
+- **cfg-gated exec code = 0 in scope**: virt.rs cfg-gates only `include!` of verification material (allowed imports). The global `cfg_gate=1` is an out-of-scope, ghost-only `verus!{}` spec block in `alignment.rs` (not exec code; hard rule forbids touching it).
+- **AST consistency**: real exec unchanged vs the correct phase baseline `40a4c4b60`. The one residual `align_up` "MISMATCH" is a name-collision false positive (two same-named methods: inherent `-> Option` vs trait `-> Result`); `git diff` proves zero exec-body change.
+- **No spec drift**: `spec_drift.py` reports 0 contract drift.
+- **Cross-module**: `make verify` — all crates exit 0 (no regressions).
+- **Build**: `./z build -- all` clean, 0 errors/warnings.
+
+Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: fa74003c-3e10-4a0b-90c6-7a1dd0cc9b54
+Duration: 496.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/cheating-elimination/dialogue-reviewer-t001-claude-20260615-104905.jsonl
