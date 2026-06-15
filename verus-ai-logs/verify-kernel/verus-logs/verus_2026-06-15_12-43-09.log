@@ -1,0 +1,104 @@
+Timestamp: 2026-06-15_12-43-09
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys::manager
+Exit code: 101
+14 verified
+4 errors
+
+Cheating patterns:
+  assume=0
+  external_body=15
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=12
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::phys::manager
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:14:9
+   |
+12 | pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
+   | ---------------------------------------------------------- at the end of the function body
+13 |     ensures
+14 |         m@ == phys_view().frames,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/kernel/src/mm/phys/manager.proof.rs:26:1
+   |
+26 | pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:30:9
+   |
+26 | pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+   | ----------------------------------------------------------------------------------------- at the end of the function body
+...
+30 |         pre.free_frames.contains(addr),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:31:9
+   |
+26 | pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
+   | ----------------------------------------------------------------------------------------- at the end of the function body
+...
+31 |         post == pre.alloc_one(addr),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/kernel/src/mm/phys/manager.proof.rs:38:1
+   |
+38 | / pub proof fn lemma_kernel_alloc_contiguous(
+39 | |     pre: FrameAllocView,
+40 | |     post: FrameAllocView,
+41 | |     frames: Seq<KernelFrame>,
+42 | |     count: nat,
+43 | | )
+   | |_^
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:47:9
+   |
+38 | / pub proof fn lemma_kernel_alloc_contiguous(
+39 | |     pre: FrameAllocView,
+40 | |     post: FrameAllocView,
+41 | |     frames: Seq<KernelFrame>,
+42 | |     count: nat,
+43 | | )
+   | |_- at the end of the function body
+...
+47 |           frames.len() == count,
+   |           ^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+  --> src/kernel/src/mm/phys/manager.proof.rs:48:9
+   |
+38 | / pub proof fn lemma_kernel_alloc_contiguous(
+39 | |     pre: FrameAllocView,
+40 | |     post: FrameAllocView,
+41 | |     frames: Seq<KernelFrame>,
+42 | |     count: nat,
+43 | | )
+   | |_- at the end of the function body
+...
+48 |           crate::mm::phys::manager::kernel_frames_contiguous(frames, count),
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.proof.rs:154:9
+    |
+150 | pub proof fn lemma_user_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
+    | ------------------------------------------------------------------------------------- at the end of the function body
+...
+154 |         m@ == pre,
+    |         ^^^^^^^^^ failed this postcondition
+
+verification results:: 14 verified, 4 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 6 previous errors
