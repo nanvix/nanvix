@@ -18,3 +18,6 @@ Phases: caller-analysis → specification
 PHASE: caller-analysis
 Module: manager
 ============================================================
+[2026-06-15 19:18:33] [PROVER] Running caller-analysis...
+[2026-06-15 19:18:33] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 19:20:59]   ↳ prover done in 2m25s (exit=0)
