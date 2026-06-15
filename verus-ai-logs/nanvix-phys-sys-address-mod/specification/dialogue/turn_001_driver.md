@@ -102,3 +102,31 @@ Expect: `6 verified, 0 errors, status CLEAN`, and confirm `grep -n "Err(_) => tr
 
 ### Decision
 Checklist **NOT** fully PASS — items 4 and 6 FAIL. **No STOP file written.** Fixer must apply the `is_aligned` change above and re-run `make verify-sys`; Turn 2 will verify the diff and tool output.
+
+---
+
+## Turn 2: Verify fix for items 4 & 6 — FIXED
+
+### Change applied
+`src/libs/sys/src/sys/mm/address/mod.rs` `is_aligned` ensures changed from the
+tautological `match { Ok(b) => …, Err(_) => true }` to:
+```rust
+#[verus_spec(result =>
+    ensures
+        result is Ok,
+        result->Ok_0 == addr_is_aligned(spec_addr(self), align),
+)]
+fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
+```
+
+### Verification (tool output, not claims)
+- `grep -n "Err(_) => true" src/libs/sys/src/sys/mm/address/mod.rs` → **NONE** (tautology removed).
+- `make verify-sys` (pinned Verus) → **6 verified, 0 errors, status CLEAN**, `cheating: assume=0 external_body=0 admit=0 trusted=0`.
+- Cross-module re-check `make verify-kernel` → **47 verified, 0 errors, exit 0** (the `external_body=24 cfg_gate=6` is pre-existing baseline, identical to commit `d791be2cd`; not introduced by this change). The strengthened `result is Ok` does not break any downstream consumer.
+
+Item 4 (No tautological ensures) → **FIXED.**
+Item 6 (Error paths have meaningful ensures) → **FIXED** (`is_aligned` now guarantees `Ok`; `from_raw_value` Err already meaningful `BadAddress`).
+Item 2 / 11 advisory gaps (is_aligned totality) → **closed** by the same change.
+
+### Final decision
+All checklist items are **PASS or FIXED** with tool-backed evidence. Writing `STOP = RESOLVED`.
