@@ -1,0 +1,514 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T07:59:58.600968
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are proving the specifications for /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs using Verus.
+Do NOT weaken contracts (requires/ensures/invariants) to make proofs easier.
+If a proof fails, distinguish:
+- **Proof gap**: strengthen the proof (add lemmas, invariants, assertions)
+- **Code bug**: the code is wrong — if it's an auto-fixable bug (overflow, off-by-one, missing bounds check, unchecked cast), fix it directly following the **bug-reporting** skill's auto-fix procedure and record in /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/bugs.md. For complex bugs, record only (do not fix).
+Your job is to complete all proofs — fill proof bodies, write loop invariants,
+add lemmas, and eliminate every `admit()` placeholder.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
+
+
+Source file: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+Spec file:  /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow these skills strictly:
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns, source integrity
+- **proving-guide** — MUST follow: proof strategy, invariant planning
+- **verification-order** — MUST follow: verify functions in dependency order
+- **spec-design** — MUST follow when writing requires/ensures/invariants
+- **spec-drift-check** — reference when checking for spec weakening
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any proofs, read all functions in the module
+and create a verification plan: list each function that needs proving,
+its dependencies, and the order to verify them (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verification-plan.json
+```
+
+**Proving**: Follow your plan. For each function, write the proof body,
+remove any `admit()` and `external_body`, and run `make verify-kernel` to confirm.
+
+Prove all specifications: fill proof bodies, write loop invariants, add
+intermediate assertions and lemmas, until `make verify-kernel` passes with 0 errors
+and 0 remaining `admit()` calls and 0 `assume()`.
+
+Critical rules:
+- Do NOT add `external_body` to any function (see verus-constraints).
+- Do NOT weaken specs to make a proof easier.
+  Weakening means: adding `requires` (restricts callers), or removing/loosening `ensures` (loses guarantees).
+  If verification fails, follow the proof gap / code bug classification above.
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Specs must be strong enough for upstream callers to verify against.
+If a spec is hard to prove, strengthen the proof strategy — do NOT weaken the spec.
+Weakened specs will be automatically detected by spec drift analysis and rejected.
+
+After all functions verify, run `make verify` to confirm no regressions
+in other modules.
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and understanding the task structure.
+[TOOL] skill: find-skills
+[TOOL] report_intent: Reading skills and source files
+
+[THINKING] I'm starting by reviewing the skills and understanding what needs to be done, then examining the relevant files.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] skill: Skill "find-skills" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The find-skills skill isn't relevant. Let me locate the actual Verus skills referenced in the task.
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null; echo "---SKILLS---"; find /home/ruize -maxdepth 4 -type d -in
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md 2>/dev/null; echo "===PLAN==="; ls /home/ruize/n
+
+[THINKING] I need to look at the task-specific skills instead—verus-constraints, proving-guide, verification-order, spec-design, spec-drift-check, and bug-reporting—which should be in the verus-ai scripts or skills directory.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me read the key skills and the verification plan.
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/verus-constraints/SKILL.md 2>/dev/null | head -200
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/
+[RESULT ✓] bash: ---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+
+# Verus Constraints
+
+Study `...
+[RESULT ✓] bash: 
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; wc -l src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.spec.rs sr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-l
+
+[THINKING] The function didn't produce output, so I need to examine the verification plan JSON directly and look at the frame.rs file to understand what's happening.
+[RESULT ✓] bash: 929 src/kernel/src/mm/phys/frame.rs
+   45 src/kernel/src/mm/phys/frame.spec.rs
+   74 src/kernel/src/mm/phys/frame.proof.rs
+ 1048 total
+<shellId: 5 completed with exit code 0>
+[RESULT ✓] bash: No matching modules found.
+EXIT 0
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 -c "
+import json
+d=json.load(open('verus-ai-logs/verification-plan.js
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+[RESULT ✓] bash: <class 'dict'> ['target', 'entries', 'total_modules', 'cycles_broken', 'steps']
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noticing the existing code uses attribute-style annotations like `#[verus_spec]` and `#[verus_verify]`, but the skill specifies using `verus! { }` block syntax instead. Since the spec and proof files are freely editable, I should examine the full source to understand the current structure before deciding how to refactor it.
+[RESULT ✓] view: 120.             match result {
+121.                 Ok(frame) => {
+122.                     &&& frame.inv()
+123.                     &&& old(self)@.free_frames.contains(frame@)
+124.                     &&& final(self)@ == FrameAllocView {
+125.                         allocated_frames: old(self)@.al...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 400.             Some(n) => n,
+401.             None => {
+402.                 let reason: &str = "frame reference count overflow";
+403.                 #[cfg(not(verus_keep_ghost))]
+404.                 error!("{reason} (frame={frame:?})");
+405.                 return Err(Error::new(ErrorCode::OutO...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 700. pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
+701.     if unlikely(INSTANCE_INIT.load(ORDER)) {
+702.         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
+703.     }
+704. 
+705.     info!(
+706.         "frame allocator: {} frames, {...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me read the spec and proof files.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I need to examine the spec and proof files to understand the key definitions like Inner::inv and FrameAllocView.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. // =================================================================================================
+12. // Dependency contracts for...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use vstd::map::*;
+6. 
+7. /// Helper: convert a bitmap index to a frame (physical) address.
+8. pub open spec fn frame_addr_of(i: int) -> int {
+9.     i * spec_page_size()
+10. }
+11. 
+12. impl View for Inner {
+13. ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now let me find the `FrameAllocView` definition and the Bitmap spec interface.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "FrameAllocView" src/kernel/src/mm/phys/mod.rs src/kernel/src/mm/phy
+
+[THINKING] I need to look up the FrameAllocView definition and understand the related types like its wf field, the Bitmap spec, FrameAddress, FrameNumber, and PageAligned.
+[RESULT ✓] bash: src/kernel/src/mm/phys/manager.spec.rs:4:use crate::mm::phys::FrameAllocView;
+src/kernel/src/mm/phys/manager.spec.rs:53:// Allocation / watermark vocabulary (on the existing FrameAllocView)
+src/kernel/src/mm/phys/manager.spec.rs:56:impl FrameAllocView {
+src/kernel/src/mm/phys/manager.spec.rs:72:    ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now let me examine the Bitmap spec interface (the key dependency).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; find src/libs/bitmap -name "*.rs" | head; echo "==="; grep -rn "fn alloc\b\|f
+
+[THINKING] I'm examining the Bitmap spec interface to understand its available methods like allocation, bit manipulation operations, testing, and viewing capabilities.
+[RESULT ✓] bash: src/libs/bitmap/src/test.rs
+src/libs/bitmap/src/lib.test.rs
+src/libs/bitmap/src/lib.rs
+src/libs/bitmap/src/lib.proof.rs
+src/libs/bitmap/src/lib.spec.rs
+===
+src/libs/bitmap/src/lib.proof.rs:93:    /// Setting a byte bit reflects in set_bits.
+src/libs/bitmap/src/lib.proof.rs:96:            self@.num_b...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "verus_spec\|pub fn \|fn alloc\|fn set\|fn clear\|fn test\|fn number_
+
+[THINKING] I'm examining the specification attributes on the bitmap's core functions—alloc, alloc_range, set, clear, test, number_of_bits, and usage—along with how BitmapView is defined.
+[RESULT ✓] bash: 5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+89:    #[verus_spec(result =>
+100:    pub fn new(number_of_bits: usize) -> Result<Self, Error> {
+153:    #[verus_spec(result =>
+168:    pub fn from_raw_array(array: RawArray<u8>) -> Result<Self, Error> {
+203:    ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 203.     #[verus_spec(result =>
+204.         requires
+205.             self.inv(),
+206.         ensures
+207.             result as int == self@.num_bits,
+208.             result > 0,
+209.             result < u32::MAX as usize,
+210.     )]
+211.     pub fn number_of_bits(&self) -> usize {
+212.       ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 516.     #[verus_spec(result =>
+517.         requires
+518.             old(self).inv(),
+519.         ensures
+520.             final(self).inv(),
+521.             match result {
+522.                 Ok(()) => {
+523.                     &&& index < final(self)@.num_bits
+524.                     &&& fi...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Now let me look at the BitmapView spec and the bitmap inv.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.spec.rs
+
+[THINKING] Looking at the BitmapView spec to understand its interface and methods like is_bit_set, set_bits, num_bits, and other utility functions.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // Bitmap - Specifications
+5. //
+6. // This file contains specification functions, BitmapView, and View trait for Bitmap.
+7. 
+8. verus! {
+9. 
+10. //=============================================================...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Now let me examine the FrameAddress, FrameNumber, PageAligned, and TruncatedMemoryRegion specs that the frame functions rely on.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "into_frame_number\|from_frame_number\|spec fn inv\|fn view\|from_ra
+
+[THINKING] Now I'm diving into the related types and utility functions that work with the Bitmap interface—specifically FrameAddress, FrameNumber, PageAligned, and PhysicalAddress, along with their associated methods like `inv` and `view`, and the spec functions that handle conversions and constraints.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:50:    closed spec fn view(&self) -> int
+src/kernel/src/hal/mem/types/address/frame.rs:57:    pub open spec fn inv(&self) -> bool
+src/kernel/src/hal/mem/types/address/frame.rs:98:    pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+src/ker...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] view: 40. // that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+41. // definition names the same concrete value the proofs already relied on.
+42. pub open spec fn spec_page_size() -> int {
+43.     ::arch::mem::PAGE_SIZE as int
+44. }
+45. 
+46. impl View for Fra...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+This is complex. Let me look at the helper spec functions and FrameNumber/PageAligned specs.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+[THINKING] I'm working through the preconditions for the frame methods in frame.rs. The `into_frame_number` conversion requires both `self.inv()` and a spec condition about frame numbers, but the frame operations like `free`, `share`, and `refcount` only enforce the invariant check, not the second condition. I need to figure out whether that's intentional or if there's a missing requirement.
+
+Looking at the kernel's frame.spec.rs, I see `assume_specification` declarations for `PageAligned` methods, but the tcb-allowed list mentions that `FrameAddress::from_frame_number` and `into_frame_number` were assume_specification placeholders that may have been removed. I need to check what's actually in the current frame.spec.rs to understand what preconditions are really being enforced.
+
+The issue is that when `free`, `share`, and `refcount` call `frame.into_frame_number()`, the FrameAddress method requires both `self.inv()` and `spec_frame_number(self@) <= spec_max_frame_number()`, but the kernel functions only guarantee the invariant in their preconditions. I need to figure out whether this bound is actually derivable from `inv()` or if there's a missing precondition.
+[RESULT ✓] view: 1. // Spec helpers for `FrameAddress` are shared with the `phys` sibling module: a frame's abstract
+2. // state is the physical address (`int`), its frame number is `self@ / spec_page_size()`, and its
+3. // base address is `frame_index * spec_page_size()`.
+4. use crate::hal::mem::types::address::phy...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "spec_frame_number\|spec_from_number\|spec_frame_raw_value\|spec_max
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs:114:            spec_frame_number(addr@) <= spec_max_frame_number(),
+src/kernel/src/hal/mem/types/address/phys.rs:140:            result@ == spec_from_number(spec_frame_raw_value(frame)),
+src/kernel/src/hal/mem/types/address/phys.rs:142:    pub fn from_nu...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. use vstd::arithmetic::power2::pow2;
+3. 
+4. verus! {
+5. 
+6. // =================================================================================================
+7. // Abstract models of frame-number quantities, realized by the verified `arch` crate.
+8. //
+9....
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+I now understand the architecture. Let me create a todo plan and run a baseline verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat Makefile 2>/dev/null | grep -n "verify-kernel\|verify:" | head; echo "===
+
+[THINKING] I'm seeing the core issue now: both `into_frame_number` implementations require that the frame number stays within valid bounds, and I need to trace through which kernel methods are calling this conversion to understand where the precondition might be violated. Looking at `free`, it's converting a `FrameAddress` to a frame number, which demands the address is valid and its frame number doesn't exceed the maximum. The free functions like `alloc`, `alloc_contiguous`, `free_count`, and `free` currently have `admit()` proofs, while `share`, `refcount`, and `is_covered` just call `instance()` directly. The key insight is that `instance()` provides strong guarantees about the frame state, so I need to check whether those guarantees are sufficient to discharge the preconditions of the underlying `Inner` methods — for instance, `Inner::alloc` requires `old(self).inv()`, which `instance()` ensures through its postcondition.
+
+The real problem emerges when I trace through the mutation: `instance()` ties the singleton state to `phys_view()` at the moment of the call, but `phys_view()` is uninterpreted. After the mutation, `(*r)@` changes while `phys_view()` remains fixed, so the postcondition claiming `phys_view().frames.allocated_frames.contains(frame@)` refers to the old, unchanged value of `phys_view()` — which doesn't actually contain the newly allocated frame. This breaks the verification unless there's a ghost token or mechanism that updates `phys_view()`'s value in sync with the mutation.
+
+The tcb-allowed.md lists these free functions as `external_body` "until the free-function layer is verified," which suggests they're meant to be admitted for now. But since the task says not to add `external_body`, and these functions are in the module being verified, I need to figure out whether `instance()` itself being `external_body` is enough to establish the connection, or if the fundamental issue is that `phys_view()` can't be proven to update without additional ghost state.
+
+The real problem is that `phys_view()` is a constant uninterpreted function, so calling `instance()` twice across a mutation creates a contradiction: the first call pins the state to `phys_view().frames`, but after mutation that state changes, yet the second call would pin it to the same `phys_view().frames` value. This only works if `phys_view()` somehow represents the post-state, which requires the ghost token mechanism mentioned in the design doc. Without that ghost token, these free functions genuinely can't be verified. I'm noticing that some of the free functions like `is_covered`, `share`, and `refcount` actually verify without `admit()`, which suggests they might not need the external_body marker after all. Let me trace through their postconditions to understand how they establish facts about `phys_view()` without relying on mutation tracking.
+
+For `is_covered`, it works cleanly because it only reads state — the postcondition about `phys_view().frames.covers()` follows directly from the instance's ensures clause without any mutation complications. But `share` is trickier since it mutates; the key insight is that its postcondition only references `old(self)@`, which equals `phys_view().frames` at the call site, so the old-state facts are preserved even though the actual state changes afterward.
+
+For `alloc`, though, there's a fundamental problem: the free function ensures the frame is in `phys_view().frames.allocated_frames`, but `phys_view()` captures the pre-state, and the frame was actually free before the call. The postcondition is only satisfiable if `phys_view()` refers to the post-state instead, which suggests this function genuinely needs the ghost-token deferral pattern and can't be verified without it — so either it stays external_body or the admit remains necessary.
+
+But wait, I'm realizing the task allows external_body for functions listed in tcb-allowed.md, and these mutating free functions are explicitly listed there. So the solution is to convert the admit()-bearing free functions to external_body (which is permitted), while focusing the actual proof effort on the Inner methods that operate directly on self without needing phys_view() — those should be fully provable. So the mutating functions genuinely can't be proven without a ghost token mechanism—the postcondition references post-state while `phys_view()` remains a constant from pre-state. Since the tcb-allowed list explicitly permits `alloc`, `alloc_contiguous`, `free_count`, and `free` as external_body, I'll convert those. But `share` and `refcount` already verify without admit since their postconditions only reference pre-state, so I'll leave them alone. The tricky part is `book` and `alloc_range`—they're not in the tcb-allowed external_body list despite having admit and post-state references, so I need to figure out whether they should be converted or if there's a way to prove them. I'm realizing the core issue: the free functions wrapping singleton mutations can't be verified without the ghost token connecting the mutation to `phys_view()`, which is an architectural boundary that should use `external_body`. For functions not in the tcb-allowed list, I either need to prove them or add them through the proper process. The real question is whether `phys_view()` should be interpreted as denoting the current post-state, which would make the postconditions expressible. I should focus on the Inner::* methods first since those are the real priority and definitely provable, then circle back to the free functions question. Let me run a baseline verification to see where things stand.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+===
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+find_callers_output.md
+pipeline...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/nanvix-phys-phys-frame/bugs.md 2>/dev/null; echo "=====VIEW
+[RESULT ✓] bash: # Bugs / Suspicious code — `mm::phys::frame`
+
+## [open] `Inner::alloc_range`: possible off-by-one between body and spec
+
+- Body (frame.rs:588-589, 598, 626):
+  - `start_frame_number = region.start().into_frame_number().into_raw_value()`
+  - `end_frame_number = start_frame_number + region.size() / me...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "section 8\|§8\|ghost token\|ghost-token\|external_body\|free functio
+
+[THINKING] I'm checking the existing bug note about the alloc_range off-by-one issue and reviewing section 8 of view_design.md to see how free-functions should be handled.
+[RESULT ✓] bash: 93:The singleton has no spec-readable receiver, so the free-function layer reasons
+254:  **do-not-modify**. The free-function (`pub(super)`) wrappers are the surface
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '80,130p;240,290p' verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] bash: `Inner::inv() = self@.wf() && self.internal_inv()` ties the abstract `wf` to the
+bitmap-level `internal_inv` (do-not-modify). Every `Inner` method requires
+`old(self).inv()` and ensures `final(self).inv()`, so `wf` is preserved by all
+operations — which is precisely the "all operations preserve `Fra...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+I have a clear picture. Let me set up a plan and run baseline verification.
+[TOOL] sql: {'description': 'Insert verification todos', 'query': "INSERT INTO todos (id, ti
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+
+[THINKING] The free-function wrappers need to reason through phys_view() since the singleton lacks a spec receiver, and they currently work with phys_view().frames. Verifying these wrappers requires the ghost token from section 8 over the singleton, and since instance() marks the external_body boundary that anchors phys_view(), the mutating wrappers either need to be marked external_body or the proof relies on that ghost token. Given how involved this is and that the main focus should be on the Inner::* methods, I'm reconsidering the approach.
+
+The core Inner::* methods—alloc, alloc_contiguous, free, share, refcount, book, is_covered, alloc_range—are definitely provable and should be the priority. For the free-function wrappers, the mutating ones whose postconditions reference post-state phys_view() need external_body marking, which is allowed by the tcb for alloc, alloc_contiguous, free, and free_count, though book and alloc_range might need to be added or handled differently.
+
+The real issue is that after calling instance().alloc(), we get a new singleton state, but the postcondition about phys_view() can't distinguish pre-state from post-state without external_body. For alloc specifically, the postcondition claims the newly-allocated frame is in phys_view().frames.allocated_frames, which would be false if phys_view() refers to pre-state—so these mutating wrappers must be external_body to make the ghost token denote post-state. The mutating wrappers (alloc, alloc_contiguous, free, book, alloc_range) all require external_body, while free_count is read-only but needs cardinality reasoning.
+
+Since book and alloc_range aren't currently in the tcb-allowed list, I'll need to add them with justification. Converting from admit() to external_body doesn't weaken the spec—the requires/ensures stay identical, and external_body just marks the body as trusted. This aligns with the documented design that the ghost token assumption is what makes post-state phys_view() facts provable. The postcondition after allocation is provably false without the external_body wrapper — the frame can't simultaneously be in both free and allocated sets. So external_body is genuinely needed here. The callers depend on this post-state semantics to know the frame is reserved, making it a meaningful ghost-token boundary. For `free_count`, it's a pure read that requires a cardinality argument (proving the bijection between frame addresses and bit indices), which is non-trivial to verify, so marking it external_body is the safer choice given it's already allowed by the design.
+
+The real constraint is that I can only use external_body for functions listed in the tcb-allowed list — `alloc`, `alloc_contiguous`, `free_count`, and `free` are all listed, so those are fine. But `book` and `alloc_range` aren't listed, which means I either need to prove them or add them to the allowed list. The design doc noted these as natural next targets for verification, but they now carry specs that have the same structural impossibility as the allocation mutations.
+
+Let me trace through the exact mechanism once more to be sure I'm not missing something. The `instance()` method ensures that the singleton's view equals `phys_view().frames` at return time. Since `phys_view()` is a pure spec function with no arguments, it returns the same value everywhere. When `alloc` mutates the singleton, I need to connect the postcondition about the allocated frame to the fixed `phys_view()` value — but the singleton's view changes after the mutation, breaking the connection to the original `phys_view()` snapshot.
+
+So the wrapper can't prove the postcondition without external_body. My analysis is confirmed. Now I'll set up the work plan and run a baseline verification to see the current state with admits in place.
+[RESULT ✓] sql: 10 row(s) inserted. Last inserted row ID: 10.
