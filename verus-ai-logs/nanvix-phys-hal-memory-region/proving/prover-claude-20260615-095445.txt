@@ -329,3 +329,48 @@ All four target functions verify (5 verified, 0 errors, CLEAN). The region modul
 [THINKING] The verification passed with 5 confirmed functions and no errors, so the status is clean. The admit and external_body counts of 12 and 19 are from dependency modules, not the region module itself, and the cheating check confirmed the region module is clear. Looking at the task requirements for zero remaining admit() and assume() calls, those global counts don't apply to this module's scope since they're coming from dependencies.
 
 I've already confirmed via grep that there are no admits in the region files themselves. The four target functions verify cleanly with surgical changes, and the proofs discharge automatically from the dependency contracts, so the task is essentially complete. I should run `make verify` to confirm there are no regressions, though it might take a while since it verifies everything globally.
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/t...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -i "region" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | head; e
+
+[THINKING] The `make verify` command returned exit code 0, so there are no actual verification errors. The CHEATING_DETECTED flag is just highlighting pre-existing admits in dependency modules that are listed in tcb-allowed.md and outside my scope. I need to check cheating-detail.txt to confirm none of those 12 admits are in the region module itself.
+[RESULT ✓] bash: - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
+--- admit lines ---
+    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Done. All four target functions verify with 0 errors.
+
+**Result:** `make verify` exits 0 (no verification errors). The four in-scope functions — `MemoryRegion::start`, `MemoryRegion::size`, `TruncatedMemoryRegion::start`, `TruncatedMemoryRegion::size` — verify against their full `#[verus_spec]` contracts.
+
+**Why no proof body was needed:** each ensures discharges automatically from dependency contracts visible in-module:
+- `MemoryRegion::start` → `Address::clone_address` ensures `result@ == self.start@`, and the (closed, in-module) view gives `self@.start == self.start@`.
+- `MemoryRegion::size` → view gives `self@.size == self.size as int`.
+- `TruncatedMemoryRegion::{start,size}` → delegate to the inner `MemoryRegion`, and the newtype view is `self@ == self.0@`.
+
+**Integrity checks:**
+- No specs weakened (contracts unchanged).
+- `region.rs/.spec.rs/.proof.rs` contain **0** `admit`/`assume`/`external_body`.
+- The global `admit=12`/`external_body=19` flagged by the cheating check are all pre-existing in unrelated modules (`mm/phys`, `mm/virt`) per the TCB-allowed list — none in `hal::mem::types::region`.
+
+No bugs discovered, so no `bugs.md` entry was required. No source changes were necessary.
+
+[THINKING] All the admits and external_body entries are in other modules like `mm/phys` and `mm/virt`, which are pre-existing and outside my scope. The region module itself is completely clean. The verification passed with exit code 0, so there are no actual errors—the "CHEATING_DETECTED" status is just coming from those unrelated admits in other modules. My work on the four target functions is done.
+
+
+=== Session End ===
+Session: 917bd274-bb7b-4cfd-95c0-d4be6c357152
+Duration: 138.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/proving/prover-claude-20260615-095445.jsonl
