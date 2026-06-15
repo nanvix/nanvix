@@ -54,3 +54,19 @@ Module: arch-x86-pte
 [2026-06-14 11:52:53] [PHASE] specification: dialogue-RESOLVED (10m32s)
 [2026-06-14 11:52:54] [SPEC DRIFT] (within specification) Comparing 2462d363 → 0d221ffc
 [2026-06-14 11:52:54] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-15 14:49:05] [BRANCH] Staying on current branch: verus-ai-prove
+[2026-06-15 14:49:05] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/body_removed_source.rs (12011 -> 9608 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-x86-pte
+Source: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+Crate:  arch
+Branch: verus-ai-prove (base: verus-ai-prove)
+Phases: proving → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: proving
+Module: arch-x86-pte
+============================================================
