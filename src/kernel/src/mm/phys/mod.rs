@@ -56,6 +56,7 @@ pub use self::{
 // Standalone Functions
 //==================================================================================================
 
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -83,6 +84,7 @@ fn book_physical_memory_regions(
     Ok(())
 }
 
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,

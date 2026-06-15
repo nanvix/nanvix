@@ -356,3 +356,156 @@ Let me run the baseline verification to see the current state.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -60
 
 [THINKING] I'm looking at the core issue: these functions in mod.rs have `#[verus_spec]` annotations but lack `external_body`, and they iterate over LinkedList structures that Verus can't verify because there's no formal specification for LinkedList iteration. I need to check whether Verus is actually verifying these functions currently or if they're already failing verification.
+[RESULT ✓] bash: |
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExIter<'a, T>(alloc::collections::linked_list::Iter<'a, T>);
+
+error: could not compile `kernel` (bin "k...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_14-58-23.log 2>/d
+
+[THINKING] I'm seeing a compilation error related to the ExIter type and need to check the full error details.
+[RESULT ✓] bash: Timestamp: 2026-06-15_14-58-23
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=12
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kerne...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== tcb-allowed.md ==="; cat verus-ai-logs/tcb-allowed.md 2>/dev/null; 
+
+[THINKING] The real problem is that Verus doesn't have built-in support for `LinkedList::iter()` and the associated iterator type, and the existing spec.rs comment mentions these were previously handled with `external_body` and a registered ExLinkedList type. Since the task explicitly forbids using `external_body`, I need to find another approach—either using `assume_specification` for the iterator method or leveraging `external_type_specification` to work around the orphan rule that prevents implementing View and ForLoopGhostIterator for the foreign LinkedList type.
+
+But I should check tcb-allowed.md first to see if these functions are actually permitted to use `external_body`, since the spec comment suggests they were previously defined that way.
+[RESULT ✓] bash: Output too large to read at once (53.1 KB). Saved to: /tmp/copilot-tool-output-1781506723590-ojfeaa.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -in "mod.rs\|book_mmio\|book_physical\|LinkedList\|iter\|init" /tmp/copi
+[RESULT ✓] bash: 9:  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTANCE_INIT`).
+12:  state to `phys_view().frames`, asserts `(*r).inv()`, and records `phys_view().initialized` —
+23:  `alloc` and re-materializes the slot as `&'static mut MaybeUninit<T>`; same rationale.
+51:## `exte...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781506723590-ojfeaa.txt
+
+[THINKING] I'm checking the tcb-allowed.md file to see if those functions are actually listed as allowed external bodies, and looking at the specific lines that document the LinkedList iteration limitation as the justification.
+[RESULT ✓] view: 60.   state (outside Verus' memory model and invisible to every caller's Rust-visible state),
+61.   so the faithful contract is **empty**: no `requires` (any `usize` is accepted), trivial
+62.   `ensures` (returns `()`, no Rust-visible effect, every caller-side invariant preserved).
+63.   This matche...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git log --oneline -8 -- src/kernel/src/mm/phys/mod.rs; echo "=== git diff of 
+
+[THINKING] I see that `book_physical_memory_regions` and `book_mmio_regions` are actually listed in tcb-allowed.md as allowed external_body functions, which means I'm permitted to add the external_body annotation to them. The current mod.rs has them without it, causing a compilation error since Verus can't handle the for loop iteration without that marker. So I'm allowed to make this change based on my task constraints.
+[RESULT ✓] bash: 33c87ce03 [verus-ai] proving strip-external-body: phys-mod (2)
+ad7a32b01 [verus] verify PASS (cheating detected): kernel::mm::phys (83 verified, 0 errors, admit=9 external_body=16 cfg_gate=13)
+cbbd1b151 [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+4...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git show 33c87ce03 --stat | head -20; echo "=== diff ==="; git show 33c87ce03
+
+[THINKING] The latest commit stripped external_body from these functions as part of the proving phase, but I'm realizing these functions can't actually be verified because of LinkedList constraints. Let me examine the commit to see what was removed.
+[RESULT ✓] bash: commit 33c87ce03fa3cbd88b48f0d49e55ecf196256960
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 14:56:33 2026 +0800
+
+    [verus-ai] proving strip-external-body: phys-mod (2)
+
+ src/kernel/src/mm/phys/mod.rs                   | 2 --
+ verus-ai-logs/nanvix-phys-phys-mod/pipeline.log | 1 +
+ 2 f...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -rl "LinkedList" /home/ruize/verus-ai-exp/verus-ai/vstd/ 2>/dev/null; echo "=== exit: no vstd LinkedList model if e
+
+[THINKING] An automated process stripped `external_body` from `book_physical_memory_regions` and `book_mmio_regions`, but these functions are legitimately listed in tcb-allowed.md as requiring it due to Verus's LinkedList iteration limitations. The stripping was too aggressive, and I need to restore these annotations since the underlying Verus front-end constraint is genuine. The postcondition references an uninterpreted function with no axioms connecting it to the loop iteration, so there's no way to prove anything about the set's contents even if iteration were possible. This confirms these functions are legitimately designed as external_body contracts—they're listed in tcb-allowed.md, so I should restore the `#[verus_verify(external_body)]` attribute. Then I can focus on verifying `init` itself, which calls these functions and should verify fully once their contracts are in place.
+[RESULT ✓] bash: === exit: no vstd LinkedList model if empty above ===
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.spec.rs:57:// rule forbids a downstream crate from implementing vstd's `View` / `ForLoopGhostIterator`
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Confirmed: vstd has no `LinkedList` model, and both `book_*` functions are explicitly listed in `tcb-allowed.md` as sanctioned `external_body` (genuine Verus front-end limitation: foreign `LinkedList::iter` with no vstd model + orphan rule). An automated "strip-external-body" step wrongly removed them. I'll restore them and fully verify `init`.
+[TOOL] report_intent: Restoring sanctioned external_body
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs
+
+[THINKING] So vstd doesn't have a LinkedList model, which means those two book functions can't be fully verified—they're legitimately in the tcb-allowed list. I need to restore the `#[verus_verify(external_body)]` attribute on them and then focus on fully verifying the `init` function instead.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Now let me look at `init` to understand what proof it needs to establish `live()` and the two booking facts.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.rs
+[RESULT ✓] view: 147. /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+148. ///
+149. #[verus_spec(result =>
+150.     requires
+151.         phys_view().inv(),
+152.     ensures
+153.         phys_view().inv(),
+154.         match result {
+155.             Ok(_) => {
+156.               ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now let me verify the module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+
+[THINKING] I'm realizing there's a fundamental problem with how `phys_view()` works in the verification. Since it's defined as an uninterpreted spec function with no arguments, it returns the same constant value throughout the entire program execution. But the cross-call transition mechanism relies on a "ghost token" per view design that should change between calls, so having `phys_view()` as a static constant breaks this model.
+
+Let me trace through what happens: `frame::init` establishes that `phys_view().initialized` and `phys_view().frames.wf()` hold, and since `phys_view()` is constant, these properties remain true forever in the proof context. The `init` function requires `phys_view().inv()` at entry, and since `phys_view()` is constant, `inv()` holds both before and after the call — it's the same value throughout. Then `book_physical_memory_regions` requires `phys_view().initialized` (which we have) and `phys_view().inv()` (which we also have), and on success it ensures certain frame reservations hold.
+
+One subtlety: `physical_memory_regions` is moved into `book_physical_memory_regions`, but in the ensures clause of `init`, when we reference `phys_regions_frame_set(&physical_memory_regions)`, Verus treats this as referring to the parameter's entry value, not its post-move state. So the ensures clause correctly references the original value that was passed in, matching what `book_physical_memory_regions` ensures about that same value.
+
+Continuing through the remaining calls: `book_mmio_regions` takes an immutable reference and ensures the covered-reserved facts, `Upool::new()` ensures its result is well-formed, and then we move on to `PhysMemoryManager`.
+
+For `PhysMemoryManager::init`, the ensures clause sets `manager_ready` on both the Ok and Err arms. This is important because even on error, we need to maintain the invariant — and since `inv()` states that `manager_ready` implies `initialized`, and we already have `initialized` from the frame setup, the invariant is preserved.
+
+On the final Ok path, I need to verify that `phys_view().live()` holds, which requires `initialized`, `manager_ready`, and `frames.wf()` — all of which we've established from the respective calls. The key insight is that all these facts accumulate about the same `phys_view()` value since it's a constant 0-argument function, so the ghost token mechanism works by having all the ensures clauses contribute facts about this single constant.
+
+There's a monotonicity concern: `book_physical_memory_regions` reserves frames, then `book_mmio_regions` reserves more, and both facts need to hold simultaneously about the same value. Since reservation is monotonic (reserving more keeps previous reservations intact) and neither `Upool::new` nor `manager::init` touch frames, there's no contradiction. The design relies on this monotonicity property holding throughout.

@@ -11,6 +11,8 @@
     - mm/phys/manager.proof.rs:175 lemma_user_bulk_err_restored: assume
     - mm/phys/manager.rs:104 init: external_body
     - mm/phys/manager.rs:537 kernel_watermark: external_body
+    - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
+    - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
     - mm/phys/upool.rs:255 new: external_body
     - mm/phys/upool.rs:288 alloc: external_body
