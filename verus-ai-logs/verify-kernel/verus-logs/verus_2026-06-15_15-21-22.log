@@ -1,0 +1,97 @@
+Timestamp: 2026-06-15_15-21-22
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=14
+  admit=3
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:313:17
+    |
+313 | /                 forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < i)
+314 | |                     ==> self.refcount@[k] == old_self.refcount@[k],
+    | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:314:46
+    |
+314 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+    |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:329:13
+    |
+329 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:330:38
+    |
+330 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+    |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1141:17
+     |
+1141 | /                 forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < index)
+1142 | |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1142:46
+     |
+1142 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1186:13
+     |
+1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1187:38
+     |
+1187 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+     |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1186:13
+     |
+1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
