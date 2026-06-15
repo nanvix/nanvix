@@ -1008,6 +1008,7 @@ proof fn lemma_full_no_free(inner: &Inner)
 proof fn lemma_free_count_eq(inner: &Inner)
     requires
         inner.inv(),
+        inner.bitmap@.num_bits > 0,
     ensures
         inner@.free_frames.finite(),
         inner@.free_frames.len() == inner.bitmap@.num_bits - inner.bitmap@.set_bits.len(),
@@ -1018,8 +1019,9 @@ proof fn lemma_free_count_eq(inner: &Inner)
     assert(ps > 0);
     assert(inner.bitmap.inv());
     assert(inner.bitmap@.wf());
-    assert(sb.finite());
-    assert(nbits > 0);
+    // `set_bits.finite()` lives in the bitmap crate's closed `internal_inv`; recover it through
+    // the bitmap's public finiteness lemma (`wf()` + `num_bits >= 0`).
+    inner.bitmap@.lemma_set_bits_finite();
 
     // `full = [0, num_bits)` (finite, cardinality `num_bits`).
     let full: Set<int> = vstd::set_lib::set_int_range(0, nbits);

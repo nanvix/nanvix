@@ -766,3 +766,111 @@ Now let me verify the `free_count` change compiles and verifies.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
 
 [THINKING] I'm working through the invariant for `free_count`: the result should equal the number of free frames in the physical view. Since `result as nat` comes from `number_of_bits() - usage()`, and both operations are well-defined with no underflow risk (usage is always ≤ num_bits), the subtraction gives us `num_bits - usage`, which should match the length of the free frames list. The subtraction should verify without underflow since both `number_of_bits()` and `usage()` come from the same bitmap, with usage guaranteed to be at most num_bits. The precondition for the lemma is satisfied because `instance()` ensures the invariant holds. Let me verify the free_count implementation compiles first before tackling the remaining wrappers, which have architectural constraints around post-state, address bounds, and unwinding behavior.
+[RESULT ✓] bash: - frame.rs:1325 alloc: external_body
+    - frame.rs:1355 alloc_contiguous: external_body
+    - frame.rs:1397 free: external_body
+    - frame.rs:1439 book: external_body
+    - frame.rs:1460 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attach...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+external_body dropped 17→16 (free_count gone from the list), but 1 verification error. Let me find it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -nE "error|free_count|lemma_free_count|frame.rs:13|frame.proof" verus-ai
+
+[THINKING] I've reduced the external_body list from 17 to 16 items by removing free_count, but there's one error showing up in the logs—84 entries verified but 1 failed, so I need to track down what went wrong.
+[RESULT ✓] bash: 8:1 errors
+30:note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+31:    --> src/kernel/src/mm/phys/frame.proof.rs:1008:7
+33:1008 | proof fn lemma_free_count_eq(inner: &Inner)
+36:error: asse...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1008. proof fn lemma_free_count_eq(inner: &Inner)
+1009.     requires
+1010.         inner.inv(),
+1011.     ensures
+1012.         inner@.free_frames.finite(),
+1013.         inner@.free_frames.len() == inner.bitmap@.num_bits - inner.bitmap@.set_bits.len(),
+1014. {
+1015.     let ps: int = spec_page_size...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "spec fn internal_inv\|spec fn inv\|pub open\|closed spec" src/libs/b
+
+[THINKING] I'm tracing through the bitmap inversion logic—the `inner.bitmap.inv()` call at line 1019 passes, but it's not directly providing the `set_bits.finite()` and `num_bits > 0` properties that lines 1021 and 1022 need. I need to understand whether `inner.inv()` actually exposes `inner.bitmap.inv()` or if the `internal_inv` method being closed is hiding that information.
+
+The issue is that `Bitmap::inv()` is defined as `self@.wf() && self.internal_inv()`, but since `internal_inv` is closed in the bitmap crate, when I'm working from frame.proof.rs (a different crate), I can only see the open `wf()` part, which only gives me the subset constraint. The finiteness and bit count properties are buried inside the closed `internal_inv`, so they're not accessible from outside the bitmap crate. I need to find a public lemma or check if those properties are actually part of the open `wf()` definition.
+[RESULT ✓] bash: 27:    pub open spec fn usage(&self) -> int {
+32:    pub open spec fn has_free_bit(&self) -> bool {
+37:    pub open spec fn is_full(&self) -> bool {
+42:    pub open spec fn is_empty(&self) -> bool {
+47:    pub open spec fn is_bit_set(&self, index: int) -> bool {
+52:    pub open spec fn range_set(sta...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+`Bitmap::internal_inv` is `closed` (opaque cross-crate), so `bitmap.inv()` doesn't expose `set_bits.finite()`/`num_bits > 0`. Let me check what public lemmas the bitmap crate exposes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "pub proof fn\|pub broadcast proof fn" src/libs/bitmap/src/lib.spec.r
+
+[THINKING] Since `internal_inv` is closed off from the kernel crate, I can't directly access the finite and num_bits properties from its opaque predicate. I need to find a public lemma from the bitmap crate that exposes these constraints.
+
+Looking at how other frame proofs handle this, they likely get these facts through the ensures clauses of bitmap's exec methods like `number_of_bits()` and `usage()`, which guarantee bounds on the result. The challenge is that in my lemma I only have a spec reference to `inner`, not the exec calls themselves. I could either restructure the proof to pass these facts as preconditions, or find a public bitmap lemma that derives finiteness from the invariant alone.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.spec.rs:86:    pub proof fn lemma_set_bits_finite(&self)
+src/libs/bitmap/src/lib.spec.rs:110:    pub proof fn lemma_range_set_finite(lo: int, hi: int)
+src/libs/bitmap/src/lib.spec.rs:131:    pub proof fn lemma_range_set_len(lo: int, hi: int)
+src/libs/bitmap/src/lib.spec.rs:19...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.proof.rs
+
+[THINKING] I'm looking at the `lemma_number_of_bits_bounded` function to understand its preconditions and postconditions. The issue is that I need `num_bits > 0` and `set_bits.finite()` from the execution calls' postconditions, but the lemma runs before those conditions are established, so I need to find another way to derive them.
+
+For `set_bits.finite()`, there's a bitmap lemma that requires `wf() && num_bits >= 0`. I have `wf()` from the invariant, but `num_bits >= 0` isn't directly available from the open facts—the invariant doesn't guarantee that bound. Let me check what `lemma_number_of_bits_bounded` actually requires and ensures to see if it gives me the bounds I need.
+[RESULT ✓] view: 173. 
+174.     /// number_of_bits is bounded by usize::MAX.
+175.     pub proof fn lemma_number_of_bits_bounded(&self)
+176.         requires
+177.             self.inv(),
+178.         ensures
+179.             self@.num_bits <= usize::MAX as int,
+180.     {
+181.     }
+182. 
+183.     //=================...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The cross-crate `closed internal_inv` hides `set_bits.finite()`/`num_bits > 0`. I'll get `num_bits > 0` from the exec `number_of_bits()` postcondition and finiteness via the bitmap's public `lemma_set_bits_finite`. Let me update both the lemma and the wrapper.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The `lemma_number_of_bits_bounded` lemma has an empty body, which means Verus automatically derives the proof from the `inv()` requirement—this works because the bitmap crate has visibility into the internal invariant. From outside the crate, I get `num_bits <= usize::MAX`, but I'm missing public lemmas that would give me `num_bits > 0` and `set_bits.finite()`.
+
+I could restructure `free_count` to capture intermediate values from the exec calls—calling `number_of_bits()` and `usage()` separately establishes that `num_bits > 0` and `set_bits` is finite before invoking the lemma. This is semantically identical to the original (same two calls, same subtraction) and counts as an approved deviation, though I'd prefer not to change the exec structure if there's a cleaner way. The real solution might be to make the lemma itself require fewer preconditions or find a different approach to extract those facts from `inv()`. I can pass the required preconditions to the lemma by deriving them in the proof block: the `num_bits > 0` bound comes from the ensures clause of `number_of_bits()`, and I can establish `set_bits.finite()` by calling `lemma_set_bits_finite()` on the bitmap view, which needs the well-formedness invariant and the non-negative bound I just derived. Then both conditions are available when I call `lemma_free_count_eq`. I'm sketching out the lemma signature with preconditions for `inner.inv()` and `inner.bitmap@.num_bits > 0`, then using `lemma_set_bits_finite()` to establish finiteness inside the proof. The challenge is getting `num_bits > 0` into the proof context without restructuring the exec code — I can access the frame's `internal_inv` spec directly since it's module-visible, which should give me what I need without binding `nbits` first. Checking the AST consistency after stripping ghost code — the restructured version with intermediate let bindings probably won't hash-match the original subtraction, so I'd need to document this as a pre-approved deviation. But fundamentally, I still need `num_bits >= 0` to call `lemma_int_range`, and there's no way around requiring that constraint from the exec call.
+
+Actually, the intermediate value pattern is already in the pre-approved deviation table, so adding a VERUS DEVIATION comment should cover it. The real insight is that Verus can prove the subtraction doesn't underflow inline from the ensures clauses — `usage() <= number_of_bits()` — and that call itself establishes `num_bits > 0` in the post-state, which should be enough for the lemma. I need to add a precondition that `inner.bitmap@.num_bits > 0` to the lemma and derive finiteness directly from calling `lemma_set_bits_finite()` on the bitmap instead of asserting it from the invariant. Then I'll restructure `free_count` to bind the intermediate values and establish the `num_bits > 0` requirement upfront. Let me rewrite the lemma signature with the new precondition and set up the local variables...
+
+Updating lemma signature... Verifying the lemma preconditions are satisfied — `usage()` requires `bitmap.inv()` which holds, and the lemma references `inner@.free_frames` and `set_bits.len()`. The subtraction `nbits - used` should equal `free_count()` since `nbits` as an integer equals `num_bits`, `used` equals `set_bits.len()`, and the lemma establishes that `free_frames.len() == num_bits - set_bits.len()`. Since `used <= nbits` from the usage postcondition, there's no underflow risk. Now I need to double-check that `inner.bitmap@.lemma_set_bits_finite()` is callable — it's a proof method on `BitmapView` that takes `&self`, so Verus should auto-ref the bitmap view correctly.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|free_co
