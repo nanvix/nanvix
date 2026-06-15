@@ -1022,3 +1022,203 @@ EXIT=0
 ────────────────────────────────────────────────────────────
 Turn 14
 ────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__alloc.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__alloc_contiguous.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__alloc_range.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__book.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__free.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__is_covered.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__refcount.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/Inner__share.diff
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/final-review/ast-report/exec-only/free_count.diff
+[RESULT ✓] view: 1. --- source:Inner::alloc
+2. +++ verus:Inner::alloc
+3. @@ -1,18 +1,29 @@
+4.      fn alloc(&mut self) -> Result<FrameAddress, Error> {
+5. +        
+6.          let frame_number: usize = match self.bitmap.alloc() {
+7.              Ok(index) => index,
+8.              Err(error) => {
+9. +              ...
+[RESULT ✓] view: 1. --- source:Inner::alloc_contiguous
+2. +++ verus:Inner::alloc_contiguous
+3. @@ -1,28 +1,55 @@
+4.      fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+5. +        
+6. +        // `Bitmap::alloc_range` requires `count <= num_bits`. Reject oversized requests up front;
+7....
+[RESULT ✓] view: 1. --- source:Inner::alloc_range
+2. +++ verus:Inner::alloc_range
+3. @@ -2,48 +2,78 @@
+4.          &mut self,
+5.          region: &TruncatedMemoryRegion<PhysicalAddress>,
+6.      ) -> Result<(), Error> {
+7. -        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+...
+[RESULT ✓] view: 1. --- source:Inner::book
+2. +++ verus:Inner::book
+3. @@ -1,12 +1,20 @@
+4.      fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+5. -        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+6. +        
+7. +        let raw: usize = phys_addr...
+[RESULT ✓] view: 1. --- source:Inner::free
+2. +++ verus:Inner::free
+3. @@ -1,31 +1,47 @@
+4.      fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+5. -        let frame_number: usize = frame.into_frame_number().into_raw_value();
+6. +        
+7. +        let raw: usize = frame.into_raw_value();
+8. +     ...
+[RESULT ✓] view: 1. --- source:Inner::is_covered
+2. +++ verus:Inner::is_covered
+3. @@ -1,4 +1,11 @@
+4.      fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+5. -        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+6. -        frame_number < self.bitmap.number_of_bi...
+[RESULT ✓] view: 1. --- source:Inner::refcount
+2. +++ verus:Inner::refcount
+3. @@ -1,17 +1,26 @@
+4.      fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
+5. -        let frame_number: usize = frame.into_frame_number().into_raw_value();
+6. +        
+7. +        
+8. +        let raw: usize = frame.into_r...
+[RESULT ✓] view: 1. --- source:Inner::share
+2. +++ verus:Inner::share
+3. @@ -1,8 +1,13 @@
+4.      fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
+5. -        let frame_number: usize = frame.into_frame_number().into_raw_value();
+6. +        
+7. +        let raw: usize = frame.into_raw_value();
+8. +   ...
+[RESULT ✓] view: 1. --- source:free_count
+2. +++ verus:free_count
+3. @@ -1,4 +1,11 @@
+4.  pub(super) fn free_count() -> usize {
+5.      let inner = instance();
+6. -    inner.bitmap.number_of_bits() - inner.bitmap.usage()
+7. +    // VERUS DEVIATION (pre-approved: intermediate value). The two bitmap reads are bound to...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -1 && echo "=== merge-base with master ===" && for b in m
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -i "ast\|coverage"; ec
+[RESULT ✓] bash: 0f2127814 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=7 external_body=16 cfg_gate=13)
+=== merge-base with master ===
+3173df878d1be4e30406b25049f67625c98f66cf
+origin/dev exists
+=== first verus commit ===
+002bfd1d8 Merge pull request #1378 from nanvix...
+[RESULT ✓] bash: ast_consistency.py
+fn_coverage.py
+refinement_coverage.py
+scan_ast_limitations.py
+=== run ast consistency ===
+⚠️  9 mismatched (10 functions match)
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+AST consistency reports 9 mismatches. Let me investigate each.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_contiguous                  MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 - <<'PY'
+import re, pathlib
+frame = pathlib.Path('src/kernel/src/mm
+[RESULT ✓] bash: external_body functions in frame.rs:
+- instance (line 1242) :: in_tcb=True
+- init (line 1282) :: in_tcb=True
+- alloc (line 1338) :: in_tcb=True
+- alloc_contiguous (line 1368) :: in_tcb=True
+- free (line 1416) :: in_tcb=True
+- book (line 1458) :: in_tcb=True
+- alloc_range (line 1479) :: in_tcb=True
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] rg: PageAligned.*into_raw_value|PageAligned.*Deref::deref
+[TOOL] rg: frame\.spec\.rs|assume_specification
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:64:  `pub assume_specification[ ::arch::mem::paging::invlpg ](vaddr: usize);` (no
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:141:## `assume_specification` for not-yet-verified callees (eliminated when their ...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:159:  - `crate::hal::mem::PageAligned::<T> as Address::into_raw_value`
+/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md:160:  - `crate::hal::mem::PageAligned::<T> as Deref::deref`
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running drift checks
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[RESULT ✓] bash: ## Inner::free (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,31 +1,47 @@
+     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+-        let frame_number: usize = frame.into_frame_number().into_raw_value();
++        
++        let raw: usize = frame.into_raw_value();
++        let fra...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff sr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: source_file, verus_exec_file
+<shellId: 28 completed with exit code 2>
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 27 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py -h
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] report_intent: Intent logged
