@@ -1061,3 +1061,218 @@ Turn 20
 ────────────────────────────────────────────────────────────
 Turn 18
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== merge-base with dev ==="; git merge-base HEAD dev; echo "=== veru
+[RESULT ✓] bash: === merge-base with dev ===
+7e180a4a49ab761925f623e5a355b7973960527d
+=== verus commits touching mod.rs (this branch) ===
+22c103ff1 [verus] verify PASS (cheating detected): kernel::mm::phys (86 verified, 0 errors, admit=3 external_body=14 cfg_gate=9)
+33c87ce03 [verus-ai] proving strip-external-body: ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+mod.rs differs from `dev` by +58 lines (pure additions = annotations). Let me run AST consistency, fn coverage, and spec drift.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===== AST COUNT ====="; python3 /home/ruize/verus-ai-exp/verus-ai/scr
+[RESULT ✓] bash: ===== AST COUNT =====
+✅ Consistent: 4 functions, 0 structs match.
+===== AST SUMMARY =====
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+book_mmio_regions                     ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+AST consistency: PASS (4 match, 0 mismatch). Now fn coverage and spec drift.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===== FN COVERAGE ====="; python3 /home/ruize/verus-ai-exp/verus-ai/s
+[RESULT ✓] bash: ===== FN COVERAGE =====
+# Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/mod.rs`
+- **Verus file:** `src/kernel/src/mm/phys/mod.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===== SPEC DRIFT (--before HEAD) ====="; python3 /home/ruize/verus-ai
+[RESULT ✓] bash: ===== SPEC DRIFT (--before HEAD) =====
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me check the verify-kernel build progress and run an additional drift check against the base branch `dev`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===== SPEC DRIFT vs dev ====="; python3 /home/ruize/verus-ai-exp/veru
+[TOOL] read_bash: {'shellId': 'verify', 'delay': 60}
+[RESULT ✓] read_bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+[RESULT ✓] bash: ===== SPEC DRIFT vs dev =====
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 13
+- **Contract drift (⚠ review required): 3**
+  - Ensures removed: 0
+  - Requires added: 5
+- Proof drift (informational): 0
+- Functions added: 10
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+
+E...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat > /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.codex.md <<'EO
+[RESULT ✓] bash: 
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.codex.md
+[RESULT ✓] view: 1. # Final Comprehensive Review (gpt-5.3-codex): phys-mod
+2. 
+3. ## Checklist  (mark [x]/[ ] with one-line justification — reproduce full master checklist: Caller Analysis, View Design, Specification, Proving, Cheating Elimination, Bug Recording, every sub-item)
+4. - [x] **Caller Analysis** — caller...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Verify-kernel PASSED (0 errors, cached). Now let me run `make build` and check the out-of-scope admit locations for context.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit in mm/phys (module-wide, for context) ==="; grep -rn "admit
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && (make build 2>&1 | tail -25; echo "BUILD_EXIT=${PIPESTATUS[0]}")
+[RESULT ✓] bash: <command started in background with shellId: build>
+[RESULT ✓] bash: === admit in mm/phys (module-wide, for context) ===
+=== in-scope admit ===
+NONE in-scope
+<shellId: 48 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Finalizing review output
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager status --short
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-mod/final-review/review-claude-20260615-151739.jsonl
+ M verus-ai-logs/nanvix-phys-phys-mod/final-review/review-claude-20260615-151739.txt
+?? verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.codex.md
+<shellId: 49 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Done. I completed the independent final verification review and wrote it to:
+
+`/home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.codex.md`
+
+Final verdict: **FAIL** (strict criteria).  
+Primary blockers: tautological `Err(_) => true` contracts in all three in-scope functions, incomplete caller-expectation coverage (notably one-shot/bitmap-seeding and MMIO-skip semantics), and missing meaningful helper failure-path specs.  
+
+I also ran the requested checks (`fn_coverage`, `spec_drift`, `ast_consistency`, `make verify-kernel MODULE=mm::phys`, `make build`, optional `make verify`) and included concrete command evidence with file:line references.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review phys-mod, elapsed: 306s, total_turns: 0, model: gpt-5.3-codex, duration: 306s
+
+Done. I completed the independent final verification review and wrote it to:
+
+`/home/ruize/nan...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail (admit lines) ==="; grep -in "admit" verus-ai-log
+[RESULT ✓] bash: === cheating-detail (admit lines) ===
+19:    - mm/virt/identity_map.rs:533 ensure_pt: admit
+20:    - mm/virt/identity_map.rs:627 ensure_pte: admit
+21:    - mm/virt/identity_map.rs:718 identity_map_page: admit
+=== admit across kernel src ===
+src/kernel/src/mm/virt/identity_map.spec.rs
+src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Codex finished (FAIL). Waiting for the claude agent to complete.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+
+[THINKING] Codex came back with a failing verdict, so I'm waiting for the Claude agent to complete its review before I consolidate both assessments.
+The admit=3 are in `mm/virt/identity_map.rs` — a different module, fully out of scope. In-scope admit=0. Let me check the build.
+[TOOL] read_bash: {'delay': 120, 'shellId': 'build'}
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && (make build 2>&1 | tail -20; echo "BUILD_EXIT=${PIPESTATUS[0]}")
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+BUILD_EXIT=0
+<shellId: build2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+`make build` returned "Nothing to be done". Let me verify the correct build command per the build skill.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -iA3 "build
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system ope...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The proper build command is `./z build -- all`. Let me run it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && (./z build -- all 2>&1 | tail -30; echo "BUILD_EXIT=${PIPESTATUS[0]}")
+[RESULT ✓] bash: <command started in background with shellId: zbuild>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 120, 'shellId': 'zbuild'}
+[RESULT ✓] read_bash: cp -f --preserve /home/ruize/nanvix-phy-specs-bottom-up/target/debug/nanvixd /home/ruize/nanvix-phy-specs-bottom-up/bin/nanvixd.elf
+# Build the standalone rootfs image from a seed directory using mkramfs.
+/home/ruize/nanvix-phy-specs-bottom-up/bin/mkramfs.elf -o /home/ruize/nanvix-phy-specs-bottom-u...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Build PASSED (exit 0). Let me attempt the cross-module `make verify` (cached) and confirm in-scope spec function definitions for completeness.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "^verify\|^verify:" Makefile | head; echo "---try cached verify (60
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+---try cached verify (60s cap)---
+<shellId: 52 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 280 make verify 2>&1 | grep -iE "verifying module|error|Exit code|v
