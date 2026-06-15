@@ -435,3 +435,86 @@ Let me establish a baseline by running `make verify-sys` first.
 Turn 22
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; ls /home/ruize/toolchain/verus/ 2>/dev/null | head; echo "---"; make verify-sys 2>&1 | tail -
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+---
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Baseline is clean (4 verified, 0 errors). Now I'll write the specs. Let me start with the spec file (View invariant), then annotate exec functions incrementally. First, let me write `virt.spec.rs`.
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs.new
+
+[THINKING] The baseline is passing with no errors and no contracts yet. I need to write the specs, starting with the trait method `into_raw_value` which requires careful consideration. My plan is to add `inv()` to the spec for `VirtualAddress`, then handle the `new` inherent method with a spec ensuring the result equals the input value as an integer and satisfies the invariant, followed by the `from_raw_value` inherent method with its own spec.
+
+For the trait method `into_raw_value`, the challenge is that the trait `Address` doesn't have `View` as a supertrait, so I can't use `self@` in a trait-level spec. I'm going to test empirically whether Verus allows `requires`/`ensures` clauses directly on the trait impl method for `VirtualAddress`, since the GUIDE suggests this might work differently than adding new spec functions. Let me start by adding the `inv()` function to the spec file and then incrementally add specs while verifying after each step to isolate any trait-related issues.
+
+Writing spec.rs...
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs.new with 639 characters
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/; rm virt.spec.rs.new
+
+[THINKING] I realize virt.spec.rs already has the boilerplate structure, so I should modify the existing file instead of creating a new one.
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs.tmp
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs.tmp with 11 characters
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/; rm virt.spec.rs.tmp
+
+[THINKING] I'll edit the virt.spec.rs file directly instead of using a temporary file, removing the placeholder verus macro block.
+[RESULT ✓] bash: 
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now annotate the in-scope exec functions in `virt.rs`. Let me add specs to `new`, inherent `from_raw_value`, and trait `into_raw_value`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now let me run `make verify-sys` to see if the trait impl method spec works.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | tail -45
+
+[THINKING] I'm implementing `into_raw_value` as a trait method and need to check whether Verus will accept the spec when applied to the trait implementation. Let me run the verification to see what happens.
