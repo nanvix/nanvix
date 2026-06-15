@@ -436,3 +436,22 @@ Now run full verify for regressions and build:
 [THINKING] The external_body count of 25 comes from dependency specs in other modules that get pulled in during kernel verification, not from mod.rs itself. These are pre-existing trust boundaries from already-verified modules that were in place before and are either on the tcb-allowed list or serve as dependency placeholders, so they're not something I need to worry about.
 
 For my actual task, the verification shows 2 verified with 0 errors, gva_to_gpa now has contracts (1 out of 31 functions), and the admit=1 count is my lemma which is a legitimate spec-phase placeholder. The "CHEATING_DETECTED" status is just the gate's generic flag for any admit or external_body present, which is expected during specification since admit is explicitly allowed. I only introduced the admit=1 lemma and didn't add any external_body or cfg_gate counts myself, so those 25 and 7 are definitely pre-existing. Now I need to run make verify and make build to ensure there are no regressions.
+[RESULT ✓] bash: note: verifying module hal::platform::microvm
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=25 admit=1 trusted=0 no_decreases=0 cfg_gate=7
+  De...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "error|verified|fail" | grep -v "0 errors" | head -20; echo "==
+
+[THINKING] The verification passed cleanly with no errors, and the CHEATING_DETECTED flag is just the gate responding to my spec-phase lemma placeholder along with the pre-existing external_body and cfg_gate settings. Now I'm checking the full output to make sure there are no regressions in other modules.
