@@ -353,3 +353,22 @@ Exit 0 on default x86 with no E0080. Now confirm cross-target on x86_64:
 [THINKING] The x86 build exited cleanly, though the cached result is showing up in the summary. Let me run a fresh build to verify the actual exit code, and I'm seeing that CHEATING_DETECTED warnings are coming from out-of-scope admits. Now I need to test with TARGET=x86_64 by checking how the Makefile handles the TARGET variable, which defaults to x86.
 
 I'll run the verify-kernel command with the x86_64 target, but first I should confirm whether a kernel target JSON file actually exists for x86_64, since the reviewer specifically asked for it.
+[RESULT ✓] bash: x86-kernel.json
+x86-user.json
+x86_64-kernel.json
+x86_64-user.json
+=== TARGET=x86_64 ===
+=== Function Coverage ===
+  55/1026 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: 35 verifie...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+x86_64 has errors. Let me see them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-kernel TARGET=x86_64 2>&1 | grep -iE "error|fail|verified|frame\.
+
+[THINKING] The x86_64 build is exiting with code 101 and only 35 tests verified, which suggests a different underlying issue—possibly related to MAX_ADDRESS or spec_max differences on that target, or the build itself failed. I need to look at the full error output to understand what's actually going wrong.
