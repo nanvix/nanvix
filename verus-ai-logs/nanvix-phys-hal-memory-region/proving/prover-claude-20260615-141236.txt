@@ -225,3 +225,55 @@ Makefile:621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir
 Turn 11
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify-kernel MODULE=hal::mem::types:
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=25 admit=0 trusted=0 cfg_gate=7
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unverifi...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_14-13-36.log 2>/dev/null | grep
+
+[THINKING] The verification shows a CLEAN status with 4 functions having contracts, but the result indicates cached compilation with no recompilation happening. I'm wondering if those 4 target functions are actually being verified or if the proof file being empty means the verification was skipped due to caching.
+
+The external_body count of 25 is from the derive macros on structs, which are allowed and not something I added. Let me check the actual verus output logs to confirm there are no errors and that the functions were properly checked rather than just cached from a previous state.
+[RESULT ✓] bash: Module: hal::mem::types::region
+note: verifying module hal::mem::types::region
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_14-13-36.log 2>/dev/null | tail
+[RESULT ✓] bash: Timestamp: 2026-06-15_14-13-36
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::region
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=7
+
+--- Full output ---
+note: verifying module hal::mem:...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The result was cached. Let me force a real re-verification by touching the source.
+[TOOL] bash: cd /home/ruize/nanvix-phy && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && touch src/kernel/src/hal/mem/types/region.
+
+[THINKING] The result was cached, so I didn't actually get a fresh verification. I need to force a real recompilation by touching the source file to invalidate the cache and see whether those four functions genuinely verify.
