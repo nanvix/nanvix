@@ -335,3 +335,336 @@ Now I'll run the verification baseline myself, then launch the two parallel sub-
 [THINKING] I'm about to spin up two sub-agents in parallel to handle the verification and analysis independently, giving them all the context they need including file paths and my current findings. I'm thinking through whether running `make verify-kernel` simultaneously across both agents could cause build contention issues.
 
 I'll run the verification myself first to establish a baseline result, then launch the sub-agents in parallel for their independent reviews. The build cache lock might serialize their make invocations, but that should be fine. Let me kick off the verification for the mm::phys module now.
+[RESULT ✓] bash: - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -A40 -i 'cfg' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | head -60
+
+[THINKING] The verification passed with no admits or assumes, and I'm seeing 23 external_body references globally across the kernel's memory management, with 9 cfg_gate instances. In frame.rs specifically, there are 11 external_body entries all within the trusted code base, which is why the "CHEATING_DETECTED" flag appears—it's just flagging the presence of external_body items even though they're all approved. Now I need to track down where those 9 cfg_gate instances are located, likely in include macros.
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,80p' verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refc...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification baseline: **PASS** (exit 0), admit=0, assume=0, trusted=0. All 11 `external_body` in frame.rs are TCB-listed. Now launching the two independent sub-agent reviews in parallel.
+[TOOL] report_intent: Launching parallel reviews
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-gpt5', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-codex
+
+[THINKING] The `cfg_gate=9` count refers to the `#[cfg(verus_keep_ghost)]` include directives across files, which are spec and proof includes rather than executable code gating. Frame.rs has exactly 2 of these standard include lines, which are allowed since the concern is only about cfg-gated executable code, not spec/proof includes. I'm now examining the external_body set for frame.rs to establish a solid baseline.
+
+All 11 methods in the external_body set are accounted for in tcb-allowed.md: the 8 Inner methods, instance, init, and the Drop implementation for free are all listed and verified. There are no blockers, no admits or assumes needed, so verification passes. I'm launching two independent review agents in parallel to conduct comprehensive checks across spec drift, function coverage, AST consistency, and caller analysis, with each writing their findings to separate markdown files.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-gpt5. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both independent reviews are running in the background (claude-opus-4.8 and gpt-5.3-codex). I'm waiting for them to complete before consolidating.
+I'll perform this verification review systematically. Let me start by reading the key files and skill docs.
+[TOOL] report_intent: Exploring files and skills
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.spec.rs src/kernel/src/m
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 1074 src/kernel/src/mm/phys/frame.rs
+   11 src/kernel/src/mm/phys/frame.spec.rs
+  150 src/kernel/src/mm/phys/frame.proof.rs
+ 1235 total
+---SKILLS---
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubl...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::frame`
+2. 
+3. ## Script Output
+4. 
+5. See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+6. (raw output of `find_callers_lsp.py` for `src/kernel/src/mm/phys/frame.rs`).
+7. 
+8. Summary from the script: 19 exec functions (10 `pub(super)` / trait-pub, 9
+...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Let me read the main source, spec, and proof files.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: File too large to read at once (39.7 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 260.             final(self).inv(),
+261.             match result {
+262.                 Ok(()) => {
+263.                     &&& old(self)@.allocated_frames.contains(frame@)
+264.                     &&& old(self)@.refcounts.contains_key(frame@)
+265.                     &&& old(self)@.refcounts[fram...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing phys-frame verification
+[TOOL] skill: spec-design
+[TOOL] skill: verus-constraints
+[TOOL] skill: ast-consistency
+[TOOL] skill: bug-reporting
+[TOOL] skill: spec-completeness
+[TOOL] skill: spec-drift-check
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 560.                         &&& !frames.subset_of(old(self)@.free_frames)
+561.                     },
+562.                 }
+563.             }),
+564.     )]
+565.     fn alloc_range(
+566.         &mut self,
+567.         region: &TruncatedMemoryRegion<PhysicalAddress>,
+568.     ) -> Result<(), Error...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] glob: .github/skills/*/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame
+[RESULT ✓] view: frame.proof.rs
+frame.rs
+frame.spec.rs
+kframe.proof.rs
+kframe.rs
+kframe.spec.rs
+manager.proof.rs
+manager.rs
+manager.spec.rs
+mod.proof.rs
+mod.rs
+mod.spec.rs
+test.rs
+upool.proof.rs
+upool.rs
+upool.spec.rs
+[RESULT ✓] view: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+reproducers
+rollback_proving_to_specification_1.md
+rollback_specification_to_view-design_1.md
+specification
+usage.jsonl
+verification-pla...
+[RESULT ✓] glob: /home/ruize/nanvix-phy/.github/skills/build/SKILL.md
+/home/ruize/nanvix-phy/.github/skills/user-app-development/SKILL.md
+/home/ruize/nanvix-phy/.github/skills/troubleshooting/SKILL.md
+/home/ruize/nanvix-phy/.github/skills/test/SKILL.md
+/home/ruize/nanvix-phy/.github/skills/coding-standards/SKILL.md
+...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/spec-design/SKILL.md
+[TOOL] glob: **/verus-constraints/SKILL.md
+[TOOL] glob: **/ast-consistency/SKILL.md
+[TOOL] glob: **/bug-reporting/SKILL.md
+[TOOL] glob: **/spec-completeness/SKILL.md
+[TOOL] glob: **/spec-drift-check/SKILL.md
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] glob: No files matched the pattern.
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 820. ///
+821. /// # Returns
+822. ///
+823. /// The number of free frames in the system.
+824. ///
+825. #[verus_spec(result =>
+826.     with Tracked(auth): Tracked<&PhysAuth>
+827.     requires
+828.         phys_view().initialized,
+829.         phys_view().inv(),
+830.         auth@ == phys_view(),
+831. ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] rg: spec-design|verus-constraints|ast-consistency|bug-reporting|spec-completeness|spec-drift-check
+[TOOL] view: /home/ruize/nanvix-phy/.github/skills
+[RESULT ✓] view: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Now let me read the spec and proof files, plus the skill docs and remaining log files.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use super::PhysMemView;
+5. use super::PhysAuth;
+6. use super::phys_view;
+7. use crate::hal::mem::spec_page_size;
+8. use vstd::map::*;
+9. use vstd::set_lib::*;
+10. use vstd::relations::injective_on;
+11. use vstd::arithmetic::mul::{
+12.     lemma_mul_is...
+[RESULT ✓] view: 1. # Bugs / specification limitations — `src/kernel/src/mm/phys/frame.rs`
+2. 
+3. No *code* bugs were found (no overflow, off-by-one, missing bounds check, or
+4. unchecked cast). The earlier **specification-architecture limitation** (post-state
+5. effects inexpressible over a constant `phys_view()`) ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.spec.rs src/kernel/src/m
+[RESULT ✓] bash: 1074 src/kernel/src/mm/phys/frame.rs
+    11 src/kernel/src/mm/phys/frame.spec.rs
+   150 src/kernel/src/mm/phys/frame.proof.rs
+   238 verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+   520 verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+    89 verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me start the verification builds (they're slow) in the background, then continue analysis.
+[TOOL] report_intent: Running verification builds
+[TOOL] bash: cd /home/ruize/nanvix-phy && git rev-parse HEAD && git status --short | head -30 && echo "---make targets---" && grep -n
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (25.1 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: 75ea3888a8236188fd479577997155c5624ec253
+ M verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-101652.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-101652.txt
+---make targets---
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+6...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] rg: pub fn share|fn share\(|pub fn instance|pub fn refcount|fn refcount\(|pub fn is_covered|fn is_covered\(|pub fn free_count|pub fn free\(|fn free\(|pub fn book\(|fn book\(|pub fn alloc_range\(|fn alloc_range\(|pub fn alloc_contiguous\(|fn alloc_contiguous\(|pub fn alloc\(|fn alloc\(
+[TOOL] rg: VERUS REWRITE
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:137:    fn alloc(&mut self) -> Result<FrameAddress, Error> {
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:210:    fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+/home/ruize/nanvix-phy/src/kernel/src/mm/ph...
+[RESULT ✓] rg: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:845:    // VERUS REWRITE: original idiom is the single expression
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
+[RESULT ✓] bash: <command started in background with shellId: verifyphys>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
