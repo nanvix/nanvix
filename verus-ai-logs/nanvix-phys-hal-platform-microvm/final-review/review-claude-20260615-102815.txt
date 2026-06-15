@@ -537,3 +537,24 @@ Turn 1
 ────────────────────────────────────────────────────────────
 Turn 2
 ────────────────────────────────────────────────────────────
+The mentioned skills aren't in `.github/skills`. Let me find them and read the key analysis files.
+[TOOL] bash: find /home/ruize -path '*skills*' \( -name 'SKILL.md' -o -name '*.md' \) 2>/dev/null | grep -iE 'spec-design|verus-const
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/caller_analysis.md
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md 2>/dev/null; echo "=== bugs.md ==="; cat /home/ruize/nanvi
+[RESULT ✓] bash: # Caller Analysis: hal::platform::microvm (`gva_to_gpa`)
+
+## Script Output
+
+The automated caller-finding script
+(`scripts/find_callers_lsp.py src/kernel/src/hal/platform/microvm/mod.rs`)
+reported `gva_to_gpa` under **"Public Functions with No External Callers"**.
+
+That result is a **false negative f...
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
