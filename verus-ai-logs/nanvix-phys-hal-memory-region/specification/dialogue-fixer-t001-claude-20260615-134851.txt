@@ -412,3 +412,26 @@ At this point I should capture the exact error messages from these remaining app
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|assume_s
+[RESULT ✓] bash: error: assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead
+42 | pub assume_specification<T: Address>[ <T as Clone>::clone ](addr: &T) -> (result: T)
+error: could not compile `kernel` (bin "kernel") due to 1 previ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Attempt 1 exact error confirmed. Let me try the `external_trait_extension` mechanism (vstd's blessed way to add spec content to an externally-specified trait like `Clone`) and capture its result:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs
+
+[THINKING] I missed a key insight about the `cloned` predicate and how vstd's array clone implementation uses it. Let me trace through what `cloned` actually does and whether I can leverage the `external_trait_extension` mechanism to add a clone law through Clone trait extension.
+
+The core problem is that every approach to attach a trusted clone law hits a wall: `assume_specification` doesn't work for generic trait methods, vstd already owns the `external_trait_specification` for Clone, and the Address trait can't carry ensures clauses. But `external_trait_extension` might let me add spec content to an already-externally-specified trait from a different crate — let me try declaring an extension that adds the clone address preservation property.
+
+Writing trait extension code... I'm reconsidering whether the real fix is to modify the Address trait itself in sys, since the task explicitly says to correct whichever is broken—the spec or the code—rather than weaken the guarantee. Let me try the external_trait_extension approach on Clone to capture the exact error, then decide if the trait boundary is the actual root cause. I'm exploring whether I can attach a specification to the clone method through a trait lemma on the Address trait, but the core issue is that inherited clone blocks any ensures clause I'd try to add. Even if I create a spec view method or try to work around it through MemoryRegion itself, I keep hitting the same wall — I can't specify clone directly, and I can't use assume_specification on my own inherent methods. The conclusion is becoming unavoidable: there's no sound path forward within the current constraints.
+
+Let me try the external_trait_extension approach to be thorough and document every attempt for the reviewer.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|extensio
