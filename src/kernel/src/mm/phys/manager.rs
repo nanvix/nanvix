@@ -395,7 +395,7 @@ impl PhysMemoryManager {
         });
         proof! {
             if result is Ok {
-                lemma_kernel_alloc_one(g_old, self@, result->Ok_0@);
+                // REPRODUCTION: lemma call removed to expose the underlying obligation.
             }
         }
         result

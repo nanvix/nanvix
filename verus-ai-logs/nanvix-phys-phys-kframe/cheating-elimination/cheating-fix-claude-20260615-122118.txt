@@ -363,3 +363,54 @@ Turn 19
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 300 make verify-ke
 
 [THINKING] I'm noticing a discrepancy in the report — the module-scoped manager shows external_body: 2 and cfg-gated: 3, but the admits from manager.proof.rs aren't appearing in that section, even though the global summary lists admit=7. Let me look more carefully at what the report is actually showing.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::phys::manager:
+    ⚠️  external_body: 2
+    ⚠️  cfg-gated exec code: 3
+  Affected functions:
+    - manager.rs:104 init: external_body
+    - manager.rs:536 kernel_watermark: external_body
+  Global: assume=0 external_body=15 admit=7 trusted=0 cfg_gate=12
+  D...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The module scanner attributes only `external_body`/`cfg_gate` to the manager module — the 4 `admit`s in `manager.proof.rs` are the global blockers. A prior phase documented these as needing human architectural review. Let me produce a fresh concrete reproduction to validate, rather than rely on prior analysis. I'll back up, delete one admit-lemma, and capture the exact failure.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp src/kernel/src/mm/phys/manager.proof.rs /tmp/manager.proof.rs.bak && cp 
+
+[THINKING] The module-scoped manager check is showing external_body and cfg-gated counts, but the admits in manager.proof.rs aren't being attributed to the manager module by the scanner—possibly because .proof.rs files are handled differently or the module filter doesn't capture them. The cheating report lists those admits at specific line numbers in manager.proof.rs, but the module-level scan isn't picking them up.
+
+Looking at the global summary, there's a discrepancy: the report shows 4 admits all in manager.proof.rs, but the global count is 7, which means there are 3 more admits elsewhere in the codebase that I need to track down. The key insight is that the cheating_report_1.md appears to be reporting global or crate-level findings, and the phys-kframe module itself is actually clean—the reported issues are all in sibling modules like frame, manager, mod, and upool.
+
+Given that each sibling module has its own phase and the 4 manager admits have already been analyzed as genuine architectural blockers requiring human review, I'm inclined to consider phys-kframe done. But the reviewer is pushing me to fix the admits, so I should make a genuine attempt at the cleanest elimination and provide concrete evidence rather than introducing unsound fixes. Let me reconsider whether I can safely correct the manager specs—the prior analysis noted that lemma_kernel_alloc_one has the implementation property that final(self)@ == old(self)@, so if I adjust the spec accordingly, I might be able to resolve some of these.
+
+Now I'm examining whether the callers actually depend on the postcondition in their proofs. If mm/virt/manager.rs isn't verified yet, then correcting the spec wouldn't break any verified contracts. But I need to think through the semantic correctness here—what should alloc_kernel_frame actually do to self@? Since kernel frame allocation goes through the global frame allocator rather than the user pool, the user pool view shouldn't change, making final(self)@ == old(self)@ the correct behavior. The existing spec claiming the user pool gained a frame is backwards—allocation removes from free, not adds to it. This looks like a genuine spec bug where the global partition is being conflated with the user pool view, though under a different interpretation where self@ represents the global partition via attachment, the spec would be correct but unprovable without tokens.
+
+The core issue is that upool@ is uninterpreted, so there's no way to know whether it represents the user pool or the global partition. The attachment lemma asserts they're equivalent, indicating the intent is global, but this creates an unprovable spec without additional tokens. This feels like a genuine architectural limitation that needs human review rather than a quick fix.
+
+I'm going to make concrete attempts to resolve this—like deleting a lemma to show the failure—but I won't introduce unsound workarounds. Instead, I'll document this as a blocker with a verification todo. But before I do that, let me check whether the other flagged issues like the cfg-gated exec code in manager might be more tractable.
+
+Actually, those cfg-gates are just logging statements gated out during verification because the error! macro doesn't verify—the same pattern we saw in kframe. They're not the exec_allows_no_decreases issue the reviewer mentioned; they're a separate pre-existing ast-consistency deviation for logging.
+
+I've analyzed this enough. Let me act: I'll reproduce the lemma_kernel_alloc_one failure by removing the lemma call and trying to prove the postcondition directly, capture the error as concrete evidence, then write an honest blocker report with the findings.
+[RESULT ✓] bash: backed up
+    pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
+        proof_decl! {
+            let ghost g_old = self@;
+        }
+        let frame_addr: FrameAddress = frame::alloc()?;
+        let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I should remove the lemma call from `alloc_kernel_frame` entirely and run verification to expose the postcondition failure—since nothing actually mutates `self` or provides the state transition, the assertion that `final(self)@ == old(self)@.alloc_one(kf@)` should break.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
