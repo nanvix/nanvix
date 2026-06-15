@@ -961,3 +961,17 @@ VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,allo
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify
+Let me find the actual cfg-gated code in the frame module and check the VERUS REWRITE comments.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys && echo "=== cfg occurrences in frame*.rs ==="; grep -nE "cfg|VERUS REW
+[RESULT ✓] bash: === cfg occurrences in frame*.rs ===
+frame.rs:49:#[cfg(verus_keep_ghost)]
+frame.rs:52:#[cfg(verus_keep_ghost)]
+frame.rs:845:    // VERUS REWRITE: original idiom is the single expression
+=== all cfg in mm/phys ===
+./mod.rs:15:#[cfg(feature = "test")]
+./mod.rs:210:#[cfg(feature = "test")]
+<shellId: 26...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
