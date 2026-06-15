@@ -802,3 +802,42 @@ Turn 7
 [TOOL] report_intent: Running module verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "===== caller_analysis.md =====" && cat verus-ai-logs/nanvix-phys-phys
+[RESULT ✓] bash: ===== caller_analysis.md =====
+# Caller Analysis: `mm::phys` (`mod.rs`)
+
+## Script Output
+
+Ran:
+```bash
+python scripts/find_callers_lsp.py src/kernel/src/mm/phys/mod.rs --project-dir /home/ruize/nanvix-phy
+```
+
+Summary (rust-analyzer LSP, intra-crate only; crate `kernel`, no external dependents):
+
+|...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running build checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make build
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running regression verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify
+[RESULT ✓] report_intent: Intent logged
