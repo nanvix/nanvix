@@ -18,3 +18,6 @@ Phases: caller-analysis → cheating-elimination + final-review
 PHASE: caller-analysis
 Module: hal-frame-address
 ============================================================
+[2026-06-15 16:19:58] [PROVER] Running caller-analysis...
+[2026-06-15 16:19:58] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 16:22:14]   ↳ prover done in 2m16s (exit=0)
