@@ -979,3 +979,92 @@ Turn 54
 [THINKING] `make verify` runs checks across bitmap, sys, nanvix-slab, bump-allocator, arch, and kernel, which takes a while, but my changes are confined to pde.rs in the arch crate—just reorganizing impl blocks and removing verus-only attributes without touching the actual executable code, so the AST verification should still pass.
 
 I'll run `make verify` to confirm everything builds cleanly, even though it'll take a few minutes.
+[RESULT ✓] bash: note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1350:21
+     |
+1350 |                     frames.contains(addr) by {
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1357:17
+     |
+1357 |...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+Full `make verify` passed: arch 48 verified/0 errors, kernel 93 verified/0 errors. Kernel's cheating counts (external_body=23, admit=4, cfg_gate=19) match the pre-existing baseline — no regression. Let me do a final confirmation of the pde diff and counts, then write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git diff stat vs verus-ai-prove ==="; git --no-pager diff --stat verus-ai-p
+
+[THINKING] The `make verify` completed successfully through the kernel target with 93 verified and 0 errors, though the kernel has some pre-existing cheating markers that are outside the scope of this task. I need to check that all the other crate sub-targets also passed without errors, since the output only showed the final kernel results.
+
+Since `make verify` ran to completion and exited with 0, all the earlier crates must have passed too—make would have stopped at the first failure. The kernel's cheating counts match the baseline from the previous commit exactly, so there's no regression. Now I should verify the final state of the changes and write up the fix report, making sure to clarify which cheating items are out of scope for the arch-x86-pde verification. So the pde module started with 2 cfg-gated markers and now has 0 — that's the scope of my work. The crate-wide picture shows cfg-gated went from 4 to 2, and the remaining cheating (external_body in table and pte modules) stays unchanged since those are out of scope and TCB-allowed. Now I need to create the output directory and write up the report documenting the pde-scope improvements.
+[RESULT ✓] bash: === git diff stat vs verus-ai-prove ===
+
+=== pde scope cheating (should be 0) ===
+NONE
+
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+I'm on the `verus-ai-prove` branch and `make verify` auto-commits, so the `verus-ai-prove` ref moved to include my changes — my earlier AST check compared split-vs-split. Let me redo the AST check against the true pre-task baseline (START commit `3e590bcac`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show 3e590bcac:src/libs/arch/src/x86/mem/paging/pde.rs > /tmp/pde_start.rs && ech
+
+[THINKING] Checking the diff against verus-ai-prove shows pde.rs as unchanged, which is puzzling since I split the `#[verus_verify]` attributes differently — the original had them on full impl blocks while my version targets only new-only blocks. But it looks like git auto-commits might be interfering with what I'm seeing.
+
+I'm realizing I'm actually ON the verus-ai-prove branch right now, and the auto-commit mechanism from `make verify` has been committing my changes directly to it, so the branch reference has moved forward to include my modifications. That means when I run `git diff verus-ai-prove`, I'm comparing HEAD against itself. I need to find the actual original base commit before my changes started.
+
+The true original pde.rs is at the parent of the START commit (3e590bcac), and I should verify this by checking what the original content actually was. When I extracted the baseline for the AST check earlier, verus-ai-prove had already been updated by the auto-commits, so I was comparing my split version against itself rather than against the true original. I need to get the actual pre-change version to do a valid comparison.
+[RESULT ✓] bash: === vs START commit (pre-task) ===
+✅ Consistent: 23 functions, 2 structs match.
+
+=== also vs true original parent (full-block pattern) ===
+✅ Consistent: 23 functions, 2 structs match.
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+AST consistency confirmed against both pre-task baselines: **0 mismatches**. Let me check the output directory and write the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/ 2>/dev/null; echo "--
+
+[THINKING] The AST consistency checks out perfectly against both the original commit and its parent—23 functions and 2 structs match with zero mismatches, confirming that my changes only touched verus-specific attributes and impl-block boundaries without affecting the executable code. Now I'm putting together the fix report.
+
+For the pde module scope, the before/after picture is clear: the START commit had 2 cfg-gated exec markers with no admit, assume, external_body, or assume_specification entries, and after my changes all of those are gone. Crate-wide, the cfg_gate count dropped from 4 to 2 (the pte entries remain), while external_body stays at 3 and the others stay at zero. I'll present the pde-scope numbers as the primary focus since that's what the task covers, and note that the remaining crate-wide items are outside scope or TCB-allowed. Let me write out the report and verify the output directory exists.
+[RESULT ✓] bash: prover-claude-20260615-141551.jsonl
+prover-claude-20260615-141551.txt
+---verification_todo exists?---
+no todo file
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+No verification TODOs needed (zero proof gaps). Writing the fix report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md
+
+[THINKING] I don't need a verification file since there are no gaps to address. Now I'm writing up the fix report and pulling the exact baseline numbers for the pde module—it had 2 cfg gates at the start commit.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/fix_report.md with 5025 characters
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Let me clean up temp files and do a final confirmation run of `make verify-arch`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -f /tmp/pde_base.rs /tmp/pde_start.rs /tmp/pde_orig.rs; make verify-arch 2>&1 | gr
+
+[THINKING] I'm doing a final cleanup of temporary files and running one more verification to confirm everything is in order. The previous verify-arch run already showed the architecture is solid with all 48 checks passing and no errors, so I'm just making sure the final pde.rs structure is well-formed and ready to go.
