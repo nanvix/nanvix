@@ -1,4 +1,4 @@
-# Unverified exec functions: 1057/1069
+# Unverified exec functions: 1039/1069
   do_debug
   debug
   do_evctrl
@@ -626,29 +626,11 @@
   deref_mut
   test
   as_mut_ptr
-  load
-  pgdir
   allocate_kernel_page_table
   allocate_user_page_table
-  is_kernel_addr
-  is_kernel_region
   lookup_user_page_table
   lookup_kernel_page_table
-  find_user_frame
   try_find_user_frame
-  for_each_user_mapping
-  replace_user_page_cow_frame
-  resolve_cow_for_region
-  user_vaddr_to_paddr
-  copy_from_user_unaligned
-  copy_to_user_unaligned_unchecked
-  copy_to_user_unaligned
-  copy_user_to_user
-  memset
-  unmap
-  uctrl
-  kctrl
-  drop
   parse
   new
   get
