@@ -819,3 +819,36 @@ Final confirmation of the module-scoped verification:
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && timeout 600 make verify-sys MODULE=sy
 
 [THINKING] Running a final module verification to confirm the CLEAN status and ensure source integrity hasn't been compromised.
+[RESULT ✓] bash: note: verifying module sys::mm::address
+note: verifying module sys::mm::address::virt
+verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Exit code : 0
+  ✅ No cheating detected in module sys::mm::address.
+  verification: 2 verified, 0 errors (exit 0)
+  s...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Verification complete. Summary:
+
+**Module `sys::mm::address` (`mod.rs`) — `2 verified, 0 errors, status CLEAN`.**
+
+Key finding: the three in-scope target functions (`is_aligned`, `into_raw_value`, `from_raw_value`) are **trait method declarations** on the `Address` trait. They carry verification contracts (`#[verus_spec]` ensures) but have **no executable bodies** — the bodies live in concrete implementors (out-of-scope `virt` module). A trait declaration with no default body has no proof obligation of its own, so there were:
+- No proof bodies to fill
+- No loop invariants to write
+- No `admit()` / `assume()` / `external_body` to remove (verified none exist in scope)
+
+I confirmed the contracts are well-formed and sound (no spec weakening), and that the module verifies cleanly with no cheating patterns. The crate-wide scan's `cfg_gate=1` originates from a pre-existing `verus!{}` block in the out-of-scope `mm::alignment.rs`, not from this work. The full `sys` crate also verifies (exit 0).
+
+No source files were modified (source integrity intact). Recorded the proving-phase result in `bugs.md` (status: clean, **None**).
+
+Note: `make verify-sys MODULE=...` requires `MODULE=sys::sys::mm::address` because the project `scripts/verify.sh` strips the leading `sys::` as a crate prefix, while Verus expects the in-crate module path `sys::mm::address`.
+
+
+=== Session End ===
+Session: 94e02d9b-0c02-47da-a9a7-834af6ea66d6
+Duration: 447.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/proving/prover-claude-20260615-113944.jsonl
