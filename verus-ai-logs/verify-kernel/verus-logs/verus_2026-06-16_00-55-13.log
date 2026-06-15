@@ -1,0 +1,27 @@
+Timestamp: 2026-06-16_00-55-13
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=67
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=65
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/mm/virt/kpage.rs:48:12
+   |
+48 |     pub fn new(kframe: KernelFrame) -> Self {
+   |            ^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

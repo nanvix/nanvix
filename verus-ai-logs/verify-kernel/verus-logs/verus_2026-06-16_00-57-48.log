@@ -1,0 +1,23 @@
+Timestamp: 2026-06-16_00-57-48
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 0
+2 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=64
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=61
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+note: verifying module mm::virt::manager
+
+verification results:: 2 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.01s

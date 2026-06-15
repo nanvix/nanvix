@@ -1,0 +1,96 @@
+Timestamp: 2026-06-16_00-53-56
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=67
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=64
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0603]: module `vmem` is private
+  --> src/kernel/src/mm/elf.rs:65:22
+   |
+65 | use crate::mm::virt::vmem::{
+   |                      ^^^^ private module
+   |
+note: the module `vmem` is defined here
+  --> src/kernel/src/mm/virt/mod.rs:13:1
+   |
+13 | mod vmem;
+   | ^^^^^^^^^
+
+error[E0603]: module `vmem` is private
+  --> src/kernel/src/mm/elf.rs:65:22
+   |
+65 | use crate::mm::virt::vmem::{
+   |                      ^^^^ private module
+...
+68 |     AddrNat,
+   |     ------- trait `AddrNat` is not publicly re-exported
+   |
+note: the module `vmem` is defined here
+  --> src/kernel/src/mm/virt/mod.rs:13:1
+   |
+13 | mod vmem;
+   | ^^^^^^^^^
+
+error[E0603]: module `vmem` is private
+  --> src/kernel/src/mm/phys/kframe.rs:28:22
+   |
+28 | use crate::mm::virt::vmem::AddrNat;
+   |                      ^^^^  ------- trait `AddrNat` is not publicly re-exported
+   |                      |
+   |                      private module
+   |
+note: the module `vmem` is defined here
+  --> src/kernel/src/mm/virt/mod.rs:13:1
+   |
+13 | mod vmem;
+   | ^^^^^^^^^
+
+error[E0603]: module `vmem` is private
+  --> src/kernel/src/mm/phys/manager.rs:35:22
+   |
+35 | use crate::mm::virt::vmem::{
+   |                      ^^^^ private module
+   |
+note: the module `vmem` is defined here
+  --> src/kernel/src/mm/virt/mod.rs:13:1
+   |
+13 | mod vmem;
+   | ^^^^^^^^^
+
+error[E0603]: module `vmem` is private
+  --> src/kernel/src/mm/phys/manager.rs:35:22
+   |
+35 | use crate::mm::virt::vmem::{
+   |                      ^^^^ private module
+...
+39 |     AddrNat,
+   |     ------- trait `AddrNat` is not publicly re-exported
+   |
+note: the module `vmem` is defined here
+  --> src/kernel/src/mm/virt/mod.rs:13:1
+   |
+13 | mod vmem;
+   | ^^^^^^^^^
+
+error[E0425]: cannot find function `new` in this scope
+  --> src/kernel/src/mm/virt/kpage.rs:48:12
+   |
+48 |     pub fn new(kframe: KernelFrame) -> Self {
+   |            ^^^ not found in this scope
+
+Some errors have detailed explanations: E0425, E0603.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 6 previous errors

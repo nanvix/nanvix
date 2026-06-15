@@ -1,0 +1,34 @@
+Timestamp: 2026-06-16_00-49-58
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+1 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=64
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=61
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+note: verifying module mm::virt::manager
+
+error: precondition not satisfied
+    --> src/kernel/src/mm/virt/manager.rs:875:9
+     |
+ 875 |         vmem.uctrl(vaddr, access)
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/kernel/src/mm/virt/vmem.rs:1974:13
+     |
+1974 |             self@.user_mapped(vaddr.addr_nat()),
+     |             ----------------------------------- failed precondition
+
+verification results:: 1 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

@@ -1,0 +1,313 @@
+Timestamp: 2026-06-16_00-42-39
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=58
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=55
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::get_mut` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:267:26
+    |
+267 |                 unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+775 |             unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(nframes, uframes);
+    |                      ----------------------------
+...
+904 |             unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+    |                      ----------------------------
+...
+957 |         unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(count, kframes)?;
+    |                  ----------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a> [crate::mm::phys::manager::PhysMemoryManager::get_mut] () -> &'a crate::mm::phys::manager::PhysMemoryManager;
+
+error: cannot use function `kernel::mm::virt::kpage::KernelPage::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:268:13
+    |
+268 |             KernelPage::new(kframe)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^
+...
+908 |         Ok(KernelPage::new(kframe))
+    |            -----------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::virt::kpage::KernelPage::new] (_0: crate::mm::phys::kframe::KernelFrame) -> crate::mm::virt::kpage::KernelPage;
+
+error: `arch::x86::cpu::excp::impl&%0::is_present` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/manager.rs:610:13
+    |
+610 |         if !error_code.is_present() || !error_code.is_write() || !error_code.is_user() {
+    |             ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::cpu::excp::ErrorCode::is_present] (_0: arch::cpu::excp::ErrorCode) -> bool;
+
+error: `arch::x86::cpu::excp::impl&%0::is_write` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/manager.rs:610:41
+    |
+610 |         if !error_code.is_present() || !error_code.is_write() || !error_code.is_user() {
+    |                                         ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::cpu::excp::ErrorCode::is_write] (_0: arch::cpu::excp::ErrorCode) -> bool;
+
+error: `arch::x86::cpu::excp::impl&%0::is_user` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/manager.rs:610:67
+    |
+610 |         if !error_code.is_present() || !error_code.is_write() || !error_code.is_user() {
+    |                                                                   ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::cpu::excp::ErrorCode::is_user] (_0: arch::cpu::excp::ErrorCode) -> bool;
+
+error: `sys::sys::mm::alignment::align_down` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/manager.rs:616:32
+    |
+616 |         let page_addr: usize = ::sys::mm::align_down(fault_addr, PAGE_ALIGNMENT);
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [sys::mm::align_down] (_0: usize, _1: sys::mm::Alignment) -> usize;
+
+error: `arch::x86::mem::constants::PAGE_ALIGNMENT` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/manager.rs:616:66
+    |
+616 |         let page_addr: usize = ::sys::mm::align_down(fault_addr, PAGE_ALIGNMENT);
+    |                                                                  ^^^^^^^^^^^^^^
+
+error: `sys::sys::mm::alignment::Alignment` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/manager.rs:616:66
+    |
+616 |         let page_addr: usize = ::sys::mm::align_down(fault_addr, PAGE_ALIGNMENT);
+    |                                                                  ^^^^^^^^^^^^^^
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:617:56
+    |
+617 |           let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(page_addr) {
+    |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+759 |               check_addr = PageAligned::from_raw_value(
+    |  __________________________-
+760 | |                 check_addr
+761 | |                     .into_raw_value()
+762 | |                     .checked_add(mem::PAGE_SIZE)
+...   |
+767 | |                     })?,
+768 | |             )?;
+    | |_____________-
+...
+804 |                   match PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE) {
+    |                         --------------------------------------------------------------------
+...
+824 |                   rollback_addr = match PageAligned::from_raw_value(
+    |  _______________________________________-
+825 | |                     rollback_addr.into_raw_value() + mem::PAGE_SIZE,
+826 | |                 ) {
+    | |_________________-
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::from_raw_value] (_0: usize) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<T>, sys::error::Error>
+            where
+            T: sys::mm::Address,;
+
+error: `alloc::vec::impl&%1::capacity` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:732:12
+    |
+732 |         if uframes.capacity() < nframes {
+    |            ^^^^^^^^^^^^^^^^^^
+...
+949 |         if kframes.capacity() < count {
+    |            ------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::vec::Vec::<T, A>::capacity] (_0: &alloc::vec::Vec<T, A>) -> usize
+            where
+            A: core::alloc::Allocator,;
+
+error: `arch::x86::mem::constants::PAGE_SIZE` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/manager.rs:739:53
+    |
+739 |         let range_size: usize = nframes.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
+    |                                                     ^^^^^^^^^^^^^^
+...
+762 |                     .checked_add(mem::PAGE_SIZE)
+    |                                  --------------
+...
+804 |                 match PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE) {
+    |                                                                            --------------
+...
+825 |                     rollback_addr.into_raw_value() + mem::PAGE_SIZE,
+    |                                                      --------------
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_inner` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:744:34
+    |
+744 |         if !Vmem::is_user_region(vaddr.into_inner(), range_size) {
+    |                                  ^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::mem::types::address::aligned::page::PageAligned::<T>::into_inner] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> T
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:760:17
+    |
+760 | /                 check_addr
+761 | |                     .into_raw_value()
+    | |_____________________________________^
+...
+804 |                   match PageAligned::from_raw_value(vaddr.into_raw_value() + mem::PAGE_SIZE) {
+    |                                                     ----------------------
+...
+825 |                       rollback_addr.into_raw_value() + mem::PAGE_SIZE,
+    |                       ------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::into_raw_value] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> usize
+            where
+            T: sys::mm::Address,;
+
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::alloc_many_user_frames` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:775:13
+    |
+775 |             unsafe { PhysMemoryManager::get_mut() }.alloc_many_user_frames(nframes, uframes);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::manager::PhysMemoryManager::alloc_many_user_frames] (_0: &crate::mm::phys::manager::PhysMemoryManager, _1: usize, _2: &alloc::vec::Vec<mm::phys::upool::UserFrame>) -> core::result::Result<(), sys::error::Error>;
+
+error: `alloc::vec::drain::Drain` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:786:17
+    |
+786 |             let mut drain = uframes.drain(..);
+    |                 ^^^^^^^^^   -----------------
+787 |             loop {
+788 |                 let uframe: UserFrame = match drain.next() {
+    |                                               ------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(A)]
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExDrain<'a, T, A>(alloc::vec::Drain<'a, T, A>)
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::vec::impl&%1::drain` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:786:29
+    |
+786 |             let mut drain = uframes.drain(..);
+    |                             ^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A, R> [alloc::vec::Vec::<T, A>::drain] (_0: &alloc::vec::Vec<T, A>, _1: R) -> alloc::vec::Drain<'_, T, A>
+            where
+            A: core::alloc::Allocator,
+            R: core::ops::RangeBounds<usize>,;
+
+error: `core::ops::range::RangeFull` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:786:29
+    |
+786 |             let mut drain = uframes.drain(..);
+    |                             ^^^^^^^^^^^^^^--^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExRangeFull(core::ops::RangeFull);
+
+error: `alloc::vec::drain::impl&%5::next` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:788:47
+    |
+788 |                 let uframe: UserFrame = match drain.next() {
+    |                                               ^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a, T, A> [<alloc::vec::Drain<'a, T, A> as core::iter::Iterator>::next] (_0: &alloc::vec::Drain<'a, T, A>) -> core::option::Option<T>
+            where
+            A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::mm::phys::kframe::KernelFrame::clear` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:906:13
+    |
+906 |             kframe.clear()?;
+    |             ^^^^^^^^^^^^^^
+...
+959 |             let clear_result = kframes.iter_mut().try_for_each(|kframe| kframe.clear());
+    |                                                                         --------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::kframe::KernelFrame::clear] (_0: &crate::mm::phys::kframe::KernelFrame) -> core::result::Result<(), sys::error::Error>;
+
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::alloc_many_kernel_frames` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:957:9
+    |
+957 |         unsafe { PhysMemoryManager::get_mut() }.alloc_many_kernel_frames(count, kframes)?;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::manager::PhysMemoryManager::alloc_many_kernel_frames] (_0: &crate::mm::phys::manager::PhysMemoryManager, _1: usize, _2: &alloc::vec::Vec<mm::phys::kframe::KernelFrame>) -> core::result::Result<(), sys::error::Error>;
+
+error: `core::slice::iter::impl&%179%default%try_for_each` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:959:32
+    |
+959 |             let clear_result = kframes.iter_mut().try_for_each(|kframe| kframe.clear());
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `core::slice::iter::IterMut` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:959:32
+    |
+959 |             let clear_result = kframes.iter_mut().try_for_each(|kframe| kframe.clear());
+    |                                ------------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExIterMut<'a, T>(core::slice::IterMut<'a, T>);
+
+error: `core::slice::impl&%0::iter_mut` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/manager.rs:959:32
+    |
+959 |             let clear_result = kframes.iter_mut().try_for_each(|kframe| kframe.clear());
+    |                                ^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [core::slice::<impl [T]>::iter_mut] (_0: &[T]) -> core::slice::IterMut<'_, T>;
+
+error: cannot use function `kernel::mm::elf::elf32_load` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:994:9
+    |
+994 |         elf::elf32_load(self, vmem, elf)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::elf::elf32_load] (_0: &crate::mm::virt::manager::VirtMemoryManager, _1: &crate::mm::virt::vmem::Vmem, _2: &elf::elf32::Elf32Fhdr) -> core::result::Result<(sys::mm::VirtualAddress, hal::mem::types::address::aligned::page::PageAligned<sys::mm::VirtualAddress>), sys::error::Error>;
+
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::alloc_kernel_frame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.rs:267:17
+    |
+267 |                 unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+904 |             unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+    |             ------------------------------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::manager::PhysMemoryManager::alloc_kernel_frame] (_0: &crate::mm::phys::manager::PhysMemoryManager) -> core::result::Result<mm::phys::kframe::KernelFrame, sys::error::Error>;
+
+error: could not compile `kernel` (bin "kernel") due to 25 previous errors

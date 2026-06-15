@@ -1,0 +1,26 @@
+Timestamp: 2026-06-16_00-39-41
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=57
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=54
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: Verus does not currently support closures capturing a mutable reference for variables of any mode
+   --> src/kernel/src/mm/virt/manager.rs:364:21
+    |
+364 |                     count += 1;
+    |                     ^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

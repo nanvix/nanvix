@@ -114,3 +114,6 @@ PHASE: specification
 Module: manager
 ============================================================
 [2026-06-16 00:37:43] [STRIP-EXT] removed 9 external_body attribute(s) from /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs
+[2026-06-16 00:37:43] [PROVER] Running specification...
+[2026-06-16 00:37:43] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-16 01:02:21]   ↳ prover done in 24m38s (exit=0)
