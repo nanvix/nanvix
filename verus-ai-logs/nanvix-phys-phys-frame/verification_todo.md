@@ -1,3 +1,62 @@
+# Verification TODOs — `mm::phys` cheating-gate blockers
+
+## Gate blockers: 5 `admit()` in `manager.proof.rs`
+
+These are the only cheating-gate blockers. Root cause: `phys_view()` is `uninterp`
+(a single fixed ghost constant) yet models the **mutable, shared** global frame partition.
+The §8 ghost-token attachment (`view_design.md`) that would make this coherent needs
+`tracked` ghost state threaded through exec signatures/structs, which the source-integrity
+rules forbid. Eliminated 5 of the original 10 admits (see `cheating-elimination/fix_report.md`).
+
+- **`lemma_manager_attached`** — `m@ == phys_view().frames`.
+  Both `Upool::view`/`PhysMemoryManager::view` and `phys_view()` are `uninterp` with no axioms
+  → equating them is an underivable external-bottom axiom. Also mutually inconsistent with the
+  manager `alloc` specs (`final(self)@ == old(self)@.alloc_one(..)`): a value cannot equal both
+  a constant and that constant's `alloc_one`. Used in `alloc_many_user_frames` /
+  `alloc_user_frame` to bridge `check_user_watermark`'s global `phys_view().frames.free_count()`
+  to the manager's `self@`-phrased `user_alloc_ok` postcondition.
+  **Unblock:** human-approved `axiom`/`assume_specification` realizing the attachment, OR a
+  `tracked` token over the `frame::INSTANCE` / `PhysMemoryManager`/`Upool` singletons (exec
+  signature/struct change — currently forbidden).
+
+- **`lemma_kernel_alloc_one`** — `post == pre.alloc_one(addr)` where `pre=old(self)@`,
+  `post=final(self)@`. `alloc_kernel_frame` allocates via the **global** `frame::alloc()` and
+  never mutates `self.upool`, so the implementation has `final(self)@ == old(self)@`. The lemma
+  asserts `old(self)@ == old(self)@.alloc_one(addr)` — **false for the implementation**.
+  **Unblock:** correct the external-top `alloc_kernel_frame` spec to a frame-preserving
+  `self@` transition + express the allocation via `phys_view()` (do-not-weaken — needs human
+  review), OR record kernel allocations in `self` (semantically wrong; exec change).
+
+- **`lemma_kernel_alloc_contiguous`** — same root cause as `lemma_kernel_alloc_one`, bulk
+  kernel path (`alloc_many_kernel_frames`). Asserts a `self@` `book_all(..)` transition the
+  global contiguous allocation does not perform on the pool view.
+
+- **`lemma_user_bulk_err_restored`** — `m@ == pre` after `frames.clear()`. The K successful
+  `self.upool.alloc()` calls advanced `self.upool@` by K `alloc_one`s; `clear()` drops the
+  `UserFrame`s whose `Drop` calls the **global** `frame::free()`, which does not roll back
+  `self.upool@`. The pool-view restoration the lemma claims is not performed — **false for the
+  implementation** without modeling `Drop`'s global effect and reconciling it with the pool view.
+  **Unblock:** §8 ghost token making the pool view reflect global frees, or a Drop-effect spec.
+
+- **`lemma_user_bulk_ok`** — *provable, deprioritized (moot).* TRUE after a completed loop.
+  **Proof recipe** (for a follow-up; closes this gap but leaves the function blocked by the two
+  admits above):
+  1. Add to `alloc_many_user_frames`'s loop a strengthened invariant:
+     `self@ == g_old.book_all(user_addr_set(frames@))`,
+     `frames@.len() == <iterations>` (bind the range index),
+     `user_addr_set(frames@).len() == frames@.len()`,
+     `forall a in user_addr_set(frames@): g_old.free_frames.contains(a)`.
+  2. Helper lemma (clean, unconditional, Set/Map extensionality):
+     `book_all(s).alloc_one(a) == book_all(s.insert(a))`
+     (allocated: `union(s).insert(a) =~= union(s.insert(a))`; free: `difference` analog;
+     refcounts: `union_prefer_right(map(s)).insert(a,1) =~= union_prefer_right(map(s.insert(a)))`).
+  3. Helper: `user_addr_set(frames.push(uf)) =~= user_addr_set(frames).insert(uf@)`.
+  4. Distinctness: each `uf@` ∈ `self@.free_frames = g_old.free \ prev_set`, so `uf@ ∉ prev_set`
+     → `len` grows by exactly 1; at loop exit `frames@.len() == count`.
+  Then replace both `lemma_user_bulk_ok(..)` call sites with the (now-established) invariant facts.
+
+---
+
 # Verification TODOs — phys-frame (`src/kernel/src/mm/phys/frame.rs`)
 
 These are the frame-module functions that still carry `#[verus_verify(external_body)]`.
