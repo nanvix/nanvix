@@ -1,97 +1,24 @@
 {
   "module_name": "phys-kframe",
   "log_name": "nanvix-phys-phys-kframe",
-  "source_path": "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/kframe.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
-  "completed_phases": [
-    "caller-analysis",
-    "view-design"
-  ],
-  "phase_results": {
-    "caller-analysis": {
-      "phase": "caller-analysis",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 111.0,
-      "review_rounds": 0
-    },
-    "view-design": {
-      "phase": "view-design",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "no-review",
-      "review_file": null,
-      "duration_s": 236.8,
-      "review_rounds": 0
-    },
-    "specification": {
-      "phase": "specification",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 973.6,
-      "review_rounds": 1
-    }
-  },
-  "prover_session_id": "83ba64c8-6bff-4898-8706-a67271a937d3",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai/phys-upool",
-  "verus_branch": "verus-ai/phys-kframe",
-  "phase_boundary_shas": {
-    "caller-analysis": "605de10e5f3917b3fd58e84205fdfc3bc86d4897",
-    "view-design": "72d3bf002f4262c916e21f8d40134f8284da9efd",
-    "specification": "7cf6779e75911197e6be3be5fb2120872a3c25aa"
-  },
+  "base_branch": "verus-ai-prove-bottom-up",
+  "verus_branch": "verus-ai-prove-bottom-up",
+  "phase_boundary_shas": {},
   "phase_start_shas": {
-    "caller-analysis": "3aa9f0cae10a1f6f592fe25a3ed644138e3eea9b",
-    "view-design": "605de10e5f3917b3fd58e84205fdfc3bc86d4897",
-    "specification": "72d3bf002f4262c916e21f8d40134f8284da9efd"
+    "proving": "31731f9c6578486a12069e3a4e22727b0055e79e"
   },
   "phase_history": [
     {
-      "phase": "caller-analysis",
+      "phase": "proving",
       "event": "start",
-      "sha": "3aa9f0cae10a1f6f592fe25a3ed644138e3eea9b",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "caller-analysis",
-      "event": "end",
-      "sha": "605de10e5f3917b3fd58e84205fdfc3bc86d4897",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "start",
-      "sha": "605de10e5f3917b3fd58e84205fdfc3bc86d4897",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "view-design",
-      "event": "end",
-      "sha": "72d3bf002f4262c916e21f8d40134f8284da9efd",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "start",
-      "sha": "72d3bf002f4262c916e21f8d40134f8284da9efd",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "specification",
-      "event": "end",
-      "sha": "7cf6779e75911197e6be3be5fb2120872a3c25aa",
+      "sha": "31731f9c6578486a12069e3a4e22727b0055e79e",
       "rollback_iter": 0
     }
   ],
