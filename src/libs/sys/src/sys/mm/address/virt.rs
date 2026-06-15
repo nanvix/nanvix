@@ -22,7 +22,6 @@ use crate::{
         Alignment,
     },
 };
-#[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
 //==================================================================================================
@@ -49,7 +48,7 @@ impl VirtualAddress {
     #[verus_spec(result =>
         ensures true,
     )]
-    pub fn new(value: usize) -> Self {
+    pub fn mk_new(value: usize) -> Self {
         Self(value)
     }
 
@@ -63,7 +62,7 @@ impl VirtualAddress {
     /// - `raw_addr`: The raw value.
     ///
     pub fn from_raw_value(raw_addr: usize) -> Self {
-        VirtualAddress::new(raw_addr)
+        VirtualAddress::mk_new(raw_addr)
     }
 
     ///
@@ -82,7 +81,7 @@ impl VirtualAddress {
     /// instead.
     ///
     pub fn align_up(&self, align: Alignment) -> Option<Self> {
-        mm::align_up(self.0, align).map(VirtualAddress::new)
+        mm::align_up(self.0, align).map(VirtualAddress::mk_new)
     }
 
     ///
@@ -100,7 +99,7 @@ impl VirtualAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     pub fn align_down(&self, align: Alignment) -> Self {
-        VirtualAddress::new(mm::align_down(self.0, align))
+        VirtualAddress::mk_new(mm::align_down(self.0, align))
     }
 
     ///
@@ -267,7 +266,7 @@ impl ::core::ops::Add<usize> for VirtualAddress {
     type Output = Self;
 
     fn add(self, rhs: usize) -> Self::Output {
-        VirtualAddress::new(self.0 + rhs)
+        VirtualAddress::mk_new(self.0 + rhs)
     }
 }
 
@@ -279,7 +278,7 @@ impl ::core::ops::AddAssign<usize> for VirtualAddress {
 
 impl From<u32> for VirtualAddress {
     fn from(value: u32) -> Self {
-        VirtualAddress::new(value as usize)
+        VirtualAddress::mk_new(value as usize)
     }
 }
 

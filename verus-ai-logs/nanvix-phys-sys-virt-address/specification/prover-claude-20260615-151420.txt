@@ -911,3 +911,24 @@ The duplicate ungated `use ::vstd::prelude::*;` is the structural difference fro
 Turn 58
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -8
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sys` (lib) due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/setup error (veru...
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+Let me revert the import change and test whether the function *name* `new` is the issue by temporarily renaming it.
+[TOOL] bash: cd /home/ruize/nanvix-phy; f=src/libs/sys/src/sys/mm/address/virt.rs
+# revert import gating
+python3 - <<'PY'
+f="src/libs
+
+[THINKING] I need to revert that import change back to the original exec, then figure out how to get the actual macro expansion. Since Verus uses `cargo verus verify`, I could try running that with expansion flags. Actually, the `verus_spec` macro comes from `verus_builtin_macros`, and it behaves differently depending on whether `verus_keep_ghost` is set—when it's enabled, the macro expands rather than erases the code.
+
+Let me try using the nightly toolchain that Verus itself uses to expand the macros. I could run `cargo +<toolchain> rustc` with the `verus_keep_ghost` cfg flag and make sure the proc-macro dependency is available. The proc macros are built against Verus's custom rustc, which makes this tricky. But stepping back—the real issue is why `new` specifically fails. The `verus_spec` macro likely generates an inner function or wraps the body in a way that moves the original code into a nested context, and if `new` is a common name, the macro might be generating a companion spec function or attaching requires/ensures through a generated item that calls `new`, causing a scope issue.
+
+Let me test this by renaming `new` to `new2` temporarily to see if the problem is the name itself colliding with something the macro generates. If `new2` works, I've found the culprit.
