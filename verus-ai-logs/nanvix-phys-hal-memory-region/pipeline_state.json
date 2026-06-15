@@ -2,11 +2,12 @@
   "module_name": "hal-memory-region",
   "log_name": "nanvix-phys-hal-memory-region",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "c5c4f78a66b4a71e704e87934380be624047b6d0",
     "view-design": "94508afa0e2e3a7b52e843ce96b6f2442ee687e2",
-    "specification": "776a78e85ce25637dc8c495412538013c9f76d56"
+    "specification": "776a78e85ce25637dc8c495412538013c9f76d56",
+    "proving": "a96d9a3fa76127d17ff2d2adf14f320372b89f07"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "cd87d8eb3a41d78488c7daeb115050b9f83cbcab",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "a96d9a3fa76127d17ff2d2adf14f320372b89f07",
       "rollback_iter": 0
     }
   ],
