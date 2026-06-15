@@ -1598,3 +1598,90 @@ Turn 89
 ────────────────────────────────────────────────────────────
 Now run verify-kernel for this module:
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp
+[RESULT ✓] bash: 0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern C...
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Coverage is now 2/17, but there's a compilation error. Let me see it:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -iB1 -A10 "error\[E\|error:" /tmp/verify2.log | head -60
+
+[THINKING] I'm getting coverage on 2 out of 17 items, which is a good sign that both functions are being recognized, but the compilation failed before verus could run. Let me check what the actual error is.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:56:12
+   |
+56 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+   |            ^^^^^^^^^^^^ not found in ...
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm hitting a compilation error where the `from_address` function can't be found in scope at its own definition line, which suggests this might be a macro expansion issue with the `#[verus_spec]` attribute or how it's interacting with the spec references inside the function body. Maybe the `proof!` macro isn't available in this file's scope, or the verus_spec macro is generating code that references `from_address` in a way that breaks name resolution. Let me check if there's a name collision or if the macro expects a spec-mode twin function that isn't being generated properly. The error message points to the definition itself, not a call site, which suggests the macro expansion isn't generating the function properly. I'm wondering if the `#[verus_spec]` macro with the ensures clause referencing `spec_addr` and `p.inv()` is causing issues during expansion. Let me check how `proof!` is positioned in similar working functions in frame.rs to see if that's interfering with the macro's ability to generate the exec version.
+[RESULT ✓] view: 740.         final(auth)@.initialized,
+741.         final(auth)@.inv(),
+742.         // Strong post-state contract carried by the `PhysAuth` token: a successful
+743.         // allocation moves one free frame into `allocated_frames` with refcount 1;
+744.         // an error leaves the allocator unch...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -iB2 -A15 "E0425\|f
+
+[THINKING] The `proof!` macro placement in frame.rs isn't causing the issue. I'm wondering if the `verus_spec` macro is generating a recursive spec when it encounters an inherent method with a `proof!` block in its body that gets referenced elsewhere, which could explain the "cannot find function `from_address`" error.
+
+Looking at the error location more carefully — column 56:12 points directly to the `from_address` token in the function definition itself, which is strange since definitions create names rather than look them up. This suggests the macro expansion is generating code that calls `from_address` unqualified somewhere, with the error span attributed back to the original definition. The `verus_spec` macro likely generates a companion that invokes the original function, and when trait impl methods like `align_up` call `Self::from_address`, Verus needs access to `from_address`'s spec. Let me get the full unfiltered Verus output to see what's actually being generated.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/aligned/page.rs:56:12
+   |
+56 |     pub fn from_address(addr: T) -> Result<Self, Error> {
+   |            ^^...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+The inherent `impl` block isn't marked `#[verus_verify]`, unlike the trait impl. Let me check how kframe annotates its inherent impl containing verus_spec methods:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^impl\|^#\[verus_verify\]\|verus! {" src/kernel/src/mm/phys/kframe.rs | head -20
+
+[THINKING] I'm realizing the `verus_spec` macro must be generating a call to `from_address`, and I need to understand how the `result =>` form works in Verus attribute mode—where `#[verus_spec(NAME => ensures ...)]` binds the return value. The pattern matching with `Ok(p) =>` binds `p` to the result. But maybe the real issue isn't about recursion at all—I should check whether the `proof!` macro requires something specific from the function itself.
+
+Actually, `into_raw_value` also has `proof!` and didn't error, so the difference must be something else. The `?` operator in `addr.is_aligned(PAGE_ALIGNMENT)?` desugars to a match that calls `from_residual` on error, not `from_address`. Let me test whether the `proof! { admit(); }` as the first statement before the `if` with `?` is the culprit—maybe I can isolate this by moving the `proof!` block after the alignment check or removing it temporarily to see if the error disappears.
+
+Wait, I just realized something crucial: `into_raw_value` is in the trait impl marked `#[verus_verify]`, but `from_address` is in the inherent impl block that's NOT marked `#[verus_verify]`. That could be the issue—if the inherent impl isn't processed by verus_verify, then `#[verus_spec]` on `from_address` might not fully expand, causing `proof!` to remain unresolved. Let me check whether the inherent impl needs the `#[verus_verify]` annotation like the trait impl does.
+[RESULT ✓] bash: 41:#[verus_verify]
+48:verus! {
+54:impl View for KernelFrame {
+64:#[verus_verify]
+65:impl KernelFrame {
+157:impl Deref for KernelFrame {
+169:impl DerefMut for KernelFrame {
+176:#[verus_verify]
+177:impl Drop for KernelFrame {
+<shellId: 58 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+Confirmed — the inherent impl needs `#[verus_verify]`. Adding it:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I found the issue — the `impl KernelFrame` has `#[verus_verify]` but my `impl<T: Address> PageAligned<T>` doesn't, so I need to add that attribute. The impl also contains `into_inner` which just returns `self.0`, a trivial operation that should verify without issues.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tee /tmp

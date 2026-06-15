@@ -1,0 +1,27 @@
+Timestamp: 2026-06-15_11-06-00
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+
+thread 'rustc' (3041116) panicked at vir/src/traits.rs:511:13:
+assertion failed: !method_impls.contains(&p)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `kernel` (bin "kernel")
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/toolchain/verus/verus /home/ruize/.cargo/bin/rustc --crate-name kernel --edition=2021 src/kernel/src/kmain.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin --emit=dep-info,metadata -C opt-level=3 -C embed-bitcode=no -C codegen-units=1 -C debuginfo=2 --deny=warnings --deny=unexpected_cfgs '--deny=clippy::all' --check-cfg 'cfg(verus_keep_ghost)' --check-cfg 'cfg(verus_keep_ghost_body)' --check-cfg 'cfg(target_os, values("nanvix"))' -C debug-assertions=on --cfg 'feature="debug"' --cfg 'feature="error"' --cfg 'feature="exception-stack-guard"' --cfg 'feature="info"' --cfg 'feature="microvm"' --cfg 'feature="panic"' --cfg 'feature="pit"' --cfg 'feature="putb"' --cfg 'feature="stdio"' --cfg 'feature="trace"' --cfg 'feature="warn"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("debug", "default", "error", "exception-stack-guard", "info", "kcall", "microvm", "nightly-performance-optimizations", "panic", "pit", "putb", "puts", "smp", "stdio", "test", "trace", "warn", "whp"))' -C metadata=be3c3c29255cafd0 -C extra-filename=-82efa172c573a61e --out-dir /home/ruize/nanvix-phy/target/x86-kernel/debug/deps --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json -Zunstable-options -C incremental=/home/ruize/nanvix-phy/target/x86-kernel/debug/incremental -L dependency=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps -L dependency=/home/ruize/nanvix-phy/target/debug/deps --extern 'noprelude,nounused:alloc=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/liballoc-7a9d91d7c8f78543.rlib' --extern arch=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libarch-16332d9b918c75f6.rmeta --extern bitmap=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libbitmap-f9813c91d3be46aa.rmeta --extern bump_allocator=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libbump_allocator-e575bee21eabf116.rmeta --extern cfg_if=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcfg_if-69026a8b61481355.rmeta --extern cmdline=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcmdline-75b736eb144097d6.rmeta --extern 'noprelude,nounused:compiler_builtins=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcompiler_builtins-87ec5c91af693f29.rlib' --extern config=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libconfig-e62bdb4689ddf0fa.rmeta --extern 'noprelude,nounused:core=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcore-0157cf8607007ad3.rlib' --extern elf=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libelf-b36feb8a59b4dbde.rmeta --extern koptions=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libkoptions-7a4d4865bfb47713.rmeta --extern mmio_tag=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libmmio_tag-96de9dc4a675f932.rmeta --extern multibin=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libmultibin-292b9a5aaef90247.rmeta --extern slab=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libnanvix_slab-ab2e46f118ce951c.rmeta --extern no_fail=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libno_fail-ab62f5e50f84d20b.rmeta --extern raw_array=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libraw_array-477d697462a56038.rmeta --extern sorted_vec=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libsorted_vec-a10eee4943f1a390.rmeta --extern static_assert=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libstatic_assert-4a4c55ee33fedd36.rmeta --extern sys=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libsys-5e0435459d1b499b.rmeta --extern type_safe=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libtype_safe-2ffb580d5a99d3c4.rmeta --extern vstd=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libvstd-6426b76f2a120f0a.rmeta -Z unstable-options -C relocation-model=static -C prefer-dynamic=no -C link-arg=-T/home/ruize/nanvix-phy/target/x86-kernel/debug/build/kernel-b832bcbbc8663390/out/kernel.ld` (exit status: 1)
