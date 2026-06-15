@@ -487,3 +487,10 @@ Module: phys-frame
 [2026-06-15 08:34:40] [PROVER] Running view-design...
 [2026-06-15 08:34:40] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 08:44:32]   ↳ prover done in 9m52s (exit=0)
+[2026-06-15 08:44:32] [PHASE] view-design: no-review (9m52s)
+[2026-06-15 08:44:32] ✅ view-design: PASS (0/0)
+
+============================================================
+PHASE: specification
+Module: phys-frame
+============================================================
