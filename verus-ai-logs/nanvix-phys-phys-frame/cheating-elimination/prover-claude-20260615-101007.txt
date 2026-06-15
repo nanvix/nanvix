@@ -941,3 +941,87 @@ lines=open(p).read().spl
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|error:
+[RESULT ✓] bash: error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1317:13
+     |             ^^^^^^^^^ failed this postcondition
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1346:13
+     |             ^^^^^^^^ failed this postcondition
+    --> src/kernel/src/mm...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Confirmed empirically. All 5 remaining wrappers are genuinely blocked:
+- `alloc`/`book`/`alloc_range` (1317/1437/1455): postcondition references **post-mutation** `phys_view()` state, which `instance()` only pins pre-call.
+- `alloc_contiguous` (1346): address-bound `base@ + count*PS <= usize::MAX` not derivable from the current invariant.
+- `free` (1400/1401): `instance()` can panic → violates `no_unwind` and `opens_invariants none`.
+
+Let me restore the backup.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp /tmp/frame.rs.bak src/kernel/src/mm/phys/frame.rs; grep -n "external_body"
+
+[THINKING] I'm looking at the verification errors that came up empirically. There are five issues across the allocation functions: the `alloc` function can't prove the postcondition about allocated frames from the pre-state, `alloc_contiguous` can't derive the address bound constraint, and `free` has an invariant visibility problem where the callee opens invariants the caller can't access.
+
+The remaining two errors in `book` and `alloc_range` both fail to establish their postconditions about reserved regions. All five failures trace back to the same root cause—the pre-state-pinned `instance()` contract that prevents bridging the physical view after mutation without the ghost token from section 8, plus the fact that `instance()` can panic which conflicts with the `no_unwind` requirement on `free`. These are all documented as allowed in the TCB list, so I'm going to restore the external bodies on these five functions.
+[RESULT ✓] bash: 1235:#[verus_verify(external_body)]
+1264:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+1268:#[verus_verify(external_body)]
+1312:// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+1314:#[verus_verify(external_body)...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '1371,1383p' src/kernel/src/mm/phys/frame.rs; echo "=== free_count pre
+
+[THINKING] I need to double-check whether the free_count modification actually persisted after restoring from the backup, since I created that backup after making the edit to frame.rs.
+[RESULT ✓] bash: // `lemma_free_count_eq` discharges `free_frames.len() == num_bits - usage()`.
+#[verus_spec(result =>
+    ensures
+        result as nat == crate::mm::phys::phys_view().frames.free_count(),
+)]
+pub(super) fn free_count() -> usize {
+    let inner = instance();
+    // VERUS DEVIATION (pre-approved: inte...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Good — `free_count` change preserved, 5 wrappers restored. Now let me run the AST consistency check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls scripts/ast_consistency.py 2>/dev/null && echo "exists" || find . -name "a
+
+[THINKING] The backup preserved the free_count change, and I've restored the external_body for the five wrappers. Now I'm running the AST consistency check to verify that only the pre-approved deviation shows up, then I'll do a full verification. Let me first confirm that the consistency check script exists.
+[RESULT ✓] bash: 
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; find / -name "ast_consistency.py" 2>/dev/null | head; echo "=== MCP? ==="; ls
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/ast_consistency.py
+/mnt/shared/kheap-mas-exp/script...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git show verus-ai-prove-bottom-up:src/kernel/src/mm/phys/frame.rs > /tmp/fram
+[RESULT ✓] bash: got orig 1502
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MATCH                                
+Inner::alloc_contiguous            ...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+AST consistency: **zero mismatches** (the intermediate-value change normalizes). Now let me run the full-kernel verification (no MODULE) to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 2000 make verify-kernel 2>&1 | grep -E "verified,|errors|external_bod
+
+[THINKING] The AST consistency check is showing the free_count as matching even though I modified the execution body by adding intermediate let bindings. The original version computed the free count directly in the body, but my refactored version breaks it into separate steps with let statements before the final calculation. The AST checker is stripping out ghost and proof code, which is why it's not catching the structural difference.
+
+Since the consistency check reports zero mismatches and confirms the change is semantically equivalent, I can trust that the intermediate-value refactoring normalizes properly. Now I need to run the full crate verification to ensure there are no regressions across the entire module.
