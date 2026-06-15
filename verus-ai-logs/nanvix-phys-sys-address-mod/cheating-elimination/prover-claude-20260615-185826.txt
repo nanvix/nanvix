@@ -614,3 +614,39 @@ Turn 30
 ────────────────────────────────────────────────────────────
 The expected version is restored. Now re-run verify-sys.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-sys 2>&1 | tail -35
+[RESULT ✓] bash: PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/h...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Verify-sys is now CLEAN (6 verified, 0 errors, no cheating). Now let me check AST consistency and run full verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== exec signature diff (ignoring ghost/comments) ==="; git diff verus-ai/hal-frame-a
+
+[THINKING] The verify-sys check passed cleanly with no errors or cheating detected. Now I need to run the full `make verify` command to check for any regressions across the entire crate. I'm also reviewing the AST consistency requirements—my changes only added ghost annotations through verus_spec contracts without modifying executable code paths, so the semantics should be preserved.
+[RESULT ✓] bash: === exec signature diff (ignoring ghost/comments) ===
++use vstd::prelude::*;
++#[cfg(verus_keep_ghost)]
++include!("mod.spec.rs");
++#[cfg(verus_keep_ghost)]
++include!("mod.proof.rs");
+-use ::vstd::prelude::*;
++            },
++    )]
++    )]
++    )]
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Exec code is unchanged — only ghost `#[verus_spec]` attributes and the standard cfg-gated spec/proof includes were added. Now running full verification for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -50
+
+[THINKING] I'm looking at the changes to the exec code: the import statement is being simplified by removing the `::` prefix and moving it to the top of the file, while some new ghost-only configuration is being added through a conditional include that won't affect the normal build. The trait definition appears to be starting next.
+
+The method signatures themselves remain unchanged — only ghost annotations are being added through the `#[verus_spec(...)]` attributes, so there's no actual change to the executable logic or complexity. The `use vstd::prelude::*` import is necessary because the spec files reference vstd types, and the conditional includes follow the standard pattern used throughout the repo for ghost code. The AST consistency looks good since no exec logic has been modified.
+
+Now I'm running the full verification build to check for any regressions, which will take a bit longer since it includes the kernel build.
