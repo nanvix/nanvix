@@ -22,15 +22,4 @@ impl KernelFrame {
     }
 }
 
-// Trusted exec-boundary contract for the [`KernelFrame::map_frame`] helper. `map_frame` performs
-// the identity-mapping side effect by calling `mm::virt::identity_map_page`, whose precondition
-// `identity_map_view().inv()` is a global invariant of the not-yet-verified `mm::virt` module that
-// cannot be discharged from within `mm::phys`. The side effect is observable to no `mm::phys`
-// caller (it only installs a kernel page-table entry), so the trusted contract is empty: no
-// `requires` (any aligned/owned frame is accepted) and no abstract `ensures` (it returns a plain
-// `Result<(), Error>`). This trusts strictly less than the previous `external_body` on `new`: the
-// owned-frame identity and well-formedness postconditions of `new` are now machine-verified; only
-// the cross-module page-table side effect remains trusted, exactly at the `mm::virt` boundary.
-pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress) -> Result<(), Error>;
-
 } // verus!

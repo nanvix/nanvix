@@ -78,11 +78,15 @@ impl KernelFrame {
             },
     )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
-        // Ensure the frame is identity-mapped in the kernel address space so that
-        // Deref/DerefMut can safely access it. This lazily installs a page
-        // table entry if needed (page tables come from a BSS pool, so no recursive frame
-        // allocation occurs).
-        Self::map_frame(base)?;
+        let phys_addr: PageAligned<PhysicalAddress> =
+            PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
+                error!("frame base is not page-aligned: {e:?}");
+                e
+            })?;
+        crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
+            error!("failed to identity-map frame: {:?}", e);
+            e
+        })?;
 
         Ok(Self { base })
     }
