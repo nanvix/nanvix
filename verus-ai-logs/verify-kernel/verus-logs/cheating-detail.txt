@@ -20,4 +20,3 @@
     - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:117 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
-    - mm/virt/identity_map.rs:649 identity_map_page: external_body

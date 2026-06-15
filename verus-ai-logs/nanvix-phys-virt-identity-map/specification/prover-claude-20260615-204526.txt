@@ -1,0 +1,595 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T20:45:26.503297
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/virt/identity_map.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`identity_map_page`, `ensure_pt`, `ensure_pte`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+
+
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md
+Source file: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+Spec file:  /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-kernel` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the required skills and context files.
+[TOOL] skill: spec-design
+[TOOL] report_intent: Reading skills and context
+
+[THINKING] I'm starting by reviewing the skills and context files to understand what I'm working with.
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The referenced skills aren't in the project skill set. Let me find them in the verus-ai directory.
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai -maxdepth 3 -iname "*.md" | grep -iE "skill|spec-design|verus-constraint|verifica
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ ; echo "---SKILLS---"; find /home/ruize/verus-ai-exp/verus-ai -maxdepth 2 
+
+[THINKING] The skills I'm looking for aren't showing up in the standard list, so they must be stored in the verus-ai scripts directory somewhere. I need to search there.
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+[RESULT ✓] bash: 
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+The skills are in docs/skills. Let me read them.
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+<shellId: 2 completed with ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: for d in spec-design verus-constraints verification-order spec-completeness view-design bug-reporting; do echo "===== $d
+[RESULT ✓] bash: Output too large to read at once (52.2 KB). Saved to: /tmp/copilot-tool-output-1781527557534-1ppwri.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781527557534-1ppwri.txt
+[RESULT ✓] view: File too large to read at once (52.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781527557534-1ppwri.txt
+[RESULT ✓] view: 1. ===== spec-design =====
+2. ---
+3. name: spec-design
+4. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforceme...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781527557534-1ppwri.txt
+[RESULT ✓] view: 350. boundary decisions during specification or proving.
+351. 
+352. ### Rules
+353. 
+354. - The caller analysis and View design identify external-top properties.
+355. - Trust boundary decisions (which functions get `external_body`) are
+356.   pre-approved in the TCB allowed list. Do not classify new ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781527557534-1ppwri.txt
+[RESULT ✓] view: 560. vstd imports (cfg-gated), ghost/tracked local variables (each must be
+561. used by at least one proof construct — assertion, invariant, or proof block),
+562. `Ghost<T>` / `Tracked<T>` struct fields (only when proof requires ghost
+563. state to flow through exec code — prefer keeping ghost state...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781527557534-1ppwri.txt
+
+[THINKING] I need to scan through the rest of the view-design and bug-reporting sections, then dive into the actual project files to understand the codebase structure.
+[RESULT ✓] view: 850. - What state is purely internal? (e.g., "how data is physically organized",
+851.   "caching or optimization structures")
+852. 
+853. ---
+854. 
+855. ## Step 2: Choose View Fields
+856. 
+857. For each candidate field, apply the **substitution test**:
+858. 
+859. > If the implementation were complete...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+I have the skills. Now let me read the project-specific context files.
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+[RESULT ✓] bash: # Caller Analysis: mm::virt::identity_map
+
+Scope: the three verification-order target functions only —
+`identity_map_page`, `ensure_pt`, `ensure_pte`.
+
+## Script Output
+See: `verus-ai-logs/nanvix-phys-virt-identity-map/find_callers_lsp_output.md`
+(raw output of `find_callers_lsp.py`).
+
+Summary from ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md
+[RESULT ✓] bash: # View Design: mm::virt::identity_map
+
+## Abstract Resource
+
+To callers, this module is the **kernel lazy identity map**: a partial,
+monotonically-growing set of physical pages that are reachable (identity-mapped)
+through the kernel address space, plus a one-shot "is the mapper live yet?"
+status. Th...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now let me read the source file and existing spec/proof files.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: File too large to read at once (29.0 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module implements identity mapping for physical memory accesses.
+8. //!
+9. //! Only the kernel process has physical memory identity-mapped into its virtual address s...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 140.     KERNEL_PD_PADDR.store(kernel_pd_paddr.into_raw_value(), Ordering::Release);
+141.     KERNEL_CR3.store(kernel_cr3.into_u32(), Ordering::Release);
+142. 
+143.     Ok(())
+144. }
+145. 
+146. ///
+147. /// # Description
+148. ///
+149. /// Copies bytes between two memory regions, after ensuring that ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 340.         }
+341.     }
+342. }
+343. 
+344. ///
+345. /// # Description
+346. ///
+347. /// Temporarily switches CR3 to the kernel address space, executes `f`, and restores the previous
+348. /// CR3 value on return.
+349. ///
+350. /// This gives `f` access to kernel identity mappings while preserving th...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 560. ///
+561. /// # Description
+562. ///
+563. /// Ensures that a page table entry for the given index is identity-mapped. If the PTE is already
+564. /// present, this function is a no-op. Otherwise, it creates a new identity-mapped PTE and
+565. /// invalidates the corresponding TLB entry.
+566. ///
+5...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Now let me look at the existing spec/proof files and the current `#[verus_verify(external_body)]` annotation on `identity_map_page`.
+[TOOL] bash: echo "=== spec.rs ==="; cat /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs; echo "=== proof.rs ===";
+[RESULT ✓] bash: === spec.rs ===
+verus! { } // verus!
+=== proof.rs ===
+verus! { } // verus!
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Let me check for the `external_body` attribute and existing specs in dependency modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -rn "verus_verify\|verus_spec\|external_body" src/kernel/src/mm/virt/identity_map.rs | h
+
+[THINKING] The spec files are just empty stubs, so I need to dig into the dependent types that are being used—`Table`, `PageDirectoryEntry`, `PageTableEntry`, `TableIndex`, `FrameNumber`, `PageAligned`, `PhysicalAddress`, and the `PAGE_TABLE_ALLOCATOR`. I should look for existing specs for these types to understand how they work. I'm also noticing that the source mentions `identity_map_page` has the `#[verus_verify(external_body)]` attribute, but I need to check what the actual implementation looks like.
+[RESULT ✓] bash: === spec files in virt ===
+boot_init.rs
+identity_map.proof.rs
+identity_map.rs
+identity_map.spec.rs
+kpage.rs
+manager.rs
+mod.rs
+page_table_allocator.rs
+vmem.rs
+=== all spec.rs ===
+src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+src/kernel/src/hal/mem/types/address/phys.spec.rs
+src/kernel/src...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`identity_map_page` currently has no Verus attribute (just a comment). Let me examine the dependency types. Let me look at the `Table`, `PageDirectoryEntry`, `PageTableEntry`, `FrameNumber` definitions and any existing specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== paging module files ==="; find src/libs/arch -path "*paging*" -name "*.rs" | head -
+
+[THINKING] I'm checking whether the `external_body` attribute is actually present on the identity_map_page file. The grep search didn't find it in identity_map.rs, which suggests the annotation might not be there despite what the task description says. There's a comment mentioning it around lines 650-653, but the actual attribute doesn't seem to exist in the file.
+
+Now I need to examine the dependency types that the three target functions rely on — things like `Table<PageDirectoryEntry>`, `PageDirectoryEntry`, `PageTableEntry`, `TableIndex`, `FrameNumber`, and various helper functions like `paging::pd_index` and `paging::invlpg`. I should look at the existing specs for these types to understand what contracts are already available.
+[RESULT ✓] bash: === paging module files ===
+src/libs/arch/src/x86/mem/paging/frame/mod.rs
+src/libs/arch/src/x86/mem/paging/frame/number.rs
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+src/libs/arch/src/x86/mem/paging/frame/number.proof.rs
+src/libs/arch/src/x86/mem/paging/flags.rs
+src/libs/arch/src/x86/mem/...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== table.rs ==="; sed -n '1,200p' src/libs/arch/src/x86/mem/paging/table.rs
+[RESULT ✓] bash: === table.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Let me look at how the verified caller (`kframe`) references `identity_map_page`, and check the existing verified specs nearby.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '70,130p' src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] The `Table` type performs raw pointer operations using volatile reads and writes, which creates a verification challenge since Verus can't reason about these operations without a formal model. Several dependency functions like `PageDirectoryEntry`, `PageTableEntry`, and the index/invalidation utilities don't have existing specifications, making it difficult to establish the necessary abstractions for verification. The View design approach might help bridge this gap, but it requires careful modeling of how these low-level operations interact with the memory system. The issue is that these are free functions operating over global mutable state, and Verus doesn't have the ghost-state infrastructure to model atomic operations and raw pointer memory effectively. I should look at how the existing verified code in this codebase handles similar constraints — particularly checking what contract the caller in `kframe.spec.rs` expects from `identity_map_page` to understand what specs are actually feasible here.
+[RESULT ✓] bash: ///
+    /// # Parameters
+    ///
+    /// - `base`: Frame address.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+    ///
+    #[verus_spec(result =>
+        ensures
+            // Address identity: on success the handle ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Let me calibrate against existing verified specs in this codebase.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== kframe.spec.rs ==="; cat src/kernel/src/mm/phys/kframe.spec.rs; echo; echo "=== num
+
+[THINKING] Looking at the verified caller `KernelFrame::new`, I see it calls `identity_map_page` and only needs a `Result<(), Error>` back — the `?` operator handles error propagation, and on success it just constructs `Self { base }`. So the postcondition about frame equality doesn't actually matter for this caller; `identity_map_page` just needs to support the `?` operator at minimum.
+
+The real challenge now is that these are free functions operating over global statics and raw memory with no `self` receiver, so I can't express module-level abstract state as `self@`. Threading ghost permission tokens through would require adding `Tracked<>` parameters, which would change the exec signatures — and that's forbidden. So I'm stuck: I can't soundly bind global-state transitions to these functions in Verus without modifying their signatures.
+
+Given that constraint, I need to figure out what I *can* meaningfully specify on these functions. I should look at the existing spec files in this codebase—specifically `number.spec.rs` and `kframe.spec.rs`—to understand what level of specification sophistication is actually expected and feasible here, rather than trying to design something overly complex from first principles.
+[RESULT ✓] bash: === kframe.spec.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// KernelFrame - Specifications
+//
+// `KernelFrame` is an owned, move-only RAII handle to a single page-sized
+// physical frame allocated for kernel use and identity-mapped into the kernel
+// addres...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== mod.spec.rs ==="; cat src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I'm looking at how `mm/phys/mod.spec.rs` handles the global `phys_view()` function since the identity map also relies on global state, but I'm running into a constraint where uninterpreted spec functions with zero arguments aren't allowed. Let me check the actual implementation in mod.spec.rs to understand the pattern being used.
+[RESULT ✓] bash: === mod.spec.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// PhysMemoryManager - Specifications
+//
+// This file contains specification functions and view types.
+
+verus! {
+
+use crate::hal::mem::spec_page_size;
+use vstd::map::*;
+
+pub uninterp spec fn byte_at_ad...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Let me check the TCB allowed list and how verified functions handle atomics/raw memory.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== tcb-allowed.md ==="; cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -120; echo
+
+[THINKING] I'm seeing a pattern in how this codebase handles global-static-backed module state: a `*View` struct for abstract state paired with an uninterpreted spec function for the module view. But there's a tension here—the constraints say uninterpreted spec functions are banned, yet `phys_view()` and `byte_at_address` both use them, which seems contradictory.
+
+The key distinction is that the ban targets using `uninterp` to avoid writing concrete specs for behavior under our control, especially when paired with external_body proof axioms. For genuinely external state that a spec function can't read—like global atomics and raw memory—using `uninterp` is legitimate and follows the precedent of `phys_view()`. So for the identity_map module with its global `KERNEL_PD_PADDR` and `KERNEL_CR3` atomics, I'd define an uninterpreted `identity_map_view()` spec function and thread a tracked authority through the exec functions to manage state transitions, mirroring how the phys module handles this exact problem.
+
+But here's the constraint: I can't add parameters to the exec functions (signature is locked), and without a tracked carrier threaded through the signature, I can only state single-state facts over `identity_map_view()` at the post-state—like `ensures identity_map_view().maps(phys_addr@)`. The problem is that calling an uninterpreted zero-argument function before and after the exec function returns the same value, so I can't soundly express a before/after transition without some mechanism to distinguish the states.
+
+This mirrors exactly what kframe does with `phys_view()`—they use monotone single-state facts rather than transitions. But the `IdentityMapView` design doc explicitly expected `spec_identity_map_page` transitions with `self@`/`old(self)@`, which creates a real mismatch. Given that proofs are admit(), the realistic path forward is to write specs that compile with zero Verus errors and are sound and meaningful, using `#[verus_spec]` annotations on the exec functions for requires/ensures.
+
+The challenge is that `ensure_pt` and `ensure_pte` operate over a `Table` argument, and their contracts need a View on `Table<E>`. Since `Table` lives in the arch crate and isn't yet verified, adding Views and external_body specs there would be a large cross-module addition with significant surface area for compile errors. I need to weigh whether that scope is acceptable against the risk of breaking `make verify-kernel`, `make verify`, or `make build`.
+
+The core tension: exec functions with `#[verus_spec]` requires/ensures must have their bodies verified by Verus immediately—there's no admit() for exec bodies, only for proof function bodies. So if I add strong ensures to `identity_map_page`, Verus will try to prove the body establishes them, and it will fail if the callees (atomics, Table operations, etc.) lack specs. For the body to verify with zero errors, every dependency needs a spec and the body must actually establish the ensures.
+
+The workaround is to use admitted lemmas inside the exec body—call a proof function with the needed ensures and an admitted body—but that still requires specs on all the individual operations. Given the massive surface area (atomics, raw pointers, external functions), I should look at how existing verified kernel functions handle globals and raw pointers to understand the actual established pattern.
+[RESULT ✓] bash: === tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The bui...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '120,260p' verus-ai-logs/tcb-allowed.md
+[RESULT ✓] bash: - `src/kernel/src/mm/phys/upool.rs::<UserFrame as Drop>::drop` — releases one
+  reference on scope exit. `ensures phys_view().inv()` on every path.
+
+## Allowed `external_body` — `PhysMemoryManager` (`manager.rs`)
+
+`PhysMemoryManager` is a **stateless facade** over the global frame allocator
+(`Upool`...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+This is a complex global-state + raw-pointer module. Let me check the verification tooling and baseline before designing.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat .github/skills/build/SKILL.md 2>/dev/null | head -80; echo "=== git ==="; git status --sh
+
+[THINKING] I'm looking at the tcb-allowed.md entry for `identity_map_page` from the kframe proof target, which documents how it lazily installs a kernel identity-map PTE with no abstract contract since the mapping side effect falls outside the physical-frame abstraction.
+
+Now that we're verifying `mm::virt::identity_map` directly, `identity_map_page` transitions from an external dependency to an in-scope function that needs a real contract and verified body. The allowed external_body functions for this module's dependencies come from `arch`, `page_table_allocator`, atomics, and `hal::mem` — all not-yet-verified modules where I can write specs and mark them external_body. The key insight is that tcb-allowed.md governs the current module's own functions, but the task explicitly allows writing specs for not-yet-verified dependencies regardless, so I need to provide external_body specs for every callee to verify the three exec bodies without errors. This includes atomic operations like `AtomicUsize::load/store` and `AtomicU32::load` from core, which will need vstd specifications or external_body assumptions.
+
+The real challenge emerges when considering global statics like `KERNEL_PD_PADDR` — Verus can't read non-mut statics directly in spec functions, similar to the `phys_view()` pattern, which means I'd need bridge axioms (external_body functions) to connect the static to the abstraction. Given the time and tool constraints, and that proof.rs lemmas can use admit(), the pragmatic approach is to write the IdentityMapView abstraction and uninterpreted `identity_map_view()` in spec.rs, provide lemma signatures with admit() bodies in proof.rs, and put `#[verus_spec]` contracts on the three exec functions that discharge their obligations by calling those admitted bridge lemmas. The `error!` macro, atomic static reads, unsafe pointer operations, and arch newtype methods are all genuine Verus front-end limitations that prevent translation of the exec body. Since the codebase already marks in-scope functions like those in manager.rs as external_body when they hit these same barriers, the consistent approach is to mark these three identity_map functions as external_body proof targets and document them in tcb-allowed.md alongside the other unavoidable limitations.
+
+However, the task explicitly forbids adding external_body unless already listed in tcb-allowed.md, and only identity_map_page is listed—not ensure_pt or ensure_pte. The task also asserts the exec code is "fully Verus-compatible" with "no known Verus front-end limitations," implying the intended solution is to assume these operations are handleable and discharge proof obligations using admitted lemmas in the proof bodies instead.
+
+The pragmatic approach is to start empirically: run the verification command against the module and see what actual Verus errors surface, then iterate. First I need to check the build/test skill for the exact verify command syntax and confirm whether identity_map is currently included in the verification scope.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verify-kernel\|verify:" Makefile 2>/dev/null | head; echo "=== find Makefile with ve
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+=== find Makefile with verify-kernel ===
+./Makefile
+=== specification dir ===
+total 680
+drwxrwxr-x 1 ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/Makefile
+[RESULT ✓] view: 580. 	@echo "  PROFILER        yes, no"
+581. 	@echo "  MAKE_NO_PRINT   yes, no"
+582. 
+583. # Verifies all Verus-annotated crates.
+584. .PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585. verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+586. 
+587. # Ensures the correct Verus version is...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Let me run a baseline verification to see the current state.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "VERUS_MODULE_ARG\|VERUS_EXECUTABLE_DIR\|VERUS_AI_VERIFY_SCRIPT\|VERUS_AI_DIR\b" Make
+
+[THINKING] I need to check the `VERUS_MODULE_ARG` configuration and run the baseline kernel verification for this module to see what the current state is and what Verus is reporting.
+[RESULT ✓] bash: 298:export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+314:# On Windows, convert VERUS_EXECUTABLE_DIR to a Unix-style path for the MSYS2 shell
+316:  VERUS_PATH_PREFIX = $$(cygpath -u '$(VERUS_EXECUTABLE_DIR)')
+318:  VERUS_PATH_PREFIX = $(VERUS_EXECUTABLE_DIR)
+325:export VERUS_AI_VERIFY_SCRIP...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls /home/ruize/toolchain/verus 2>/dev/null && echo "VERUS OK"; cat scripts/verify.sh | head -
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+version.txt
+verus
+verus-root
+vstd
+vstd.vir
+z3
+VERUS OK
+#!/bin/bash
+
+# Generic Verus verification script with cheating dete...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Let me run the baseline module verification (this builds the kernel under Verus, will take a while).
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -60
+
+[THINKING] I need to be careful with verify.sh since it auto-commits spec/proof files after verification. Let me run a baseline check on the module verification with `make verify-kernel MODULE=mm::virt::identity_map` in the background, but I should pass `--no-git-commit` to avoid automatic commits, though I need to figure out how that flag flows through the Makefile. I also want to understand what the cheating detection does before proceeding.
+
+Actually, the baseline run would only commit empty stub files anyway, so let me just run it. But first, I should check whether the arch crate types like `Table` and `PageDirectoryEntry` are even visible to Verus — the arch crate has some verus-enabled files like number.spec.rs, so I need to see if these types have verus annotations. Let me just kick off the baseline verification in the background since that's the ground truth.
