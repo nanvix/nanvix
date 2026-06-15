@@ -247,3 +247,41 @@ The only cfg gates are the standard spec/proof includes (no exec divergence). Fi
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -40
 
 [THINKING] The `cfg(verus_keep_ghost)` attributes are just for including the spec and proof files, which is standard practice—no actual code divergence happening. The three files haven't been modified yet, so git status is still clean. Now I'm running the verification to confirm everything passes, checking the module path and executing the make command for the identity_map module.
+[RESULT ✓] bash: Timestamp : 2026-06-15_21-23-00
+
+note: verifying module mm::virt::identity_map
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.25s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::virt::identity_map:
+    ⚠️  external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Module verification passes (exit 0, assume=0, admit=0). The 3 flagged `external_body` are exactly the three in-scope functions, all explicitly sanctioned in `tcb-allowed.md` with genuine Verus-limitation justifications (uninterpreted `identity_map_view()` accessor + raw page-table memory + global statics + inline asm). These cannot be body-verified and the task explicitly permits tcb-listed functions to keep `external_body`.
+
+Let me confirm the cheating detail and run the full-crate verify to confirm no regressions (I've made zero code changes).
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -A40 "mm::virt::identity_map\|identity_map" verus-ai-logs/verify-kernel/verus-logs/che
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel 2>&1 | tail -25
+
+[THINKING] The verification passes but the cheating detector flags those 3 external_body functions, even though they're listed in tcb-allowed.md as exceptions. The build harness isn't cross-referencing the allowed list—it's just counting external_body occurrences in the module. According to the task, these functions should be permitted to keep external_body since they're explicitly sanctioned.
+
+The tension is real: the task demands zero cheating but immediately carves out an exception for tcb-allowed functions. These 3 are in that exception. The honest reading is that they're sanctioned and the phase passes.
+
+But I'm reconsidering whether I could actually verify these in-place anyway. The bodies interact with volatile pointer reads on opaque arch types, interior-mutable statics, atomic globals, inline assembly, and external constructors with no specs. To body-verify them, I'd need formal specifications for all those external arch primitives, which don't exist.
+
+The real blocker is that `identity_map_view()` is an uninterpreted spec function with no definition—the verifier can't prove anything about it from the body because it doesn't know what the function equals. The contract only gets pinned down by the trusted shim's ensures clause. This is the standard pattern for physical view abstractions, and it's legitimately out of scope per the task's boundary rules.
+
+So these 3 external_body are genuinely sanctioned exceptions. The harness flags them as raw external_body, but the task's exception clause explicitly permits them. I should verify that no admit/assume were introduced globally and that all 29 external_body and 6 cfg_gate are pre-existing, then document the result clearly. The task explicitly allows these three external_body functions because they're listed in tcb-allowed.md, and the justifications are genuine Verus limitations. The module report confirms zero admit/assume and only the three sanctioned external_body items, so this is actually a pass — but I should acknowledge that the harness is flagging it as cheating detected, likely because it's counting the external_body declarations themselves rather than distinguishing between sanctioned and unsanctioned ones. Since I haven't made any code changes, running the full verification suite is just confirming the baseline state, but I'll do it to be thorough as the task requires. Let me kick off `make verify` in the background while I prepare the report.
+[RESULT ✓] bash: - mm/virt/identity_map.rs:521 ensure_pt: external_body
+    - mm/virt/identity_map.rs:610 ensure_pte: external_body
+    - mm/virt/identity_map.rs:698 identity_map_page: external_body
+    - mm/virt/identity_map.spec.rs:48 ExTableIndex (struct): external_type_spec
+    - mm/virt/identity_map.spec.rs:52 ...
