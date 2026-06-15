@@ -1340,3 +1340,24 @@ Now update the verified caller `UserFrame::refcount` to thread the shared carrie
 Turn 87
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -18
+[RESULT ✓] bash: === Function Coverage ===
+  38/44 exec functions have contracts.
+  Unverified functions:
+    - clear
+    - deref
+    - deref_mut
+    - get_mut
+    - test
+    - new
+
+=== Summary ===
+  verification: 31 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=23 admit=0 trusted=0 no_decreases=0 c...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+Query shims threaded — 31 verified, 0 errors, admit=0. Run full verify and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -8
+
+[THINKING] The query shims are working correctly with 31 verified results and no errors, so I should run the full verification suite and build process to make sure everything integrates properly without any regressions.
