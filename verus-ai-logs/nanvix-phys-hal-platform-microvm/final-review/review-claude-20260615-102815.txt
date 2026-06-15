@@ -983,3 +983,289 @@ Verification escapes are clean: the 6 "assume" hits were the prose word "assumes
 [TOOL] report_intent: Running kernel verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | tail -40
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int,...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verification passed (exit 0, 0 errors). The cheating counts are kernel-wide. Let me confirm none of the 12 admits / 19 external_body are in the microvm module, and verify all external_body entries are TCB-listed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== microvm refs in cheating detail ==="; grep -i "microvm" verus-ai-logs/verif
+[RESULT ✓] bash: === microvm refs in cheating detail ===
+NONE (no microvm entries in cheating detail)
+
+=== admit lines in detail ===
+    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_con...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Collecting final evidence
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "gva_to_gpa" -n src/kernel/src/hal/platform/microvm/mod.rs src/kernel/src/hal
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n -E "admit[[:space:]]*![[:space:]]*\(|\<admit[[:space:]]*\(" src/kernel/src
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n -E "assume[[:space:]]*![[:space:]]*\(|\<assume[[:space:]]*\(" src/kernel/s
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n "external_body" src/kernel/src/hal/platform/microvm/*.rs | cat; echo "exte
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n "assume_specification" src/kernel/src/hal/platform/microvm/*.rs | cat; ech
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n "VERUS REWRITE" src/kernel/src/hal/platform/microvm/*.rs | cat; echo "veru
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n -U "#\[cfg\([^\n]*\)\]\n(?:\s*#\[[^\n]*\]\n)*\s*(?:pub\s+)?(?:unsafe\s+)?fn\s+"
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: bash: -c: line 1: syntax error near unexpected token `('
+bash: -c: line 1: `cd /home/ruize/nanvix-phy-specs && rg -n -U "#\[cfg\([^\n]*\)\]\n(?:\s*#\[[^\n]*\]\n)*\s*(?:pub\s+)?(?:unsafe\s+)?fn\s+" src/kernel/src/hal/platform/microvm/*.rs | cat; echo "cfg_gated_exec_count=$(rg -U \"#\\[cfg\\([^\\n]*\...
+[RESULT ✓] bash: assume_specification_count=0
+<shellId: 52 completed with exit code 0>
+[RESULT ✓] bash: external_body_count=0
+<shellId: 51 completed with exit code 0>
+[RESULT ✓] bash: bash: -c: line 1: syntax error near unexpected token `('
+bash: -c: line 1: `cd /home/ruize/nanvix-phy-specs && grep -R -n -E "assume[[:space:]]*![[:space:]]*\(|\<assume[[:space:]]*\(" src/kernel/src/hal/platform/microvm/*.rs | cat; echo "assume_count=$(grep -R -n -E \"assume[[:space:]]*![[:space:]]*...
+[RESULT ✓] bash: bash: -c: line 1: syntax error near unexpected token `('
+bash: -c: line 1: `cd /home/ruize/nanvix-phy-specs && grep -R -n -E "admit[[:space:]]*![[:space:]]*\(|\<admit[[:space:]]*\(" src/kernel/src/hal/platform/microvm/*.rs | cat; echo "admit_count=$(grep -R -n -E \"admit[[:space:]]*![[:space:]]*\\(|...
+[RESULT ✓] bash: src/kernel/src/hal/platform/microvm/mod.rs:427:        result as int == spec_gva_to_gpa(gva as int),
+src/kernel/src/hal/platform/microvm/mod.rs:430:pub fn gva_to_gpa(gva: usize) -> usize {
+src/kernel/src/hal/platform/microvm/mod.spec.rs:14:pub open spec fn spec_gva_to_gpa(gva: int) -> int {
+src/kern...
+[RESULT ✓] bash: grep: REWRITE": No such file or directory
+verus_rewrite_count=0
+<shellId: 54 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n -E 'admit[[:space:]]*![[:space:]]*\(|(^|[^[:alnum:]_])admit[[:space:]]*\('
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n -E 'assume[[:space:]]*![[:space:]]*\(|(^|[^[:alnum:]_])assume[[:space:]]*\
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n -U '#\[cfg\([^\n]*\)\]\n(?:\s*#\[[^\n]*\]\n)*\s*(?:pub\s+)?(?:unsafe\s+)?fn\s+'
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -R -n 'VERUS REWRITE' src/kernel/src/hal/platform/microvm/*.rs || true; echo "ve
+[RESULT ✓] bash: assume_count=0
+<shellId: 56 completed with exit code 0>
+[RESULT ✓] bash: admit_count=0
+<shellId: 55 completed with exit code 0>
+[RESULT ✓] bash: verus_rewrite_count=0
+<shellId: 58 completed with exit code 0>
+[RESULT ✓] bash: src/kernel/src/hal/platform/microvm/pvclock.rs:78:#[cfg(not(feature = "whp"))]
+src/kernel/src/hal/platform/microvm/pvclock.rs:79:fn mul_u64_u32_shr32(a: u64, b: u32) -> u64 {
+src/kernel/src/hal/platform/microvm/mod.rs:192:#[cfg(not(feature = "smp"))]
+src/kernel/src/hal/platform/microvm/mod.rs:193:pu...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "module_files:" && ls -1 src/kernel/src/hal/platform/microvm/*.rs && echo && ech
+[RESULT ✓] bash: module_files:
+src/kernel/src/hal/platform/microvm/mod.proof.rs
+src/kernel/src/hal/platform/microvm/mod.rs
+src/kernel/src/hal/platform/microvm/mod.spec.rs
+src/kernel/src/hal/platform/microvm/pvclock.rs
+src/kernel/src/hal/platform/microvm/start.rs
+src/kernel/src/hal/platform/microvm/start16.rs
+
+counts...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+No microvm entries in cheating detail — all 12 admits and external_body are in out-of-scope `mm/phys` and `mm/virt`. The microvm module is clean (admit=0, external_body=0, assume=0). Let me verify the caller site and confirm mod.proof.rs content.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== caller site mm/phys/mod.rs:103-132 ==="; sed -n '103,132p' src/kernel/src/m
+[RESULT ✓] bash: === caller site mm/phys/mod.rs:103-132 ===
+fn book_mmio_regions(
+    mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+) -> Result<(), Error> {
+    info!("booking memory-mapped i/o regions ...");
+
+    // Book memory-mapped I/O regions.
+    for region in mmio_regions.iter() {
+        ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "microvm" verus-ai-logs/tcb-allowed.md || true
+[RESULT ✓] bash: 
+<shellId: 61 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All evidence gathered. Everything checks out. Let me write the final review.
+[TOOL] report_intent: Writing final review
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 62 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -Pzo '(?ms)#\[cfg\([^\n]*\)\]\n(?:\s*#\[[^\n]*\]\n)*\s*(?:pub\s+)?(?:unsafe\s+)?
+[RESULT ✓] bash: 1	src/kernel/src/hal/platform/microvm/mod.rs:#[cfg(not(feature = "smp"))]
+     2	pub unsafe fn setup_klog_backing_storage
+     3	src/kernel/src/hal/platform/microvm/mod.rs:#[cfg(feature = "stdio")]
+     4	pub unsafe fn vmbus_write
+     5	src/kernel/src/hal/platform/microvm/mod.rs:#[cfg(feature = "st...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "cfg_gated_exec_count=$(grep -Pzo '(?ms)#\[cfg\([^\n]*\)\]\n(?:\s*#\[[^\n]*\]\n)
+[RESULT ✓] bash: cfg_gated_exec_count=8
+<shellId: 64 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find .github/skills -name SKILL.md | sort | grep -E 'spec-design|verus-constraints|as
+[RESULT ✓] bash: 
+<shellId: 65 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review, elapsed: 210s, total_turns: 0, model: claude-opus-4.8, current_intent: "Writing final review", tool_calls_completed: 24, (timed out waiting for com...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+I've completed all the direct verification work. Both review sub-agents are still running (the claude one is writing its review). I'll wait for them to complete.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 120, 'wait': True}
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review && cat > verus-a
+[RESULT ✓] bash: 
+<shellId: 66 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.gpt-5.3-codex.md
+[RESULT ✓] view: 1. # Final Independent Review — `hal::platform::microvm::gva_to_gpa`
+2. 
+3. ## Scope and Method
+4. - **In scope only:** `gva_to_gpa` in `src/kernel/src/hal/platform/microvm/mod.rs`.
+5. - **Out of scope:** all other functions in `hal::platform::microvm`.
+6. - I verified claims with repository/tool ev...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Review completed and written to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.gpt-5.3-codex.md`
+
+**Verdict: PASS (in scope).**  
+For `gva_to_gpa`, spec/caller/proof checks passed; AST consistency passed; spec drift shows no weakening; `make verify-kernel` exited 0.
+
+**In-scope blockers:** none (`admit=0`, `assume=0`, `external_body=0` in microvm module files).  
+**Notes:** kernel-wide verification still reports cheating counts (out of scope), and the specifically requested skill docs were not present under `.github/skills`.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md with 12312 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Review complete. Written to `verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md`.
+
+## Verdict: **PASS** — no blockers
+
+`gva_to_gpa` (the MicroVM identity translation) is correctly and soundly verified within scope.
+
+**Evidence (all tool-verified, not trusted from prior phases):**
+- **Spec quality** ✅ — `result as int == spec_gva_to_gpa(gva as int)` (= `result == gva`). Non-tautological (rejects buggy impls), non-subsumed, bound to the real exec fn, `open` correctly justified (caller needs frame correspondence).
+- **Caller coverage** ✅ — sole caller `book_mmio_regions` (mm/phys/mod.rs:114); totality, determinism, frame correspondence, identity all captured or derivable from `result == gva`.
+- **Verification** ✅ — `make verify-kernel` exit 0, 0 errors; module commit shows `1 verified, 0 errors`.
+- **AST consistency** ✅ — 28 functions / 3 structs match (exit 0, explicit base `b52e0c915`); **0** `VERUS REWRITE` comments; body byte-identical.
+- **Spec drift** ✅ — no contract weakening.
+
+**Cheating counts (microvm files only): admit=0, assume=0, external_body=0, assume_specification=0.**
+- The "6 assume" hits were the prose word **"assumes"** in doc comments, not escapes.
+- Kernel-wide `admit=12 external_body=19` are all in out-of-scope `mm/phys`/`mm/virt` — **zero** in microvm (confirmed via cheating-detail).
+
+**No `bugs.md`** — correct; the identity function has no defect.
+
+**Only non-blocking note:** spec uses `int` for an address where the spec-design skill recommends `usize`; harmless here (identity ⇒ no arithmetic/overflow).
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review, elapsed: 237s, total_turns: 0, model: claude-opus-4.8, duration: 237s
+
+Review complete. Written to `verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_revie...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 60, 'wait': True}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review, elapsed: 241s, total_turns: 0, model: gpt-5.3-codex, duration: 226s
+
+Review completed and written to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Both sub-agents returned **PASS**. Let me read both raw reviews to consolidate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== claude review (tail) ==="; tail -50 verus-ai-logs/nanvix-phys-hal-platform-mi
+
+[THINKING] Both sub-agents passed their reviews, though the codex agent flagged that the requested skill docs aren't under `.github/skills`. I need to verify where these verus-ai workflow skills are actually located since the references differ, but this won't change the overall verdict. Let me pull both reviews together to consolidate the findings.
+[RESULT ✓] bash: === claude review (tail) ===
+| external_body | **0** |
+| assume_specification | **0** |
+| no_decreases | 0 |
+| cfg-gated exec hiding from verus | **0** (2 verus-include cfgs + 17 feature gates, all benign) |
+
+**Out of scope (kernel-wide, other modules — informational only):**
+`assume=0 external_body...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Both independent reviews (claude-opus-4.8 and gpt-5.3-codex) reached **PASS** with no in-scope blockers. Now I'll write the consolidated final review.
+[TOOL] report_intent: Writing consolidated final review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md
+
+[THINKING] Both reviewers confirmed this passes. The codex flagged eight cfg-gated execution instances, but those are scoped to out-of-scope functions handling feature gates like whp, pit, smp, and stdio—not the gva_to_gpa function itself. The design and spec look solid, and the key requirement is met: gva_to_gpa has no cfg-gated execution, only the verus_spec and inline(always) attributes.
+
+Now I'm writing the consolidated final review document. The verdict is PASS across the board. I need to go through the checklist systematically—caller analysis confirms all public functions have been searched and documented with success/failure paths, the abstract resource is identified, and there are no pre-existing specs to assess. For view design, the substitution test is documented, all caller-observable state is represented (it's a pure identity function), and there are no implementation-specific fields leaking through.
+
+On the mathematical types checklist item, using `int` for addresses satisfies the requirement—the exception clause permits addresses to keep `usize`, but doesn't mandate it, so using mathematical types is still compliant. Both reviewers flagged this as non-blocking and harmless. I'll mark the item checked and note this as an advisory in the issues section.
+
+Both sub-agents concluded PASS, so I'm ready to write up the consolidated result.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md with 10013 characters
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; rm -f /tmp/microvm_head.rs; ls -la verus-ai-logs/nanvix-phys-hal-platform-microvm/final
+
+[THINKING] I'm cleaning up the temporary file and checking that the final-review directory contains all three expected files.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 12454 Jun 15 10:34 verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  8056 Jun 15 10:34 verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.gpt-5.3-codex.md
+-rw-rw-r-- 1 ruize ruize 10131 Jun 15 1...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Done. Final review complete.
+
+## Result: **PASS** — no blockers
+
+Two independent sub-agents (`claude-opus-4.8`, `gpt-5.3-codex`) plus orchestrator tooling all agree. Raw reviews + consolidated report saved under `final-review/`.
+
+**Evidence for `gva_to_gpa` (MicroVM identity GVA→GPA):**
+- **Spec quality**: `result as int == spec_gva_to_gpa(gva as int)` (= `result == gva`) — correct, minimal, non-tautological, non-subsumed, `open` justified for caller frame-correspondence.
+- **Caller coverage**: 1/1 — totality, determinism, frame correspondence, identity all captured/derivable for sole caller `book_mmio_regions`.
+- **Guardrails (microvm scope)**: admit=**0**, assume=**0**, external_body=**0**, assume_specification=**0**. (The 6 "assumes" are doc-comment prose.)
+- **TCB**: vacuously compliant — module introduces no external_body.
+- **AST consistency**: PASS, 28/28 match, 0 rewrites, body byte-identical.
+- **Spec drift**: no weakening (0 changes).
+- **Verification**: `make verify-kernel` exit 0; `make verify` (cross-module) exit 0.
+- **Bugs**: none (correct — identity function).
+
+Kernel-wide `admit=12`/`external_body=19` are entirely in out-of-scope `mm/phys`/`mm/virt` (all external_body listed in `tcb-allowed.md`); zero in microvm.
+
+**Only advisory note**: `spec_gva_to_gpa` uses `int` where spec-design prefers `usize` for addresses — harmless for the identity map. Not a blocker.
+
+
+=== Session End ===
+Session: 1459062e-e35c-4ef5-bfe5-468a86bd0a0b
+Duration: 462.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/review-claude-20260615-102815.jsonl
