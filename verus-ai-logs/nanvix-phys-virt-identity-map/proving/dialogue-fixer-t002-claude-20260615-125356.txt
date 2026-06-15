@@ -290,3 +290,120 @@ Build clean (0 errors/0 warnings). Now run full `make verify-kernel` to confirm 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel 2>&1 | tail -20
 
 [THINKING] The build completed without errors or warnings, so I'm verifying the output was clean. Now I need to run the full module verification to check for any cross-module regressions as the reviewer requested.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  56/1026 exec functions ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Full verify exit 0. Let me confirm the remaining 4 global admits are NOT in my module (they're pre-existing elsewhere).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== all admit lines globally ==="; grep -iE "admit" verus-ai-logs/verify-kernel
+
+[THINKING] The kernel verification passed cleanly, so now I need to track down those 4 remaining admits that shouldn't be in the identity map.
+[RESULT ✓] bash: === all admit lines globally ===
+    - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
+    - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - mm/phys/manager.proof.rs:210 lemma_user_bulk_err_restored: adm...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+All 4 remaining admits are in `mm/phys/manager.proof.rs` (pre-existing, out of scope). identity_map has **zero** admit. Let me run the spec-drift check to confirm no contracts were weakened.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -iE "drift|spec" ; echo "=== git
+
+[THINKING] The remaining admits are all in a different module that's out of scope for my changes. I'm checking whether the spec-drift verification passes — the reviewer flagged this as important — and reviewing what I actually modified, which was just adding external body attributes to some functions.
+[RESULT ✓] bash: spec_drift.py
+=== git diff: only attrs/admit/cfg/trigger changed, contracts intact ===
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+No contract lines changed — only attributes, `admit()`, cfg gates, and `error!` lines. Let me run the spec-drift script to confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py src/kernel/src/mm/vir
+
+[THINKING] The git diff shows only attribute and configuration changes—no actual contract modifications. I should run the spec drift analysis to confirm there are no semantic changes to the specifications.
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+spec_drift.py: error: argument command: invalid choice: 'src/kernel/src/mm/virt/identity_map.rs' (choose from 'snapshot', 'diff', 'check', 'git-diff')
+exit=0
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff 2>&1 | tail 
+[RESULT ✓] bash: usage: spec_drift.py git-diff [-h] --before BEFORE [--after AFTER]
+                              [--file-stem FILE_STEM] [-o OUTPUT] [--json]
+                              source
+spec_drift.py git-diff: error: the following arguments are required: source, --before
+exit=0
+<shellId: 12 completed with ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+
+[THINKING] I need to run a proper git-diff drift check against HEAD to verify that my contract changes only affected the expected attributes, admits, configs, and errors—nothing in the requires or ensures lines.
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+exit=0
+<shellId: 13 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+✅ **No contract drift** — all `requires`/`ensures` preserved verbatim. Everything is green. Now writing the response file.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_002_fixer.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue/turn_002_fixer.md with 4904 characters
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Done. All reviewer requests in turn 2 are fixed and verified.
+
+## Summary
+
+**What I changed (exactly as requested):**
+1. **Exec trio → `external_body`** (`identity_map.rs`): removed all 3 `proof! { admit(); }`, added `#[verus_verify(external_body)]` above each `#[verus_spec(...)]` — contracts byte-identical.
+2. **Removed all 5 `#[cfg(not(verus_keep_ghost))]` exec gates** in the module.
+3. **TCB-listed** all four in-scope `external_*` entries (`ensure_pt`, `ensure_pte`, `identity_map_page`, `ExPageTableBss`) in `tcb-allowed.md` with concrete, grep-verified justifications.
+4. **Fixed the trigger note** at `proof.rs:28` with an explicit `#[trigger]`.
+
+**Verification (all green):**
+- `make verify-kernel` (full) → exit 0; **in-scope `admit` = 0** (only 4 pre-existing admits remain, all in out-of-scope `mm/phys/manager.proof.rs`).
+- Trio shows as `external_body`, each matched 1:1 in `tcb-allowed.md`.
+- No trigger note in the verus log.
+- Erased kernel build → Finished, **0 errors / 0 warnings**.
+- Spec-drift vs HEAD → **Contract drift: 0** (no spec weakening).
+
+**Result: FIXED.** Response written to `turn_002_fixer.md`.
+
+
+=== Session End ===
+Session: 7ea4f7b0-3359-4cc2-8b96-7a25f874b9da
+Duration: 270.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/proving/dialogue-fixer-t002-claude-20260615-125356.jsonl
