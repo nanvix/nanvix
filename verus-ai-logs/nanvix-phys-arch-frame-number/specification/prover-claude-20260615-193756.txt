@@ -492,3 +492,28 @@ Let me verify the toolchain works on an existing crate as a baseline.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-bitmap VERUS_EXECUTABLE_DIR=/home/ruize/verus-bin 2>&1 | tail -30
 
 [THINKING] I should run a baseline verification on an existing crate like bitmap to confirm the toolchain is working properly by setting the VERUS_EXECUTABLE_DIR environment variable, which will also give me a sense of how long verification takes. Then I'll add arch to VERUS_CRATES and test that approach.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+=== Verus Verification (cargo mode) ===
+  Crate     : bitmap
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/bitmap/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,a...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Toolchain works. Now let me add `arch` to `VERUS_CRATES` and test the baseline (empty specs) for arch.
+[TOOL] edit: /home/ruize/nanvix-phy/Makefile
+[TOOL] report_intent: Establishing arch verify baseline
+
+[THINKING] The toolchain is working, so I need to add `arch` to VERUS_CRATES. The verify.sh script determines the source directory based on the crate name—for arch it would be .../arch/src instead of .../bitmap/src. I'm noticing that arch has default features enabled, but the verify command uses `--no-default-features`, so I need to check how VERUS_EXT handles this configuration.
+
+Let me first add arch to VERUS_CRATES and attempt to verify it in its current empty state to establish a baseline and see what feature or build issues surface.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/Makefile updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-bin 2>&1 | tail -40
