@@ -77,6 +77,14 @@ impl VirtualAddress {
     pub fn from_raw_value(raw_addr: usize) -> Self {
         VirtualAddress::new(raw_addr)
     }
+
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
+    pub fn into_raw_value(self) -> usize {
+        self.0
+    }
 }
 
 impl VirtualAddress {

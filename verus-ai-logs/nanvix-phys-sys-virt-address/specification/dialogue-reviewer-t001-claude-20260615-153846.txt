@@ -262,3 +262,147 @@ echo-rust-nostd.elf
 echo-rust-nostd.initrd
 env-rust-nostd.elf
 env-rust-nost...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, cheating CLEAN, 2/254 contracts). Let me examine scope details: the verification plan, coverage file, and how `into_raw_value` is handled.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== verification-plan (sys-virt-address) ==="; cat verus-ai-logs/nanvix-phys-sys-virt
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== coverage-unverified (virt) ==="; grep -i "virt" verus-ai-logs/verify-sys/verus-lo
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== grep cheating patterns in virt files ==="; grep -nE "admit|assume|external_body|t
+
+[THINKING] The verification passes cleanly with no cheating detected, and coverage shows only 2 out of 254 functions in the sys crate have contracts. The functions I need to focus on are `new`, the inherent `from_raw_value`, and `into_raw_value`.
+
+Looking at virt.rs, both `new` and the inherent `from_raw_value` have `#[verus_spec]` annotations, but `into_raw_value` has no spec at all — just a NOTE comment explaining it's treated as an assumed specification by consumers. This is a critical gap: `into_raw_value` is the most-used operation with 102 callers, yet it lacks the `ensures result as int == self@` contract that view_design.md explicitly designed for it. The reason is that verifying the entire `impl Address for VirtualAddress` block would require handling unsupported casts like `usize as *const u8`, which Verus can't process. So this fails the requirement that every in-scope exec function has requires/ensures — though the NOTE indicates consumers like the kernel's phys.spec.rs hold it as an assumed specification. I need to check the coverage-unverified list and verify.sh's fn_coverage tool to understand how this gap is being tracked.
+[RESULT ✓] bash: === verification-plan (sys-virt-address) ===
+{
+  "target": "src/kernel/src/mm/phys/frame.rs",
+  "entries": [
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc",
+    "src/kernel/src/mm/phys/frame.rs:Inner::alloc_contiguous",
+    "src/kernel/src/mm/phys/frame.rs:Inner::free",
+    "src/kernel/src/mm/ph...
+[RESULT ✓] bash: === grep cheating patterns in virt files ===
+src/libs/sys/src/sys/mm/address/virt.rs:267:    // identity fact is therefore held as an `assume_specification` trust boundary
+exit 0
+<shellId: 7 completed with exit code 0>
+[RESULT ✓] bash: === coverage-unverified (virt) ===
+=== full count ===
+253 verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== head of coverage-unverified ==="; head -20 verus-ai-logs/verify-sys/verus-logs/co
+
+[THINKING] I'm noticing a discrepancy in the line counts—the file shows 253 unverified lines but the math doesn't quite add up with the total. Looking at the grep results for "virt" functions returning nothing suggests the unverified list uses simple function names rather than full paths, so I need to check the actual file format to understand how it's organized.
+[RESULT ✓] bash: === head of coverage-unverified ===
+# Unverified exec functions: 252/254
+  as_u32
+  ok
+  to_ne_bytes
+  from_ne_bytes
+  from
+  from
+  from
+  from
+  from
+  into_raw
+  new
+  id
+  event
+  is_interrupt
+  is_exception
+  to_ne_bytes
+  from_ne_bytes
+  fmt
+  from
+=== grep into_raw / from_raw / VirtualAddress...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "count from_raw_value in unverified:"; grep -cE "^\s*from_raw_value$" verus-ai-logs/ve
+
+[THINKING] I'm noticing that `into_raw_value` and `from_raw_value` show up in the unverified list, though there are likely multiple versions of `from_raw_value` across inherent and trait implementations. Looking at the verified count of 2 out of 254, it seems `new` and the inherent `from_raw_value` are the ones marked as verified since they have `#[verus_spec]` annotations in the verification block, but I should double-check if there are actually more verified functions than that.
+[RESULT ✓] bash: count from_raw_value in unverified:
+1
+count into_raw_value:
+1
+=== verus-unsupported.md (into_raw / virt context) ===
+9:## `<VirtualAddress as Address>::into_raw_value` — trait-impl whole-impl verification
+11:- **Module**: `sys::mm::address::virt` (`src/libs/sys/src/sys/mm/address/virt.rs`)
+12:- **In...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verus-unsupported.md
+
+[THINKING] I need to check the full documentation for the `into_raw_value` function in the verus-unsupported.md file to see what trust boundary it establishes.
+[RESULT ✓] view: 1. # Verus Unsupported Constructs
+2. 
+3. Genuine Verus front-end limitations encountered during verification. These are
+4. **not** proof gaps or code bugs: the verifier cannot parse/lower the construct,
+5. so no proof strategy can address them. Per the `verus-constraints` skill they are
+6. recorded ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "into_raw_value" src/kernel/src/hal/mem/types/address/phys.spec.rs 2>/dev/null; ec
+
+[THINKING] I'm checking whether the `assume_specification` on `into_raw_value` actually violates the checklist constraint about workspace-internal code, since it's defined in this module but the trust boundary is being enforced consumer-side in the kernel's `phys.spec.rs` file.
+[RESULT ✓] bash: 100:// `<VirtualAddress as Address>::into_raw_value` is pure newtype identity: the
+107:pub assume_specification[ <VirtualAddress as Address>::into_raw_value ](
+114:// `FrameNumber::into_raw_value` projects a frame number to its index; every
+116:pub assume_specification[ FrameNumber::into_raw_value ]...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+`into_raw_value` is the crux: it's an in-scope target (per caller analysis & view-design) but has **no spec** in this module. The current approach relies on a consumer-side `assume_specification` in `kernel/.../phys.spec.rs` for workspace-internal code, justified by a Verus whole-trait-impl limitation. Before accepting that justification, let me test whether the established inherent-method-shadowing pattern (already used for `from_raw_value`) can carry the contract instead.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp src/libs/sys/src/sys/mm/address/virt.rs /tmp/virt.rs.bak && echo "backup done"
+
+[THINKING] So the trust boundary on the consumer side checks out. Now I'm working through the checklist systematically to evaluate whether `into_raw_value` failing to have an in-place specification counts as a violation of the requirement that every in-scope exec function must have requires and ensures clauses. It's marked as in-scope in both the caller analysis and view design, so the stricter interpretation would flag this as a failure.
+
+The complication is that the workaround—using `assume_specification` in the kernel's phys.spec.rs—technically violates the rule against assuming specifications for workspace-internal code, even though from the sys-virt-address phase perspective it's consumer-side. The documented justification is a genuine Verus limitation: verifying any method in a trait impl requires verifying the entire impl, which pulls in unsupported pointer casts. I'm considering whether there's actually a way to verify `into_raw_value` directly or if moving it elsewhere could help.
+
+One approach: define an inherent method `VirtualAddress::into_raw_value` with a proper spec and verified body, then have the trait impl method call the inherent one. Since inherent methods take priority in Rust's method resolution, all 102 call sites would automatically resolve to the verified inherent method instead of the trait method, eliminating the need for the consumer-side assumption entirely. reviewer, I need to decide whether this is genuinely a FAIL or if the documented Verus limitation with a clear workaround path means I should mark it as PASS with a note. The core question: is the absence of a verified spec for an in-scope function a blocker, or is it acceptable given the technical constraint and the identified fix strategy? I think I need to be pragmatic here — if there's a concrete, implementable solution that doesn't require waiting on Verus changes, I should document it as a fix request rather than leaving it as an unresolved FAIL.
+
+Let me test whether the inherent method approach actually works by trying to add `into_raw_value` as an inherent method alongside the trait implementation. If it verifies cleanly, then I have a proven fix to propose. If it breaks or pulls in unsupported operations, then the limitation stands and I'll document it as such.
+[RESULT ✓] bash: backup done
+<shellId: 12 completed with exit code 0>
+[RESULT ✓] view: 95. // (`mm::address::virt`), so its contract is imported directly across the crate
+96. // boundary; a local `assume_specification` here would duplicate it (Verus error:
+97. // "duplicate specification for ... ::new"). The guaranteed fact is identical
+98. // (`result@ == value as int`).
+99. 
+100. //...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Let me empirically test whether an inherent `into_raw_value` (mirroring the existing verified inherent `from_raw_value`) can carry the designed contract in-module.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm considering adding an inherent `into_raw_value` method to the `VirtualAddress` impl block, though I need to verify it won't conflict with the existing trait method that also consumes self and returns `usize`. They should coexist without issue since inherent and trait methods can have the same signature.
+
+The real question is whether this change would affect the `assume_specification` directive in phys.spec.rs that targets the trait method specifically. Since that directive is for the trait impl and the inherent method would only shadow concrete calls, the assume_specification should remain valid for generic code using the trait. I'm realizing this pattern of using assume_specification for trait-impl `into_raw_value` is already established elsewhere in the codebase with PageAligned, FrameAddress, and FrameNumber, so it's an accepted project convention rather than a workaround. The inherent shadowing approach was already used for `from_raw_value`, but `into_raw_value` originally only had the trait method, making this a more substantial code change than I initially thought.
+
+The safest approach is to test this empirically—add the inherent method, run the verification, and see if it works cleanly without breaking anything like function pointer usage or creating ambiguity in method resolution.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-sys 2>&1 | tail -40
+
+[THINKING] I'm considering whether the trait method should delegate to the inherent `into_raw_value` to avoid duplication, but I'll hold off on that refactor for now and just run verify-sys to check if the inherent method works as expected.
