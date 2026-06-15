@@ -160,3 +160,16 @@ The module log dir contains a backup of the original. Let me run baseline verifi
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-arch 2>&1 | tail -40
 
 [THINKING] I see the plan JSON is for a different target, so I'll use the git-tracked copy in the module log directory instead. The functions look straightforward, so let me run the architecture verification to check everything.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification is cached. Let me force a fresh run to confirm the two target functions genuinely verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/libs/arch/src/x86/mem/paging/frame/number.rs && timeout 600 make verify-arch 2>&1
+
+[THINKING] I'm seeing that the verification ran with a cached result showing exit code 0, and two functions have contracts defined. But the proof file appears empty, which is suspicious—the cache might mean it skipped the actual verification step. I need to force a fresh run to confirm these specs are actually being checked rather than just relying on the cached output.
