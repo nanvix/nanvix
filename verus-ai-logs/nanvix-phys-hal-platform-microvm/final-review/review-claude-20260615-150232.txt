@@ -827,3 +827,101 @@ Now let me read the spec-design skill and the in-scope files.
 ────────────────────────────────────────────────────────────
 Turn 2
 ────────────────────────────────────────────────────────────
+[RESULT ✓] bash: - log_control_registers
+    - register_ramfs_mmio_region
+    - read_ramfs_registers
+    - read_control_register
+    - tsc_base_frequency_mhz
+    - register_pic_ioports
+    - register_pit
+    - register_pit_ports
+    - init
+    - mul_u64_u32_shr32
+    - monotonic_time_ns
+    - boot_time_ns
+
+=== Summa...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me read the spec-design skill (in ranges) and the supporting analysis files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. # Caller Analysis: `hal::platform::microvm` (`mod.rs`)
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-hal-platform-microvm/find_callers_lsp_output.md`
+5. (raw output of `scripts/find_callers_lsp.py`).
+6. 
+7. - Crate: `kernel` (intra-crate analysis only; no external crate depends on it...
+[RESULT ✓] view: 1. # View Design: `hal::platform::microvm` (target: `gva_to_gpa`)
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, the in-scope facet of this module is the MicroVM platform's
+6. **guest-virtual → guest-physical address translation**: a *pure, total,
+7. deterministic* function from a `usize` address to...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+8.   `alloc::collections::LinkedList` via `for region in list.iter()`. The bu...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me run the verification commands and checks in parallel.
+[TOOL] report_intent: Running checks and verification
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== AST CONSISTENCY ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_con
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== VERUS REWRITE comments ===" && grep -rn "VERUS REWRITE" src/kernel/src/hal/platfo
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== grep guardrails in 3 in-scope files ===" && for f in src/kernel/src/hal/platform/
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-hal-platform-microvm/ 2>&1; echo "--- bugs.md ---"; cat verus-
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === VERUS REWRITE comments ===
+---done---
+<shellId: 24 completed with exit code 0>
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+final-review
+find_callers_lsp_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+--- bugs.md ---
+cat: verus-ai-logs/nanvix-phys-hal-platform-micr...
+[RESULT ✓] bash: === grep guardrails in 3 in-scope files ===
+--- src/kernel/src/hal/platform/microvm/mod.rs ---
+256:/// - It assumes that the standard output device is present.
+257:/// - It assumes that the standard output device was properly initialized.
+276:/// - It assumes that the standard output device is prese...
+[RESULT ✓] bash: === AST CONSISTENCY ===
+|----------|--------|------------|--------------|
+| `disable_interrupts` | MATCH | ✅ |  |
+| `do_shutdown` | MATCH | ✅ |  |
+| `enable_interrupts` | MATCH | ✅ |  |
+| `get_kstack_guard_base` | MATCH | ✅ |  |
+| `get_kstack_top` | MATCH | ✅ |  |
+| `gva_to_gpa` | MATCH | ✅ |  |
+| `...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+AST all MATCH, no real guardrail violations (only doc comments). Now running verification, spec drift, and git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -25
