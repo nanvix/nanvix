@@ -120,3 +120,174 @@ Turn 0
 7. // the vocabulary every...
 [RESULT ✓] view: 1. verus! { } // verus!
 2. 
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The verification is CLEAN. Let me check the remaining checklist items — AST consistency, spec drift, build, and the tcb-allowed file.
+[TOOL] report_intent: Checking tcb-allowed, ast-consistency, spec-drift
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "verus_keep_ghost\|external_body\|admit\|assume\|trusted\|no_decreases" src/libs/a
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -name "tcb-allowed*" 2>/dev/null; echo "---skills---"; ls .github/skills/ 2>/dev/nul
+
+[THINKING] The verification came back clean across all cheating pattern checks. Now I'm going through each item on the checklist to make sure everything is accounted for, including examining the source file for any external bodies or configuration gates—I see the `#[cfg(verus_keep_ghost)]` annotations on the include statements, which are fine since they're just importing spec and proof code.
+
+I need to verify there's no other cfg-gated executable code, check the tcb-allowed file, and run the ast-consistency and spec-drift checks. I'm looking for those tools and trying to locate the build command and other placeholder values that need to be filled in.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:9:// contracts and the callers' assumed contracts coincide by construction.
+<shellId: 1 compl...
+[RESULT ✓] bash: ./verus-ai-logs/tcb-allowed.md
+---skills---
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/tcb-allowed.md 2>&1 | head -60; echo "===VERUS_AI==="; ls /home/ruize/ver
+
+[THINKING] I'm noticing that the number files don't have external_body, and the cfg(verus_keep_ghost) gates only appear on spec/proof includes, which is allowed. The ast-consistency and spec-drift-check skills mentioned aren't showing up in the project's skills list, so I need to search the VERUS_AI_DIR to find them. Let me check the tcb-allowed.md file and the ast-consistency tool to understand what's available.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The number.rs file has no external_body, so the tcb-allowed list isn't relevant here. Let me read the ast-consistency and spec-drift skills to run those checks.
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md 2>/dev/null | head -80
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md 2>/dev/null | head -80
+
+[THINKING] The `number.rs` functions aren't on the tcb-allowed list, but since they lack an external_body, that's acceptable. Now I need to check the ast-consistency and spec-drift-check skills to run them.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running ast-consistency and spec-drift
+[TOOL] bash: cd /home/ruize/nanvix-phy && git branch --show-current 2>&1; echo "---state---"; find . -name pipeline_state.json 2>/dev
+
+[THINKING] I need to run the AST consistency and spec drift checks, so I'm looking for the scripts directory and the pipeline state file.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verus-ai/arch-frame-number
+---state---
+./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/nanvix-phys-arch-frame-number/pipeline_state.json 2>/dev/null; echo "---"
+[RESULT ✓] bash: {
+  "module_name": "arch-frame-number",
+  "log_name": "nanvix-phys-arch-frame-number",
+  "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs",
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "caller-analysis",
+    "...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+AST consistency PASS. Now spec-drift and the full cross-module verification + build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check arch-frame-number 2>&
+
+[THINKING] AST consistency checks out on the `verus-ai/sys-address-mod` branch. I'm running a spec-drift comparison for the cheating-elimination phase, checking from the phase start SHA against the current HEAD to detect any inconsistencies.
+[RESULT ✓] bash: Module:   arch-frame-number
+Phase:    cheating-elimination
+Source:   /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+Baseline: 6df2ff9a7afe
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures rem...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Spec drift PASS. Now let me run the full build and check cross-module regression targets.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline -3; echo "---makefile verify/build targets---"; grep -nE "^(verify|build|
+
+[THINKING] I'm checking the spec drift against the phase start commit, though comparing against the spec phase end might be more meaningful since the cheating-elimination phase began right after. The auto-detect already did the phase start baseline comparison and found zero drift, which is good. Now I need to verify against the spec phase itself to ensure the original guarantees haven't been weakened.
+
+Let me confirm HEAD hasn't diverged from the baseline and also check the Makefile to understand what cross-module verification commands are available—`make verify-arch` handles the arch crate, but I need to see if there's a broader command for verifying across all modules.
+[RESULT ✓] bash: 8e76606ab [verus] verify PASS: arch::all (cached (no recompilation), —)
+f0a95cfee [verus-ai] cheating-elimination scaffold END: arch-frame-number
+fe7e9e024 [verus-ai] cheating-elimination prover END: arch-frame-number
+---makefile verify/build targets---
+585:verify: $(addprefix verify-,$(VERUS_CRATES...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '580,640p' Makefile
+
+[THINKING] I'm verifying that HEAD is positioned after the cheating-elimination scaffold and confirming the baseline hasn't drifted—the verify commits are just markers with no actual code changes. Now I need to run the build to check for any errors or warnings, starting with the host binary build.
+[RESULT ✓] bash: @echo "  PROFILER        yes, no"
+	@echo "  MAKE_NO_PRINT   yes, no"
+
+# Verifies all Verus-annotated crates.
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+
+# Ensures the correct Verus version is installed before verification.
+# When VE...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Running full cross-module verification and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -50
+
+[THINKING] I need to run the full verification suite across all crates and the kernel using `make verify`, which will take some time, so I'll execute it and wait for the results to check for any cross-module regressions.
