@@ -197,3 +197,48 @@ Reproducer confirmed. Now the authoritative test on the real file — temporaril
 Turn 5
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | grep -iE "from_number|overflow|error|verified|verification 
+[RESULT ✓] bash: error: precondition not satisfied
+151 |             lemma_from_number_no_overflow(frame);
+verification results:: 96 verified, 1 errors
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  96 verified
+  1 errors
+  verification: 96 verified, 1 errors (exit 101)
+  status: VERIFY_F...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Confirmed — the single-line form genuinely fails (`precondition not satisfied`). The split is mandatory. Now restore the fixed file and run the final clean verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/phys_backup.rs src/kernel/src/hal/mem/types/address/phys.rs && rm /tmp/phys_b
+
+[THINKING] So the single-line version actually fails with a precondition error, which confirms that the split approach is necessary—this matches what the fixer attempted. Let me restore the file now.
+[RESULT ✓] bash: restored
+ src/kernel/src/hal/mem/types/address/phys.rs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== confirm split form restored ==="; sed -n '149,156p' src/kernel/src/hal/mem/
+
+[THINKING] I'm checking the git diff output to understand what changed—the restore command should have put back the fixed version, so I need to verify the from_number is in the split form. Let me re-run the AST and kernel verification to confirm everything's in the right state.
+[RESULT ✓] bash: === confirm split form restored ===
+    pub fn from_number(frame: FrameNumber) -> Self {
+        let addr_raw: usize = frame.into_raw_value();
+        proof! {
+            lemma_from_number_no_overflow(frame);
+        }
+        let addr: usize = addr_raw * mem::FRAME_SIZE;
+        Self(VirtualAddres...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Working tree has the correct fixed form. Now the final clean verification + build (the one remaining unverified checklist item).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | grep -iE "verified|errors|cheating:|status:|warning" | head
+
+[THINKING] Looking at the git diff, I'm noticing something confusing about the state of these changes — the committed version shows `into_frame_number` with the single-line form while the working tree has the split version for `from_number`, but I recall seeing the split form already present in the earlier turn with the VERUS REWRITE comment block, so the HEAD state doesn't quite match what I'm seeing now.
+
+Regardless of the commit history, what matters is that the working tree has the correct split form with the proper comment, so I should run a final clean verify-kernel and build to confirm everything compiles without errors or warnings.
