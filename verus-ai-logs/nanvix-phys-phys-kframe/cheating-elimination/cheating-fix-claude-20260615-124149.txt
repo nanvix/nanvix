@@ -212,3 +212,25 @@ Now confirm kframe is still CLEAN and commit the docs.
 Turn 18
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add verus-ai-logs/ && git commit -q -m "docs(phys-kframe): pass-3 cheat
+[RESULT ✓] bash: 3112c8517 docs(phys-kframe): pass-3 cheating-fix; live-proof the 4 manager admits are non-theorems
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Done. Pass 3 took a **destructive proof attempt** rather than re-asserting the prior conclusion.
+
+**What I did this pass:**
+- Confirmed `cheating_report_3.md` is byte-identical to reports 1 & 2 — same 4 `admit` + 15 `external_body`, all in unlisted sibling modules, none in `kframe`.
+- **Removed all 4 `admit()`s** and ran `make verify-kernel` → **14 verified, 4 errors** (one postcondition failure per lemma). This proves they are **non-theorems**: each takes the post-state (`post`/`m@`) as a *free parameter* and asserts it equals a `pre`-derived value, which is mathematically false under universal quantification. They are axiom-injectors for the deferred §8 global-token attachment (the backing `frame::alloc/free` are ledgered `external_body` with no view-postcondition, so no fact exists to chain).
+- Verified the driver's other demands are vacuous in scope: **0** `assume`, **0** `trusted`, **0** `external_body` on proof fns, **0** `limitation_assume`, **0** `exec_allows_no_decreases`.
+- Restored the source (net diff = 0; manager re-verifies 18/0), updated `verification_todo.md` with the pass-3 reproduction, wrote `cheating_fix_report_3.md`, committed (`3112c8517`).
+
+**Result: BLOCKER (crate-global gate); phys-kframe scope CLEAN.** The 4 admits cannot be eliminated by any skill-compliant proof — they require either a human-approved axiom for the `self@ == phys_view().frames` attachment, or the forbidden `tracked`-token exec re-architecture. I did not self-author an axiom, change exec signatures, or weaken unlisted specs. This is the honest hand-off the task anticipates.
+
+
+=== Session End ===
+Session: e9857615-f314-4ade-8efb-abeff55c9270
+Duration: 229.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/cheating-fix-claude-20260615-124149.jsonl
