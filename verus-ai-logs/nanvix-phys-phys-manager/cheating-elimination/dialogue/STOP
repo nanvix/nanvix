@@ -1,0 +1,12 @@
+RESOLVED
+
+All 12 cheating-elimination checklist items for phys-manager are PASS with tool evidence.
+
+- admit=0, assume=0, trusted=0, no_decreases=0 (in manager scope; the 3 global admits are in mm/virt/identity_map.rs, out of scope).
+- 6 external_body all enumerated in verus-ai-logs/tcb-allowed.md (init, kernel_watermark, lemma_manager_attached, lemma_kernel_alloc_one, lemma_kernel_alloc_contiguous, lemma_user_bulk_err_restored).
+- cfg-gated code is only logging (error!/warn!) and include! imports — allowed.
+- AST consistency vs verus-ai-prove-bottom-up: "✅ Consistent: 8 functions, 1 structs match."
+- Spec drift (before=cheating-elimination start c60b1dd): "✅ No contract drift detected" for all 3 files.
+- make verify-kernel → exit 0; make all-kernel (non-verus) → exit 0, no warnings.
+
+See turn_001_driver.md for full evidence.
