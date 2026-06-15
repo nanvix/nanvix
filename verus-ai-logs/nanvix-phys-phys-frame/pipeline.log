@@ -484,3 +484,6 @@ at `/home/ruize/verus-bin/verus`.
 PHASE: view-design
 Module: phys-frame
 ============================================================
+[2026-06-15 08:34:40] [PROVER] Running view-design...
+[2026-06-15 08:34:40] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 08:44:32]   ↳ prover done in 9m52s (exit=0)
