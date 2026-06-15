@@ -217,6 +217,11 @@ struct EventManagerInner {
     scheduling_owner: Option<ProcessIdentifier>,
     pending_scheduling:
         [LinkedList<(EventDescriptor, SchedulingNotification)>; SchedulingEvent::NUMBER_EVENTS],
+    /// Round-robin cursor selecting which scheduling sub-queue is scanned first on the next
+    /// delivery. Advanced past a sub-queue each time an event is delivered from it, so successive
+    /// deliveries alternate between sub-queues and neither process-creation nor process-termination
+    /// events can starve the other.
+    scheduling_cursor: usize,
 }
 
 impl EventManagerInner {
@@ -449,7 +454,9 @@ impl EventManagerInner {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
             if (self.nevents + i).is_multiple_of(Self::NUMBER_EVENTS) {
-                // FIXME: starvation.
+                // FIXME(#2558): starvation. This inner scan always starts at bit 0, so a
+                // low-numbered interrupt can starve a high-numbered one. The FIFO-by-event-id
+                // delivery tracked in #2558 would resolve this uniformly across event classes.
                 for i in 0..usize::BITS {
                     if (interrupts & (1 << i)) != 0 {
                         let idx: usize = i as usize;
@@ -468,7 +475,9 @@ impl EventManagerInner {
 
             // Check if any exceptions were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 1 {
-                // FIXME: starvation.
+                // FIXME(#2558): starvation. This inner scan always starts at bit 0, so a
+                // low-numbered exception can starve a high-numbered one. The FIFO-by-event-id
+                // delivery tracked in #2558 would resolve this uniformly across event classes.
                 for i in 0..usize::BITS {
                     if (exceptions & (1 << i)) != 0 {
                         let idx: usize = i as usize;
@@ -495,9 +504,36 @@ impl EventManagerInner {
 
             // Check if any scheduling events were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 2 {
-                for i in 0..SchedulingEvent::NUMBER_EVENTS {
-                    if (scheduling & (1 << i)) != 0 {
-                        if let Some((_ev, notification)) = self.pending_scheduling[i].pop_front() {
+                // Deliver scheduling events with a round-robin sub-queue scan rather than a fixed
+                // priority, so neither process-creation nor process-termination events can starve
+                // the other. The scan starts at `scheduling_cursor`, which is advanced past a
+                // sub-queue each time an event is delivered from it (below). Because the cursor
+                // advances on delivery rather than on event generation, successive deliveries
+                // alternate between sub-queues even while a subscriber drains an already-queued
+                // backlog with no new events being generated: a sustained stream of one event class
+                // cannot indefinitely delay delivery of the other. The scan returns on the first
+                // hit, so at most one scheduling event is delivered per call.
+                //
+                // Delivery order is an optimization, not a correctness requirement: this scan does
+                // not prefer creations, so a termination can be delivered before a creation that is
+                // queued at the same time (including on the first delivery, when the cursor still
+                // starts at slot 0). `procd` records a child's lineage from its creation event;
+                // if it instead observes an orphan termination first, it buffers the exit status in
+                // `early_terminations` and reconciles it once the creation arrives. Publishing
+                // creations ahead of terminations in the kernel main loop only biases delivery
+                // toward the creation-first order and keeps that buffering window small in the
+                // common case, while the round-robin here guarantees terminations are never starved
+                // behind a continuous burst of creations (and vice versa).
+                //
+                // FIXME(#2558): this round-robin only approximates fairness. Replacing it with
+                // FIFO delivery ordered by the global event id stamped on each queued entry would
+                // be structurally starvation-free without cursor bookkeeping. Tracked as follow-up
+                // work.
+                for k in 0..SchedulingEvent::NUMBER_EVENTS {
+                    let slot: usize = (self.scheduling_cursor + k) % SchedulingEvent::NUMBER_EVENTS;
+                    if (scheduling & (1 << slot)) != 0 {
+                        if let Some((_ev, notification)) = self.pending_scheduling[slot].pop_front()
+                        {
                             // Derive the delivered message type and payload bytes from the
                             // notification variant.
                             let (message_type, info_bytes): (
@@ -525,6 +561,11 @@ impl EventManagerInner {
                                 },
                             };
 
+                            // Advance the round-robin cursor past the sub-queue just delivered
+                            // from, so the next delivery scans the other sub-queue first and the
+                            // two sub-queues take turns.
+                            self.scheduling_cursor = (slot + 1) % SchedulingEvent::NUMBER_EVENTS;
+
                             return Ok(Some(message));
                         }
                     }
@@ -532,7 +573,9 @@ impl EventManagerInner {
             }
         }
 
-        // FIXME: Delivery of IPC messages will starve if exception / interrupt rate is to high.
+        // FIXME(#2558): Delivery of IPC messages will starve if the exception / interrupt rate is
+        // too high. Unlike the in-class scan starvation above, this is cross-category starvation
+        // (IPC vs. event classes); tracked alongside the other delivery-fairness work in #2558.
 
         // Check if any messages were delivered.
         match ProcessManager::try_recv(tid) {
@@ -1351,6 +1394,7 @@ pub fn init() -> Result<(), Error> {
         exception_ownership,
         pending_scheduling,
         scheduling_owner,
+        scheduling_cursor: 0,
         waiting_threads: VecDeque::new(),
         wait: Some(Condvar::new()),
     });
