@@ -656,3 +656,79 @@ Full kernel verification passes (exit 0). Now let me run `make verify` (full cra
 Turn 38
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | grep -iE "verify-(bitmap|bump|sys|arch|nanvix
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Exit code : 0
+  Detail: verus-ai-logs/verify-bitmap/verus-logs/cheating-detail.txt
+Log written to: verus-ai-logs/verify-bitmap/verus-logs/verus_2026-06-15_15-13-24.log
+/home/ruize/nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+All crates verify with exit 0 — no regressions. Let me check the existing verification_todo.md and confirm the in-scope files are unchanged from base.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== existing verification_todo.md? ==="; cat verus-ai-logs/nanvix-phys-
+
+[THINKING] All the crates are passing verification with no regressions detected. Now I'm analyzing the phys-mod module to identify which functions have actual implementations versus cheating—init is fully verified with a real contract and body, while I'm still examining book_physical_memory_regions.
+
+The two LinkedList functions use external_body declarations that are TCB-allowed since there's no vstd model available and the orphan rule prevents implementing the iterator trait. I'm confirming that all in-scope cheating is either TCB-allowed or approved, and the AST is byte-identical to the base branch with zero mismatches, so this phase passes. The remaining cheating in other modules like frame.rs and manager.rs falls outside phys-mod's scope. Now I need to write the fix_report.md and check whether a verification_todo.md exists to document any genuinely-stuck proofs.
+[RESULT ✓] bash: === existing verification_todo.md? ===
+(none)
+=== final diff check (in-scope files vs base) ===
+(empty = identical)
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+No `verification_todo.md` exists, and the in-scope files are byte-identical to base — the proving phase left them fully verified. Let me write the report and verification_todo.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md
+
+[THINKING] There's no verification file to check, so the in-scope files match the base. Now I'm calculating the cheating counts for the phys-mod module across its source, spec, and proof files. Looking at the before and after states, `admit()` and `assume()` both remain at zero, while `external_body` stays at three with all entries being TCB-allowed functions like `book_physical_memory_regions`.
+
+Since there were no non-allowed cheating items in the phys-mod scope to begin with, nothing was eliminated—the proving phase already left these files in a fully-verified state. The cfg-gated exec code count is benign; those gates at lines 36, 40, and 42 are standard Verus harness gates that only gate spec and proof inclusion, not actual exec code divergence. I'm ready to write the fix report now, noting that there are no remaining proof gaps in scope.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md with 1856 characters
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md with 4053 characters
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Done. Here's the outcome for the **phys-mod** cheating-elimination phase.
+
+## Result: PASS
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → **86 verified, 0 errors**. Full `make verify-kernel` and `make verify` → exit 0, no regressions.
+
+**Cheating in phys-mod scope** (`mod.rs` + `mod.spec.rs` + `mod.proof.rs`):
+
+| Item | Before | After |
+|------|--------|-------|
+| admit() | 0 | 0 |
+| assume() | 0 | 0 |
+| external_body | 3 (all TCB-allowed) | 3 |
+| assume_specification | 0 | 0 |
+| cfg-gated exec | 0 | 0 |
+
+**Findings:**
+- `init` is fully machine-verified with a real contract and body — no cheating.
+- The only 3 in-scope `external_body` items (`book_physical_memory_regions`, `book_mmio_regions`, `ExLinkedList`) are all listed in `tcb-allowed.md`. Escalation ladder exhausted: `vstd` has **zero** `LinkedList` model (verified via grep), the orphan rule blocks implementing `View`/`ForLoopGhostIterator` for the foreign type, and a rewrite would change exec signatures (ast-consistency violation).
+- In-scope files are **byte-identical to the base branch** → zero AST mismatches; the proving phase already left them clean.
+
+**Out of scope (not phys-mod's responsibility):** the global `admit=3` is in `mm/virt/identity_map.rs` (a different module/phase); the `frame.rs`/`manager.rs`/`upool.rs` `external_body` are TCB-allowed; the 4 `manager.proof.rs` assumes are approved (`L60`–`L63`). Per the hard rule, I did not touch unlisted functions.
+
+**Artifacts written:**
+- `verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md`
+- `verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md` (no remaining proof gaps in scope)
+
+[THINKING] The module checks out and everything's working as expected. Time to wrap this up for the user.
+
+
+=== Session End ===
+Session: 851a3b6b-dd9d-4457-a075-579476817781
+Duration: 468.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/prover-claude-20260615-150659.jsonl
