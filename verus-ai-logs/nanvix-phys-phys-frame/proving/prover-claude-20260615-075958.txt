@@ -1752,3 +1752,37 @@ I also need to ensure the proof block has access to the invariants from `phys_ad
 Turn 97
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|is_cover
+[RESULT ✓] bash: error: disallowed: field expression for a non-visible datatype
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing...
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1 | xargs gr
+[RESULT ✓] bash: 20:error: disallowed: field expression for a non-visible datatype
+21:   --> src/kernel/src/mm/phys/frame.proof.rs:83:25
+24:    |                           ^^^^^^^^^^^^ this field expression is disallowed because of non-visibility
+37:    = help: note that because this is a 'ensures' clause of public ...
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm looking at a visibility issue in the proof code where a public lemma is trying to reference a private field in its ensures clause. Since this lemma is only used internally within the module, I should remove the `pub` visibility modifier to resolve the access violation.
+[RESULT ✓] edit: No changes made: old_str and new_str are the same
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -i 's/^pub proof fn lemma_is_covered/proof fn lemma_is_covered/' src/kern
+[RESULT ✓] bash: 76:proof fn lemma_is_covered(inner: &Inner, pa: int, frame_number: int)
+<shellId: 66 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

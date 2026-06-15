@@ -73,7 +73,7 @@ impl Inner {
 
 // Relates the integer frame index `pa / PAGE_SIZE` of a page-aligned address `pa` to coverage by
 // the bitmap: `pa` is tracked (allocated or free) iff its frame index is within `num_bits`.
-pub proof fn lemma_is_covered(inner: &Inner, pa: int, frame_number: int)
+proof fn lemma_is_covered(inner: &Inner, pa: int, frame_number: int)
     requires
         inner.inv(),
         pa >= 0,
