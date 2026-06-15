@@ -1,0 +1,23 @@
+RESOLVED
+
+All 15 checklist items for the specification phase of `sys::mm::address::virt`
+(`VirtualAddress`) are PASS/FIXED with concrete tool evidence.
+
+Key evidence:
+- `make verify-sys`: 6 verified, 0 errors, status CLEAN
+  (assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0).
+- `make verify` (cross-module): sys 6, kernel 43, bitmap 70, nanvix-slab 35 — all 0 errors.
+- `./z build -- all`: [OK] Build complete.
+
+In-scope specs:
+- VirtualAddress::new            → ensures result@ == value as int, result.inv()
+- VirtualAddress::from_raw_value → ensures result@ == raw_addr as int, result.inv()
+- <VirtualAddress as Address>::into_raw_value → contract result as int == self@
+  preserved via the consumer-side assume_specification in kernel/phys.spec.rs
+  (genuine Verus front-end limitation, documented in verus-unsupported.md and
+  consistent with all sibling address types). The in-module body-verification
+  alternative (inherent-method shadowing) was empirically tested and rejected
+  because it regresses the workspace -D warnings build.
+
+Fix applied this phase: removed a pre-existing duplicate `use ::vstd::prelude::*;`
+import in virt.rs that broke `./z build -- all`; the build now passes.
