@@ -731,3 +731,81 @@ Turn 34
 ────────────────────────────────────────────────────────────
 This is the correct version. Let me re-run the arch baseline with the pinned binary.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&
+[RESULT ✓] bash: Crate     : arch
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/libs/arch/src
+  Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kern...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+arch now verifies cleanly with the correct binary. Let me check the concrete value of `PAGE_SIZE`/`FRAME_SIZE` and constants, then write the specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "PAGE_SIZE\|PAGE_SHIFT\|PGTAB_SIZE" src/libs/arch/src/x86/mem/constants.rs | head; ec
+
+[THINKING] The verification is passing cleanly now with the correct binary, so I can move forward with writing the specs. I'm planning out the structure for the spec files—defining frame size and max frame number functions with a View implementation and type invariant in one file, then setting up lemma signatures with placeholder bodies in the proof file.
+
+For the spec definitions, I need to be careful about how I reference the exec constants. Rather than trying to use exec consts directly in spec context, I'll define concrete spec functions for frame size and max frame number, then link them to the exec constants via lemmas with admit() bodies. This keeps the specs concrete and avoids any issues with const references in spec functions. The issue is that `usize` division and casting to `int` need careful handling — Verus models `usize` division as matching `int` division on nonnegative values, and `(x - 1) as int == x as int - 1` when `x >= 1`, but the underflow check for `mem::MAX_ADDRESS / mem::FRAME_SIZE >= 1` might not go through automatically. To be safe, I'll create a lemma `lemma_max_consistent()` that proves `FrameNumber::MAX as int == spec_max_frame_number()` with an `admit()` body, ensuring the construction verifies regardless of whether Verus can handle the reasoning automatically.
+
+For the `NULL` constant, the type invariant check `0 <= 0 <= spec_max_frame_number()` requires `spec_max_frame_number() >= 0`, which depends on `usize::MAX / FRAME_SIZE >= 1` — likely true but might need a lemma if Verus doesn't verify it automatically. I'll write the code and iterate against the verifier since the cycle is fast enough, adding lemmas as needed if the type invariant check on const initialization fails.
+
+The key design decision is using `#[verifier::type_invariant]` despite the construction obligations on `NULL` and `from_raw_value`'s `Some` branch — both are satisfiable. Since the type invariant function and all construction sites (`NULL`, `from_raw_value`, `Self(value)`) are in the same module, access to the private field `self.0` works fine. I need to verify whether the type invariant spec function can be `pub open` or must be `closed` — I'll check the Verus documentation or look at how vstd handles this. Writing spec definitions...
+
+I'm implementing the view trait to map the frame number to its abstract integer representation, then adding a type invariant that ensures every frame number stays within the valid range from zero to the maximum frame number. There's a question about whether Verus allows the invariant function to be marked as `pub open` or if it needs to be closed for soundness, so I'm going to test the implementation to see what works. as `pub open` per design and see if verus accepts. If it errors, I'll make it `closed` or remove pub.
+
+Actually, the view_design strongly wants `pub open spec fn inv`. And from_raw_value's ensures references `f.inv()`. If inv is the type_invariant AND also publicly referenced, that's a dual role. Let me check: can a `#[verifier::type_invariant]` fn also be called explicitly in ensures? I believe yes — it's a normal spec fn that's additionally registered as the type invariant.
+
+But there's another subtlety: with a type invariant, do I even need `f.inv()` in from_raw_value's ensures? Since the type invariant holds for all FrameNumber automatically, callers get it via use_type_invariant. But explicit `f.inv()` in ensures is still useful for callers who want it directly without use_type_invariant. The FrameAddress pattern includes `fa.inv()` in from_raw_value ensures. But FrameAddress's inv is NOT a type_invariant (it's a plain pub open spec fn passed explicitly).
+
+This is a critical design choice. If I go with a plain inv like FrameAddress, into_raw_value would need `requires self.inv()` to provide the range — but that weakens the contract versus upstream, which had no requires. The real problem: phys.rs::from_number takes a FrameNumber parameter with no inv guarantee, so it couldn't prove the precondition before calling into_raw_value. That breaks the whole thing. Design A with type_invariant is the only way forward — it gives into_raw_value an unconditional range guarantee that phys.rs can rely on through use_type_invariant. If PAGE_SIZE is a concrete constant like 4096, then spec_max_frame_number() evaluates to a specific number, and Verus might automatically verify the type invariant obligations in from_raw_value and NULL without needing explicit lemmas—since both the exec guard and the invariant reduce to the same numeric bound. However, Verus's ability to compute large divisions like usize::MAX / 4096 is uncertain, so I'll structure the proofs cleanly and use admit() only where the verifier actually complains, keeping in mind that these obligations live in exec functions and const items rather than proof blocks. I should check what PAGE_SIZE actually evaluates to so I can see if Verus will auto-prove the const initialization.
+[RESULT ✓] bash: 38:/// Log2 PAGE_SIZE
+40:pub const PAGE_SHIFT: usize = 12;
+47:pub const PAGE_SIZE: usize = 4096;
+48:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+55:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+60:/// Log2 [`PGTAB_SIZE`].
+69:pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
+76:pub const...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+PAGE_SIZE=4096, FRAME_SIZE=4096, MAX_ADDRESS=usize::MAX — concrete. Let me write the spec file.
+[TOOL] sql: {'description': 'Track tasks', 'query': "INSERT INTO todos (id, title, descripti
+
+[THINKING] I'm working through the constants and their concrete values — PAGE_SIZE is 4096, which makes FRAME_SIZE also 4096, and spec_max_frame_number() becomes a concrete calculation based on usize::MAX. Now I need to verify that the crate::mem module actually exists and resolves properly, since number.rs imports from it.
+
+Looking at the module structure, x86/mod.rs exports mem as a public module, and lib.rs likely re-exports it at the crate root, so crate::mem should work fine. For the spec file, I'll add the same use statement inside the verus!{} block to keep things clean, then write out the spec content without relying on lemmas initially — I'll let Verus auto-evaluate the concrete constants and only add admits if needed.
+[RESULT ✓] sql: 4 row(s) inserted. Last inserted row ID: 4.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs.new
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs.new with 2550 characters
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; rm src/libs/arch/src/x86/mem/paging/frame/number.spec.rs.new; cat -A src/libs/arch/src/x86/me
+
+[THINKING] I need to clean up by removing the temporary `.new` file and instead edit the actual `number.spec.rs` file directly to replace its placeholder content.
+[RESULT ✓] bash: verus! { } // verus!$
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+
+
+=== Session End ===
+Session: 154dbd3f-a338-4dab-b815-e41ebd138681
+Duration: 597.7s
+Exit code: 1
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/specification/prover-claude-20260615-193756.jsonl
