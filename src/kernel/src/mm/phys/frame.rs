@@ -298,7 +298,10 @@ impl Inner {
                 lo == frame_number as int,
                 hi == frame_number as int + count as int,
                 lo <= i <= hi,
-                self.bitmap == old_self.bitmap,
+                self.bitmap.inv(),
+                self.bitmap@.num_bits == old_self.bitmap@.num_bits,
+                self.bitmap@.set_bits == old_self.bitmap@.set_bits.union(
+                    ::bitmap::BitmapView::range_set(lo, hi)),
                 self.refcount@.len() == old_self.refcount@.len(),
                 self.refcount@.len() >= self.bitmap@.num_bits,
                 hi <= self.bitmap@.num_bits,

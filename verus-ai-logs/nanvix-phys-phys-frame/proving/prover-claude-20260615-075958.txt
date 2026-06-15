@@ -4303,3 +4303,40 @@ I also need to fix the trigger annotations on the `choose` expressions—adding 
 Turn 278
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.rs:301:17
+error: invariant not satisfied at end of loop body
+   --> src/kernel/src/mm/phys/frame.rs:306:17
+   --> src/kernel/src/mm/phys/frame.rs:306:51
+   --> src/kernel/src/mm/phys/frame.rs:306:72
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+   --> src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 279
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The big frames proof is working now, but I'm hitting three new errors in the loop around lines 296-320: the invariant isn't being satisfied at entry, the invariant fails at the end of the loop body, and there's a bounds issue with the refcount indexing. Let me trace through that loop to figure out what's going wrong.
+[RESULT ✓] view: 284.             assert(self.bitmap@.num_bits == old_self.bitmap@.num_bits);
+285.             assert(self.bitmap@.set_bits
+286.                 == old_self.bitmap@.set_bits.union(
+287.                     ::bitmap::BitmapView::range_set(
+288.                         frame_number as int, frame_number...
+
+────────────────────────────────────────────────────────────
+Turn 280
+────────────────────────────────────────────────────────────
+The bitmap changed after `alloc_range`, so invariant 301 is wrong. Let me carry the proper bitmap facts as loop invariants:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm spotting a bug in my comparison logic at line 301 — I'm checking if the bitmap equals the old state, but that's wrong since the bitmap changes after `alloc_range` sets the bits for that range. I need to capture the bitmap state after the allocation so I can use that consistent snapshot throughout the loop instead of comparing against the pre-allocation state.
+
+The real insight is that the loop only modifies `refcount`, not `bitmap`, so the bitmap is actually loop-invariant. Rather than trying to compare bitmaps directly (which might not have equality defined), I should express the bitmap facts as invariants: the number of bits stays the same, the set bits equal the old set bits plus the newly allocated range, and the bitmap maintains its invariant. These facts relate the post-allocation bitmap to the original state, which is what `lemma_book_range` needs to verify. The real issue is that invariant 301 (`self.bitmap == old_self.bitmap`) is failing at the loop entry, which cascades and prevents the other invariants from being established. This means the precondition checks downstream—like verifying `i < self.refcount@.len()` at line 318—can't rely on the invariant properties that would make them valid, even though logically they should hold given the loop bounds and the relationship between `hi`, `num_bits`, and the refcount length.
+
+I need to replace invariant 301 with the correct bitmap facts that actually hold after the allocation, then re-test to see if that fixes the cascade of errors.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 281
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.r
