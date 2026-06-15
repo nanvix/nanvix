@@ -1,0 +1,13 @@
+RESOLVED
+
+All 12 cheating-elimination checklist items for phys-mod (mod.rs + mod.spec.rs +
+mod.proof.rs) are PASS, verified with concrete tool output:
+
+- make verify-kernel → exit 0; gate: assume=0 trusted=0 no_decreases=0 (crate-global).
+- ./z build -- all-kernel → exit 0, 0 warnings.
+- In-scope files byte-identical to base branch verus-ai-prove-bottom-up (git diff = 0
+  lines): no exec rewrites, no spec weakening, no cfg-gated exec divergence.
+- admit=3 and assume=4 reported by the gate are OUT of phys-mod scope
+  (mm/virt/identity_map.rs admits; mm::phys::manager.proof.rs gate-approved assumes).
+- All 3 in-scope external_body items are TCB-listed in verus-ai-logs/tcb-allowed.md:
+  book_physical_memory_regions (L82), book_mmio_regions (L87), ExLinkedList (L74).

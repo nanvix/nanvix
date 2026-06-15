@@ -235,3 +235,176 @@ Turn 5
 ────────────────────────────────────────────────────────────
 All three external_body items are TCB-listed. Now running the verification (and build) to get concrete tool evidence.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | tail -40
+[RESULT ✓] bash: note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int,...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cheating-detail ==="; cat verus-ai-logs/verify-kernel/verus-logs/
+
+[THINKING] The verify passed successfully, but the cheating gate metrics are showing crate-global scope rather than the phys-mod scope I need to check. I see admit=3 is coming from a different module that's out of scope, so I need to dig into the cheating-detail.txt file to confirm where the actual phys-mod-scoped items are located.
+
+Now I need to verify the build passes with zero errors and zero warnings, and cross-reference the cheating-detail output to confirm the exact locations of the admit and external_body items.
+[RESULT ✓] bash: === cheating-detail ===
+    - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/frame...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== full cheating-detail (cfg section) ==="; grep -niE 'cfg|gate' ver
+
+[THINKING] I'm verifying the scope of the changes across the three files—checking that the external body and external type spec items are properly listed in the TCB for the memory booking functions.
+
+The other admit and assume items are in different modules outside scope, and the approved trust boundaries explain why the gate reports zero assumes. For the cfg gates, I need to determine whether the verus_keep_ghost gates on imports and includes, plus the feature="test" gates on test code, are being counted in that total of nine.
+[RESULT ✓] bash: === full cheating-detail (cfg section) ===
+=== look for cfg_gate listing files ===
+cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-13_23-26-35.log
+verus_2026-06-13_23-35-50.log
+verus_2026-06-13_23-37-13.log
+verus_2026-06-13_23-59-01.log
+verus_2026-06-13_23-59-19.log
+verus_2026-06-13_23-59-...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Let me confirm the in-scope files are byte-identical to base and check the build command.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== exact diff vs base (in-scope) ==="; git diff verus-ai-prove-botto
+
+[THINKING] I'm confirming that the cfg_gate=9 is crate-global and the phys-mod-scope cfg gates in mod.rs are limited to verus_keep_ghost for imports and includes, plus feature="test" for the test module and function. The checklist constraints are being met—only imports, derives, debug_assert, and logging are allowed in cfg-gated code, with no execution divergence in scope.
+
+Since the in-scope files are byte-identical to the base branch with no git diff, there's no exec rewrite or spec weakening introduced. Now I need to verify the diff is truly empty and run a build check to ensure there are no warnings, though the verify-kernel already compiled successfully under RUSTFLAGS.
+[RESULT ✓] bash: === exact diff vs base (in-scope) ===
+0
+=== build targets ===
+411:all: all-nanvix
+=== spec-drift / ast-consistency tooling ===
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.j...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -niE 'cargo build|make build|\./z|z build|build_cmd|warnings' .github/
+
+[THINKING] The diff shows no changes, which confirms the physical model scope was already fully validated during the proving phase. Now I need to run a build to verify there are zero warnings, so let me check what the canonical build command is in the build documentation.
+[RESULT ✓] bash: 27:6. Git hooks are installed: `./z.ps1 setup`.
+35:./z build -- all
+42:./z build -- kernel
+44:./z build -- all-nanvixd
+46:./z build -- all-uservm
+69:./z build -- all RELEASE=yes LOG_LEVEL=error
+76:./z build -- all
+78:./z build -- all RELEASE=yes LOG_LEVEL=panic
+80:./z build -- all RELEASE=yes LOG_LE...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now building the kernel to confirm 0 errors / 0 warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build -- kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE '^[a-z-]+:' Makefile | grep -iE 'kernel|all-nanvix|nanvix:' | head
+[RESULT ✓] bash: 411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+458:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE 'kernel' Makefile | grep -iE 'build|\.elf|cargo' | head; echo "===
+[RESULT ✓] bash: 222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+234:    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+262:# Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
+853:# Seed directory used to build the ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE '^[a-zA-Z0-9_-]+:' build/make/kernel.mk | head
+[RESULT ✓] bash: 10:all-kernel: init
+26:check-kernel:
+29:format-kernel:
+32:format-check-kernel:
+35:clean-kernel:
+39:rust-lint-kernel:
+42:rust-lint-check-kernel:
+51:all-test-kernel: init
+61:run-kernel-tests: all-test-kernel all-uservm
+67:check-test-kernel:
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ./z build -- all-kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/bin
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/lib
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo bu...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All evidence gathered. Build complete with 0 errors/0 warnings. Every checklist item verified as PASS. Writing the review and STOP file.
+[TOOL] report_intent: Writing review verdict
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue/STOP
+
+[THINKING] The build completed successfully with no errors or warnings. I'm going through my verification checklist now—the first two items pass: there are no admit() calls in the relevant scope (the three instances are in an out-of-scope file), and no assume() calls either (the four in manager.proof.rs are also outside the scope I'm checking). I'm partway through the third item on the list. Looking at the cfg gates in the mod.rs file — the verus_keep_ghost imports and includes on lines 36, 40, 42 are allowed, and the feature="test" gates on lines 15 and 195 don't constitute cheating since they're standard test-only code that's excluded from verification entirely and unchanged from the base. Everything checks out, so I'm ready to write the review document and mark this as resolved.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue/turn_001_driver.md with 3566 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue/STOP with 774 characters
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Review complete. **Verdict: RESOLVED** — all 12 checklist items PASS.
+
+**Evidence:**
+- `make verify-kernel` → exit 0; gate `assume=0 trusted=0 no_decreases=0`.
+- `./z build -- all-kernel` → exit 0, 0 warnings.
+- In-scope files (`mod.rs`, `mod.spec.rs`, `mod.proof.rs`) byte-identical to base (`git diff` = 0 lines) → no exec rewrites, no spec weakening, no cfg divergence.
+- The gate's `admit=3` / `assume=4` are **out of scope** (`mm/virt/identity_map.rs`; `mm::phys::manager.proof.rs` gate-approved L60–L63).
+- All 3 in-scope `external_body` items individually confirmed TCB-listed: `book_physical_memory_regions`, `book_mmio_regions`, `ExLinkedList`.
+
+Wrote `turn_001_driver.md` and `STOP` (RESOLVED).
+
+
+=== Session End ===
+Session: 216e0667-337a-4a9d-835d-577360e006af
+Duration: 162.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue-reviewer-t001-claude-20260615-151448.jsonl
