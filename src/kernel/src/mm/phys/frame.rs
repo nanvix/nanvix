@@ -112,7 +112,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -178,7 +177,6 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -251,7 +249,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -336,7 +333,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -408,7 +404,6 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -456,7 +451,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -502,7 +496,6 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -532,7 +525,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -641,7 +633,6 @@ static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 // between the live singleton and the uninterpreted `phys_view()` is asserted
 // here as an external contract: once the allocator is initialized, the returned
 // reference is well-formed and its abstract view equals `phys_view().frames`.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -674,7 +665,6 @@ fn instance() -> &'static mut Inner {
 // materializes the `&'static mut [u8]` refcount table from `static mut
 // REFCOUNT_STORAGE` and writes the `static mut INSTANCE`, neither of which the
 // verifier supports. Its `#[verus_spec]` contract is honored as a trust boundary.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `init` establishes the subsystem invariant. On success the allocator is
@@ -869,7 +859,6 @@ pub(super) fn free_count() -> usize {
 // caller-justified `Drop`-path exception; the reservation shims (`alloc`,
 // `alloc_contiguous`, `book`, `alloc_range`, `share`) carry the strong
 // `PhysAuth`-threaded post-state instead.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `free` runs on `Drop` of any `UserFrame`/`KernelFrame`, so it carries no
