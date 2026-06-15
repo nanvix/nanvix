@@ -140,11 +140,10 @@ impl PhysicalAddress {
             result@ == spec_from_number(spec_frame_raw_value(frame)),
     )]
     pub fn from_number(frame: FrameNumber) -> Self {
-        let addr_raw: usize = frame.into_raw_value();
         proof! {
             lemma_from_number_no_overflow(frame);
         }
-        let addr: usize = addr_raw * mem::FRAME_SIZE;
+        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
 
@@ -158,12 +157,10 @@ impl PhysicalAddress {
     )]
     pub fn into_frame_number(self) -> FrameNumber {
         let raw_addr: usize = self.0.into_raw_value();
-        // Bind `FRAME_SHIFT` once so the proof relates the shift below to the same value.
-        let shift: usize = mem::FRAME_SHIFT;
-        let frame_number: usize = raw_addr >> shift;
+        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
         proof! {
             vstd::arithmetic::power2::lemma2_to64();
-            lemma_frame_index(self, raw_addr, shift, frame_number);
+            lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
         }
         // Safety: the following unwrap is safe because a physical address has a valid frame number.
         FrameNumber::from_raw_value(frame_number).unwrap()
