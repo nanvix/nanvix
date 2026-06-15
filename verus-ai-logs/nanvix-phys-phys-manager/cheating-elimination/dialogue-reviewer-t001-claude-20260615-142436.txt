@@ -228,3 +228,379 @@ manager.proof.rs:17:// they remain `external_body`. (They carry no inline proof 
 === assume_specification ===
 manager.spec.rs:9:pub assume_specification<T, E, U, F: FnOnce(T) -> Result<U, E>>[ Result::<T, E>::and_then ](
 manager.s...
+[RESULT ✓] bash: note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int,...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== admit detail ===" && grep -in "admit" verus-ai-logs/verify-kernel
+
+[THINKING] The verification succeeded, and I'm looking at the global cheating pattern counts across the kernel—assume=0, external_body=18, admit=3, trusted=0, no_decreases=0, cfg_gate=9. The admit=3 count is puzzling since my search through the manager files didn't turn up any actual admit() calls, only a comment reference. I need to check the detailed report to track down where those three admit instances are coming from.
+[RESULT ✓] bash: === admit detail ===
+19:    - mm/virt/identity_map.rs:533 ensure_pt: admit
+20:    - mm/virt/identity_map.rs:627 ensure_pte: admit
+21:    - mm/virt/identity_map.rs:718 identity_map_page: admit
+=== manager refs in detail ===
+8:    - mm/phys/manager.proof.rs:24 lemma_manager_attached: external_body
+9: ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] The three admits are in the identity_map module, outside the manager's scope. The six external_body annotations in the manager match exactly what's listed in tcb-allowed.md. Let me pull up the full detail file to verify the manager has exactly those six external_body entries with zero admits, assumes, trusted, no_decreases, and check the cfg_gate status.
+[RESULT ✓] view: 1.     - mm/phys/frame.rs:1242 instance: external_body
+2.     - mm/phys/frame.rs:1282 init: external_body
+3.     - mm/phys/frame.rs:1338 alloc: external_body
+4.     - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+5.     - mm/phys/frame.rs:1416 free: external_body
+6.     - mm/phys/frame.rs:14...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find . -name "ast_consistency*.py" 2>/dev/null; find . -iname "*spec*drift*
+
+[THINKING] Looking at the module-scoped metrics for the manager, I'm confirming that external_body has 6 instances across manager.proof.rs and manager.rs, all properly documented in tcb-allowed.md. The admit, assume, trusted, and no_decreases counts are all zero for the manager itself, though there are some admit instances in other modules that fall outside this scope. I also notice the manager uses conditional compilation to gate error and warning logging when ghost code isn't being kept.
+
+Now I'm working through the verification checklist: the zero-admit, zero-assume, and zero-trusted checks all pass, and the cfg-gated code only wraps allowed constructs like logging and spec includes. I need to verify the external_body declarations are all accounted for, run the AST consistency check, and confirm that any exec rewrites have proper VERUS REWRITE comments with minimal reproducers. There's a VERUS DEVIATION comment in check_user_watermark that needs verification, and I should check the three cfg-gated exec loop invariant rewrites mentioned in the fix report. The cross-module regression test passed, and I'm now checking the final verification step to ensure make verify-kernel completes with zero errors.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-arch-paging-table/final-review/ast_consistency_report
+bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -name "ast_consistency.py" 2>/dev/null | head; echo "---skills---"; find / -type d -iname "*ast-consistency*" 2>/
+
+[THINKING] I notice that ast-consistency and spec-drift-check are referenced in the checklist as skills but aren't listed in the project's skills inventory, so I need to track them down—likely searching for the ast_consistency.py file in the home directory or elsewhere in the codebase.
+[RESULT ✓] bash: /mnt/shared/verus-ai-improve4/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-argus-exp2/scripts/ast_consistency.py
+/mnt/shared/view-design-exp/kheap-worker7-clean/scripts/ast_consistency.py
+/mnt/shared/verus-ai-improve5-kheap-claw/scripts/ast_consistency.py
+/mnt/shared/kheap-mas-exp/script...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/.openclaw/workspace/skills/ast-consistency/SKILL.md 2>/dev/null | head -80; echo "====SPECDRIFT===="; fi
+
+[THINKING] I need to look up the exact commands for the ast-consistency and spec-drift-check skills from the openclaw workspace.
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager branch -a 2>/dev/null | head -20; echo "---current---"; git 
+
+[THINKING] I need to check if the analysis scripts exist in this repository and find the appropriate baseline branch to use for comparison.
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove-bottom-up
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phy...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+
+[THINKING] I need to locate those scripts in the external directory at /home/ruize/verus-ai-improve/scripts/ since they're not here, and I'll check the pipeline_state.json file to get the baseline SHA for phys-manager.
+[RESULT ✓] bash: {
+  "module_name": "phys-manager",
+  "log_name": "nanvix-phys-phys-manager",
+  "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs",
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
+  "phase_results":...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running AST and spec-drift checks
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== AST consistency (manager.rs) ===" && python3 /home/ruize/verus-ai
+
+[THINKING] I'm setting up the cheating-elimination phase with the commit hash as the baseline, and I need to run both the AST consistency and spec drift checks using the appropriate base references for comparison.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === AST consistency (manager.rs) ===
+✅ Consistent: 8 functions, 1 structs match.
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec drift check (auto) ===" && python3 /home/ruize/verus-ai-impr
+
+[THINKING] Now I'm running the spec drift check on the phys-manager module, which requires reading the pipeline_state.json file from the repo root and passing the module name to the check subcommand.
+[RESULT ✓] bash: === spec drift check (auto) ===
+python3: can't open file '/home/ruize/verus-ai-improve/scripts/spec_drift.py': [Errno 2] No such file or directory
+EXIT=0
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: find / -name "spec_drift.py" 2>/dev/null | head
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai-vmem-0417/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai-hfs/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-a...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec drift git-diff manager.rs ===" && for f in src/kernel/src/mm
+[RESULT ✓] bash: === spec drift git-diff manager.rs ===
+--- src/kernel/src/mm/phys/manager.rs ---
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions rem...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git diff manager.rs phase-start(c60b1dd) -> HEAD ===" && git --no
+
+[THINKING] The phase start baseline at c60b1dd shows zero drift during the cheating-elimination phase, which only touched ghost annotations for the cfg-gating fix. I should verify that the original spec-first guarantees weren't weakened by comparing against the base branch to ensure the core contract remains intact.
+
+Now checking the remaining checklist items: the cfg-gated code only wraps logging macros and import-like constructs (include! statements for spec/proof files), which are all allowed — that's passing. For the exec rewrites, I'm seeing a "VERUS DEVIATION" comment in check_user_watermark that reorders the binding of `free` before watermark computation, and I need to verify whether this counts as an exec rewrite that requires a minimal reproducer.
+
+The AST consistency check compared against the verus-ai-prove-bottom-up branch, but that's comparing the current HEAD to itself essentially — only catching uncommitted changes. For proper fidelity verification, I should be comparing against the original pre-verification code on the dev branch to ensure exec code hasn't drifted during this work.
+[RESULT ✓] bash: === git diff manager.rs phase-start(c60b1dd) -> HEAD ===
+diff --git a/src/kernel/src/mm/phys/manager.rs b/src/kernel/src/mm/phys/manager.rs
+index 198b5bb18..3af99408c 100644
+--- a/src/kernel/src/mm/phys/manager.rs
++++ b/src/kernel/src/mm/phys/manager.rs
+@@ -232,7 +232,7 @@ impl PhysMemoryManager {
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "proc_macro_hygiene" src/kernel/src/*.rs src/kernel/src/**/*.rs 2>
+
+[THINKING] The loop invariant rewrites are just the three cfg_attr to direct verus_spec changes—purely ghost annotations with no impact on execution. Now I need to check whether these verus_spec attributes are actually legal in a non-verus build, since the proc_macro_hygiene feature requirement could be a blocker. The fix report indicates kmain.rs enables this unconditionally, so I should verify the kernel still compiles without verus support.
+[RESULT ✓] bash: src/kernel/src/kmain.rs:20:#![feature(proc_macro_hygiene)] // Verus uses this for verus_spec
+---kmain head---
+12:#![allow(internal_features)]
+13:#![feature(allocator_api)] // kheap uses this.
+14:#![feature(linked_list_cursors)] // vmem uses this.
+15:#![feature(linked_list_remove)] // vmem uses this....
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null
+
+[THINKING] I'm noticing a mismatch in how Rust features are being gated — `proc_macro_hygiene` is unconditionally enabled while `stmt_expr_attributes` is conditionally gated, and I'm trying to figure out whether the `#[verus_spec(invariant ...)]` attribute on a `for` loop actually requires the `stmt_expr_attributes` feature.
+
+In the non-verus build, both features are available so the attribute should work fine, and in the verus build, verus itself handles the attribute processing. The fix report says the non-verus cargo check passes cleanly, but I should verify this by actually running the build to confirm there are zero warnings on the manager module, which means I need to find the exact build command being used.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Building kernel non-verus
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 ./z build -- kernel 2>&1 | tail -40
+
+[THINKING] I'm running the build command to verify that removing the cfg_attr didn't break the standard kernel build and that there are no errors or warnings.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | head -50
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "kernel" Makefile | grep -iE "build|cargo|elf|ramfs|target" | head
+
+[THINKING] I need to trace through how the kernel gets built in both the verus and non-verus cases. The `verify-kernel` target handles the verus build with full compilation, but for the non-verus path I should look at what `all-test-kernel-ramfs` does or check the cargo invocation directly in the verify-kernel target.
+[RESULT ✓] bash: 222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+234:    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+262:# Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
+424:all-nanvix: all-host-binaries all-n...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "cargo|build|\.PHONY|^[a-z].*:" build/make/kernel.mk | head -40
+[RESULT ✓] bash: 10:all-kernel: init
+26:check-kernel:
+29:format-kernel:
+32:format-check-kernel:
+35:clean-kernel:
+39:rust-lint-kernel:
+42:rust-lint-check-kernel:
+45:# Features used when building the kernel with in-kernel tests enabled.
+51:all-test-kernel: init
+61:run-kernel-tests: all-test-kernel all-uservm
+67:check-...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/build/make/kernel.mk
+[RESULT ✓] view: 1. # Copyright(c) The Maintainers of Nanvix.
+2. # Licensed under the MIT License.
+3. 
+4. KERNEL_FEATURES := $(MACHINE) $(LOG_LEVEL)
+5. KERNEL_FEATURES += $(if $(filter yes,$(WHP)),whp,)
+6. KERNEL_FEATURES += $(if $(filter yes,$(RELEASE)),nightly-performance-optimizations,)
+7. KERNEL_FEATURES := $(st...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make all-kernel 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[0]}"
+
+[THINKING] I'm going to run the kernel build command to verify that the non-verus build compiles cleanly without any errors or warnings, which will confirm the cfg_attr change is working properly across both build configurations.
+[RESULT ✓] bash: mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/bin
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/lib
+mkdir -p /home/ruize/nanvix-phy-specs-bottom-up/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== AST vs dev branch ===" && python3 /home/ruize/verus-ai-improve/sc
+
+[THINKING] The non-verus kernel build completed successfully with no errors or warnings. I'm going through the checklist to verify all the constraints are met—so far I've confirmed zero admit calls, zero assume calls, zero trusted functions, and zero exec_allows_no_decreases clauses, all within the manager scope.
+
+For the cfg-gating requirement, all exec code is properly gated with cfg(not(verus_keep_ghost)) wrapping logging, while cfg(verus_keep_ghost) gates the spec and proof includes. The three cfg_attr exec-loop wrappers have been removed. The six external_body functions are all accounted for in the tcb-allowed list. AST consistency checks pass with eight functions and one struct matching between versions. For the exec rewrites, the cheating-elimination phase made no changes to exec code itself—only ghost annotations—so the check_user_watermark reordering with its VERUS DEVIATION comment satisfies the requirement, though I'm verifying whether a minimal reproducer is documented.
+
+Now I need to compare manager.rs against the dev branch to identify all exec deviations and confirm each has the required comment and reproducer.
+[RESULT ✓] bash: === AST vs dev branch ===
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+PhysMemoryManager::alloc_kernel_frame    MISMATCH                             
+PhysMemoryManager::allo...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for fn in "PhysMemoryManager::check_user_watermark" "PhysMemoryManager::all
+
+[THINKING] I'm noticing there are 4 mismatches between the dev branch and the current state, introduced during the spec-first proving phase. The checklist requires all exec rewrites to have a VERUS REWRITE comment and minimal reproducer, but I need to reconsider what the proper baseline should be—it looks like the verus-ai-prove-bottom-up branch might be the right reference point for AST consistency in this pipeline.
+
+Actually, the spec-first phase legitimately introduces certain exec rewrites like named returns and intermediate bindings as pre-approved deviations. The cheating-elimination phase should only avoid introducing new exec changes, and checking against the verus-ai-prove-bottom-up baseline shows 8 functions match, which confirms that phase added zero exec drift. But checklist item 8 is really about ensuring all exec rewrites are documented, so I need to examine each of the 4 mismatches individually to see what changed and whether they're properly documented or pre-approved.
+[RESULT ✓] bash: =================== PhysMemoryManager::check_user_watermark ===================
+## PhysMemoryManager::check_user_watermark (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,12 +1,19 @@
+     fn check_user_watermark(count: usize) -> Result<(), Error> {
+-        let watermark_threshold: usize = config:...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); 
+
+[THINKING] The AST checker strips ghost code like `proof!`, `proof_decl!`, and `#[verus_spec(...)]` annotations, but there's a mismatch in how the diff is being displayed — the raw content shows these markers, yet after stripping them the exec hashes differ between branches, which suggests the checker on the verus side is handling the stripping differently than expected.
+
+Looking at the actual exec changes: `check_user_watermark` has a documented deviation where the inlined const `KERNEL_WATERMARK` becomes a function call `kernel_watermark()`, and `frame::free_count()` gets hoisted into a `let free` binding — both are semantics-preserving and marked with a VERUS DEVIATION comment. In `alloc_kernel_frame`, the differences include ghost annotations plus a structural change where a complex expression becomes a `let result` binding that's then returned, which is pre-approved as a deviation for assertion purposes, but I need to verify whether this binding has the required comment documenting it.
+
+The AST checker confirmed these 8 functions match against the verus-ai-prove-bottom-up baseline, meaning the exec rewrites weren't introduced during cheating elimination — they were already part of the proving phase. So the real question is whether every exec deviation from the original dev version has proper documentation, since that's a standing requirement for the final state.
+
+Looking at the mismatches against dev, I need to distinguish between ghost blocks that should strip away cleanly and genuine exec changes. The checker might not be perfectly stripping all macro forms, or there could be actual exec deviations hiding in there. The meaningful changes are the const-to-accessor shift in check_user_watermark (which has a VERUS DEVIATION comment) and the `let result` binding in alloc_kernel_frame (which isn't explicitly commented but is ghost-required for the proof block). The proper baseline to measure against is verus-ai-prove-bottom-up, not dev.
+
+For the cheating-elimination phase specifically, there are zero new exec rewrites—the only substantive deviation from pristine is check_user_watermark, which is already documented. The `let result` binding falls under pre-approved deviations in the skill table, so it doesn't require a reproducer. Item 8 passes because this phase introduced no new undocumented exec changes.
+
+All checklist items are passing. The full kernel verification ran clean with exit 0, and the manager module parsed and verified successfully—the CHEATING_DETECTED flag is only due to the global admit=3 and allowed external_body calls, both out of scope. Now I'm ready to write the turn_001_driver.md review.
+[RESULT ✓] bash: LOG=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_14-25-15.log
+=== errors/warnings ===
+=== verification summary line ===
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); 
+[RESULT ✓] bash: === tail of verus result ===
+---raw tail---
+    --> src/kernel/src/mm/phys/frame.rs:1187:38
+     |
+1187 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+     |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+    --> src/kernel/src/mm/phys/frame.rs:1186:13
+     |
+1186 | ...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified|er
+
+[THINKING] The cached verification result isn't giving me a clean count, so I need to run a fresh verification specifically on the memory manager module to get an accurate error tally.
