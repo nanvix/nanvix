@@ -140,3 +140,38 @@ wrapper, which is impossible without changing the fixed `pub(super)` exec signat
 - `<PageAligned<T> as Address>::into_raw_value` and `<PageAligned<T> as Deref>::deref` —
   trusted contracts for the not-yet-verified `hal::mem` address layer. Superseded (removed)
   when that layer is verified. Listed in `tcb-allowed.md`.
+
+---
+
+## Fresh reproduction (cheating-fix pass, 2026-06-15) — `lemma_kernel_alloc_one`
+
+Re-validated the "false for the implementation" claim with a live Verus run. Removing the
+lemma call from `alloc_kernel_frame` (manager.rs:398) and re-verifying yields:
+
+```
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.rs:376:17   (the `Ok(kf)` arm)
+   --> at the end of `pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error>`
+verification results:: 17 verified, 1 errors
+```
+
+The body never mutates `self` (the frame comes from the **global** `frame::alloc()`, not the
+`self.upool` that backs `self@`), so `final(self)@ == old(self)@.alloc_one(kf@)` is unprovable —
+the admit stands in for `old(self)@ == old(self)@.alloc_one(addr)`. File restored; manager
+re-verifies `18 verified, 0 errors`.
+
+**Confirmed sound-elimination dead-ends** (none acceptable under the skills):
+- admit/assume → forbidden by the cheating gate.
+- `external_body`/`trusted` *proof* fn → forbidden by the request.
+- relocate to `external_body` *exec* wrapper → would trust a provably-false / mutually
+  contradictory contract (`lemma_user_bulk_err_restored` directly contradicts a proven loop
+  invariant), letting the module prove `false`. Unsound.
+- correct the manager external-top specs → unlisted functions; and no locally-correct spec
+  exists (`== old` falsely claims the watermark free-count is unchanged after a kernel alloc).
+- the real fix — make `phys_view()` stateful via a `tracked` ghost token threaded through exec
+  signatures/structs — is forbidden by the `ast-consistency` (source-integrity) skill.
+
+**Hand-off:** requires a human-reviewed spec-design decision to introduce a ghost-token model
+of the global frame partition (the §8 attachment in `view_design.md`). Until then these 4
+admits are irreducible. This is a crate-global gate item owned by the `phys-manager` phase, not
+`phys-kframe` (which is CLEAN).
