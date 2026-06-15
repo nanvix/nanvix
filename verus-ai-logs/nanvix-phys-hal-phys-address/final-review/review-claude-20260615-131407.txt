@@ -777,3 +777,144 @@ Turn 7
 [TOOL] report_intent: Spot-checking module verification
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -40
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_13-18-43
+
+    Finished `dev` profile ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -iE "verification results|errors|verified|fail" verus-ai-logs/verify-kernel/verus-logs
+[RESULT ✓] bash: === cheating detail (phys-relevant) ===
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -niE "verification|error|warning" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06
+[RESULT ✓] bash: === count external_body in phys module files ===
+src/kernel/src/hal/mem/types/address/phys.spec.rs:15:// the existing `sys`/`arch` `assume_specification` boundaries the codebase
+src/kernel/src/hal/mem/types/address/phys.spec.rs:36:// `assume_specification`s below. Its internals are not modeled (`ext...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running independent checks
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo 'branch:' && git --no-pager branch --show-current && echo '--- ast summary ---' && pyt
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: branch:
+verus-ai/hal-phys-address
+--- ast summary ---
+python3: can't open file '/home/ruize/nanvix-phy/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 21 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git log --oneline --all -- src/kernel/src/hal/mem/types/address/phys.rs | head; echo "=== f
+[RESULT ✓] bash: 732490ead [verus] verify PASS: kernel::hal::mem::types::address::phys (4 verified, 0 errors)
+ff936d39d [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::phys (4 verified, 0 errors, external_body=25 cfg_gate=10)
+87bab5898 [verus] verify FAIL: kernel::hal::mem::types::address:...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/ast_consistency.py
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo 'admit_count='$(rg -n "\b(admit\s*!?\s*\()" src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] bash: admit_count=0
+assume_count=0
+external_body_count=2
+assume_specification_count=6
+cfg_verus_keep_ghost_occurrences=3
+cfg_lines:
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+30:#[cfg(verus_keep_ghost)]
+latest_verify_logs:
+verus_2026-06-15_13-18-43.log
+cheating-detail.txt
+verus_2026-06-15_13-1...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git show 654e9211f~1:src/kernel/src/hal/mem/types/address/phys.rs 2>/dev/null | sed -n '60,
+[RESULT ✓] bash: ///
+    /// # Parameters
+    ///
+    /// - `addr`: The memory-mapped I/O address.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, a physical address associated with the given memory-mapped I/O address is
+    /// returned. Upon failure, an error is returned instead.
+    ///
+    /// # Sa...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Deriving consistency evidence
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo '--- precise guardrail matches ---'; rg -n "#\[verifier::external_body\]|assume_specific
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: --- precise guardrail matches ---
+src/kernel/src/hal/mem/types/address/phys.spec.rs:39:#[verifier::external_body]
+src/kernel/src/hal/mem/types/address/phys.spec.rs:79:pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
+src/kernel/src/hal/mem/types/address/phys.spec.rs:88:pub assum...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] glob: **/ast_consistency.py
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager branch -a && echo '--- latest verify log line count ---' && wc -l verus-ai-l
+[RESULT ✓] bash: dev
+  exp
+  verus-ai/bump-allocator
+  verus-ai/hal-page-aligned
+* verus-ai/hal-phys-address
+  verus-ai/phys-frame
+  verus-ai/phys-kframe
+  verus-ai/phys-manager
+  verus-ai/phys-mod
+  verus-ai/phys-upool
+  remotes/origin/HEAD -> origin/dev
+  remotes/origin/auto/verus-update
+  remotes/origin/bitmap-in...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo '--- verify log content ---' && cat verus-ai-logs/verify-kernel/verus-logs/verus_2026-
+[RESULT ✓] bash: --- verify log content ---
+Timestamp: 2026-06-15_13-18-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=8
+
+--- Full output --...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Validating verifier status
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::phys
+[RESULT ✓] report_intent: Intent logged
