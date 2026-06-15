@@ -344,3 +344,553 @@ See: `verus-ai-logs/nanvix-phys-phys-kframe/find_callers_output.md`
 
 Module summary: 6 exec functions (all pub / trait-pub), 0 private, 1 type
 (`KernelFrame`, 17...
+[RESULT ✓] bash: - manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:153 lemma_user_bulk_err_restored: admit
+    - manager.rs:104 init: external_body
+    - manager.rs:536 kernel_watermark: external_body
+    - mod.rs:73 book_physical_memory_regions: external_body
+    - mod.rs:103 book_mm...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -i "kframe" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+[THINKING] The kernel verification passes overall, though there's some global cheating detected across other modules like the manager and frame utilities that fall outside the scope. For kframe itself, the in-scope functions are clean, so the reviewers should focus their attention specifically on kframe's contributions.
+
+Now I need to check the detailed cheating breakdown to see exactly what kframe is responsible for.
+[RESULT ✓] bash: === full detail ===
+    - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passes (exit 0); kframe in-scope functions contribute zero admit/external_body/cfg_gate. Now launching the two independent review sub-agents in parallel.
+[TOOL] report_intent: Launching two review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'mode': 'background',
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'mode': 'background', 
+
+[THINKING] Looking at the kframe.rs analysis, it's clean across the board—no admit, external_body, or cfg_gate entries in the detail list. The assume_specification for KernelFrame::map_frame doesn't register as an "assume" in the detector's count, which is good, and it's properly listed in the TCB anyway.
+
+The cfg_gate count of 12 doesn't include kframe—I can see line 203 has a cfg attribute around an error! log, but that's allowed under the checklist since logging is permitted in cfg-gated code. Now I'm ready to write comprehensive sub-agent prompts for a parallel review, with each agent producing their own detailed analysis file that I'll consolidate afterward.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review sub-agents are running in parallel (claude-opus-4.8 and gpt-5.3-codex). I'll wait for them to complete, then consolidate into the final review.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'wait': True, 'timeout': 180}
+I'll start by reading the in-scope files, reference docs, and skills, then run the verification tools.
+[TOOL] report_intent: Reading in-scope files and docs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame type.
+5. //!
+6. //! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+7. //! It provides `Deref`/`DerefMut` for direct kernel access (identity-mapped) a...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. /// Abstract view of a kernel frame: the physical address of the owned frame.
+4. impl View for KernelFrame {
+5.     type V = int;
+6. 
+7.     closed spec fn view(&self) -> int {
+8.         self.base@
+9.     }
+10. }
+11. 
+12. impl KernelFrame {
+13.     /// Well-formedness of a kernel...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the reference docs and TCB allow-list.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::kframe`
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-kframe/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate only).
+6. 
+7. Module summary: 6 exec functions (all pub / trait-pub), 0 private, 1 ty...
+[RESULT ✓] view: 1. # View Design: `mm::phys::kframe` (`KernelFrame`)
+2. 
+3. ## Abstract Resource
+4. 
+5. `KernelFrame` is an **owning handle to exactly one page-sized physical frame**.
+6. To the outside world it is a single value: *which physical frame this handle
+7. owns*. The only caller-observable abstract state ...
+[RESULT ✓] view: 1. # Bugs — `mm::phys::kframe`
+2. 
+3. No correctness/logic bugs found in the in-scope functions
+4. (`KernelFrame::new`, `KernelFrame::base`, `KernelFrame::drop`).
+5. 
+6. ## Build-hygiene fix (auto-fixed) — duplicate import (kframe.rs)
+7. 
+8. **What**: `kframe.rs` imported `vstd::prelude::*` twice — ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing kframe proofs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-completeness/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/review-methodology/SKILL.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Kernel frame type.
+5. //!
+6. //! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+7. //! It provides `Deref`/`DerefMut` for direct kernel access (identity-mapped) a...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. /// Abstract view of a kernel frame: the physical address of the owned frame.
+4. impl View for KernelFrame {
+5.     type V = int;
+6. 
+7.     closed spec fn view(&self) -> int {
+8.         self.base@
+9.     }
+10. }
+11. 
+12. impl KernelFrame {
+13.     /// Well-formedness of a kernel...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::kframe`
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-kframe/find_callers_output.md`
+5. (generated by `scripts/find_callers_lsp.py`, rust-analyzer LSP, intra-crate only).
+6. 
+7. Module summary: 6 exec functions (all pub / trait-pub), 0 private, 1 ty...
+[RESULT ✓] view: 1. # View Design: `mm::phys::kframe` (`KernelFrame`)
+2. 
+3. ## Abstract Resource
+4. 
+5. `KernelFrame` is an **owning handle to exactly one page-sized physical frame**.
+6. To the outside world it is a single value: *which physical frame this handle
+7. owns*. The only caller-observable abstract state ...
+[RESULT ✓] view: 1. # Bugs — `mm::phys::kframe`
+2. 
+3. No correctness/logic bugs found in the in-scope functions
+4. (`KernelFrame::new`, `KernelFrame::base`, `KernelFrame::drop`).
+5. 
+6. ## Build-hygiene fix (auto-fixed) — duplicate import (kframe.rs)
+7. 
+8. **What**: `kframe.rs` imported `vstd::prelude::*` twice — ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: review-methodology
+3. description: "Reviewer mental model: independent, skeptical, hands-on, strict. Applies to all pipeline phases."
+4. ---
+5. 
+6. # Verus Verification Review Methodology
+7. 
+8. ## Reviewer Mental Model
+9. 
+10. - **Independent.** Form your own judgment. Do not trust ...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the relevant skills.
+[TOOL] bash: for s in spec-design verus-constraints ast-consistency spec-drift-check spec-completeness bug-reporting review-methodolo
+[RESULT ✓] bash: Output too large to read at once (50.3 KB). Saved to: /tmp/copilot-tool-output-1781498913563-xakkj2.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; for s in spec-design verus-constraints ast-consistency spec-drift-chec
+[RESULT ✓] bash: ===== spec-design (467 lines) =====
+===== verus-constraints (239 lines) =====
+===== ast-consistency (84 lines) =====
+===== spec-drift-check (133 lines) =====
+bash: line 1: spec-completeness/SKILL.md: No such file or directory
+===== spec-completeness ( lines) =====
+===== bug-reporting (89 lines) ====...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; ls; echo "---spec-completeness---"; ls spec-completeness 2>/dev/null |
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/review-methodology/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+---spec-completeness---
+<sh...
+[RESULT ✓] view: 1. ---
+2. name: review-methodology
+3. description: "Reviewer mental model: independent, skeptical, hands-on, strict. Applies to all pipeline phases."
+4. ---
+5. 
+6. # Verus Verification Review Methodology
+7. 
+8. ## Reviewer Mental Model
+9. 
+10. - **Independent.** Form your own judgment. Do not trust ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running review checks
+[TOOL] glob: */SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --help
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help
+[TOOL] rg: VERUS REWRITE|admit\(|assume\(|assume_specification|external_body|cfg\(not\(verus_keep_ghost\)\)
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] glob: No files matched the pattern.
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level makes success
+224.    impossible?
+225. 3. **Liveness** — if the precondit...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:31:// `Result<(), Error>`). This trusts strictly less than the previous `external_body` on `new`: the
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:34:pub assume_specification[ KernelFrame::ma...
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-sitter AST ...
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/m
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/s
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs-bottom-up/src/kern
+[TOOL] rg: KernelFrame::new|KernelFrame::base|KernelFrame::drop|\.base\(\)|\.and_then\(KernelFrame::new\)|KernelFrame::new\(
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/kpage.rs
+[TOOL] rg: admit\(|assume\(|external_body|assume_specification|cfg\(not\(verus_keep_ghost\)\)
+[RESULT ✓] view: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+[RESULT ✓] view: 1. #!/usr/bin/env python3
+2. 
+3. """
+4. Function coverage analysis for Verus verified code.
+5. 
+6. Compares exec functions between an original Rust source file and a Verus
+7. exec file, classifying each function as MISSING, EXTRA, MATCHED, or
+8. SPEC/PROOF ONLY.  Extra functions are further annotate...
+[RESULT ✓] view: 340.         // overflow path it is now evaluated unconditionally (one extra O(1) bitmap read).
+341.         let free: usize = frame::free_count();
+342.         let watermark_threshold: usize = kernel_watermark()
+343.             .checked_add(count)
+344.             .ok_or_else(|| {
+345.            ...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs:4
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs:2
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/kstack.rs:100:            (kpages[0].base().into_raw_value() + Exception::CONTEXT_HW_SIZE) as u32;
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/kstack.rs:157:        PageAligned::from_raw_value(self.kpages[0].base().into_raw_value(...
+[RESULT ✓] bash: ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs' exists on disk, but not in '3b7e25cc23aac07166334c70d3847bdf17635de0'
+<shellId: 16 completed with exit code 2>
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs`
+- **Verus file:** `/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src`
+- **Parser:** ...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 17 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me run the helper scripts and verification. Let me start with git state and the scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git branch --show-current; git log --oneline -8; echo "=== git status ==="; g
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+3b0085e35 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=7 external_body=15 cfg_gate=12)
+7dccbb7b0 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=7 external_body=15 cfg_gate=12)
+227c87...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== fn_coverage ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/kstack.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git --no-pager show 3b7e25cc23aac07166334c70d3847bdf17635de0:src/kernel/src
+[RESULT ✓] view: 300. pub fn set_active_guard(threshold: u32) {
+301.     EXCP_STACK_GUARD.store(threshold, core::sync::atomic::Ordering::Release);
+302. }
+303. 
+304. //==================================================================================================
+305. // Trait Implementations
+306. //==============...
+[RESULT ✓] bash: e
+            })?;
+        crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
+            error!("failed to identity-map frame: {:?}", e);
+            e
+        })?;
+
+        Ok(Self { base })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base address of the target kernel...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+KernelFrame::base                        MATCH                                
+KernelFrame::clear                       MATCH   ...
+[RESULT ✓] bash: ⚠️  2 mismatched, 1 extra (4 functions match)
+<shellId: 22 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git log --oneline -- src/kernel/src/mm/phys/kframe.rs | head -20
+[RESULT ✓] bash: a2b7376d8 [verus] verify PASS: kernel::mm::phys::kframe (3 verified, 0 errors)
+53e0ff811 [verus] verify FAIL: kernel::mm::phys::kframe (0 verified, compilation/setup error (verus did not run))
+ab7ba60b2 [verus] verify FAIL: kernel::mm::phys::kframe (0 verified, compilation/setup error (verus did not...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Verifying mm::phys module
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys
+[RESULT ✓] report_intent: Intent logged
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== ORIGINAL kframe.rs at 114fce7df ==="; git show 114fce7df:src/kernel
+[RESULT ✓] bash: === ORIGINAL kframe.rs at 114fce7df ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//! Kernel frame type.
+//!
+//! A [`KernelFrame`] represents a single page-sized physical frame allocated for kernel use.
+//! It provides `Deref`/`DerefMut` for direct kernel access ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
