@@ -1,4 +1,4 @@
-# Unverified exec functions: 525/525
+# Unverified exec functions: 523/525
   from_ptr
   from_ptr
   do_checksum
@@ -448,8 +448,6 @@
   from_raw_value
   into_raw_value
   is_set
-  from_raw_value
-  into_raw_value
   from_raw_value
   into_raw_value
   from_raw_value

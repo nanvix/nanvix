@@ -1,7 +1,5 @@
 verus! {
 
-use crate::mem;
-
 // ── Frame size / representability bound ───────────────────────────────────────
 //
 // `FrameNumber` is, to its callers, the abstract identity of one physical page

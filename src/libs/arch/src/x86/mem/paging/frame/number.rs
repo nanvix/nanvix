@@ -39,6 +39,32 @@ impl FrameNumber {
     ///
     /// # Description
     ///
+    /// Converts a [`FrameNumber`] into a raw value.
+    ///
+    /// # Returns
+    ///
+    /// The raw value of the target [`FrameNumber`].
+    ///
+    // Pure newtype-identity projection: the returned raw value equals the
+    // abstract frame index (`result as int == self@`). The type invariant
+    // additionally bounds it to `0 ..= spec_max_frame_number()`, which callers
+    // (`pde.rs`/`pte.rs` `<< FRAME_SHIFT`, `phys.rs::from_number` `* FRAME_SIZE`,
+    // `frame.rs` refcount indexing) rely on for their no-overflow proofs.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+            0 <= result as int <= spec_max_frame_number(),
+    )]
+    pub fn into_raw_value(self) -> usize {
+        self.0
+    }
+}
+
+#[verus_verify]
+impl FrameNumber {
+    ///
+    /// # Description
+    ///
     /// Constructs a [`FrameNumber`].
     ///
     /// # Parameters
@@ -50,25 +76,23 @@ impl FrameNumber {
     /// - `Some(`[`FrameNumber`]`)`: Upon success.
     /// - `None`: If the value is greater than [`Self::MAX`].
     ///
+    // Validating constructor. `Some` is returned **iff** `value` is a
+    // representable frame index (`value <= spec_max_frame_number()`), which is
+    // the only failure signal (`None` otherwise — bidirectional). On success the
+    // index is preserved exactly (`f@ == value as int`) and the result is
+    // well-formed (`f.inv()`). Together with `into_raw_value` this yields the
+    // round-trip identity `from_raw_value(v).unwrap().into_raw_value() == v`.
+    #[verus_spec(result =>
+        ensures
+            (result is Some) <==> (value as int <= spec_max_frame_number()),
+            result matches Some(f) ==> f@ == value as int && f.inv(),
+    )]
     pub fn from_raw_value(value: usize) -> Option<Self> {
         if value > Self::MAX {
             return None;
         }
 
         Some(Self(value))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Converts a [`FrameNumber`] into a raw value.
-    ///
-    /// # Returns
-    ///
-    /// The raw value of the target [`FrameNumber`].
-    ///
-    pub fn into_raw_value(self) -> usize {
-        self.0
     }
 }
 

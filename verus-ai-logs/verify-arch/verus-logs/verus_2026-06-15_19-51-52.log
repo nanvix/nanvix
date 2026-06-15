@@ -1,0 +1,26 @@
+Timestamp: 2026-06-15_19-51-52
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error: type_invariant: expected parameter to be a datatype declared in this crate
+  --> src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:53:5
+   |
+53 |     pub open spec fn inv(&self) -> bool {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `arch` (lib) due to 1 previous error
