@@ -1247,3 +1247,43 @@ frame.rs/frame.proof.rs are already committed in the verified state (7 external_
 Turn 66
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "frame.rs.*exte
+[RESULT ✓] bash: - frame.rs:1242 instance: external_body
+    - frame.rs:1269 init: external_body
+    - frame.rs:1325 alloc: external_body
+    - frame.rs:1355 alloc_contiguous: external_body
+    - frame.rs:1403 free: external_body
+    - frame.rs:1445 book: external_body
+    - frame.rs:1466 alloc_range: external_body
+...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating-elimination work on **phys-frame** (`frame.rs`):
+
+**Result: PASS** — no non-allowed cheating remains in scope.
+
+**Eliminated (1):** `free_count` — removed `external_body`, verified the body with a new proof lemma `lemma_free_count_eq` (frame.proof.rs). It proves `free_frames.len() == num_bits − usage()` via a set-cardinality argument using vstd (`lemma_int_range`, `lemma_set_disjoint_lens`, `lemma_map_size`, injectivity of `frame_addr_of` by `nonlinear_arith`), with finiteness recovered through the bitmap crate's public `lemma_set_bits_finite`. No `assume`/`admit`.
+
+**Counts (frame.rs, before → after):** external_body 8 → 7; admit 0 → 0; assume 0 → 0; assume_specification 2 → 2; cfg-gated exec 23 → 23.
+
+**Remaining 7 external_body — all in `tcb-allowed.md`, so not blockers:**
+- `instance` (trusted singleton materializer), `init` (skip target).
+- `alloc`/`book`/`alloc_range`: `Ok` postconditions reference **post-mutation** `phys_view()`, which `instance()` only pins pre-call (§8 ghost-token deferral).
+- `alloc_contiguous`: one-past-the-end address bound not derivable from the current invariant.
+- `free`: `no_unwind`/`opens_invariants none` incompatible with the panicking `instance()`.
+
+Each blocker was reproduced empirically (removed `external_body`, captured the exact Verus error) and recorded in `verification_todo.md`. They require proving-phase ghost-token infrastructure or do-not-modify spec changes, which can't be added without altering fixed exec signatures.
+
+**Verification:** `make verify-kernel` → 115 verified, 0 errors; `make verify` → all crates pass, no regressions. **AST consistency: 0 mismatches** (the one exec touch in `free_count` is a pre-approved intermediate-value pattern; checker reports MATCH).
+
+Reports written to `verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md` and `verus-ai-logs/nanvix-phys-phys-frame/verification_todo.md`.
+
+[THINKING] The external_body list in frame.rs is now finalized at exactly 7 functions—instance, init, alloc, alloc_contiguous, free, book, and alloc_range—all verified as tcb-allowed with no blockers. The free_count function has been successfully eliminated, the verification passes with zero errors, and the AST consistency check shows no mismatches across the full kernel.
+
+
+=== Session End ===
+Session: 14b90c09-2f67-4587-8773-6218c4a98c78
+Duration: 1102.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/prover-claude-20260615-101007.jsonl
