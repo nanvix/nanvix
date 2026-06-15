@@ -448,3 +448,15 @@ Verification passed (exit 0) and no admits exist in this module. The flagged adm
 [THINKING] None of the admits or external_body references are in the aligned/page module, so I need to figure out what the "cfg-gated exec code: 1" is referring to. It's likely the `#[cfg(verus_keep_ghost)]` include directives, which are necessary includes that should be allowed. The cheating check might be flagging these conditional includes, so I should look at how other verified modules handle similar patterns.
 
 The real concern is whether `from_address` actually verifies with its current empty proof body. The verification exited with code 0 and shows as cached, which suggests it passed, but I need to confirm it's not just using a cached result from before. The coverage report shows only 1 out of 18 exec functions has a contract (that's `from_address`), and the exit code 0 indicates verification succeeded. But I'm uncertain if this is cached from a previous run, so I should force a re-verification to be sure. The cfg-gate warning is also concerning — I need to check the verus log more carefully to understand what's actually triggering it.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module kernel::hal::mem::types::address::aligned::page --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+  Module    : hal::mem::types::address::aligned::page
+note: verifying module hal::mem::types::address::...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+`from_address` verifies (2 verified, 0 errors). Now let me check the per-module cfg-gate warning to ensure it's not something I need to address.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel MODULE="kernel::hal::
+
+[THINKING] The verification results show 2 passing checks for `from_address` and the view spec function, with no admits in this module. However, there's a global admit count of 16 across all modules, and the per-module analysis flagged a cfg-gated exec code warning that I need to investigate—whether it's a genuine issue or just part of the existing infrastructure. Let me dig into what triggered that flag.
