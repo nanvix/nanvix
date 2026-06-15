@@ -262,3 +262,18 @@ Module: arch-frame-number
 [2026-06-15 20:40:38]   ↳ dialogue-reviewer-t1 done in 3m41s (exit=0)
 [2026-06-15 20:40:39] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-15 20:40:39] [DIALOGUE] final-review ended after 1 turns: RESOLVED (221s)
+[2026-06-15 20:40:39] [FINAL REVIEW] Cheating report: No cheating detected
+[2026-06-15 20:40:39] [FINAL REVIEW] Done (21m11s)
+
+============================================================
+PIPELINE COMPLETE: arch-frame-number
+  ✅ caller-analysis           no-review                 1m45s
+  ✅ view-design               no-review                 3m07s
+  ✅ specification             dialogue-RESOLVED        32m44s (2 dialogue turns)
+  ✅ proving                   dialogue-RESOLVED         4m29s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         3m51s (1 dialogue turns)
+  ✅ final-review              PASS                     21m11s
+  ──────────────────────────────────────────────────────────
+  Total: 1h07m35s
+============================================================
+[2026-06-15 20:40:39] [USAGE] Summary: 12 calls, 0 tokens, 1h07m08s total → /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-arch-frame-number/usage_summary.json

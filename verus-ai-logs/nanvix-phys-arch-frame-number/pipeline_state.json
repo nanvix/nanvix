@@ -66,10 +66,17 @@
       "review_file": null,
       "duration_s": 231.4,
       "review_rounds": 1
+    },
+    "final-review": {
+      "verdict": "PASS",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": true,
+      "duration_s": 1271.7
     }
   },
   "prover_session_id": "f34ec9ca-2650-464b-a341-dae154a8e082",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai/sys-address-mod",
   "verus_branch": "verus-ai/arch-frame-number",
   "phase_boundary_shas": {
