@@ -13,4 +13,20 @@ impl KernelFrame {
     }
 }
 
+// Dependency contract for the not-yet-verified HAL address layer. `KernelFrame::new`'s body
+// constructs the `PageAligned<PhysicalAddress>` it identity-maps via this trait-impl constructor.
+// The `Address for PageAligned<T>` impl lives outside `verus!`, so the method is given a trusted
+// external specification here so `new`'s body translates. Mirror of the `into_raw_value`/`deref`
+// `assume_specification`s in `frame.spec.rs`; it is superseded and removed when the HAL address
+// `aligned::page` layer's `Address` impl is verified.
+pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::from_raw_value ](
+    raw_addr: usize,
+) -> (result: Result<crate::hal::mem::PageAligned<T>, ::sys::error::Error>)
+    ensures
+        match result {
+            Ok(r) => r@ == raw_addr as int && r.inv(),
+            Err(_) => true,
+        },
+;
+
 } // verus!

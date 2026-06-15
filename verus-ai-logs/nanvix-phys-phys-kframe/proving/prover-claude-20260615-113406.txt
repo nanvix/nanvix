@@ -277,3 +277,130 @@ I can restructure the `map_err` closures to use a statement-level `#[cfg(not(ver
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 15
+    ⚠️  admit: 4
+    ⚠️  cfg-gated exec code: 12
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame.rs:1338 alloc: external_body
+    - frame.rs:1368 alloc_co...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "error\[\|error:" verus-ai-logs/verify-kernel/verus-logs/verus_2026-0
+[RESULT ✓] bash: 20:error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+26:   = help: The following declaration may resolve this error:
+27:           pub assume...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+`PageAligned::from_raw_value` needs a Verus spec to translate. Let me check existing PageAligned specs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "PageAligned" src/kernel/src/mm/phys/frame.spec.rs; echo "===aligned
+
+[THINKING] I'm realizing that `PageAligned::from_raw_value` isn't covered by the existing assume_specifications listed in tcb-allowed.md, even though other PageAligned methods like `into_raw_value` and `deref` are already specified. I need to check what specifications are already defined for PageAligned in frame.spec.rs to understand what's allowed.
+
+Actually, the core issue is that `from_raw_value` is being called but has no Verus spec, so the code won't translate. For the `new` function's postcondition, I don't actually need the full postcondition from `from_raw_value` — I just need to prove that the resulting frame is page-aligned, which follows from the requires that `base` is already page-aligned. So I need to provide a minimal assume_specification for `PageAligned::from_raw_value` that captures what it guarantees: it succeeds only when the input is page-aligned.
+[RESULT ✓] bash: 31:pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::sys::mm::Address>::into_raw_value ](
+32:    a: crate::hal::mem::PageAligned<T>,
+38:pub assume_specification<T: ::sys::mm::Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
+39:    a: &c...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I'm examining the `page.rs` file more closely, particularly the `Address` trait implementation for `PageAligned` and checking the `from_address` method with its verus_spec annotation around those lines.
+[RESULT ✓] view: 30. 
+31. //==================================================================================================
+32. // Structures
+33. //==================================================================================================
+34. 
+35. #[verus_verify(external_derive)]
+36. #[derive(Clone, Copy)...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "into_raw_value\|verus_spec\|spec_aligned" src/kernel/src/hal/mem/typ
+
+[THINKING] The `from_raw_value` method is defined in an impl block outside of `verus!`, so Verus treats it as external code and I need to add an assume_specification for it, similar to the existing one for `into_raw_value` in frame.spec.rs. However, since assume_specification only targets individual methods and there's already an assume_specification for this trait impl, I need to figure out how to add another one without conflicts.
+
+For the spec itself, I'm thinking about what `from_raw_value` actually needs to guarantee. The honest spec would mirror the implementation: it calls `T::from_raw_value(raw_addr)?` and wraps the result in `Self::from_address`. On the Ok path, the result should have its address field equal to the raw input, and it should satisfy the invariant. On the Err path, it fails when the address isn't properly aligned. For `new`'s purposes, I just need the method to be translatable, but to be sound I should specify that on Ok, the returned PageAligned has the right address value and satisfies its invariant, while on Err it means the address wasn't aligned.
+
+Now the question is whether I should add an assume_specification here or reconsider the approach entirely. Since this is a cross-module dependency and the address alignment layer isn't yet verified for the trait implementation, adding an assume_specification in the spec file and recording it in tcb-allowed.md is the standard pattern used throughout the codebase. That's cleaner than trying to restructure the body. The key insight is that assume_specification doesn't weaken `new`'s contract—it just provides a trusted contract for the callee, which is exactly what the tcb pattern is designed for.
+
+But wait, I need to check the tcb-allowed.md entry for KernelFrame::new. It says the function wraps a FrameAddress and should be verified in-body when kframe is verified, not left as external_body. That means I need to make the body translate, which requires specs for all its callees: `PageAligned::from_raw_value`, `FrameAddress::into_raw_value`, and `identity_map_page`. I know `identity_map_page` has a full verus spec, and the tcb lists `FrameAddress::into_raw_value` as ensuring the result equals the raw value. Let me verify that into_raw_value actually has a spec defined.
+[RESULT ✓] bash: 92:    #[verus_spec(result =>
+113:    // `PageAligned::into_raw_value` dependency contract.
+114:    #[verus_spec(result =>
+118:    pub fn into_raw_value(self) -> usize {
+119:        self.0.into_raw_value()
+125:    #[verus_spec(result =>
+139:    #[verus_spec(result =>
+155:        write!(f, "FrameAddr...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/frame.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/address/aligned/page.spec.rs
+[RESULT ✓] view: 113.     // `PageAligned::into_raw_value` dependency contract.
+114.     #[verus_spec(result =>
+115.         ensures
+116.             result as int == self@,
+117.     )]
+118.     pub fn into_raw_value(self) -> usize {
+119.         self.0.into_raw_value()
+120.     }
+121. 
+122.     // Constructs a fram...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. 
+5. // Success condition for the validating constructor, stated purely on the abstract
+6. // address value. `from_address` validates, it does NOT normalize: success requires the
+7. // *input* to already be page-aligned.
+8. pub open spec fn s...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now I'll add an `assume_specification` for `PageAligned::from_raw_value` in kframe.spec.rs. Let me view the existing pattern in frame.spec.rs.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.spec.rs
+
+[THINKING] I need to add an assume_specification for `PageAligned::<T>::from_raw_value`, using the existing `into_raw_value` specification in frame.spec.rs as a template.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. // =================================================================================================
+12. // Dependency contracts for...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+I'll add an `assume_specification` for `PageAligned::from_raw_value` in kframe.spec.rs (cross-module dependency, same pattern as the existing `into_raw_value` one).
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs
+
+[THINKING] I need to figure out where to add the `from_raw_value` assume_specification — it should go in frame.spec.rs with the others since they're all in the same module, but the task constraints say I can only modify kframe files, so I need to check if that restriction applies here or if I should add it to kframe.spec.rs instead.
+
+Looking at the actual spec I need to write, I'm modeling it after the existing `into_raw_value` spec but for the `from_raw_value` method which returns a Result. The postcondition should ensure that on success, the returned value matches the input raw address and satisfies the invariant, though I'm realizing I might not actually need that constraint depending on how the value gets used downstream. The `KernelFrame::inv` in kframe.spec.rs isn't on the do-not-modify list, so I can safely add the assume_specification there without changing the existing invariant definition.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
