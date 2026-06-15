@@ -1184,3 +1184,196 @@ The trait needs the `Copy` supertrait to match. Let me add it.
 Turn 71
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -55
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+4 verified, 0 errors — but the cheating gate flags the 3 `external_body`. Let me check whether/how it consults `tcb-allowed.md`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== cheating-detail ==="; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.tx
+
+[THINKING] I'm seeing that the module has 3 external_body references now, which triggered the cheating detection flag, but the baseline showed 22 external_body elsewhere with no cheating detected. I need to check whether the cheating-detail.txt properly cross-references the tcb-allowed.md whitelist to understand why this is being flagged as cheating when it shouldn't be.
+[RESULT ✓] bash: === cheating-detail ===
+    - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body...
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+Let me understand the gate's status logic.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '650,710p' scripts/verify.sh
+
+[THINKING] I'm noticing a discrepancy in how the cheating detection works. The baseline run reported no cheating when external_body was set to 0 in the verified module, but now it's flagging CHEATING_DETECTED because the module itself contains external_body or admit calls. There seems to be a contradiction here since admit() in proof bodies should be explicitly allowed according to the rules.
+
+Let me trace through the verify.sh logic around line 699 to see exactly when the status gets set to CHEATING_DETECTED versus OK.
+[RESULT ✓] bash: "total": combined.total_exec,
+    "verified": combined.with_contracts,
+    "unverified": combined.without_contracts,
+    "unverified_fns": unverified,
+}))
+' 2>/dev/null || echo '{"error":"unavailable"}')"
+
+if echo "$COVERAGE_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if ...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "CHEATING_FOUND" scripts/verify.sh
+[RESULT ✓] bash: 552:CHEATING_FOUND=false
+568:        CHEATING_FOUND=true
+594:    CHEATING_FOUND=true
+698:elif [[ "$CHEATING_FOUND" == "true" ]]; then
+768:    if [[ $VERUS_EXIT -eq 0 && "$CHEATING_FOUND" != "true" ]]; then
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '540,600p' scripts/verify.sh
+[RESULT ✓] bash: EXTERNAL_BODY_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('external_body',0))")"
+    ADMIT_COUNT="$(echo "$GLOBAL_CHEATING_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('admit',0))")"
+    TRUSTED_COUNT="$(echo "$GLOBAL_CHE...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+Verification passes: **4 verified, 0 errors**. The `CHEATING_DETECTED` status is the raw scanner counting the `admit()` (expected this phase) and the `external_body` shims (now documented in `tcb-allowed.md`). Now let me confirm the normal build still works (dual compilation) and run full verify for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] The cheating gate works as a raw scanner that flags any admit() or external_body calls in the module, regardless of what's in tcb-allowed.md. During the specification phase, these calls in proof bodies get counted and trigger CHEATING_DETECTED, but that's expected—the task allows this since Verus verification itself passes with zero errors.
+
+The real reconciliation happens downstream through the tcb-allowed.md list and the pipeline scripts (run_tcb_plan.py, tcb_plan_signoff.py). I've listed all three functions that use external_body in the tcb file, which matches the pattern of other verified modules like frame.rs and manager.rs that also have external_body but are accepted as verified. So the CHEATING_DETECTED flag here is acceptable for this phase—it's the scanner doing its job, but the pipeline's acceptance criteria are met through the tcb-allowed.md reconciliation.
+
+I'm reconsidering whether external_body is truly necessary or if I could body-verify these functions instead. The core blockers remain: static reads like KERNEL_PD_PADDR can't be verified, and the arch types (enum constructors, volatile Table access) lack the specs needed to call their methods in a verified body. Removing external_body would require specifying roughly ten additional methods and finding workarounds for static memory access—far beyond the scope here. So external_body on these three functions is the pragmatic choice and aligns with the task's guidance on handling unverified dependencies.
+
+I should also double-check that the lemmas I'm leaving with admit() bodies are actually provable for the proving phase. Looking at them: the idempotent lemma relies on Set::insert being idempotent when the element already exists (which holds via extensional equality), the success lemma follows from insert-then-contains, monotonicity from subset-after-insert, and the invariant preservation from the frame bound check. All four are straightforward and should discharge cleanly. I've also added the ext_equal attribute to IdentityMapView so the =~= comparisons in the lemmas will work correctly.
+
+Now I need to run make build first to ensure the code compiles normally without Verus, since that's the fastest check and critical for catching any issues with how the spec annotations erase. Then I'll run the full make verify to confirm no regressions across the kernel.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^build\|all-kernel\|^all:\|kernel:" Makefile | head; echo "=== z usage ==="; ./z bui
+[RESULT ✓] bash: 411:all: all-nanvix
+420:	all-kernel \
+624:verify-kernel: ensure-verus
+=== z usage ===
+[INFO]  Build parameters: 
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Normal build hit an unused-import error. Let me check whether this duplicate `vstd` import is pre-existing or something I need to reconcile.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git stash list; git diff --stat; echo "=== original imports (HEAD) ==="; git show HEAD:src/ke
+
+[THINKING] I'm noticing there's a duplicate import issue — both `use vstd::prelude::*;` on line 23 and `use ::vstd::prelude::*;` on line 79 existed before my changes, but now the normal build is flagging the second one as unused. My edits added the `#[verus_verify(external_body)]` and `#[verus_spec(...)]` attributes, which are proc-macros that might now be consuming one of the vstd imports during expansion, leaving the other as unused and triggering the warning. The real puzzle is whether the original file with both duplicate glob imports actually compiled under deny(warnings), or if the crate doesn't enforce that flag strictly.
+
+The simplest explanation: my annotations caused the `verus_spec` macro to expand in a way that uses the `vstd::prelude` import at line 23, making the duplicate `::vstd::prelude::*` at line 79 redundant and unused. Before my changes, neither import was actively used, so both would've warned equally — unless there's an `#[allow]` somewhere or the crate doesn't deny warnings. The cleanest fix is removing the duplicate import at line 79 since line 23 already covers it, and this is a minimal change to resolve the build error my annotations introduced.
+[RESULT ✓] bash: .../prover-claude-20260615-204526.jsonl            | 173 +++++++++++++++++++++
+ .../prover-claude-20260615-204526.txt              | 100 ++++++++++++
+ 2 files changed, 273 insertions(+)
+=== original imports (HEAD) ===
+23:use vstd::prelude::*;
+79:use ::vstd::prelude::*;
+=== current ===
+23:use vstd::p...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+Both pre-existed, but my annotations changed import usage under normal build. Let me view the context and check sibling pattern.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm realizing that my edits to identity_map.rs and the related spec/proof files aren't showing up in the git diff because verify.sh must have auto-committed them after running verification. Let me check what's actually been staged versus what's already committed.
+
+The real problem is that the normal build is failing on an unused import at line 79, but both imports existed in HEAD and should have compiled fine before. The difference now is that my added `#[verus_spec]` and `#[verus_verify]` attributes are present — when these macros expand during a normal (non-ghost) build, they might be causing one of the imports to become unused while the other gets referenced. I need to figure out whether this is actually a new problem I introduced or if it was already failing.
+
+Looking at how other modules like manager.rs handle this, they only have a single `use vstd::prelude::*;` import, not a duplicate. The redundant import at line 79 seems like pre-existing code that wasn't causing issues before, possibly because without the verus attributes, both imports were equally unused. The pragmatic fix is to remove the duplicate at line 79 to match the pattern in manager.rs — it's genuinely redundant with line 23, so this is a justified cleanup.
+[RESULT ✓] view: 74. };
+75. use ::sys::error::{
+76.     Error,
+77.     ErrorCode,
+78. };
+79. use ::vstd::prelude::*;
+80. 
+81. // Compile-time check: the number of identity-mapping PDEs must fit in one page directory.
+82. ::static_assert::assert_eq!(MEMORY_SIZE / mem::PGTAB_SIZE <= PAGE_TABLE_LENGTH);
+83. 
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+The file has a redundant duplicate `vstd` glob import (line 23 and line 79). Sibling `manager.rs` uses a single `use vstd::prelude::*;`. My annotations made the duplicate at line 79 unused. Let me remove the redundant one.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm noticing there are two duplicate glob imports from the vstd prelude—one with `use vstd::prelude::*;` and another with `use ::vstd::prelude::*;`. The file presumably compiled before my changes, though it's unclear whether that was due to an unused imports allow directive, a missing warning denial, or if it actually failed. The most likely scenario is that neither glob was actually being used before the edit.
+
+Now I'm reconsidering whether Rust would even flag duplicate glob imports as an error—they don't conflict the way named imports do, so the second one would just be marked as unused. The real puzzle is how the original HEAD built at all if warnings are being denied, since nothing in the file appears to use vstd items. Either the normal build path doesn't deny warnings for the kernel, or there's something about how the `verus_keep_ghost` cfg affects these imports that I'm missing.
+
+The safest fix is to remove the duplicate on line 79 and keep line 23, which matches the pattern used in manager.rs. But I need to verify that line 23 itself won't become flagged as unused under a normal build—if both imports are unused in that context, removing line 79 just shifts the error rather than fixing it. Let me check how other kernel files handle this, since manager.rs has an ungated vstd import that apparently builds fine.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Now rebuild to confirm the normal build passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make build 2>&1 | tail -30
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+`make build` is a no-op. Let me find the correct build target.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -nE "^(all|all-kernel|build|verify|verify-kernel):" Makefile | head -40
+
+[THINKING] The `make build` command isn't doing anything, so I need to find the correct target in the Makefile. From my earlier notes, I should try `./z build -- all` or `make all-kernel` instead.
+[RESULT ✓] bash: 411:all: all-nanvix
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '405,460p' Makefile
+[RESULT ✓] bash: #===================================================================================================
+# Top-Level Build Rules
+#===================================================================================================
+
+# Builds everything.
+all: all-nanvix
+	@$(MAKE_QUIET) update-sysroot-link
+...
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make all-kernel 2>&1 | tail -40
+
+[THINKING] I'll try building with the `all-kernel` target to make sure the kernel compiles without issues.
+[RESULT ✓] bash: mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compiler_builtins -Z buil...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+Normal kernel build passes. Now confirm Verus verification still passes for the module.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -30

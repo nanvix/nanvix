@@ -76,7 +76,6 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use ::vstd::prelude::*;
 
 // Compile-time check: the number of identity-mapping PDEs must fit in one page directory.
 ::static_assert::assert_eq!(MEMORY_SIZE / mem::PGTAB_SIZE <= PAGE_TABLE_LENGTH);
