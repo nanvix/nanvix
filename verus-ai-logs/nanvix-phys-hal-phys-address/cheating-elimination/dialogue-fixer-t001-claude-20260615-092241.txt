@@ -163,3 +163,93 @@ Turn 9
 [TOOL] report_intent: Verifying restored bodies
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -30
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=19 admit=14 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/17 exec functions have contracts.
+  Unverified functions:
+    - from...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "error\|fail\|cannot\|overflow\|frame_number\|from_number\|into_frame" verus-
+
+[THINKING] Let me check what error came up.
+[RESULT ✓] bash: 8:1 errors
+22:error: precondition not satisfied
+25:144 |             lemma_from_number_no_overflow(frame);
+30: 19 |         spec_frame_raw_value(frame) <= spec_max_frame_number(),
+31:    |         ------------------------------------------------------ failed precondition
+33:verification results:: 5 ...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The restored `from_number` fails: `lemma_from_number_no_overflow`'s precondition `frame@ <= spec_max_frame_number()` isn't satisfied. The original code called `frame.into_raw_value()` *before* the proof. Let me check why that ordering matters.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "into_raw_value\|spec_max\|FrameNumber" src/libs/arch/src/x86/mem/paging/fr
+
+[THINKING] I'm noticing that `from_number` is failing because a precondition from `lemma_from_number_no_overflow` isn't being satisfied, even though `from_number` itself doesn't have any `requires` clause in its spec. The function only specifies what the result should equal, but there's no explicit precondition stated, which seems to be creating a mismatch with what the lemma expects.
+
+In the original verified code with the `addr_raw` binding, the same lemma call was made after `let addr_raw = frame.into_raw_value()`, and it somehow passed. This suggests that either `FrameNumber` has an invariant that bounds its view by `spec_max()`, or calling `into_raw_value()` establishes that precondition. I need to check the `FrameNumber` spec to understand what's happening.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs
+===
+39:    #[verus_spec(ensures Self::NULL@ == 0)]
+56:    #[verus_spec(result =>
+57:        ensures
+58:            value as int <= Self::spec_max() ==> (result is Some
+60:            value as int > Self::spec_max() ==> result is None,
+79:    #[verus_s...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] The `into_raw_value()` call establishes the necessary bound that `frame@ <= spec_max()`, which is exactly what `lemma_from_number_no_overflow` requires as a precondition. That's why the original code placed this call before the proof block — it provides the constraint needed for the lemma to work. So the rewrite does require this step in Verus.
+
+But wait, there's another possibility: `into_raw_value` uses `use_type_invariant(self)`, and if `FrameNumber` has a type invariant declaring `0 <= self@ <= spec_max()`, I could potentially get that same fact directly in the proof block using `use_type_invariant(frame)`. That would let me keep the original single-line form `frame.into_raw_value() * mem::FRAME_SIZE` while establishing the bound through the type invariant instead. Let me check if `FrameNumber` actually has a type invariant defined.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== number.spec.rs ==="; cat src/libs/arch/src/x86/mem/paging/frame/number.spec
+[RESULT ✓] bash: === number.spec.rs ===
+verus! {
+
+//==================================================================================================
+// View
+//==================================================================================================
+
+impl View for FrameNumber {
+    type V = int;
+
+    // `c...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The type invariant `FrameNumber::inv` exists. I can use `use_type_invariant(frame)` to get the bound while keeping the original single-line exec body. The `into_frame_number` restore already verified (only `from_number` errored).
+[TOOL] report_intent: Using type invariant for from_number
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I can use the type invariant on `FrameNumber` to establish the upper bound constraint directly in the proof block, which lets me keep the `from_number` function as a clean single-line expression without needing to worry about the order of operations.
+
+Now I need to verify whether the AST consistency tool actually elides `proof!` blocks when comparing code. The original verified version had both the `addr_raw` binding split and a proof block, and the tool flagged a MISMATCH — but I'm not sure if that was due to the split or the proof block itself. Let me just try running the tool again with the `use_type_invariant` approach to see if `from_number` becomes a MATCH now.
+
+For `into_frame_number`, the verification actually succeeded with the bit shift approach and passing `mem::FRAME_SHIFT` to the lemma, so that part is already working.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -12
