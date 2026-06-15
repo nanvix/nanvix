@@ -634,3 +634,15 @@ Turn 35
 Turn 36
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel 2>&1 | grep -iE "verified, 0 errors|verificat
+[RESULT ✓] bash: cheating: assume=0 external_body=14 admit=3 trusted=0 no_decreases=0 cfg_gate=9
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=14 admit=3 trusted=0 no_decreases=0 cfg_gate=9
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Full kernel verification passes (exit 0). Now let me run `make verify` (full crate suite) to confirm no regressions:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | tail -40
+
+[THINKING] The kernel verification passes without errors, and the cheating counts remain unchanged from the global state—fourteen external body items that are tcb-approved, three admit items outside scope, and zero assume items. These are all pre-existing issues belonging to other modules, not part of the physical modification scope. Now I'm looking at what the task requires for the next step.
