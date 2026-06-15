@@ -311,3 +311,32 @@ All cheating-elimination checklist items PASS with tool-backed evidence:
 [2026-06-15 19:26:26] [DIALOGUE] Reviewer turn 1 (remaining: 3600s)...
 [2026-06-15 19:26:26] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 19:33:03]   ↳ dialogue-reviewer-t1 done in 6m36s (exit=0)
+[2026-06-15 19:33:03] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 19:33:03] [DIALOGUE] STOP detail:
+RESOLVED
+
+All final-review checklist items for sys::mm::address::mod are PASS or FIXED with
+tool evidence.
+
+The single FAIL — Specification → "No subsumed ensures" — was fixed in place:
+removed the derivable `&& addr_inv(&a)` conjunct from `from_raw_value`'s `Ok`
+ensures arm in src/libs/sys/src/sys/mm/address/mod.rs.
+
+Evidence after fix:
+- make verify-sys      → 6 verified, 0 errors, exit 0, status CLEAN
+                         (assume=0 external_body=0 admit=0 trusted=0
+                          no_decreases=0 cfg_gate=0)
+- make verify (all)    → every crate exit 0 (bitmap 70, sys CLEAN,
+                         nanvix-slab 35, bump-allocator, kernel 47);
+                         only pre-existing kernel/bump/slab/bitmap TCB items
+                         (all in verus-ai-logs/tcb-allowed.md), none introduced
+                         by this module.
+- spec_drift git-diff  → 0 contract drift vs pre-work baseline (additive only)
+- ast_consistency.py   → consistent, 0/0
+- fn_coverage.py       → 0 source exec fns (trait declarations, no bodies)
+
+uninterp spec fn spec_addr<T> reviewed and is NOT a checklist violation: not on
+the verus-constraints Forbidden-Patterns list, introduces no axiom (empty
+mod.proof.rs), CLEAN cheating report, verified in-tree precedent, and
+architecturally forced (no View supertrait possible; in-crate bound cycles).
+[2026-06-15 19:33:03] [DIALOGUE] final-review ended after 1 turns: RESOLVED (397s)
