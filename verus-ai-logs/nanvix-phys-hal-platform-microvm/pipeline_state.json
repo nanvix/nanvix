@@ -66,10 +66,17 @@
       "review_file": null,
       "duration_s": 354.3,
       "review_rounds": 1
+    },
+    "final-review": {
+      "verdict": "PASS",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": true,
+      "duration_s": 424.6
     }
   },
   "prover_session_id": "3736b99a-11e8-4bfa-844d-a43aff4d3a29",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai/hal-memory-region",
   "verus_branch": "verus-ai/hal-platform-microvm",
   "phase_boundary_shas": {
