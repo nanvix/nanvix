@@ -1229,3 +1229,78 @@ source integrity. Fix all inconsistencies.
 | Pattern | Policy |
 |---|---|
 | `admit()` | Allowed during specification phase as a placeholder. ...
+[RESULT ✓] bash: Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/254 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '198,220p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+
+[THINKING] I need to review the full specification section on uninterp to make a definitive call on this.
+[RESULT ✓] bash: Only add specificity when callers genuinely depend on it.
+11. **Scattered Invariant** — the same property appears in `requires` of
+    every (or nearly every) method. A universally required property is an
+    invariant — move it to `inv()` and maintain it in `ensures`.
+12. **`uninterp` as Verificati...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Verification re-confirmed CLEAN (exit 0, all cheating counts 0). Now I need to resolve the disputed items objectively. Two key findings emerging: (1) GPT's "verify-sys fails" claim was a transient toolchain clobber — now passes; (2) the `uninterp spec_addr` constraint and a subsumed `addr_inv(&a)` ensures need adjudication. Let me run the remaining required gates (`make verify`, `make build`) and read the spec-design subsumed-ensures rule.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tail -8
+
+[THINKING] The core issue is that `spec_addr` is marked as `uninterp`, which violates the rule that all spec functions must have concrete definitions. The only exception allowed is when `uninterp` appears on `View::view()` of an external_body type, but that's not the case here—this is a standalone uninterp spec function. The justification in mod.spec.rs seems incomplete, mentioning something about `View<V=int>` supertrait possibilities that apparently don't apply.
+
+The real question is whether deliberately introducing an uninterp projection to attach contracts to trait method declarations counts as "using uninterp to avoid writing a concrete spec." The contracts do pin operational behavior, but there's no concrete definition backing it. This is exactly the kind of edge case a strict review should flag, and given the checklist requires all items to pass, I need to examine whether this violates the "no cheating" constraints.
+
+The kernel's own `hal::mem::spec_addr` uses the same pattern, which suggests it's architecturally justified rather than an escape hatch. The uninterp isn't paired with any external_body axiom or assume statement—the trust obligation falls entirely on implementors to satisfy the contracts through their concrete `view()` implementations. But the skill rule itself is categorical: uninterp spec functions are banned, with the exception narrowly scoped to View::view() of external_body types, which this isn't. The design rejected a View supertrait specifically for cfg-gating reasons, so the alternative would require rethinking the abstraction. This is a genuine architectural tension between two strong principles, and it mirrors precedent in the verified codebase.
+
+Looking at the actual checklist items in the output template, uninterp spec functions aren't explicitly listed as a gating criterion—the grep-based checks for admit, assume, external_body, and trusted all pass at zero. The spec-design skill concern is real, but it's more of a quality advisory than a hard gate. Given that the verification is clean, the pattern mirrors established kernel code, and the checklist items themselves don't explicitly fail, I'm leaning toward a defensible PASS, though I should flag the skill concern in the review.
+
+The other blockers don't hold up: the toolchain issue was transient and now resolved, the from_raw_value trait-level spec is intentionally general since each implementor has its own domain predicate, and the unverified implementors are out of scope—the task only covers the trait declarations themselves.
+
+The real tension is whether the uninterp spec function violates the strict skill rules around spec-design and verus-constraints, even though it mirrors verified kernel precedent and isn't paired with external_body. The checklist doesn't explicitly flag uninterp, and the cheating greps pass clean, but the skills guidance does elevate those constraints as mandatory. waiver or explicit precedent exception, or (b) replaced with a concrete definition. Given the strict instruction to PASS only if all checklist items are checked, I'm leaning toward marking this as FAIL on the unresolved constraint violation—but I need to be precise about which checklist item it maps to. The specification section doesn't explicitly grep for `uninterp`, and the verification itself is clean. The tension is whether the MUST-follow ban on uninterp spec functions applies here given that there's no external_body pairing and the pattern mirrors the kernel's accepted `hal::mem::spec_addr`. I'm reconsidering whether this actually warrants a FAIL or if the kernel precedent and clean verification should allow a PASS. Now I'm going through each checklist item systematically to determine what's actually checked versus unchecked. For caller analysis, the tool had limitations but manual verification covered the whole tree, so that's marked. View design checks out — the int scalar survives substitution and represents all observable state. The specification section requires me to verify that every in-scope exec function has requires/ensures; since the in-scope items are trait declarations rather than executable functions, and the three methods do carry ensures clauses, that's satisfied.
+
+For caller coverage, all 3 are accounted for. View consistency is maintained across specs. The ensures clauses aren't tautological. But there's a subsumed ensures issue: the addr_inv constraint in the round-trip ensure is actually derivable from the fact that spec_addr equals raw_addr (a usize) cast to int, which automatically satisfies the bounds check. So strictly speaking, that checklist item for "no subsumed ensures" would be unchecked, though it's a minor point since keeping addr_inv explicit helps callers understand the invariant.
+
+Error paths have meaningful ensures—from_raw_value pins BadAddress on error, is_aligned is total, into_raw_value is total. No assume_specification calls in the workspace-internal code. Specs are written for callers. Trait obligations check out. No loops to worry about. Audit for cheating (admit, assume, external_body, trusted) all come back zero. No spec drift detected. Cross-module regression and final verification builds are still pending.
+
+AST consistency verified with zero mismatches. No exec rewrites, no external_body in the TCB, specs haven't been weakened. bugs.md exists with no actual defects recorded, only non-bug findings. But I've spotted two potential issues: addr_inv(&a) is subsumed by the round-trip conjunct, which violates the strict "no subsumed ensures" checklist line, and the uninterp spec_addr constraint is a spec-design concern. I need to run make verify and make build to clear the pending items, then reassess whether the subsumed ensures issue is a hard fail. The reviewers disagreed on whether the `uninterp spec_addr` pattern mirrors accepted kernel precedent and should be allowed, but I can ground my verdict on something objective: the `addr_inv(&a)` conjunct in the ensures clause is mathematically derivable from the first conjunct alone. Since `spec_addr(&a) == raw_addr as int` and `raw_addr` is a `usize`, the value is already constrained to `[0, usize::MAX]`, making `addr_inv(&a)` fully subsumed. That's a clear, defensible checklist failure independent of the uninterp debate, so I'll render the verdict as FAIL with the subsumed ensures as the primary objective violation and the uninterp concern flagged as a secondary risk requiring an explicit pattern approval.
+
+Now I need to run the build and verification steps to complete the remaining checklist items before finalizing the consolidated review.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile 2>/dev/null | head -40; echo "===z help==="; ls z z.ps
+
+[THINKING] The `make build` command isn't doing anything, so I need to look at what build targets are actually available in the Makefile.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+`make build` isn't a real target (a `build/` dir exists). Compilation is covered by `make verify-sys` (passed). Running cross-module `make verify` for regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -30
+
+[THINKING] Looking at the build system here, `make build` doesn't actually exist as a target — it's trying to build a file called `build` which is the directory, so that command fails. The real build target is `make all` or `./z build`. For verification, there's `make verify-sys` which is already passing, and the cross-module verification gate is `make verify`. The sys crate's build process is part of this verification flow.
