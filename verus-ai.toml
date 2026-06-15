@@ -2,10 +2,10 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/kernel/src/hal/mem/types/address/frame.rs`
+background = """File: `src/libs/sys/src/sys/mm/address/mod.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`FrameAddress::into_raw_value`, `FrameAddress::into_frame_number`, `FrameAddress::from_raw_value`, `FrameAddress`, `FrameAddress::from_frame_number`
+`is_aligned`, `into_raw_value`, `from_raw_value`
 
 
 Hard rules:
