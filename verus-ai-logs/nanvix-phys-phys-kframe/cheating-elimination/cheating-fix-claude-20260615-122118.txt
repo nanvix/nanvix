@@ -489,3 +489,25 @@ I need to be maximally honest in my report: show the exact error messages from e
 The key insight is that the 4 remaining admits live in unlisted sibling modules (manager.proof.rs), which I'm explicitly forbidden to modify under the task constraints. The phys-kframe module itself is clean and fully verified with zero cheating. The architectural issue—uninterpreted global-partition model needing ghost-token attachment—is documented across prior phases and requires either forbidden exec changes or spec redesign outside my scope.
 
 Let me verify the working tree is clean and then write the final report.
+[RESULT ✓] bash: === working tree (excluding logs) ===
+=== kframe module still CLEAN? ===
+=== Results ===
+  cached (no recompilation)
+  —
+--
+  status: CLEAN
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_12-31-22.log
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Working tree is clean and phys-kframe remains CLEAN. Let me run the full `make verify-kernel` to capture the definitive global status.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 600 make verify-ke
+
+[THINKING] The working tree is clean and the phys-kframe module checks out, so I'm at a decision point about whether to actually attempt fixing the four admits in manager.proof.rs. I've confirmed they're genuine architectural blockers in unlisted functions, but I'm constrained by the original task forbidding changes to unlisted code and the source-integrity requirement against modifying ghost-token execution paths.
+
+The reviewer explicitly asked me to eliminate these admits, which creates tension with the original constraints. Even if I were authorized to touch them, the sound fix would require ghost-token architecture changes that violate the ast-consistency rules I'm supposed to follow strictly. I've considered the standard Verus mechanisms—broadcast proof functions with external_body (forbidden by the reviewer), assume_specification (only for exec functions, not proof lemmas), and coherent spec changes (impossible without violating scope)—and there's genuinely no sanctioned path forward. This is a true architectural deadlock that requires a human decision.
+
+Now I need to document this blocker clearly in the verification_todo and fix_report, then run the full verification suite to get the definitive global status.
