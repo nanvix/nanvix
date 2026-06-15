@@ -30,10 +30,17 @@
       "review_file": null,
       "duration_s": 457.5,
       "review_rounds": 1
+    },
+    "final-review": {
+      "verdict": "PASS",
+      "total_score": 0,
+      "max_score": 5,
+      "passed": true,
+      "duration_s": 378.1
     }
   },
   "prover_session_id": "0ba9fa3c-31dc-4a18-a628-938f85e7d8eb",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai-prove",
   "verus_branch": "verus-ai-prove",
   "phase_boundary_shas": {
