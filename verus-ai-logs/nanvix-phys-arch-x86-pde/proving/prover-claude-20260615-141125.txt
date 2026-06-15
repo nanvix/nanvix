@@ -211,3 +211,24 @@ The pde module has no admit/assume/external_body. The flagged cheating items are
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/arch/src/x86/mem/paging/pde.rs && make verify-arch 2>&1 | tail -25
 
 [THINKING] The external_body and assume statements are actually in mod.rs and table.rs/table.proof.rs, not in pde.rs, so my scope is clean. The cheating counts seem to be from a different scope even though they mention an assume in table.proof.rs. Let me force a clean verification to double-check that the pde module is fully verified and not relying on any cached results.
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+verification results:: 48 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.31s
+
+=== Results ===
+  48 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 extern...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+pde verifies cleanly: **48 verified, 0 errors**. No admit/assume/external_body in pde files. The flagged cheating items are pre-existing in `table.rs` and `mod.rs` (outside my scope). Now let me confirm no regressions with the full verify.
+[TOOL] report_intent: Running full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "verify:" Makefile 2>/dev/null | head; echo "---"; make verify 2>&1 | tail -
+
+[THINKING] The pde module passes verification with all five target functions in scope and their proofs already complete. The "CHEATING_DETECTED" status is a pre-existing issue from external code that's out of scope. I should verify whether the bugs.md file exists to confirm what I'm looking for.
+[RESULT ✓] report_intent: Intent logged
