@@ -531,3 +531,13 @@ Turn 14
 ────────────────────────────────────────────────────────────
 Turn 15
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "mm/address" verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt 2>/dev/nul
+
+[THINKING] Looking at the coverage file to verify that the address module methods have proper contracts and that trait declarations like align_up and align_down are correctly marked as out of scope.
+[RESULT ✓] bash: ===total lines===
+253 verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
