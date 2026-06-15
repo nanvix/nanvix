@@ -1,0 +1,34 @@
+Timestamp: 2026-06-15_19-48-11
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+error[E0252]: the name `mem` is defined multiple times
+  --> src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:3:5
+   |
+ 3 | use crate::mem;
+   |     ^^^^^^^^^^ `mem` reimported here
+   |
+  ::: src/libs/arch/src/x86/mem/paging/frame/number.rs:14:5
+   |
+14 | use crate::mem;
+   |     ---------- previous import of the module `mem` here
+   |
+   = note: `mem` must be defined only once in the type namespace of this module
+
+For more information about this error, try `rustc --explain E0252`.
+error: could not compile `arch` (lib) due to 1 previous error
