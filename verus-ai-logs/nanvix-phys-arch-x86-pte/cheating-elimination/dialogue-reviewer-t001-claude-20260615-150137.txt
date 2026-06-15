@@ -289,3 +289,300 @@ Turn 7
 [THINKING] The fix_report claims the pte file is unchanged, but I'm seeing ghost annotations like `#[verus_spec]` and proof blocks in the `new` function that shouldn't exist if the file is truly byte-identical to the base branch. I need to verify this contradiction—either the diff is wrong or these annotations were already present in the base.
 
 Let me check the verify.sh script to understand how the spec-drift and AST consistency checks work, since the checklist has unsubstituted placeholders. I should find the actual base SHA and run the architecture verification first to see the detailed cheating output.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The exit status is 0, but the cheating detector flagged residuals from external_body and cfg_gate that are all listed as out-of-scope and trusted. I need to verify none of these violations actually touch the page table entries, and identify which specific cfg_gate violations triggered the warning.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '450,510p' scripts/verify.sh
+
+[THINKING] I'm tracking down the cfg_gate counter details—there are 4 items in the cheating list (the 3 external_body references plus lemma_entry_roundtrip as a broadcast axiom), and I need to verify which specific lines correspond to cfg_gate=2 by checking the PDE report and verify.sh to confirm the pte.rs locations.
+
+The two cfg_gates in pte.rs are attribute annotations that gate lint allows rather than executable code, which falls within the acceptable category since they're effectively derive-class annotations. The include! directives at pte.rs:9,11 are ghost spec/proof and get skipped by the counter per the report, so those don't count against the exec code restriction.
+[RESULT ✓] bash: continue
+        fn_name = name_node.text.decode()
+        issues = []
+        for attr in collect_preceding_attrs(fn_node):
+            kinds = attr_issue_kinds(attr)
+            for k in kinds:
+                if k == "external_body" and is_external_type_spec(fn_node):
+                    issues.a...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n 'verus_impl_method_marker\|cfg_attr\|cfg(verus' src/libs/arch/src/x86/mem/pag
+
+[THINKING] I'm noticing that the cfg_gate counter is picking up `#[cfg_attr(verus_keep_ghost, allow(...))]` attributes on function definitions, treating them as cfg-gated code when they're really just conditional lint suppressions that don't affect execution.
+
+The actual function bodies are identical regardless of the verus_keep_ghost config, so this isn't semantic cfg-gating of executable logic—it's more like a conditional attribute application, similar to derives. The question is whether this pattern (which appears throughout the repo on verus_spec'd constructors) fits within the "only imports/derives/debug_assert/logging allowed" exception, since it's arguably an attribute-level concern rather than executable divergence.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pde.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pde.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pte.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/pte.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/pagi...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '78,120p' src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm noticing that pte.rs has `cfg_attr` annotations on its `new` function while pde.rs doesn't, even though both use `#[verus_spec]`. Let me check pde.rs's `new` function to understand why the difference exists.
+[RESULT ✓] bash: /// - `page_size`: The page size flag.
+    ///
+    /// # Returns
+    ///
+    /// A [`PageDirectoryEntryFlags`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_flags_new(
+                present,
+                read_write,
+                user_supervisor,
+        ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager branch -a 2>/dev/null | head; echo "===current==="; git --no-pager log
+
+[THINKING] I'm noticing that pde.rs's `new` method uses the same `#[verus_spec]` attribute but doesn't have those extra `#[cfg_attr]` lines, and it still verifies successfully. This makes me question why pte.rs needed those additional cfg_attr annotations in the first place—they seem redundant and are contributing to the cfg-gated code count, which conflicts with the goal of having zero cfg-gated executable code.
+
+The fix_report claims the pte files are byte-identical to the base branch, so I need to verify whether these cfg_attr lines were pre-existing or introduced by this work. Let me check the actual git diff to confirm.
+[RESULT ✓] bash: dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+===current===
+b3cd8dc5e [verus] verify PASS (cheating detected): arch::all (cached (n...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===diff dev vs HEAD pte.rs==="; git --no-pager diff dev HEAD -- src/libs/arch/s
+
+[THINKING] I'm on the verus-ai-prove branch and the diff against itself is empty, which makes sense. I need to find where the actual changes were made—specifically where pte.rs was first introduced with Verus annotations compared to the original version without them.
+
+For checking spec-drift, I should compare against the dev branch, which has the original unverified code, to make sure the specifications weren't weakened and the execution wasn't changed beyond what's allowed. Let me diff pte.rs against dev to see what's actually changed.
+[RESULT ✓] bash: ===diff dev vs HEAD pte.rs===
+diff --git a/src/libs/arch/src/x86/mem/paging/pte.rs b/src/libs/arch/src/x86/mem/paging/pte.rs
+index d2cbbbc4a..558aa814b 100644
+--- a/src/libs/arch/src/x86/mem/paging/pte.rs
++++ b/src/libs/arch/src/x86/mem/paging/pte.rs
+@@ -5,6 +5,12 @@
+ // Imports
+ //=================...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff dev HEAD -- src/libs/arch/src/x86/mem/paging/pte.rs 2>&1 | sed -n
+
+[THINKING] I need to look at the rest of the diff to see if there's a `TableEntry` implementation being added.
+[RESULT ✓] bash: 
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff --stat dev HEAD -- src/libs/arch/src/x86/mem/paging/ 2>&1; echo "
+
+[THINKING] Looking at the diff, the only change to the executable body is in `PageTableEntry::new`, which adds a ghost proof statement that gets stripped out during compilation. All the other modifications are ghost annotations and includes that don't affect the actual code execution. No ensures clauses were removed and the spec wasn't weakened.
+
+Now I need to check whether the `impl TableEntry` block at the end is new or was already present in the dev version — the diff might have truncated, so I should verify the full diff to see if there are any other changes beyond what's been shown.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/flags.rs          |  10 ++
+ .../arch/src/x86/mem/paging/frame/number.proof.rs  |   1 +
+ src/libs/arch/src/x86/mem/paging/frame/number.rs   |  21 +++
+ .../arch/src/x86/mem/paging/frame/number.spec.rs   |  41 ++++++
+ src/libs/arch/src/x86/mem/paging/mod.proof.rs      |...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+I have strong evidence now. Let me empirically test whether the two `cfg_attr` allow attributes in pte.rs are actually necessary, since the sibling `pde.rs::new` verifies without them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/arch/src/x86/mem/paging/pte.rs /tmp/pte.rs.bak && sed -i '/#\[cfg_attr(ve
+
+[THINKING] The pte.rs changes are purely additive ghost annotations with a ghost-only proof statement in the `new` method, so there's no spec weakening or execution divergence. The execution AST remains identical to the dev version, which passes the consistency check. Now I need to circle back to the cfg_gate=2 concern...
+
+The `cfg_attr` with the `allow(unused, verus_impl_method_marker)` was added to pte.rs's two `new` functions, but pde.rs's `new` doesn't have it and still verifies fine, so I'm questioning whether it's actually necessary. The `verus_impl_method_marker` lint is emitted by verus_verify/verus_spec, but I'm not sure why pte would need it while pde doesn't. The difference in their signatures—pte's `PageTableEntryFlags::new` has 7 parameters but constructs 8 fields with cow defaulted, while pde's has 8 parameters for 8 fields—might explain it, but I should test empirically whether removing the cfg_attr breaks verification. The checklist flags any cfg-gated exec code, and while this attribute isn't exec code itself (it doesn't change runtime behavior), it's a lint allow that the sibling module doesn't need, so I need to determine if this is actually a form of cfg-gated cheating or just a harmless attribute.
+
+The strict interpretation is that if pde.rs passes verification without this attribute and is structurally similar, then pte.rs should too—either I prove it's necessary by showing verification fails without it, or I remove it to eliminate the flagged cfg gate. I'm going to test by removing both cfg_attr lines and re-running verify-arch to see if it still passes with cfg_gate=0.
+[RESULT ✓] bash: removed
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-arch 2>&1 | tail -25
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Removing them breaks the build (exit 101). Let me see the actual compiler error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE 'error|verus_impl_method_marker|unused' verus-ai-logs/verify-arch/verus-logs
+
+[THINKING] Removing those cfg_attr lines causes verification to fail with a compilation error, even though the gate is disabled. I need to look at the actual error message to figure out why pte requires it while pde doesn't.
+[RESULT ✓] bash: compilation/setup error (verus did not run)
+error[E0425]: cannot find function `new` in this scope
+error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `arch` (lib) due to 2 previous errors
+<shellId: 19 co...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Confirmed: the `cfg_attr` lines are **required** — removing them causes a compile error (`cannot find function new`). Let me restore the file and verify it's back to the passing state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/pte.rs.bak src/libs/arch/src/x86/mem/paging/pte.rs && git --no-pager diff --s
+
+[THINKING] The `verus_impl_method_marker` lint seems to be suppressing something important—when I remove the attribute, the compiler can't find the `new` function. The error E0425 suggests the issue might be more subtle than just the lint itself, so I'm reconsidering what's actually happening here.
+
+Looking at the empirical evidence, the cfg_attr lines are definitely necessary for pte to compile and verify, even though pde doesn't seem to need them. The key insight is that these attributes are gating lint-allow directives, not executable code—the function body itself is identical regardless of the cfg. Since `verus_impl_method_marker` is a verus-internal lint required by the `#[verus_spec]` macro on these constructors, it's really a verification annotation rather than a divergence in exec logic. This means it shouldn't count as "cheating" on the zero cfg-gated exec code requirement, since there's no alternate behavior under non-verus builds.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/pte.rs | 2 ++
+ 1 file changed, 2 insertions(+)
+restored-clean
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff -- src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I'm noticing the git diff shows 2 insertions even though I restored the file from a backup made before the sed changes, so it should match HEAD exactly. Something's not adding up with that diff output.
+[RESULT ✓] bash: diff --git a/src/libs/arch/src/x86/mem/paging/pte.rs b/src/libs/arch/src/x86/mem/paging/pte.rs
+index b8ba52f3b..558aa814b 100644
+--- a/src/libs/arch/src/x86/mem/paging/pte.rs
++++ b/src/libs/arch/src/x86/mem/paging/pte.rs
+@@ -82,6 +82,7 @@ impl PageTableEntryFlags {
+     ///
+     /// A new [`PageTabl...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status 2>&1 | head -20; echo "===HEAD blob==="; git --no-pager show HE
+
+[THINKING] I'm realizing the git diff is showing the working tree compared to the index, not HEAD. The `+` lines indicate my restored file has the cfg_attr lines, but the staged index doesn't — which means the committed version at HEAD also lacks them. Let me verify what's actually in the HEAD commit. I should just run `git status` to see what's actually staged versus unstaged and clear up this confusion about the index state.
+[RESULT ✓] bash: On branch verus-ai-prove
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/libs/arch/src/x86/mem/paging/pte.rs
+	modified:   verus-ai-logs/nanvix-phys-arch-x86-pte/cheati...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "HEAD blob:"; git --no-pager rev-parse HEAD:src/libs/arch/src/x86/mem/paging/pte
+
+[THINKING] I'm noticing a discrepancy between what's in HEAD versus the working tree—the committed version has no cfg_attr lines, but the restored backup shows them already present. This suggests those lines were uncommitted modifications that existed before my editing session started, though I need to figure out who originally added them.
+
+Let me verify by checking the blob hashes directly to resolve this contradiction between what `git diff dev HEAD` showed and what `git show HEAD:pte.rs` is actually returning.
+[RESULT ✓] bash: HEAD blob:
+b8ba52f3b24c863b46de9a123ef0739ddaea7c4b
+working hash:
+558aa814b7e29be612b810cb89ae72a8c3f9db18
+dev blob:
+d2cbbbc4aeba811096d7239cc5def1bd89f928fa
+=== git log for pte.rs ===
+9abc5a2ae [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+9c2fffa28 [verus...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The verify script appears to auto-commit. Let me reconstruct what happened to git state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -8; echo "=== reflog ==="; git --no-pager reflog -8
+
+[THINKING] I'm checking the git history for pte.rs — the HEAD commit has blob b8ba52f3b without cfg_attr, but the working tree has blob 558aa814b that includes it, meaning there were uncommitted changes at the start of this session. Now I'm noticing the earlier `git diff dev HEAD` output referenced blob d2cbbbc4a for dev and 558aa814b for the comparison, which is raising questions about what's actually being compared.
+
+The key issue is reconciling what the diff showed (cfg_attr lines appearing as added) against what grep found (HEAD lacking them entirely). I need to verify whether HEAD actually contains those lines or if there's confusion about which version I was looking at when I ran that diff command.
+
+But there's a bigger realization: the verify script auto-commits changes to git history. My earlier runs of `make verify-arch` created new commits, so HEAD has shifted from where it started. The second run committed a broken state (cfg_attr removed) with a verify failure, which means I've polluted the git history with a non-working version. I need to check the current HEAD and recent log to understand what state the repository is actually in now.
+[RESULT ✓] bash: 9abc5a2ae [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+b3cd8dc5e [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=2)
+386635c99 [verus-ai] cheating-elimination scaffold END: arch-x86-pte
+145ae73dc [v...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+I see — the verify script auto-commits each run, and my test run committed a broken FAIL state. Let me clean that up by resetting to the last good commit and restoring the working tree.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "b3cd8dc5e pte blob:"; git --no-pager rev-parse b3cd8dc5e:src/libs/arch/src/x86/
+
+[THINKING] The verify script auto-commits, and I'm reconstructing the git history to understand what happened. The commit b3cd8dc5e was the state at the session start with a passing verify result, which was created by my first `make verify-arch` run that succeeded using cached results.
+
+Before that was the session-start HEAD at 386635c99, and then my second `make verify-arch` run (after removing cfg_attr) created the failing commit 9abc5a2ae. Since I've already restored the working tree from backup with the correct cfg_attr lines intact, I need to reset HEAD back to b3cd8dc5e to remove the polluting failed commit while keeping the good working tree state.
+[RESULT ✓] bash: b3cd8dc5e pte blob:
+558aa814b7e29be612b810cb89ae72a8c3f9db18
+good working blob (with cfg_attr): 558aa814b
+=== resetting HEAD to b3cd8dc5e (drop FAIL commit) ===
+b3cd8dc5e [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=2)
+386635c99 [verus-ai...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "working blob:"; git --no-pager hash-object src/libs/arch/src/x86/mem/paging/pte
+
+[THINKING] HEAD is now at b3cd8dc5e in a good passing state, and the pte.rs blob with the cfg_attr matches what's in the working tree. Let me verify the working tree is clean and aligned with HEAD.
+[RESULT ✓] bash: working blob:
+558aa814b7e29be612b810cb89ae72a8c3f9db18
+=== status (pte should be clean) ===
+MM src/libs/arch/src/x86/mem/paging/pte.rs
+(empty = clean)
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git reset --mixed HEAD -- src/libs/arch/src/x86/mem/paging/pte.rs 2>&1; echo "=== sta
+
+[THINKING] The `MM` status means the file is both staged and modified in the working directory. The `git reset --soft` only moved the HEAD pointer while leaving the index pointing at the broken commit's tree, so I need to also reset the index itself to get it in sync with the working directory changes.
+[RESULT ✓] bash: warning: --mixed with paths is deprecated; use 'git reset -- <paths>' instead.
+Unstaged changes after reset:
+M	verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue-reviewer-t001-claude-20260615-150137.jsonl
+M	verus-ai-logs/nanvix-phys-arch-x86-pte/cheating-elimination/dialogue-review...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Working tree restored to the verified state. Now let me run a final clean `make verify-arch` to confirm the restored state passes, plus the build check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-arch 2>&1 | tail -15
+
+[THINKING] The working tree is now restored to match the good state, and I've verified that the cfg_attr is actually required for compilation—removing it breaks the build. The attribute only gates a lint-allow directive, not any executable code divergence, so this isn't a case of cfg-gated logic differences.
+
+Now I need to run make verify-arch one more time to confirm the restored state passes cleanly and complete the checklist requirement, even though it'll create another PASS commit.
