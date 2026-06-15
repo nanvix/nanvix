@@ -228,3 +228,17 @@ attributes in pte.rs (owned by arch-x86-pte) — none in the mod.rs target.
 [2026-06-15 15:28:07] Running final comprehensive review...
 [2026-06-15 15:28:07] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 15:33:57]   ↳ review done in 5m49s (exit=0)
+[2026-06-15 15:33:57] [FINAL REVIEW] Result: PASS (0/5)
+[2026-06-15 15:33:57] [CHEATING-GATE] 3 external_body site(s) honored from approved plan
+[2026-06-15 15:33:57] [FINAL REVIEW] Cheating report: limitation_assume: 1 (approved)
+[2026-06-15 15:33:57] [FINAL REVIEW] Done (5m50s)
+
+============================================================
+PIPELINE COMPLETE: arch-paging-mod
+  ✅ proving                   dialogue-RESOLVED         6m22s (1 dialogue turns)
+  ✅ cheating-elimination      dialogue-RESOLVED         5m54s (1 dialogue turns)
+  ✅ final-review              PASS                      5m50s
+  ──────────────────────────────────────────────────────────
+  Total: 18m23s
+============================================================
+[2026-06-15 15:33:57] [USAGE] Summary: 9 calls, 0 tokens, 33m00s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/usage_summary.json
