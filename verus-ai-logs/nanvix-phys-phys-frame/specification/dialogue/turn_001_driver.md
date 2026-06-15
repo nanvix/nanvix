@@ -1,145 +1,94 @@
-## Turn 1: Full checklist sweep + first FAIL (No tautological ensures)
+## Turn 1 (re-review after proving→specification rollback): Caller coverage / No specs weakened → FAIL → ROLLBACK to view-design
 
 ### Progress
-- Done (PASS): coverage, caller-coverage, view-consistency, no-subsumed-ensures,
-  no-internal-assume_specification, vstd-before-assume_spec, specs-for-caller,
-  trait-obligations, loop-invariants, spec-drift (no weakening),
-  cross-module-regression, verification/build.
-- Current (FAIL, being addressed): **No tautological ensures** (== "Error paths
-  have meaningful ensures").
-- Remaining (reported, deferred): **No cheating on module's own functions**
-  (external_body/admit counts — expected at this phase, must be discharged in the
-  proof phase); spec-completeness (advisory); bug-awareness (advisory).
+- Done (verified this turn): all 17 checklist items walked with tool-backed evidence.
+- Current: 4 interlocking FAILs (items 2, 9, 11, 14) sharing ONE root cause in
+  view-design; local fix attempted in-tree and proven impossible.
+- Remaining: none — rollback filed (see `../ROLLBACK` … actually `dialogue/ROLLBACK`).
 
----
+### Verification (commands I ran, not trusted verbally)
 
-### Verification (commands run + findings)
+`make verify-kernel` → exit 0, but `status: CHEATING_DETECTED`
+(`assume=0 external_body=22 admit=1 cfg_gate=9`). The single `admit` is in
+`frame::free`.
 
-**`make verify-kernel`** → exit 0. All 5 `mm::phys` modules verified
-(`mm::phys`, `frame`, `kframe`, `manager`, `upool`). Summary line:
-`cheating: assume=0 external_body=22 admit=7 ... coverage: 39/1022`. Cross-module
-regression therefore PASSES (no regressions; this is the cached, green tree).
+Read the actual contracts:
+- `Inner::alloc` (frame.rs:115-136) has a CORRECT two-state spec:
+  `final(self)@ == FrameAllocView{ allocated_frames: old(self)@.allocated_frames.insert(frame@), … refcounts.insert(frame@,1) }`.
+- The free-function shim `frame::alloc` (frame.rs:731-759) can only state facts
+  over `phys_view()` — an **argument-free `uninterp spec fn phys_view() -> PhysMemView`**
+  (mod.spec.rs:171) pinned by `instance()` to the **pre**-call state
+  (`(*result)@ == phys_view().frames`). Its current Ok-arm is
+  `frame.inv() && phys_view().frames.free_frames.contains(frame@)` — a **pre-state**
+  fact (the frame is still FREE), the disjoint-OPPOSITE of what callers need.
 
-**Coverage — PASS.** `fn_coverage.py /tmp/frame_base.rs frame.rs`: 11/11 exec fns
-matched, 0 missing/extra. Manual read confirms every in-scope function in
-`verification-plan.json` carries a `#[verus_spec]`: the 8 `Inner::*` methods,
-plus `instance`, `init`, `alloc`, `alloc_contiguous`, `free_count`, `free`,
-`is_covered`, `book`, `alloc_range`, `share`, `refcount`.
+**Caller expectation (authoritative `caller_analysis.md`):** for `alloc` (Ok),
+"returned frame is … now in `allocated_frames`, with `refcounts[frame] == 1`";
+"**Would break callers:** … returning a frame not in `allocated_frames`/with
+refcount ≠ 1." The shim delivers `free_frames.contains` → caller coverage FAILS.
+Same shape for `book`, `alloc_range`, `alloc_contiguous`, and the increment in `share`.
 
-**Caller coverage — PASS (with the Err note below).** Read `caller_analysis.md`.
-Each documented caller expectation maps to a shim contract over `phys_view()`:
-alloc/book→`allocated_frames.contains`+`refcounts==1`; share→still allocated;
-refcount→exact value; is_covered→`covered().contains`; free→`inv()`+Drop-safety;
-free_count→`free_frames.finite()`+`.len()`; alloc_range→region frames reserved.
-The only gap is the dropped **error-path** facts (item 4 below).
+**Where did the strong guarantee go?** It was laundered up the call chain into
+`manager::alloc_user_frame` (manager.rs:267, `external_body`, ensures
+`phys_view().frames.allocated_frames.contains(frame@)`) and
+`manager::alloc_kernel_frame` (manager.rs:352, same). These `external_body`
+functions are **NOT** in `tcb-allowed.md` (which states "Any `external_body`
+outside this list must be removed"). `bugs.md` claims they are "all listed in
+tcb-allowed.md" — that claim is **false** (verified by reading tcb-allowed.md).
 
-**View consistency — PASS.** Specs reference only `FrameAllocView`
-fields (`allocated_frames`/`free_frames`/`refcounts`) and `PhysMemView`
-(`initialized`/`frames`/`covered()`/`region_frames()`), matching `view_design.md`.
-Every shim/method `ensures inv()` (`phys_view().inv()` or `final(self).inv()`).
-`Inner::view()` stays `closed`; the bitmap↔address mapping is confined to
-`internal_inv`/`view()`. Consistent.
-
-**No subsumed ensures — PASS (noted).** The Ok arms restate
-`refcounts.contains_key(f)` alongside `allocated_frames.contains(f)`; under `wf`
-these are equivalent, but they are deliberate trigger anchors and the load-bearing
-`refcounts[f] == 1` / `== count` facts are NOT subsumed. Acceptable.
-
-**No assume_specification (internal) — PASS.** `grep` across `mm/phys/`: the only
-`assume_specification` is `kframe.spec.rs:33` on `crate::hal::mem::Address` (an
-external dependency / trait), which the checklist explicitly permits. `frame.rs`
-has none. `vstd-before-assume_spec` is therefore N/A for this module.
-
-**Trait obligations — PASS.** `free` shim carries `opens_invariants none` +
-`no_unwind` and no `requires`, satisfying the `Drop for UserFrame` /
-`Drop for KernelFrame` contract documented in the caller analysis.
-
-**Loop invariants — PASS.** The only `for` loops live in `Inner::alloc_contiguous`,
-`Inner::alloc_range`, and `init` — all `external_body`, so no verified loop exists
-that lacks an `invariant`. (Re-check after external_body removal in the proof phase.)
-
-**Spec drift / no specs weakened — PASS.**
-`spec_drift.py git-diff frame.rs --before <spec-phase-start 7c792c75>`:
-`Ensures removed: 0`. Drift is limited to 3 previously-unspecced shims
-(`alloc_contiguous`, `free_count`, `instance`) gaining requires+ensures — i.e.
-new specs, not weakened ones. The added `requires` (`count > 0`,
-`phys_view().initialized`, `phys_view().inv()`) match caller-supplied
-preconditions. No original guarantee weakened.
-
-**No cheating on module's own functions — FAIL (raw count), EXPECTED at this
-phase, DEFERRED to proof phase.** From `cheating-detail.txt`, `frame.rs` owns:
-- `external_body` (10): `Inner::alloc` (137), `Inner::alloc_contiguous` (210),
-  `Inner::free` (290), `Inner::share` (368), `Inner::refcount` (428),
-  `Inner::book` (481), `Inner::is_covered` (517), `Inner::alloc_range` (565),
-  `instance` (652), `init` (689).
-- `admit()` (7): shims `alloc` (756), `alloc_contiguous` (797), `free_count`
-  (826), `free` (850), `book` (895), `alloc_range` (919), `share` (946).
-
-These make the written specs currently *unproven*. That is the deliverable of the
-**proof** phase (strip `external_body` + add body proofs; remove `admit()` by
-proving the shim's post-state from `instance()`'s contract). `instance`/`init`
-are TCB trust boundaries per `tcb-allowed.md`. This item is reported now and MUST
-be re-audited to zero (for non-TCB functions) before the proof phase signs off; it
-is not a specification-phase blocker on its own.
-
----
-
-### Fix Request — Item 4/6: replace tautological `Err(_) => true`
-
-`grep -n "Err(_) => true" frame.rs` → lines **686, 748, 792, 890, 914, 941**.
-The checklist names `Err(_) => true` as the canonical tautological ensures. Three
-of these drop **caller-relevant** error facts that the matching `Inner::*`
-contract already establishes and that `caller_analysis.md` lists as relied upon.
-On every Err path `final(self)@ == old(self)@ == phys_view().frames`, so each fact
-below is expressible over the fixed `phys_view()` (the `admit()` discharges it).
-
-Change these shim `ensures` Err arms:
-
-1. **`book` (line 890).** `Inner::book` Err ⇒ `!old(self)@.free_frames.contains(phys_addr@)`.
-   Caller (`book_mmio_regions`) relies on "allocator unchanged". Replace with:
-   ```
-   Err(_) => !phys_view().frames.free_frames.contains(phys_addr@),
-   ```
-
-2. **`alloc_range` (line 914).** `Inner::alloc_range` Err ⇒
-   `!frames.subset_of(old(self)@.free_frames)`. Caller
-   (`book_physical_memory_regions`) relies on "region was not fully free".
-   Replace with (reusing the shim's existing `region_frames` vocabulary):
-   ```
-   Err(_) => !PhysMemView::region_frames(region@.start, region@.size)
-       .subset_of(phys_view().frames.free_frames),
-   ```
-
-3. **`share` (line 941).** `Inner::share` Err ⇒ frame not allocated OR refcount
-   would overflow. Caller (`UserFrame::share`) relies on exactly this. Replace with:
-   ```
-   Err(_) => !phys_view().frames.allocated_frames.contains(frame@)
-       || (phys_view().frames.refcounts.contains_key(frame@)
-           && phys_view().frames.refcounts[frame@] >= 255),
-   ```
-
-4. **`alloc` (line 748).** `Inner::alloc` Err ⇒ `old(self)@.free_frames.is_empty()`
-   (out-of-memory witness). Strengthen to:
-   ```
-   Err(_) => phys_view().frames.free_frames.is_empty(),
-   ```
-
-For **`alloc_contiguous` (792)** and **`init` (686)**: `Inner::alloc_contiguous`
-Err states only `final == old` (nothing expressible without `old(phys_view())`),
-and `init` Err has no meaningful post-state beyond the already-stated
-`phys_view().inv()`. If you keep `Err(_) => true` for these two, you must prove it
-is genuinely inexpressible by quoting the corresponding `Inner` contract Err arm —
-a prose justification is not acceptable.
-
-**How to verify the fix:** after editing, run
+**Local fix attempted in-tree (this phase):** I restored the caller-expected
+strong Ok-arm on `frame::alloc`
+(`allocated_frames.contains(frame@) && refcounts.contains_key(frame@) && refcounts[frame@]==1`)
+and ran `make verify-kernel`:
 ```
-grep -n "Err(_) => true" src/kernel/src/mm/phys/frame.rs   # only 686/792 may remain, with justification
-make verify-kernel                                          # must stay exit 0
+error: postcondition not satisfied  --> src/kernel/src/mm/phys/frame.rs:751
+error: postcondition not satisfied  (cascades into Upool::alloc, manager.rs:268)
+verification results:: 31 verified, 2 errors   (exit 101)
 ```
-Do not weaken any other arm to make it pass; the `admit()` already discharges the
-proof obligation at this phase.
+Then `git checkout -- frame.rs` (reverted clean).
 
-### Status
-- FAIL items open: **No tautological ensures** (this fix request);
-  **No cheating on own functions** (deferred to proof phase, reported).
-- No STOP file written — open FAIL items remain.
+**Reproducers re-run by me** (`/home/ruize/verus-bin/verus`):
+- `02_goal_is_false.rs` → `1 verified, 0 errors` — the NEGATION of the strong shim
+  postcondition is provable from the only sound `instance()` bridge + `wf`
+  disjointness ⇒ the strong spec is *false*, not merely unproven.
+- `01_shim_fails.rs` → `0 verified, 1 errors` — faithful isolated model fails.
+- `03_strengthening_derives_false.rs` → `1 verified, 0 errors` — strengthening
+  `instance()` to reflect post-state derives `false` (unsound).
+
+### Full checklist verdict
+1. Function coverage — PASS (every in-scope shim + `Inner::*` + `instance` has `#[verus_spec]`).
+2. Caller coverage — **FAIL** (alloc/book/alloc_range/alloc_contiguous/share Ok-arms are pre-state; caller_analysis requires post-state `allocated_frames`+`refcount==1`; "would break callers").
+3. View consistency — structurally PASS (specs reference `phys_view().frames`, preserve `inv()`), but the View **cannot express post-state** — the root defect.
+4. No tautological ensures — WEAK: `alloc_contiguous` Err`=> true` and `init` Err`=> true` remain (contract-constrained; secondary).
+5. No subsumed ensures — PASS.
+6. Error paths meaningful — mostly PASS; `alloc_contiguous` Err arm is `true`.
+7. No internal `assume_specification` — PASS (none).
+8. vstd before assume_spec — N/A.
+9. Specs written for the caller — **FAIL** (shim specs are NOT usable in caller proofs to obtain the allocation effect; callers fall back to unsanctioned `external_body` axioms).
+10. Trait obligations — PASS (`free`: `opens_invariants none` + `no_unwind`, no requires) — but body carries `admit()`.
+11. Spec completeness (advisory) — **FAIL vs caller expectations** (the weakening does NOT match caller expectations; caller_analysis says it "would break callers" — so it is NOT acceptable intentional nondeterminism).
+12. Loop invariants — PASS (only loop is in `init`, which is `external_body`).
+13. No cheating on own functions — `admit=1` in `frame::free` (deferred). Flagged but secondary to the core defect.
+14. No specs weakened — **FAIL** (post-state effects weakened to pre-state facts; weakening cascaded into `Upool::alloc` and into `manager` `external_body` axioms not in tcb-allowed.md).
+15. Bug awareness — PARTIAL: `bugs.md` records the `phys_view()` limitation, but mislabels it "out of scope / not a defect to fix here" and falsely claims the manager fns are tcb-allowed. The limitation is a **rollback trigger**, not an acceptable spec outcome.
+16. Cross-module regression — PASS *only because* the guarantee was removed (all modules verify with the weakened specs).
+17. Verification + build — PASS at exit 0 with weakened specs + 1 admit; **FAILS `31 verified, 2 errors`** the moment the caller-expected spec is restored.
+
+### Root cause and decision
+Items 2, 9, 11, 14 share ONE root cause: `phys_view()` is a **stateless,
+argument-free `uninterp` constant** (a view-design artifact in `mod.spec.rs`).
+A constant has the same value at every program point, so a *verified* (non-
+`external_body`) mutating shim cannot relate its post-state to the abstraction.
+The PhysMemView transition helpers (`spec_book_frame`, `spec_book_frames`,
+`spec_initialize`) exist but are unusable by the shims for exactly this reason.
+view_design.md line 205 claims "alloc/book post-state … expressible ✅" — that
+claim is **provably false** for the verified layer (reproducer 02 + in-tree test).
+
+No specification-phase-local fix can recover the caller-required guarantee
+(attempted in-tree → `31 verified, 2 errors`; any provable shim spec must drop the
+allocation-effect fact, which is the forbidden weakening). The fix requires
+changing the View itself (state-indexed `phys_view` or a tracked ghost token) in
+`mod.spec.rs` plus the frozen `Inner::*` transition threading — **view-design scope**.
+
+### Result: ROLLBACK to view-design (see `dialogue/ROLLBACK`)
+Not RESOLVED. STOP file intentionally not created.

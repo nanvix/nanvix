@@ -418,3 +418,140 @@ All three reproducers confirmed by me. Now the direct in-tree local-fix attempt:
 Turn 10
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | grep -iE "error|verified|alloc|frame.rs:7|Exit code|note: verifyi
+[RESULT ✓] bash: VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Direct in-tree confirmation: the caller-expected strong spec on `frame::alloc` fails with `postcondition not satisfied` at `frame.rs:751`, and cascades to `Upool::alloc` (`31 verified, 2 errors`). Reverting now.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git checkout -- src/kernel/src/mm/phys/frame.rs && git status --short src/kernel/src/mm/phy
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage.py location ==="; find . -name "fn_coverage.py" 2>/dev/null | head; e
+
+[THINKING] When I restore the strong postcondition spec on `frame::alloc`, the verification fails with postcondition errors both in the shim itself and cascading into `Upool::alloc`, leaving me with 31 verified items but 2 errors—which directly demonstrates that the caller-expected strong spec isn't provable under the current specification phase.
+[RESULT ✓] bash: reverted clean
+<shellId: 13 completed with exit code 0>
+[RESULT ✓] bash: === fn_coverage.py location ===
+=== spec drift / view_design files ===
+prover-claude-20260615-065404.jsonl
+prover-claude-20260615-065404.txt
+---
+dialogue
+dialogue-fixer-t001-claude-20260615-071640.jsonl
+dialogue-fixer-t001-claude-20260615-071640.txt
+dialogue-reviewer-t001-claude-20260615-071219.json...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Reverted clean. Let me read the view-design rationale to precisely target the rollback, then check overall coverage numbers.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,80p' verus-ai-logs/nanvix-phys-phys-frame/view_design.md 2>/dev/null
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "phys_view\|state\|uninterp\|PhysMemView\|post-state\|mutat\|token\|diff" verus-ai-
+
+[THINKING] I notice the fn_coverage.py file isn't available locally, but the verify-kernel output already shows the overall function coverage metrics. What really matters is the module-specific breakdown, and from the previous analysis, all 11 in-scope functions in view-design already have contracts. Let me cross-reference view_design.md to confirm whether the root cause actually falls within view-design's scope. I've gathered enough evidence to identify the key issue: the caller coverage check is failing because caller_analysis.md requires post-state documentation.
+
+The specs were weakened from post-state effects down to pre-state facts, and this weakening cascaded into manager.rs external_body axioms that aren't in tcb-allowed.md. The real problem traces back to view-design: `phys_view()` is defined as a stateless uninterpreted spec function that can't express the pre/post conditions of a mutation. I've confirmed this through multiple reproducers and an in-tree test showing 31 verified but 2 errors. Any actual fix would require changing phys_view's signature to be state-indexed or threading a ghost token through the instance and Inner contracts—all of which are frozen in view-design scope and would ripple across modules. This is genuinely a rollback situation that the proving phase already identified, but I'm reconsidering whether rollback is the right call or if I should just document the limitation and resolve it as-is, since the checklist's strict requirements on "No specs weakened" and "Caller coverage" can't be satisfied in this phase. es. Is mod.spec.rs editable in the specification phase? The specification phase produces frame.spec.rs and the #[verus_spec] contracts, but mod.spec.rs defines phys_view() and PhysMemView — those are view-design artifacts, not specification's. So the rollback went to specification but described changes that actually belong in view-design, creating a scope mismatch. Given that specification already tried local fixes and produced only weakened specs with documented limitations, the correct escalation is to rollback to view-design where phys_view's fundamental nature can be redesigned. But I need to check the timeline carefully — the prior reviewer marked RESOLVED on certain specs, then proving rolled it back, so I'm trying to understand whether that resolution was actually rejected or if there's a different path forward.
+
+Looking at turn_002, it shows verify-kernel exiting cleanly with 7 admits masking the strong post-state specs that would otherwise fail. Then the proving phase removed those admits, hit provably false specs, weakened them to pre-state only, and filed the rollback. So the current state I'm reviewing is proving's output with the weakened specifications.
+
+The caller analysis explicitly shows that callers need post-state allocated membership, and weakening to just free_frames membership would break them. Since the weakened specs don't match caller expectations, accepting them is wrong — rollback is the correct verdict. Let me check view_design.md to reference the exact decision point.
+[RESULT ✓] bash: # View Design: `mm::phys::frame`
+
+> Status: the View for this module **already exists** in the codebase and is on
+> the do-not-modify list (`FrameAllocView` + `FrameAllocView::wf` in
+> `mod.spec.rs`; `View for Inner` in `frame.proof.rs`; the `PhysMemView`
+> singleton wrapper + `phys_view()` in `mod....
+[RESULT ✓] bash: 5:> `mod.spec.rs`; `View for Inner` in `frame.proof.rs`; the `PhysMemView`
+6:> singleton wrapper + `phys_view()` in `mod.spec.rs`). This document reconstructs
+27:1. **`FrameAllocView`** — the abstract reservation state of the allocator
+29:2. **`PhysMemView`** — the module-level singleton wrapper tha...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+The view-design doc (line 205) explicitly claims "All observed caller needs are expressible: **alloc/book post-state**" — but the proving phase and my own tests prove that claim is **false** for the verified shim layer: `phys_view()` is a stateless `uninterp` constant, so a mutating shim cannot relate its post-state to the abstraction. The transition helpers (`spec_book_frame`, etc.) are only usable by `external_body` axioms, not the verified shims. This is a view-design root cause. Let me write the review and the rollback.
+[TOOL] report_intent: Writing review and rollback
+[TOOL] bash: cd /home/ruize/nanvix-phy && cp verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md /tmp/prev
+
+[THINKING] The view_design.md file claims that all caller needs can be expressed through post-state transitions and refcount operations, but the proving phase has actually shown this claim is false. While the PhysMemView does provide helpers for modeling these transitions, there's a critical gap: mutating shims have no way to assert what the physical view state should be after the operation completes.
+
+The core issue is that `phys_view()` is an uninterpreted constant with no way to distinguish its value before versus after a call — there's no mechanism like `old(phys_view())` versus `new(phys_view())`. These transition helpers only work for external_body functions that can axiomatically assert post-states, making them unusable for the verified shim layer that actually needs them.
+
+The fix requires making `phys_view()` state-indexed or introducing a ghost token so that pre/post state transitions can be properly expressed at the shim layer. I need to document this as a definitive view-design root cause and decide whether to create both a ROLLBACK file and a STOP marker, or just the ROLLBACK.
+
+Now I'm checking the coverage metrics — the module has 11 in-scope shims with contracts, and the exec functions in frame.rs all have specs. The external_body functions are mostly TCB-allowed, with one `admit` in `free` that's documented as deferred. I should verify this coverage passes before finalizing the driver document.
+
+Let me walk through the 17 checklist items for the review: function coverage passes, but caller coverage fails because the specs don't capture the post-state facts that callers need (allocated_frames membership and refcount==1). View consistency is structurally sound but can't express the post-state, which is the core defect. Some error paths are tautological (alloc_contiguous and init return true on Err), and the specs aren't usable for caller proofs — that's the critical failure point.
+
+The root cause unites all the decisive failures: phys_view() is a stateless constant by design, so the verified shim layer fundamentally cannot express the post-state allocation guarantee that callers expect. This is a design-level constraint with no local fix.
+
+Now I'm writing out the necessary files.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: backed up prior turn_001
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat > /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md <<'EOF'
+## T
+[RESULT ✓] bash: wrote turn_001_driver.md
+94 /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat > /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/ROLLBACK <<'EOF'
+ROLLBACK
+
+## R
+
+[THINKING] Now I'm creating the ROLLBACK file.
+[RESULT ✓] bash: wrote ROLLBACK
+121 /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/ROLLBACK
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Let me confirm final state: source tree clean, no STOP file, ROLLBACK and review present.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git status (should be clean for frame.rs) ==="; git status --short src/kernel/src
+
+[THINKING] I'm checking that the source tree is in the expected state—my experimental changes have been reverted, and I'm confirming the key files are present: no STOP file, ROLLBACK exists, and turn_001_driver.md is there.
+[RESULT ✓] bash: === git status (should be clean for frame.rs) ===
+=== dialogue dir ===
+ROLLBACK
+turn_001_driver.md
+turn_001_fixer.md
+turn_002_driver.md
+=== STOP exists? ===
+no STOP (correct)
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Review complete. Verdict: **ROLLBACK to view-design** (not RESOLVED).
+
+## Summary
+
+This was a re-review after a proving→specification rollback. I walked all 17 checklist items with tool-backed evidence. Four interlocking items **FAIL** with one shared root cause:
+
+- **Caller coverage (2)** — `caller_analysis.md` requires `frame::alloc` Ok ⇒ frame in `allocated_frames` with `refcount==1`; the shim instead ensures the disjoint-opposite pre-state fact `free_frames.contains(frame@)`.
+- **Specs for caller (9)** / **Spec completeness vs callers (11)** / **No specs weakened (14)** — the post-state guarantee was weakened to pre-state, cascaded into `Upool::alloc`, and laundered into `manager` `external_body` axioms that aren't in `tcb-allowed.md`.
+
+**Root cause (view-design):** `phys_view()` is a stateless `uninterp` constant, so a *verified* mutating shim cannot express post-state. `view_design.md:205` claims "alloc/book post-state expressible ✅" — provably false.
+
+**Local fixes attempted (required before rollback):**
+- Restored the strong spec in-tree → `make verify-kernel`: `31 verified, 2 errors`. Reverted.
+- Re-ran 3 reproducers myself: `02` (negation provable, spec is false), `01` (model fails), `03` (strengthening `instance()` derives false).
+
+Tree left clean. Wrote `turn_001_driver.md` (full verdict) and `dialogue/ROLLBACK` (root cause, failed fixes, concrete view-design fix: state-indexed `phys_view` or a tracked ghost token). No `STOP` created.
+
+
+=== Session End ===
+Session: 116bd730-037a-4c14-9096-2995d4e900f0
+Duration: 452.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue-reviewer-t001-claude-20260615-082708.jsonl
