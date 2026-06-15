@@ -903,3 +903,226 @@ Turn 6
 ────────────────────────────────────────────────────────────
 The cache prevented recompilation. Let me force a fresh verification to independently confirm.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && make verify-sys 2>&1 | grep -iE 'veri
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  6 verified
+  0 errors
+  Exit code : 0
+=== Cheating Pattern Check ===
+  ✅ No cheating detected.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+=== Summary ===
+  verification: 6 verified, 0 errors (exit 0...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Analyzing caller coverage
+[TOOL] rg: fn from_raw_value\(|is_valid_physical_address|fn is_aligned\(
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 140.             result@ == spec_from_number(spec_frame_raw_value(frame)),
+141.     )]
+142.     // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
+143.     // `into_raw_value()` postcondition (`0 <= self@ <= spec_max()`) lands in context *before* the
+144.     /...
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:62:    fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:115:    fn is_aligned(&self, align: Alignment) -> Result<bool, Erro...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/pgtab.rs
+[RESULT ✓] view: 35. ///
+36. /// # Description
+37. ///
+38. /// A type that represents a physical address.
+39. ///
+40. #[verus_verify(external_derive)]
+41. #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+42. pub struct PhysicalAddress(VirtualAddress);
+43. 
+44. //================================================...
+[RESULT ✓] view: 60.     }
+61. }
+62. 
+63. #[verus_verify]
+64. impl<T: Address> Address for PageAligned<T> {
+65.     fn into_raw_value(self) -> usize {
+66.         self.0.into_raw_value()
+67.     }
+68. 
+69.     fn clone_address(&self) -> Self {
+70.         PageAligned(self.0.clone_address())
+71.     }
+72. 
+73.     //...
+[RESULT ✓] view: 35.         Ok(Self(addr))
+36.     }
+37. }
+38. 
+39. impl<T: Address> Address for PageTableAligned<T> {
+40.     fn into_raw_value(self) -> usize {
+41.         self.0.into_raw_value()
+42.     }
+43. 
+44.     fn clone_address(&self) -> Self {
+45.         PageTableAligned(self.0.clone_address())
+46.     ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] rg: src/libs/sys/src/sys/mm/address/mod\.(rs|spec\.rs|proof\.rs)|sys::mm::address::mod
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Fresh verification: **6 verified, 0 errors, CLEAN**. Now I have all data. Let me write the review file.
+[TOOL] report_intent: Writing final review file
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-sys-address-mod/final-review && ls verus-ai-logs/n
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: review-claude-20260615-115958.jsonl
+review-claude-20260615-115958.txt
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-sys-address-mod/final-review && cat > verus-ai-log
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Validating review output
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.gpt5codex.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. # Spec Quality
+2. 
+3. - In-scope trait method declarations reviewed in `src/libs/sys/src/sys/mm/address/mod.rs`: `from_raw_value`, `into_raw_value`, `is_aligned`.
+4. - `from_raw_value` contract is meaningful and non-tautological:
+5.   - `Ok(a) => a@ == raw_addr as int` (round-trip value fact)
+6. ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Done. I wrote the raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.gpt5codex.md`
+
+Concise result:
+- **Counts (3 module files):** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0  
+  (note: 2 `#[cfg(verus_keep_ghost)]` includes are ghost/spec-only, not exec gating)
+- **Proof completeness:** admit=0, external_body=0
+- **Caller coverage:** **4/4** expectations covered (missing: none; dropped bidirectional range arm judged justified)
+- **AST consistency:** **PASS** (`matched=0 mismatched=0 missing=0 extra=0`)
+- **make verify-sys:** **PASS** (exit 0, status CLEAN; cheating summary: `assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`)
+- **Final verdict:** **PASS**
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.claude.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.claude.md with 9136 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Review written. Let me verify the touched file caused no content change in git.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short src/libs/sys/src/sys/mm/address/ 2>&1
+[RESULT ✓] bash: 
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+No content changes. Review complete.
+
+## Summary
+
+Independent strict final review of `sys-address-mod` is written to `verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.claude.md`.
+
+**Exact counts (across the 3 module files):**
+- `admit` = **0**, `assume` = **0**, `external_body` = **0**, `assume_specification` = **0**, cfg-gated exec = **0** (the 2 `#[cfg(verus_keep_ghost)]` lines only wrap spec/proof `include!`s, not exec code)
+
+**verify-sys:** PASS — forced fresh recompile: `6 verified, 0 errors`, status CLEAN. Summary line: `cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0`
+
+**AST consistency:** PASS (`Consistent: YES`, matched=0/mismatched=0 — trait decls have no exec bodies); `spec_drift.py` shows 0 contract drift.
+
+**Caller coverage:** **4/4** covered (from_raw_value round-trip ✅; from_raw_value BadAddress ✅; into_raw_value lossless ✅; is_aligned predicate ✅). The bidirectional range arm (`Err ⇔ raw > max_addr`) is intentionally and justifiably dropped — untruthful across implementors (sparse `PhysicalAddress`) and out-of-scope to surface `spec_max_addr`.
+
+**Bugs:** `bugs.md` = None, reconciled and valid. No undocumented bugs.
+
+**Final verdict: PASS** — 0 admit, 0 assume, 0 unlisted external_body, AST consistent, verify-sys 0 errors, all caller expectations covered or justifiably dropped.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 161s, total_turns: 0, model: claude-opus-4.8, duration: 161s
+
+No content changes. Review complete.
+
+## Summary
+
+Independent strict final review of `sys-a...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] read_agent: {'agent_id': 'review-gpt5codex', 'timeout': 30, 'wait': True}
+[RESULT ✓] read_agent: Agent completed. agent_id: review-gpt5codex, agent_type: general-purpose, status: completed, description: Independent final review (gpt), elapsed: 164s, total_turns: 0, model: gpt-5.3-codex, duration: 139s
+
+Done. I wrote the raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Both reviews agree. Verifying the raw files exist, then consolidating.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-sys-address-mod/final-review/*.md
+
+[THINKING] Both sub-agents have confirmed the files pass validation, so I'm verifying they exist and merging everything into the final_review.md document.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 9209 Jun 15 12:05 verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize 4215 Jun 15 12:04 verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.gpt5codex.md
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Consolidating final review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.md with 7557 characters
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Done. Both independent sub-agents (claude-opus-4.8 and gpt-5.3-codex) reviewed and reached **PASS**; I re-ran all ground-truth checks myself and they agree.
+
+**Outputs written:**
+- `final_review.claude.md`, `final_review.gpt5codex.md` (raw sub-agent reviews)
+- `final_review.md` (consolidated)
+
+**Result: PASS** — every checklist item checked.
+
+Key findings (in-scope: `is_aligned`, `into_raw_value`, `from_raw_value` — trait method declarations):
+- **Guardrails:** admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated exec=0 (the two `#[cfg(verus_keep_ghost)]` lines gate spec/proof `include!`s, not exec code).
+- **verify-sys:** PASS, 0 errors, status CLEAN.
+- **AST consistency:** PASS (no exec bodies; no `// VERUS REWRITE`); spec_drift = 0 (no specs weakened).
+- **Caller coverage:** 4/4. The bidirectional range arm was intentionally and justifiably dropped (untruthful for sparse `PhysicalAddress`; out-of-scope `spec_max_addr`).
+- **TCB:** 0 external_body — no new trust boundary.
+- **Bugs:** none (bugs.md reconciled valid).
+
+
+=== Session End ===
+Session: 4722990b-d638-481e-b0dc-090d1db163a9
+Duration: 377.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/review-claude-20260615-115958.jsonl
