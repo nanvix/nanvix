@@ -39,3 +39,7 @@ Module: manager
 PHASE: specification
 Module: manager
 ============================================================
+[2026-06-15 19:27:22] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs
+[2026-06-15 19:27:22] [PROVER] Running specification...
+[2026-06-15 19:27:22] [COPILOT] Running: copilot --model claude-opus-4.8 ...
+[2026-06-15 19:53:10]   ↳ prover done in 25m48s (exit=0)

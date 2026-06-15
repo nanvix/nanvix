@@ -1,0 +1,36 @@
+Timestamp: 2026-06-15_19-48-41
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=66
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=62
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error[E0308]: mismatched types
+  --> src/kernel/src/mm/virt/manager.spec.rs:97:5
+   |
+96 | pub open spec fn page_run(base: nat, n: nat) -> Set<nat> {
+   |                                                 -------- expected `vstd::set::Set<vstd::prelude::nat>` because of return type
+97 |     Set::new(|v: nat| base <= v && v < base + n * page_size() && (v - base) as int % page_size() as int == 0)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Set<nat>`, found `Option<Set<nat>>`
+   |
+   = note: expected struct `vstd::set::Set<_>`
+                found enum `core::option::Option<vstd::set::Set<_>>`
+help: consider using `Option::expect` to unwrap the `core::option::Option<vstd::set::Set<vstd::prelude::nat>>` value, panicking if the value is an `Option::None`
+   |
+97 |     Set::new(|v: nat| base <= v && v < base + n * page_size() && (v - base) as int % page_size() as int == 0).expect("REASON")
+   |                                                                                                              +++++++++++++++++
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

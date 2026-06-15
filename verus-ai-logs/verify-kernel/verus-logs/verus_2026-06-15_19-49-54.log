@@ -1,0 +1,101 @@
+Timestamp: 2026-06-15_19-49-54
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::manager
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=66
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=62
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: cannot use type `kernel::mm::virt::manager::VirtMemoryManager` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/manager.spec.rs:202:25
+    |
+199 | / impl View for VirtMemoryManager {
+200 | |     type V = VirtMemoryManagerView;
+    | |     -------------------------------
+201 | |
+202 | |     closed spec fn view(&self) -> VirtMemoryManagerView {
+    | |                         ^^^^^
+...   |
+205 | | }
+    | |_-
+...
+210 |       pub open spec fn internal_inv(&self) -> bool {
+    |                                     -----
+...
+217 |       pub open spec fn inv(&self) -> bool {
+    |                            -----
+218 |           self.internal_inv()
+    |           ----
+    |
+   ::: src/kernel/src/mm/virt/manager.rs:246:13
+    |
+246 |               self.inv(),
+    |               ----
+...
+259 |       pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
+    |                       -----
+...
+318 |               self.inv(),
+    |               ----
+...
+336 |       pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
+    |                              ---------
+...
+569 |               self.inv(),
+    |               ----
+...
+599 |           &mut self,
+    |           ---------
+...
+641 |               self.inv(),
+    |               ----
+...
+659 |           &mut self,
+    |           ---------
+...
+688 |               self.inv(),
+    |               ----
+...
+713 |           &mut self,
+    |           ---------
+...
+852 |               self.inv(),
+    |               ----
+...
+865 |           &mut self,
+    |           ---------
+...
+888 |               self.inv(),
+    |               ----
+...
+899 |       pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> {
+    |                          ---------
+...
+929 |               self.inv(),
+    |               ----
+...
+939 |           &mut self,
+    |           ---------
+...
+973 |               self.inv(),
+    |               ----
+...
+991 |           &mut self,
+    |           ---------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExVirtMemoryManager(crate::mm::virt::manager::VirtMemoryManager);
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

@@ -1,4 +1,16 @@
     - macros.rs:252 kpanic_unreachable: external_body
+    - mm/virt/manager.rs:260 new_vmem: external_body
+    - mm/virt/manager.rs:337 link_user_pages: external_body
+    - mm/virt/manager.rs:599 try_resolve_cow_fault: external_body
+    - mm/virt/manager.rs:659 try_unmap_upage: external_body
+    - mm/virt/manager.rs:713 alloc_upages: external_body
+    - mm/virt/manager.rs:865 ctrl_upage: external_body
+    - mm/virt/manager.rs:900 alloc_kpage: external_body
+    - mm/virt/manager.rs:939 alloc_kpages: external_body
+    - mm/virt/manager.rs:991 load_elf: external_body
+    - mm/virt/manager.spec.rs:47 ExExcpErrorCode (struct): external_type_spec
+    - mm/virt/manager.spec.rs:52 ExKernelFrame (struct): external_type_spec
+    - mm/virt/manager.spec.rs:57 ExElf32Fhdr (struct): external_type_spec
     - mm/virt/vmem.rs:125 new: external_body
     - mm/virt/vmem.rs:213 clone: external_body
     - mm/virt/vmem.rs:269 load: external_body
