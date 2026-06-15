@@ -148,4 +148,94 @@ proof fn lemma_frame_facts(inner: &Inner, pa: int, fn_: int)
     };
 }
 
+// `internal_inv` (a statement about the bitmap and the refcount slice) entails the abstract
+// well-formedness `wf()` of the allocator view. Transition proofs maintain only the concrete
+// `internal_inv` and recover `wf()` for the `inv()` postcondition through this lemma.
+proof fn lemma_internal_inv_implies_wf(inner: &Inner)
+    requires
+        inner.internal_inv(),
+    ensures
+        inner@.wf(),
+{
+    let ps: int = spec_page_size();
+    let v = inner@;
+    let nbits: int = inner.bitmap@.num_bits;
+    assert(ps > 0);
+    assert(inner.bitmap.inv());
+    assert(inner.bitmap@.wf());
+
+    // Page-alignment of allocated/free addresses (each is `i * ps`).
+    assert forall|addr: int| v.allocated_frames.contains(addr) implies addr % ps == 0 by {
+        let i = choose|i: int|
+            #[trigger] inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+        assert(addr == i * ps);
+        vstd::arithmetic::div_mod::lemma_mod_multiples_basic(i, ps);
+    };
+    assert forall|addr: int| v.free_frames.contains(addr) implies addr % ps == 0 by {
+        let i = choose|i: int|
+            0 <= i < nbits && !(#[trigger] inner.bitmap@.set_bits.contains(i))
+                && addr == frame_addr_of(i);
+        assert(addr == i * ps);
+        vstd::arithmetic::div_mod::lemma_mod_multiples_basic(i, ps);
+    };
+
+    // Disjointness of allocated and free frame sets.
+    assert forall|addr: int| v.allocated_frames.contains(addr) implies !v.free_frames.contains(addr) by {
+        let i = choose|i: int|
+            #[trigger] inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+        assert(addr == i * ps);
+        if v.free_frames.contains(addr) {
+            let j = choose|j: int|
+                0 <= j < nbits && !(#[trigger] inner.bitmap@.set_bits.contains(j))
+                    && addr == frame_addr_of(j);
+            assert(addr == j * ps);
+            assert(i == j) by (nonlinear_arith) requires ps > 0, i * ps == j * ps;
+            assert(false);
+        }
+    };
+
+    // Allocated iff refcount entry exists and is positive.
+    assert forall|addr: int| #[trigger] v.allocated_frames.contains(addr) <==>
+        (v.refcounts.contains_key(addr) && v.refcounts[addr] > 0) by {
+        if v.allocated_frames.contains(addr) {
+            let i = choose|i: int|
+                #[trigger] inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+            assert(0 <= i < nbits);
+            assert(addr == i * ps);
+            assert(addr / ps == i) by (nonlinear_arith) requires addr == i * ps, ps > 0;
+            assert(v.refcounts[addr] == inner.refcount@[i]);
+            assert(inner.refcount@[i] > 0);
+        }
+    };
+
+    // Free frames carry no refcount entry.
+    assert forall|addr: int| #[trigger] v.free_frames.contains(addr) implies
+        !v.refcounts.contains_key(addr) by {
+        let i = choose|i: int|
+            0 <= i < nbits && !(#[trigger] inner.bitmap@.set_bits.contains(i))
+                && addr == frame_addr_of(i);
+        assert(addr == i * ps);
+        if v.refcounts.contains_key(addr) {
+            let j = choose|j: int|
+                #[trigger] inner.bitmap@.set_bits.contains(j) && addr == frame_addr_of(j);
+            assert(addr == j * ps);
+            assert(i == j) by (nonlinear_arith) requires ps > 0, i * ps == j * ps;
+            assert(false);
+        }
+    };
+
+    // Refcount values are within the u8 range.
+    assert forall|addr: int| v.refcounts.contains_key(addr) implies
+        0 < v.refcounts[addr] <= 255 by {
+        let i = choose|i: int|
+            #[trigger] inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+        assert(0 <= i < nbits);
+        assert(addr == i * ps);
+        assert(addr / ps == i) by (nonlinear_arith) requires addr == i * ps, ps > 0;
+        assert(v.refcounts[addr] == inner.refcount@[i]);
+        assert(inner.bitmap@.set_bits.contains(i));
+        assert(0 < inner.refcount@[i] <= 255);
+    };
+}
+
 }

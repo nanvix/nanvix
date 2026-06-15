@@ -2017,3 +2017,130 @@ Turn 118
 Turn 119
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: verification results:: 52 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    ⚠️  admit: 22
+  verification: 52 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 73 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+`refcount` verifies. Now let me look at `FrameAllocView::wf` and the bitmap `set`/`clear` specs before tackling the mutating methods `share`/`free`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== FrameAllocView wf ==="; grep -n "struct FrameAllocView\|fn wf" src/
+
+[THINKING] Good news on the refcount verification—52 checks passed with no errors, and it's now fully verified rather than on the admit list. I've got 22 admits left to work through. Before moving forward, I should run the full kernel verification later to make sure the FrameAddress type invariant didn't break anything in hal. Now I'm moving on to the `share` method, which needs the frame invariant but doesn't strictly require the type invariant, though adding it won't hurt.
+
+For the share implementation, I'm checking the frame number is in bounds, that the refcount isn't zero, and that incrementing won't overflow past 255. The tricky part is proving that when share succeeds, the refcounts map in the view gets updated correctly—I need to show that only the target frame's refcount increases by 1 while the allocated and free sets stay unchanged, and that the map equality holds after the refcount array is modified. The checked_add(1) returns None only when the old refcount is 255, which triggers the error branch. For the success case, the old value is between 1 and 254, so the new value stays within the valid range of 2 to 255. Now I need to verify the FrameAllocView::wf() invariant to complete the proof.
+[RESULT ✓] bash: === FrameAllocView wf ===
+20:pub struct FrameAllocView
+31:    pub open spec fn wf(&self) -> bool
+    pub open spec fn wf(&self) -> bool
+    {
+        // Page-alignment
+        &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr % spec_page_size() == 0
+        &&& forall|addr: int| se...
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+This is complex. A key simplification: `internal_inv()` implies the view's `wf()`. Let me prove that as a reusable lemma so each transition proof only needs to maintain `internal_inv`:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The FrameAllocView::wf invariant is complex to maintain through mutations, so rather than trying to re-establish all its properties after each change, I should leverage the ensures clause which already specifies the final view explicitly. Since that final view is constructed from the old view (which satisfied wf), I can derive the wf property of the new view from the old one's properties.
+
+The key insight is that inv() requires both final@.wf() and internal_inv() to hold. If I can establish a lemma showing that internal_inv() implies @.wf(), then I only need to focus on proving internal_inv() preservation across the six remaining methods (alloc, alloc_contiguous, free, share, book, alloc_range), which would significantly reduce the proof burden.
+
+I'm verifying this by checking whether the wf conditions—page alignment, disjointness of allocated/free regions, and the correspondence between allocated addresses and positive refcounts—all follow directly from the internal invariant about bitmap and refcount consistency. Writing the lemma proof... Deciding to keep the cancellation logic inline with `nonlinear_arith` rather than extract it as a separate lemma. Now I'll write `lemma_internal_inv_implies_wf` after `lemma_frame_facts`, being careful with triggers and taking advantage of the fact that `internal_inv` is a closed spec function that can be unfolded within the module.
+[RESULT ✓] view: 73. 
+74. // Relates the integer frame index `fn_ = pa / PAGE_SIZE` of a page-aligned address `pa` to the
+75. // abstract view of the allocator. Every method that turns an address parameter into a bitmap index
+76. // uses these equivalences to connect the executable index to the spec-level frame sets...
+
+────────────────────────────────────────────────────────────
+Turn 122
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 100.     assert(inner.bitmap@.wf());
+101.     // pa == fn_ * ps (since pa is a multiple of ps).
+102.     vstd::arithmetic::div_mod::lemma_fundamental_div_mod(pa, ps);
+103.     assert(pa == ps * fn_);
+104.     assert(pa == fn_ * ps) by (nonlinear_arith)
+105.         requires pa == ps * fn_;
+106.     ...
+
+────────────────────────────────────────────────────────────
+Turn 123
+────────────────────────────────────────────────────────────
+Now let me add the `internal_inv ⟹ wf` lemma. First let me verify the vstd lemma name for `(i*m) % m == 0`:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd 2>/dev/null && grep -rn "lemma_mod_multiples_basic\|pub proof fn lemma_mod_mul
+
+[THINKING] I'm adding a lemma that shows how the internal invariant about the bitmap and refcount slice implies the abstract well-formedness property of the allocator view, so transition proofs can maintain just the concrete invariant and recover the abstract property when needed.
+
+Writing proof code... Continuing the proof assertions...
+
+I'm asserting that refcounts are bounded between 1 and 255, using the same pattern of choosing the corresponding bitmap index and verifying the refcount value matches what's stored in the inner structure. Then I'm noting some concerns about how the Map domain predicate works—the contains_key check relies on the exists clause matching the choose extraction, and the refcount value lookup needs to account for the address-to-index division that happens in the map's value closure.
+
+I'm also checking whether accessing inner@ in the ensures clause is safe—since inner@ calls a spec function that internally uses refcount@, it should be fine as long as I'm not directly dereferencing the mutable reference in the postcondition itself. The view abstraction handles that. Now I need to verify the exact signature of the lemma for modular arithmetic.
+[RESULT ✓] bash: ---try alt path---
+/home/ruize/verus-ai-exp/verus-ai/verus/source/vstd/arithmetic/div_mod.rs
+/home/ruize/verus-ai-exp/backup/vstd/arithmetic/div_mod.rs
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-property-analysis-0416/vstd/arithmetic/div_mod.rs
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-bi...
+
+────────────────────────────────────────────────────────────
+Turn 124
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/vstd/arithmetic; grep -n "pub proof fn lemma_mod_multiples_basic\|pub 
+[RESULT ✓] bash: 234:    ModINL::lemma_fundamental_div_mod(a + b, d);
+235:    ModINL::lemma_fundamental_div_mod(a, d);
+236:    ModINL::lemma_fundamental_div_mod(b, d);
+412:            ModINL::lemma_fundamental_div_mod(x, y);
+489:pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+496:        ModINL::lem...
+
+────────────────────────────────────────────────────────────
+Turn 125
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/vstd/arithmetic; grep -n "lemma_mod_multiples_basic" div_mod.rs; echo 
+[RESULT ✓] bash: 814:    lemma_mod_multiples_basic(m, z);
+838:    lemma_mod_multiples_basic(c, b);
+863:        lemma_mod_multiples_basic(c, b);
+1066:pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+---
+pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+    requires
+        m > 0,
+    en...
+
+────────────────────────────────────────────────────────────
+Turn 126
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/verus/source/vstd/arithmetic; sed -n '1066,1078p' div_mod.rs
+[RESULT ✓] bash: pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+    requires
+        m > 0,
+    ensures
+        #[trigger] ((x * m) % m) == 0,
+{
+    lemma_mod_auto(m);
+    broadcast use group_mul_properties_internal;
+
+    let f = |u: int| (u * m) % m == 0;
+    lemma_mul_induction(f);
+    assert(f(x...
+
+────────────────────────────────────────────────────────────
+Turn 127
+────────────────────────────────────────────────────────────
+Now let me add the `internal_inv ⟹ wf` lemma:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I can use `lemma_mod_multiples_basic` to establish that `addr % ps == 0` when `addr = i * ps`, then insert this lemma into the proof before the closing brace.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 128
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|implies_
