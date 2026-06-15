@@ -2,11 +2,12 @@
   "module_name": "sys-address-mod",
   "log_name": "nanvix-phys-sys-address-mod",
   "source_path": "/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "cb99df31da6f9affc0f035c94bf977064b78b66a",
     "view-design": "6a85758802b293194940b62e7e28e7fb79c0ebec",
-    "specification": "ca86359e4efa5ee91104d9dcacec41f9ca05ee0b"
+    "specification": "ca86359e4efa5ee91104d9dcacec41f9ca05ee0b",
+    "proving": "d82e2042327f92c151f9c71ac3666f9820a5b831"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "3db4e83c738cc08f0ee8b0fdfed66d9fbd34451b",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "d82e2042327f92c151f9c71ac3666f9820a5b831",
       "rollback_iter": 0
     }
   ],

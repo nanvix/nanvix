@@ -108,3 +108,9 @@ Module: sys-address-mod
 [2026-06-15 18:41:22]   ↳ gate-fix done in 1m40s (exit=0)
 [2026-06-15 18:41:22] [GATE] Running build: make build
 [2026-06-15 18:41:22] [GATE] Running verify: make verify
+[2026-06-15 18:41:44] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PHASE: proving
+Module: sys-address-mod
+============================================================
