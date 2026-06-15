@@ -83,6 +83,70 @@ pub proof fn lemma_contig_no_overflow(base_raw: usize, idx: usize, count: usize)
 // User bulk-path transitions
 //==================================================================================================
 
+/// Booking the empty set leaves a frame partition unchanged.
+pub proof fn lemma_book_all_empty(base: FrameAllocView)
+    ensures
+        base.book_all(Set::<int>::empty()) == base,
+{
+    let booked = base.book_all(Set::<int>::empty());
+    assert(booked.allocated_frames =~= base.allocated_frames);
+    assert(booked.free_frames =~= base.free_frames);
+    assert(booked.refcounts =~= base.refcounts);
+}
+
+/// Booking a set and then allocating one more address `a` equals booking the extended set
+/// `s ∪ {a}`. The two `FrameAllocView` transitions coincide field-by-field, independent of
+/// whether `a` was already in `s` (`alloc_one`/`insert` are idempotent on the booked fields).
+pub proof fn lemma_book_all_alloc_one(base: FrameAllocView, s: Set<int>, a: int)
+    ensures
+        base.book_all(s).alloc_one(a) == base.book_all(s.insert(a)),
+{
+    let lhs = base.book_all(s).alloc_one(a);
+    let rhs = base.book_all(s.insert(a));
+    assert(lhs.allocated_frames =~= rhs.allocated_frames);
+    assert(lhs.free_frames =~= rhs.free_frames);
+    assert(lhs.refcounts =~= rhs.refcounts);
+}
+
+/// The address set of an empty handle sequence is empty.
+pub proof fn lemma_user_addr_set_empty()
+    ensures
+        crate::mm::phys::manager::user_addr_set(Seq::<UserFrame>::empty())
+            == Set::<int>::empty(),
+{
+    assert(crate::mm::phys::manager::user_addr_set(Seq::<UserFrame>::empty())
+        =~= Set::<int>::empty());
+}
+
+/// Pushing a handle onto a sequence inserts its address into the sequence's address set.
+pub proof fn lemma_user_addr_set_push(frames: Seq<UserFrame>, uf: UserFrame)
+    ensures
+        crate::mm::phys::manager::user_addr_set(frames.push(uf))
+            == crate::mm::phys::manager::user_addr_set(frames).insert(uf@),
+{
+    let lhs = crate::mm::phys::manager::user_addr_set(frames.push(uf));
+    let rhs = crate::mm::phys::manager::user_addr_set(frames).insert(uf@);
+    assert forall|a: int| lhs.contains(a) implies rhs.contains(a) by {
+        let i = choose|i: int|
+            0 <= i < frames.push(uf).len() && #[trigger] frames.push(uf)[i]@ == a;
+        if i < frames.len() {
+            assert(frames.push(uf)[i] == frames[i]);
+        } else {
+            assert(i == frames.len());
+            assert(frames.push(uf)[i] == uf);
+        }
+    }
+    assert forall|a: int| rhs.contains(a) implies lhs.contains(a) by {
+        if a == uf@ {
+            assert(frames.push(uf)[frames.len() as int] == uf);
+        } else {
+            let i = choose|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a;
+            assert(frames.push(uf)[i] == frames[i]);
+        }
+    }
+    assert(lhs =~= rhs);
+}
+
 /// Effect of a successful bulk user allocation: the `count` handles in `frames` own distinct
 /// frames that were all free and become reserved as a set.
 pub proof fn lemma_user_bulk_ok(

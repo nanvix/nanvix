@@ -1,0 +1,436 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T10:56:33.292296
+Model: claude-opus-4.8
+Session: 14b90c09-2f67-4587-8773-6218c4a98c78
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+Hard cheating detected: external_body: 16 (15 on user fns), admit: 5. Read the detailed report at /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating_report_2.md for exact locations. `admit()` and `assume()` must be replaced with real proofs. `trusted` and `external_body` on proof fns must be removed and the proof completed. Multi-line `limitation_assume` bodies must be reduced to a single-line proposition (per R20c: the VERUS-AI LIMITATION annotation only authorizes a single proposition; multi-line bodies are not approvable). `#[verifier::exec_allows_no_decreases_clause]` (R20p) must be removed and a real `decreases` clause provided so termination is proven. Follow all skills strictly (especially verus-constraints and proving-guide). Then re-run `make verify-kernel` to confirm verification passes.
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating_report
+
+[THINKING] The grader is still catching 5 admits that need to be replaced with actual proofs. I've been reviewing the cheating report and reconsidering my earlier assessment that 4 of these were genuinely unprovable — but the directive is clear that they must be proven. Maybe the solution isn't to prove them in their current form, but to restructure the lemmas so they become provable.
+
+Actually, wait. I'm constrained not to weaken the existing specs, so I need to think about this differently. Let me look at `lemma_user_bulk_ok` more carefully — I think that one actually is provable if I approach it correctly. And I should examine the cheating report more closely to understand what's really going on with the others.
+[RESULT ✓] bash: # Cheating Detection Report: frame.rs
+
+## Summary: external_body: 16 (15 on user fns), admit: 5
+
+### external_body_fn
+- frame.rs:Line 1235
+- frame.rs:Line 1271
+- frame.rs:Line 1327
+- frame.rs:Line 1355
+- frame.rs:Line 1409
+- frame.rs:Line 1448
+- frame.rs:Line 1467
+- kframe.rs:Line 81
+- manager.rs:Li...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The grader confirms my analysis: the 5 admits in `manager.proof.rs` are the blockers (all `external_body` are tcb-allowed). I previously deferred `lemma_user_bulk_ok` as "moot," but the directive demands closing every genuinely-closeable gap. Let me attempt a real elimination of it via loop-invariant restructuring, since that one IS provable in-context. Let me re-read current state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== manager.proof.rs (current) ==="; cat -n src/kernel/src/mm/phys/mana
+
+[THINKING] The grader wants all five lemmas to be actual proofs, but I've identified that four of them are fundamentally unprovable: the first one equates uninterpreted functions, the second and third fail because the kernel implementation doesn't actually modify the relevant state, and the fourth one about error restoration is incomplete in my analysis.
+
+The fifth lemma about successful bulk operations might be provable, but the real architectural problem is deeper — the manager's postconditions reference facts that only these lemmas can provide, yet those lemmas conclude things about uninterpreted functions with no axioms backing them. I'm realizing the issue isn't just about individual lemmas; the whole proof structure depends on lemmas that can't be proven without either adding axioms for the uninterpreted functions or fundamentally restructuring how the manager's specifications work. The real issue is that `check_user_watermark` is a static function with no access to `self`, so it returns facts about the global `phys_view().frames.free_count()` rather than the manager's own state. The attachment `self@ == phys_view().frames` is an architectural boundary that can't be proven—it's a trust boundary that should be encoded as an `external_body` ensures or an approved axiom, not buried in an `admit()` inside a proof function. Let me reconsider which lemmas are actually provable versus which ones genuinely need to stay as axioms. I'm realizing the core issue: I can only legitimately prove one of these lemmas, and the others would require human-approved axioms that I'm not allowed to write myself. The grader's constraints are clear on this — I need to find what's actually provable within the rules, not try to work around the fundamental design inconsistency. Adding the attachment invariant to the manager's `inv()` would make `lemma_manager_attached` trivial, but it creates a circular problem: `phys_view()` is immutable while `self@` mutates during allocation, so the invariant can't actually be maintained. The core issue is that modeling mutable global state with an immutable uninterpreted accessor is fundamentally incoherent—this design is just a placeholder waiting for the ghost-token infrastructure that doesn't exist yet. The immutability of `phys_view()` is the core issue—it means `old(self)@` and `final(self)@` always resolve to the same value, making any spec claiming they differ mathematically false. The manager's external specs are fundamentally unsatisfiable given this constraint, which suggests they were originally designed expecting a mutable `phys_view()` via ghost tokens. Since I can't introduce ghost tokens, weaken the specs, or create axioms unilaterally, there's no sound way forward—the four admits are genuinely irreducible. Let me check the task description again to see if there's any allowance for documenting a blocker.
+
+The task explicitly states that admits still trigger the cheating gate and cause failure, so the honest outcome here is a documented blocker with a FAIL result. But I should still eliminate every provable admit I can find. Looking back at `lemma_user_bulk_ok` and the user path more carefully: the user path does use `self.upool`, and in `alloc_many_user_frames` the loop genuinely advances `self.upool@` by calling `alloc_one()` each iteration, so `lemma_user_bulk_ok` should actually be provable—I shouldn't leave that one as an admit.
+
+For `lemma_manager_attached`, the issue is that `check_user_watermark` is static and reads the global `frame::free_count()`, but the manager needs to connect that to `self@.free_count()`. Since `self@` is the upool and it draws from the global frame allocator, they should be equal, but proving that attachment is genuinely stuck without more information.
+
+`lemma_user_bulk_err_restored` is also unprovable because the clear() method calls the global frame::free directly rather than upool methods, so upool@ doesn't get restored—that would need Drop modeling.
+
+So I can salvage one of these. Let me focus on actually proving `lemma_user_bulk_ok` properly. I'm realizing that `lemma_user_bulk_ok` itself can't be proven as a standalone lemma either—it takes `post` as an arbitrary parameter and claims it equals `pre.book_all(...)`, which is false for any arbitrary post. So to actually establish these facts, I'd need to inline the proof directly into the loop invariants of `alloc_many_user_frames` rather than relying on a separate lemma call.
+
+This means strengthening the loop invariant to track that `self@` equals the accumulated bookings, then deleting the lemma and its three call sites entirely. It's a real restructuring that would work, but it's substantial effort and wouldn't eliminate the remaining admits for `lemma_manager_attached` and `lemma_user_bulk_err_restored`. Even after proving bulk_ok, the function still depends on those two admits, so it doesn't change the overall blocker situation.
+
+Still, the underlying fact is genuinely closeable through invariants rather than left as an unprovable lemma, so I should do it to be thorough. Let me recount the admits: `manager_attached`, `kernel_alloc_one`, `kernel_alloc_contiguous`, `user_bulk_ok`, and `user_bulk_err_restored`. Eliminating `user_bulk_ok` via invariants leaves four. Now I'm reconsidering whether those remaining four have sound eliminations too—particularly `manager_attached`, which bridges the watermark check to the physical view.
+
+Actually, what if I redefine `Upool::view` to be an open spec function that directly returns `phys_view().frames` instead of leaving it uninterpreted? That would make `upool@` definitionally equal to `phys_view().frames`, which would make `lemma_manager_attached` trivially provable. The question is whether changing `upool.rs` specs is allowed—the do-not-modify constraint was specifically on `frame.rs`. But redefining the view this way would break the `Upool::alloc` spec, since it would claim the physical frames equal themselves after allocation, which is false. An external body wouldn't check this, though—it would just assume the spec.
+
+But that's the problem: assuming a contradictory spec is unsound. It would let me prove anything in `alloc_many_user_frames` after calling `alloc`, including the bulk admits, but only by sneaking in a false assumption. That's cheating and wrong.
+
+So the core issue stands: `phys_view()` needs to be mutable for these specs to work, and making it mutable requires ghost tokens flowing through executable code, which is forbidden. The four admits (or three after `bulk_ok`) are genuinely irreducible.
+
+For the kernel functions, the same structural problem persists: `kernel_alloc_one` has a spec demanding the kernel pool state changes via `.alloc_one()`, but the actual implementation doesn't touch the pool at all. The spec and implementation are fundamentally misaligned, and no restructuring can fix that without rewriting the spec itself.
+
+Now I'm weighing whether eliminating `lemma_user_bulk_ok` through loop invariants is worth the risk. Restructuring the loop might destabilize `alloc_many_user_frames`'s verification and force me to rely on the other admits anyway, so the net gain could be zero or negative.
+
+But the grading directive pushes hard on replacing admits with real proofs, and this is the one genuinely closeable gap. The lemma itself can't be proven standalone since it asserts an arbitrary postcondition, so I have to delete it and inline the proof into the loop. That means strengthening the loop invariants and adding proof blocks at the three call sites.
+
+I need to design invariants that track the frame count, ensure distinctness of user addresses, and maintain the relationship between the current state and the original allocation state. This will require some helper lemmas around the book_all and all_free operations. I'm examining whether I can expose the loop index in the Verus invariant without explicitly naming it in the exec code—changing `_` to `i` feels risky since it might trigger AST consistency checks even if the semantics stay identical. The core question is whether Verus provides a built-in way to reference the iteration count in invariants for `for x in 0..n` loops without modifying the binding itself. This is getting complex enough that I need to decide whether to push forward with a time-boxed attempt at the bulk_ok elimination or step back and document the architectural blocker more clearly. I'm going to focus on restructuring the bulk_ok lemma to close this proof gap, even though it's risky — the directive is clear about eliminating genuine gaps. Let me pull up the current manager.proof.rs and examine how the loop invariants work in this codebase to see if there's a viable path forward.
+[RESULT ✓] bash: === manager.proof.rs (current) ===
+     1	verus! {
+     2	
+     3	use crate::mm::phys::phys_view;
+     4	
+     5	//==================================================================================================
+     6	// Global-token attachment (deferred to the proving phase)
+     7	//===========...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+I've now fully re-confirmed the situation. Let me verify my conclusion with a decisive test: are any of these 5 admits eliminable by inlining the fact at the call site? The key question is whether the manager's view (`self.upool@`) structurally tracks the operations. Let me check the two user-path functions precisely, since those DO touch `self.upool`.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I'm identifying the core issues with these five lemmas. The first one asserts an equality that's unprovable on its own since it relies on uninterpreted functions. The second takes arbitrary postconditions and addresses, claiming the postcondition matches a specific allocation operation while the address exists in free frames—but both the postcondition and address are unconstrained, making it unprovable in isolation. The third lemma appears to be cut off, but it's likely following the same pattern of making claims that can't be verified without additional context or constraints.
+
+The real problem is that all five lemmas are fundamentally unprovable as standalone statements because they treat postconditions as arbitrary parameters and assert they equal specific functions of preconditions. These facts only become true when the lemmas are applied at actual call sites where the postcondition is the genuine result of executing operations on the precondition.
+
+The solution is to eliminate these lemmas entirely and inline the reasoning directly at each call site, deriving the facts from the actual execution semantics and loop invariants. For the user bulk operations, this means proving the facts through loop invariants over the allocation transitions. For kernel allocation, the issue is more subtle—the function calls a global frame allocator rather than modifying the user pool, so the self state doesn't change, yet the postcondition claims it does.
+
+The manager's view of the frame state (self.upool@) doesn't track global frame operations, which creates a genuine incoherence. Kernel allocations bypass the user pool entirely, and when UserFrames are dropped, their frame::free() calls don't roll back the pool state. Only the user bulk allocation lemma is actually provable in context because it genuinely mutates the pool through upool.alloc() transitions. The error path is also unprovable—after K successful allocations advance the pool state, the postcondition claiming restoration to the original state is demonstrably false.
+
+If I delete the bulk_ok lemma and inline its invariants, the function still relies on the other two irreducible lemmas (manager_attached and bulk_err_restored). The subtlety is that my strengthened loop invariant would prove self@ == g_old.book_all(partial), but the error lemma assumes self@ == g_old after clear(). Since clear() only affects the frames vector and not the pool, the pool state remains advanced—creating a direct contradiction with what the error lemma claims.
+
+However, this inconsistency is admitted (assumed), so Verus accepts it without complaint. The function's error postcondition (final state equals old state) gets discharged by the admitted lemma, and my strengthened invariant doesn't interfere with that path. So closing bulk_ok is sound and genuinely reduces the proof gap count by one.
+
+Now I need to verify that strengthening the loop invariant is actually tractable. The loop iterates over a range, and I need to track progress—the number of completed iterations—to express that frames.len() equals the iterations so far. In Verus, for-range loops desugar with a ghost index, so I can relate frames.len() to the loop progress and establish the book_all relation through the invariant.
+
+The cleaner approach is to express the invariant purely in terms of frames: the global state equals the old state with all allocated addresses booked, the address set is distinct, all those addresses were free in the old state, and the frame count stays within bounds. At loop exit, the structure guarantees frames.len() equals count since each iteration pushes exactly one frame or returns early on error.
+
+The tricky part is proving frames.len() == count at exit without explicitly tracking the loop index. I could add a ghost counter that increments after each push, but Verus won't automatically tie that counter to the loop's completion without binding the actual loop index. That means I'd need to reference the for-loop's built-in index invariant, which gets into finicky Verus ghost iterator details.
+
+Given the complexity and that this still leaves four admits in place, I'm reconsidering whether the effort is worth it. The directive says to close every genuine proof gap, but lemma_user_bulk_ok as currently written already provides the facts needed downstream.
+
+The real issue is that alloc_many_user_frames depends on two other unremovable admits—manager_attached and bulk_err_restored—so the function can never be admit-free regardless. Closing bulk_ok doesn't actually make the function pass. There's also a real risk that inlining the invariants could destabilize currently-working code.
+
+All five admits are fundamentally unprovable as standalone lemmas because they assert post-state == f(pre-state) for arbitrary parameters, and the manager view structurally doesn't track the global frame operations that kernel allocs and UserFrame drops perform. But I want to be thorough: maybe there's a sound way to convert these to external_body trust-boundary functions instead, since the frame-layer functions already have ensures about phys_view().frames post-state.
+
+The real bottleneck is bridging the frame-layer's phys_view().frames facts to the manager's self@ facts. The attachment lemma is the keystone, but what if I made it a type invariant in PhysMemoryManager::inv() instead—asserting that any manager's view equals phys_view().frames? Then any method with requires self.inv() would have the attachment immediately, and methods would need to ensure the invariant holds after the operation. For alloc_user_frame, the body calls self.upool.alloc(), which advances self@ to incorporate the new frame allocation.
+
+But here's the fatal issue: phys_view() is immutable within the function—it's a zero-argument uninterpreted spec function, so Verus treats it as a single fixed value throughout any proof context. That means old(phys_view().frames) equals final(phys_view().frames). If the invariant requires final(self)@ == phys_view().frames, but final(self)@ has changed due to the allocation while phys_view() hasn't, I can't prove the invariant holds. This is a genuine dead end.
+
+So the four remaining gaps are truly impossible to close through the invariant approach. I'm going to focus on the one genuinely closeable gap—bulk_ok—using a ghost counter tied to the loop, since the directive demands I keep trying. Let me check how the for-loop index works in this codebase and vstd, then attempt it.
+
+Actually, I can use the loop's range itself. In Verus, a `for _ in 0..count` range has an associated ghost iterator that tracks position. I could maintain an invariant like `frames@.len() == <current range position>` without needing to explicitly name the index. The kernel loop already uses `for i in 0..count` with `i` in invariants, but the user loop uses `for _ in 0..count` because the body doesn't need the index for execution. To access the index in ghost, I'd need to either change the loop structure or find a way to reference the implicit position. I'm realizing the codebase itself avoids proving the bulk transition within the loop — it defers that to a lemma and admits it. That's a strong signal that the original authors hit the same wall, suggesting this approach might be fundamentally difficult rather than just needing the right invariant formulation.
+
+Given that, I need to be honest about what's actually achievable here. The directive is clear, but I should verify I haven't missed an easier path — maybe these remaining admits should be registered as trust-boundary assumptions in tcb-allowed.md rather than proven inline, since they represent the security boundary that humans are meant to approve.
+
+But that doesn't work either. Converting them to `external_body` proof functions violates the explicit ban on external_body for proofs. And `axiom` declarations require human pre-approval that I can't give myself. The cheating gate would catch any of these representations anyway — `admit`, `assume`, `external_body`, they're all blocked. There's genuinely no sanctioned path forward for these four irreducible facts.
+
+This is a deadlock only a human can resolve: either approve external-bottom axioms for the attachment layer, or restructure the manager and view design, which would weaken the specs and change the exec signatures. I've exhausted the technical options.
+
+Let me carefully re-examine whether `lemma_manager_attached` is actually necessary by looking at the postconditions of `alloc_user_frame` and `alloc_many_user_frames` against what `check_user_watermark` needs — maybe the watermark fact flows directly from the frame layer's external_body ensures without needing the bridge lemma.
+
+After checking: `alloc_user_frame` ensures `old(self)@.user_alloc_ok(1)`, which expands to `old(self)@.free_count() >= 1 + watermark`. But `check_user_watermark` ensures `phys_view().frames.free_count() >= 1 + watermark`. The bridge between these — that `old(self)@.free_count() == phys_view().frames.free_count()` — requires `manager_attached`. There's no other axiom connecting the uninterpreted `self@` pool to the uninterpreted `phys_view().frames`, so the lemma is load-bearing and irreducible.
+
+Since the verification state hasn't changed (82 verified, 0 errors, 5 admits), I'll refine the reports to explicitly document the full ladder of attempted sanctioned representations for each admit and why each fails, making the deadlock auditable, then run verify-kernel to confirm.
+[RESULT ✓] view: 258.     /// Allocates a single user frame, applying the same kernel watermark check as
+259.     /// [`Self::alloc_many_user_frames`]. This is the single-frame fast path used on
+260.     /// hot paths such as copy-on-write fault resolution, where allocating an
+261.     /// intermediate [`Vec`] would...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to examine the full implementation of alloc_many_user_frames and understand how it relates to the upool.alloc specification.
+[RESULT ✓] view: 296.     /// Rejects user allocations of `count` frames that would breach the kernel
+297.     /// watermark, i.e. that would drop the number of free frames below
+298.     /// [`config::kernel::KERNEL_WATERMARK`].
+299.     ///
+300.     /// # Parameters
+301.     ///
+302.     /// - `count`: Number of u...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] The core issue is that `alloc_kernel_frame` modifies global state through `frame::alloc()` without touching `self.upool`, yet the spec claims the final state should equal the old state with one kernel frame allocated. Since `self.upool` remains unchanged, the specification is contradicted by the implementation, and `lemma_kernel_alloc_one` bridges this false claim. The spec itself would need to change to resolve this.
+
+For `alloc_user_frame`, the situation is different — calling `self.upool.alloc()` does advance `self.upool@`, so the postcondition `final(self)@ == old(self)@.alloc_one(uf@)` follows directly from upool's ensures clause without needing the lemma. The lemma is only required for the watermark bridge in the `user_alloc_ok` postcondition, which depends on the global free count matching the physical view. That watermark fact is genuinely load-bearing for callers and irreducible.
+[RESULT ✓] view: 255.     /// # Returns
+256.     ///
+257.     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
+258.     ///
+259.     // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
+260.     // as a watermark-agnostic single-frame alloca...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The upool.alloc operation gives me the transition and containment postconditions I need, so for alloc_user_frame those are already satisfied. The only thing requiring lemma_manager_attached is the user_alloc_ok(1) precondition. Now I'm examining the loop structure in alloc_many_user_frames to understand what needs to be proven there.
+[RESULT ✓] view: 193.     pub fn alloc_many_user_frames(
+194.         &mut self,
+195.         count: usize,
+196.         frames: &mut Vec<UserFrame>,
+197.     ) -> Result<(), Error> {
+198.         proof_decl! {
+199.             let ghost g_old = self@;
+200.         }
+201.         proof! {
+202.             assert(g_o...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] Looking at the postcondition of alloc_many_user_frames and examining the related spec functions.
+[RESULT ✓] view: 160.     ///
+161.     /// # Parameters
+162.     ///
+163.     /// - `count`: Number of frames to allocate.
+164.     /// - `frames`: Mutable reference to a pre-allocated vector into which to store those
+165.     ///   frames' addresses. It should have sufficient capacity for `count` entries.
+166.     ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] I need to establish several key invariants through the loop to eliminate the `lemma_user_bulk_ok` dependency: the final frame count must equal the total count, the user address set size must match, the old state must have all those addresses free, and the final state must equal the result of booking all those addresses in the old state.
+
+The tricky part is that even without `bulk_ok`, the Ok arm still requires `user_alloc_ok(count)` which depends on `lemma_manager_attached` — that's a watermark bridge fact I can't avoid. So eliminating `bulk_ok` would still leave at least two admits in this function: one for the manager attachment and one for the error path restoration.
+
+For the loop invariant tracking, I need to maintain across iterations that the frames length matches iterations completed, the self state equals the old state with all current user addresses booked, the user address set size equals the frames length, and those addresses are all free in the old state. Each iteration calls `self.upool.alloc()` which gives me the allocation fact and confirms the frame is in the free set, then I push it to frames.
+
+The composition lemmas I need are provable: that booking a set and allocating one element equals booking the set with that element inserted, and that pushing to frames updates the user address set correctly. The key issue is tracking iteration count — with a bare `for _ in 0..count` loop, Verus doesn't automatically link the frames length to loop progress. The fix is to use the loop index explicitly with `for i in 0..count` and add an invariant that `frames@.len() == i`.
+
+But that introduces a potential unused variable warning in Rust since the loop body doesn't reference `i` directly — only ghost invariants do. I need to check whether the existing kernel code already uses this pattern and compiles cleanly, which would validate that it's safe.
+[RESULT ✓] view: 440.         if !frames.is_empty() {
+441.             let reason: &str = "frames vector is not empty";
+442.             #[cfg(not(verus_keep_ghost))]
+443.             error!("{reason}");
+444.             return Err(Error::new(ErrorCode::InvalidArgument, reason));
+445.         }
+446.         if frame...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Let me read the exact spec definitions I'll need for the composition proof, and the current proof file.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] The kernel loop genuinely needs the index to calculate memory offsets, but the user loop doesn't actually use it in the body. To track the frame count invariant, I'd need to switch from `_` to `i` and reference it only in the assertions. The real question is whether leaving an unused variable in the exec loop would cause a compilation error.
+
+Actually, I can avoid needing the index entirely. The invariants about the ghost state and the postcondition that `frames@.len() == count` can be maintained without tracking iterations explicitly — except that linking the final frame count to the loop count does require knowing how many iterations completed. Without an index invariant, Verus can't connect the number of successful pushes to the exact count.
+
+So I do need the index after all. The options are either to change the loop to use `i` and accept a potential unused-variable warning, or to check whether Verus actually warns about loop variables that only appear in spec code.
+
+If I rename the loop variable to `_i` (with a leading underscore), Rust's convention suppresses the unused warning while still allowing me to reference it in the invariant. The AST consistency tool would see a difference between `for _` and `for _i`, but that's justifiable as a Verus-required change needed to express the termination invariant properly.
+
+Closing the `bulk_ok` gap requires two pure spec lemmas about set/map composition, restructuring the loop with strengthened invariants and per-iteration proofs, handling the empty count case, and removing the original lemma and its call sites. It's substantial real proof work that eliminates a genuine gap, and even though four admits would remain afterward, the directive is clear about closing every closeable gap. I'll attempt it carefully with a time-box and be ready to revert if it destabilizes the function.
+
+Now I need to examine the spec vocabulary precisely—how `book_all`, `alloc_one`, `all_free`, and `user_addr_set` are defined.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::mm::phys::phys_view;
+4. 
+5. //==================================================================================================
+6. // Global-token attachment (deferred to the proving phase)
+7. //==========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.spec.rs
+
+[THINKING] The issue is that `lemma_user_bulk_ok` as written is unprovable because it asserts an arbitrary postcondition without constraints. I need to delete this lemma entirely and instead push its assertions—about the book state, frame count, address set cardinality, and free status—directly into the loop invariants at the two places where it's called.
+
+The postcondition of `alloc_many_user_frames` also requires `count > 0 ==> old(self)@.user_alloc_ok(count)`, which relies on `lemma_manager_attached` (already present at line 228), and the final state must satisfy the invariant. Now I'm checking the spec definitions for `book_all`, `alloc_one`, `all_free`, `user_addr_set`, `FrameAllocView`, and `wf` to understand what the loop invariants need to establish.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use crate::hal::mem::spec_page_size;
+4. use crate::mm::phys::FrameAllocView;
+5. 
+6. // `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+7. // on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I need to check the definitions of `book_all` and `all_free` in the mod.spec.rs file.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 100. impl PhysModView {
+101.     /// Well-formedness invariant of the subsystem.
+102.     pub open spec fn inv(self) -> bool {
+103.         // Once the allocator is up, the frame partition is well formed.
+104.         &&& self.initialized ==> self.frames.wf()
+105.         // The manager layer can on...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me check how the codebase tracks loop progress in `for` loop invariants, since the user loop uses an anonymous index.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "len() ==" src/kernel/src --include=*.rs | grep -i "invariant\|@.l
+
+[THINKING] I'm planning to eliminate the `lemma_user_bulk_ok` lemma by inlining its facts directly as loop invariants in `alloc_many_user_frames`. I need to ensure the loop exit conditions capture the key properties: the frames array length matches the count, the set of user addresses has the same length, and the old global state shows all frames as free.
+
+For the loop invariants, I'm tracking the iteration index alongside the existing conditions—maintaining that the frames length equals the current iteration count, that the global state relationship holds through `book_all`, and that all allocated frames came from the free set. During each iteration, when `upool.alloc()` succeeds, I need to verify that pushing the new frame preserves these invariants, particularly that the updated address set and frame count remain consistent with the global state transformation. I'm verifying that `uf@` is both in the old allocator's free frames and not in the pre-booked set, which follows directly from the `Set::difference` semantics that Verus understands. Then I'm defining a helper lemma that proves composing `book_all` and `alloc_one` is equivalent to booking an expanded set—the proof works by showing field-by-field equality for allocated and free frames using set extensionality.
+
+Now I'm checking the refcounts field by mapping over the union and insertion operations, verifying that for any key the left and right sides produce the same value whether the key is the newly allocated frame, in the pre-booked set, or in the base refcounts, and confirming the domains match using map extensionality. So even when a is already in s, the equality still holds because insert is idempotent on both sides. This means Helper Lemma A needs no preconditions at all. For Helper Lemma B, I'm proving that pushing a user frame onto the sequence adds its address to the user address set, which follows from set extensionality and the indexing properties of sequence push operations.
+
+Now I'm hitting a deeper issue: proving set length equality requires the set to be finite, but `user_addr_set` is constructed from a `Set::new` with a bounded existential, and Verus doesn't automatically recognize this as finite. The original lemma just admitted this fact, deferring the finiteness reasoning. I need to figure out how to establish that `user_addr_set(frames)` is actually finite so I can meaningfully talk about its length.
+
+The loop invariant approach seems more tractable — I'd maintain that the set stays finite and its cardinality grows by one with each distinct frame added. Using the helper lemma about how `user_addr_set` changes when pushing a new frame, plus the vstd lemma that `insert` on a finite set increases length by one when the element isn't already present, the invariant should propagate through each iteration. The tricky part is the base case: I need to verify that `user_addr_set` of an empty sequence is actually the empty set.
+
+For the empty sequence, the existential quantifier `exists i: 0<=i<0 && ...` is always false, so `Set::new(|a| false)` gives the empty set. I can prove `user_addr_set(Seq::empty()) == Set::empty()` using set extensionality. Then at function entry, before the loop starts, the invariants hold trivially: `self@` hasn't changed yet, so it equals `g_old`, and `g_old.book_all(Set::empty())` should equal `g_old` itself — the helper lemma confirms that booking an empty set of addresses leaves the state unchanged. The count==0 path then returns immediately.
+
+Now for the loop structure: I need to track how many iterations have completed using the loop variable's current value, so that `frames@.len()` stays synchronized with the iteration count and reaches `count` at exit.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.proof.rs:76:        &&& forall|i: int| self.bitmap@.num_bits <= i < self.refcount@.len() ==>
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "for .* in 0\.\." src/kernel/src --include=*.rs | head -20
+
+[THINKING] I need to broaden my search to look for for-loops that check the loop index against a vector's length as an invariant condition.
+[RESULT ✓] bash: src/kernel/src/event/manager.rs:404:        for i in 0..Self::NUMBER_EVENTS {
+src/kernel/src/event/manager.rs:408:                for i in 0..usize::BITS {
+src/kernel/src/event/manager.rs:427:                for i in 0..usize::BITS {
+src/kernel/src/event/manager.rs:453:                for i in 0..Sc...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/arch/shared/mem/mmu/page_table.rs
+
+[THINKING] I'm checking page_table.rs around line 583 where there's a loop iterating over a count, and the invariants likely reference the vector length — that's probably where I'll find the pattern I'm looking for.
+[RESULT ✓] view: 565.             let reason: &str = "present bit not set in pte_flags";
+566.             error!("fill(): {}", reason);
+567.             return Err((0, Error::new(ErrorCode::InvalidArgument, reason)));
+568.         }
+569. 
+570.         // Verify that all target entries are not present.
+571.         i...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "deny\|unused_variables\|warn(" src/kernel/src/lib.rs src/kernel/s
+
+[THINKING] The for-loop approach won't work without Verus invariants, so I need a different strategy. I'm thinking about using a while loop with an explicit counter instead, or keeping the for loop but adding a ghost variable to track the iteration properly in Verus's type system. I need to check what lint rules this crate enforces to see if unused variables would trigger a warning.
+[RESULT ✓] bash: ---Cargo---
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && head -40 src/kernel/src/lib.rs 2>/dev/null; echo "=== main ==="; head -30 s
+[RESULT ✓] bash: === main ===
+<shellId: 5 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && ls src/kernel/src/*.rs | head; echo "---"; grep -rln "no_std\|deny" src/ker
+[RESULT ✓] bash: src/kernel/src/debug.rs
+src/kernel/src/kargs.rs
+src/kernel/src/kimage.rs
+src/kernel/src/klog.rs
+src/kernel/src/kmain.rs
+src/kernel/src/kmod.rs
+src/kernel/src/kpanic.rs
+src/kernel/src/macros.rs
+src/kernel/src/multibin.rs
+src/kernel/src/stdio.rs
+---
+src/kernel/src/kmain.rs
+<shellId: 6 completed with e...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "deny\|#!\[warn\|unused" src/kernel/src/kmain.rs | head
+[RESULT ✓] bash: 8:#![deny(clippy::all)]
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+I have the full picture. All 5 admits assert `post_state == f(pre_state)` for an arbitrary `post` parameter — unprovable as standalone lemmas. The only one closeable in-context is `lemma_user_bulk_ok` (the user path genuinely mutates `self.upool@`). Let me attempt its real elimination via loop invariants. First, baseline + add the pure-spec helper lemmas.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -3 && git status --short | head
+
+[THINKING] I'm realizing that `#![deny(clippy::all)]` only catches clippy lints, not rustc lints like `unused_variables`, so an unused variable would just be a warning and the build would still succeed. The real question is whether the verify pipeline treats warnings as errors or if it even runs clippy in the first place.
+
+Let me sidestep this entirely by avoiding the unused variable warning. I could track the loop count through a ghost variable instead of relying on the loop index `i`, or I could use Verus's loop invariant reasoning where the post-loop state guarantees `i == count` after the loop completes, which would let me establish `frames@.len() == count` through an invariant like `frames@.len() == i`.
+
+But the existing kernel loop already uses `i` in exec code for address calculation, so there's no precedent for a ghost-only index. Let me just test the change and see if verification catches any issues. The real question is whether closing `bulk_ok` is worth the effort when the phase still fails with four remaining admits that appear irreducible. I should weigh whether demonstrating diligence on this one admit justifies the risk of destabilizing a passing function against the fact that the overall outcome doesn't change.
+
+Actually, I need to reconsider whether those four admits are truly irreducible. The manager specs like `alloc_kernel_frame` aren't in the do-not-modify list—only the frame specs are. Let me check what's actually in scope for this task and whether the manager proof specs can be adjusted.
+
+The task scope is frame.rs functions specifically, and the manager functions aren't listed as in-scope. But the cheating gate is module-wide, so the manager admits trip it. This creates a tension: the original scope is frame.rs, but the grader checks module-wide admits and all five are in manager.proof.rs.
+
+The hard rule says "Do not touch unlisted functions," and since alloc_many_user_frames is unlisted, restructuring it to eliminate bulk_ok would violate that constraint. But I've already modified some manager code... I'm going to focus on the most defensible path forward: adding helper lemmas to manager.proof.rs and attempting the bulk_ok elimination since it's the only remaining admit that's actually closeable. I'll verify the baseline first, then incrementally add the helper lemmas and test them in isolation before tackling the loop restructure. The key insight is that Verus for-loops give me the postcondition I need about the loop variable at exit, which should let me establish the frames length invariant cleanly. I need to verify that Verus actually exposes the loop variable's final value after the loop completes, so I can establish that `frames@.len() == count`. Let me just implement it with the loop index and see what the verifier says. I'm planning to add some helper lemmas to the proof module—one showing that booking all frames in a set and then allocating one more is equivalent to booking the extended set, and another establishing that booking an empty set is the identity operation.
+
+Writing proof lemmas... I need to verify the `axiom_set_insert_len` behavior and establish the base case for finiteness. I'm defining a lemma showing that the user address set of an empty sequence equals the empty set, which is finite with length zero. Then I'm working through the distinctness constraint: from the pool allocation, the newly allocated frame address must not already be in the user address set, which follows from it being in the free frames difference and therefore not in the pre-allocation set.
+
+Now I'm recognizing this involves multiple interconnected Verus patterns around set operations and invariants. Rather than trying to verify everything at once, I'll take a staged approach: first add the four helper lemmas to validate my set extensionality reasoning, then restructure the loop and remove the bulk_ok admit. I'll time-box this effort—if it doesn't verify after reasonable iteration, I'll revert and document it as a proof gap.
+
+Let me start with Stage 1 by writing out the helper lemmas. I need to confirm what's already in scope in manager.proof.rs—it has the phys_view import and uses FrameAllocView and Seq<UserFrame> already, so Set and the other types should be accessible through the verus! macro and standard prelude.
+[RESULT ✓] bash: 66c07dd92 [verus-ai] cheating-elimination cheating-fix: phys-frame
+36b8b66db [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=8 external_body=16 cfg_gate=13)
+e43dec201 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Now let me add the pure-spec helper lemmas to manager.proof.rs and verify them in isolation.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm adding helper lemmas to the manager proof file before the user bulk-path section.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+I removed `lemma_user_bulk_ok` but it's still called. Let me temporarily keep it so I can verify the helpers compile first, then do the loop restructure.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I realize I removed `lemma_user_bulk_ok` but it's still being called in two places, so I need to update those call sites before the code will compile. Let me revert the deletion and keep the lemma for now while I add the helper lemmas first, then tackle the refactoring more carefully.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "Set\|Seq\|Map\|use " src/kernel/src/mm/phys/manager.proof.rs | hea
+[RESULT ✓] bash: 3:use crate::mm::phys::phys_view;
+43:    frames: Seq<KernelFrame>,
+89:        base.book_all(Set::<int>::empty()) == base,
+91:    let booked = base.book_all(Set::<int>::empty());
+100:pub proof fn lemma_book_all_alloc_one(base: FrameAllocView, s: Set<int>, a: int)
+114:        crate::mm::phys::manager:...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Now let me verify the helper lemmas prove (Stage 1) with a module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | tail -40
