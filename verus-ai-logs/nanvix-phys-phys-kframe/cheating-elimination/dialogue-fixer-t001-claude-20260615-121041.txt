@@ -76,3 +76,27 @@ Turn 4
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 900 make verify-ke
 
 [THINKING] I've inlined `identity_map_page` directly into the `new` function and left `map_frame` as an unused helper, which Verus will ignore anyway. Let me clean up by removing `map_frame` entirely and then run the test to see the precondition error for `identity_map_page`.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error: Unsupported constant type
+   --> src/kernel/src/macros.rs:188:12
+    |
+188 |               let _ = write!(
+    |  _____________________^
+189 | |                 &mut crate::klog::Klog::get(
+190 | |                   ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Option A hits the `error!` macro "Unsupported constant type" error in verified code. Let me push further — strip the logging closures to isolate the `identity_map_page` precondition check.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs
+
+[THINKING] The issue is that `error!` macros can't be verified when inlined into verified code, which is why the original implementation used `#[cfg(not(verus_keep_ghost))]` to gate them. The `map_frame` helper was extracted as unverified code specifically to avoid this problem, so if I want to inline directly into verified `new`, I'd need to add cfg-gating around those error calls.
+
+Let me try a cleaner approach instead: strip out the error logging closures entirely and use `?` directly to see if the `identity_map_view().inv()` precondition actually discharges without the extra error handling getting in the way.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 900 make verify-ke

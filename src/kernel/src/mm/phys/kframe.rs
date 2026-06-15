@@ -79,14 +79,8 @@ impl KernelFrame {
     )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
         let phys_addr: PageAligned<PhysicalAddress> =
-            PageAligned::from_raw_value(base.into_raw_value()).map_err(|e| {
-                error!("frame base is not page-aligned: {e:?}");
-                e
-            })?;
-        crate::mm::virt::identity_map_page(phys_addr).map_err(|e| {
-            error!("failed to identity-map frame: {:?}", e);
-            e
-        })?;
+            PageAligned::from_raw_value(base.into_raw_value())?;
+        crate::mm::virt::identity_map_page(phys_addr)?;
 
         Ok(Self { base })
     }
