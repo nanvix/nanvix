@@ -723,3 +723,93 @@ I've already confirmed the module-level check passed cleanly with no errors, the
 Now I should run the full `make verify` across all crates as required, though it should mostly hit the cache since I reverted all changes back to the starting state and didn't touch any other crates.
 [RESULT ✓] bash: ✅ Consistent: 17 functions, 1 structs match.
 <shellId: 37 completed with exit code 0>
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+All crates verify with **exit 0**, AST consistency confirms 17 functions + 1 struct match (zero mismatches), and no regressions. Let me write the report and verification TODO.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination && ls verus-ai-log
+
+[THINKING] Looking at the verification results across all the crates—they're all passing with exit code 0, which is good. One crate has a cfg_gate value of 5 with cheating detected but no external body, nanvix-slab appears clean, another has cfg_gate=1, bump-allocator shows 2 external bodies that are tcb-allowed, and the kernel has 24 external bodies with 9 cfg_gate instances, all marked as tcb-allowed or ghost blocks. No regressions detected so far.
+
+The cheating counts match the baseline exactly from the git history. I've verified 17 functions and 1 struct match across the AST. The hal-page-aligned module was already in its final state at the start. The two in-scope cheating items are both listed in tcb-allowed.md: the `PageAligned::from_address` external body is genuinely blocked because it calls unspecced trait methods and untranslatable constants, and the `into_raw_value` assume_specification is human-approved and causes a Verus front-end panic when marked verified. The single cfg_gate in the module is a legitimate ghost-only spec block that's pre-existing and unchanged. No admits or assumes anywhere. Now I'm compiling the before-and-after counts for the module.
+[RESULT ✓] bash: body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_lsp_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md with 2440 characters
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md with 4474 characters
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+Let me do a final confirmation that source files match the clean START commit and contain no admit/assume.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== diff vs START commit (should be empty) ===" && git diff 465c1485f -- src/kernel/s
+
+[THINKING] Let me verify the source files are in their original state matching the START commit and check that no stray edits or admit/assume statements remain.
+[RESULT ✓] bash: === diff vs START commit (should be empty) ===
+DIFF-EMPTY
+=== admit/assume scan in the 3 files ===
+NONE-FOUND
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Done. Source files are byte-identical to the clean START commit, with no `admit()`/`assume()`.
+
+## Summary
+
+The `hal-page-aligned` module was already at its verified final state. I followed the verus-constraints escalation ladder to genuinely attempt eliminating the two in-scope trust items, confirming both are unavoidable in scope:
+
+| Item | Type | Status |
+|------|------|--------|
+| `from_address` | `external_body` | tcb-allowed; unspecced `Address::is_aligned`, uninterpreted `spec_addr`, untranslatable `arch::mem::PAGE_ALIGNMENT` |
+| `into_raw_value` | `assume_specification` | tcb-allowed; **reproduced** the Verus front-end panic `vir/src/traits.rs:511: assertion failed: !method_impls.contains(&p)` when body-verifying the trait impl |
+| `verus!{}` block | cfg-gate | ghost-only `View`/`inv` material, not gated-out exec |
+
+**Key findings:**
+- Both cheating items are human-approved trust boundaries in `tcb-allowed.md`, blocked by the unverified upstream `sys::mm::Address` trait and the `arch` `Alignment` encoding — not proof gaps.
+- **0** `admit()` / `assume()` anywhere.
+- AST consistency: **17 functions + 1 struct match, 0 mismatches**.
+- Module: **1 verified, 0 errors**; full `make verify-kernel` and `make verify`: **all exit 0**, no regressions.
+
+**Note:** The verify harness auto-commits each run, so my reproducer was committed and left transient FAIL commits + a poisoned incremental cache; I restored the files from the clean START commit (`465c1485f`) and re-verified to confirm the true passing baseline.
+
+Reports written to `verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md` and `verification_todo.md`.
+
+**Result: PASS** — zero non-allowed cheating; all residuals are human-approved and genuinely blocked upstream.
+
+
+=== Session End ===
+Session: f4895855-771f-4f7a-908f-5f21b8501e8f
+Duration: 551.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/prover-claude-20260615-113711.jsonl
