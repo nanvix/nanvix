@@ -121,3 +121,29 @@ Now let me reproduce the inline failure to capture the exact error.
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified|error|precondition|num_bits|fr
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:851:9
+851 |         lemma_free_count(inner);
+ 95 |         inner.bitmap@.num_bits >= 0,
+    |         --------------------------- failed precondition
+verification results:: 30 verified, 1 errors (partial verification with `--ve...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Confirmed the exact error. Now restore the working code with the proper `VERUS REWRITE` marker.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now create the minimal reproducer file.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/reproducers/04_free_count_inline_fails.rs
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/reproducers/04_free_count_inline_fails.rs with 3404 characters
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now verify the fix and confirm the marker is present.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "VERUS REWRITE" src/kernel/src/mm/phys/frame.rs && echo "=== verify ===" && make ve

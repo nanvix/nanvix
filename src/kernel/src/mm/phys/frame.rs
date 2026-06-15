@@ -842,15 +842,25 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 )]
 pub(super) fn free_count() -> usize {
     let inner = instance();
-    // VERUS DEVIATION (pre-approved: intermediate value for assertions):
-    // `number_of_bits() - usage()` is split into named bindings so the proof can
-    // recover `num_bits >= 0` from the `usize` result of `number_of_bits()`.
-    // `Bitmap::inv()` references the bitmap's private backing slice, so the bound
-    // is opaque in this module and cannot be derived inside `lemma_free_count`.
+    // VERUS REWRITE: original idiom is the single expression
+    // `inner.bitmap.number_of_bits() - inner.bitmap.usage()`. It is split into the
+    // named bindings `nbits`/`used` below; `nbits - used` yields the identical
+    // `usize` result, so the rewrite is semantically and cost-equivalent (two
+    // already-present calls, one subtraction — no extra work, no extra storage).
+    // Required by Verus: `lemma_free_count` requires `inner.bitmap@.num_bits >= 0`,
+    // but `Bitmap::inv()` hides the backing-slice length so that bound is opaque
+    // inside the lemma. Binding `let nbits = number_of_bits()` materializes the
+    // `usize` postcondition (`nbits as int == num_bits`, `nbits >= 0`) at the call
+    // site, discharging the precondition. Inlining the expression instead fails
+    // with `precondition not satisfied: inner.bitmap@.num_bits >= 0` at the
+    // `lemma_free_count(inner)` call — see minimal reproducer
+    // `verus-ai-logs/nanvix-phys-phys-frame/reproducers/04_free_count_inline_fails.rs`.
+    let nbits: usize = inner.bitmap.number_of_bits();
+    let used: usize = inner.bitmap.usage();
     proof! {
         lemma_free_count(inner);
     }
-    inner.bitmap.number_of_bits() - inner.bitmap.usage()
+    nbits - used
 }
 
 /// Free a frame previously returned by [`alloc`].
