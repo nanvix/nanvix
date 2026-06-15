@@ -185,3 +185,296 @@ Now let me run the actual verification. This is the critical evidence.
 [THINKING] I'm checking whether the module has any admit/assume statements or external bodies—there's only a comment mentioning one. Now I need to verify the cfg-gating rule, which allows only imports, derives, debug assertions, and logging. The file has several cfg gates for platform features like "whp", "pit", "smp", and "stdio", but these appear to be pre-existing platform configuration rather than cfg-gating for executable code.
 
 The real concern is whether someone used cfg gates like `#[cfg(verus_keep_ghost)]` to hide different executable bodies between verification and compilation. The `#[cfg(verus_keep_ghost)]` gates on lines 9 and 11 are standard ghost wiring for including spec and proof files, which is allowed. The feature-based gates are legitimate conditional compilation that both Verus and the build see consistently, not introduced to cheat verification. I need to check how Verus is actually invoked to confirm it sees the same feature configuration as the real build.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but the gate reports crate-wide `external_body=25 cfg_gate=7`. I must verify none are in-scope. Let me check the detail file and the TCB-allowed list.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== cheating-detail.txt ===" && cat verus-ai-logs/verify-kernel/verus-logs/cheating-d
+
+[THINKING] The verification passed, but the cheating gate is flagging 25 external_body violations and 7 cfg_gate issues across the crate. I need to confirm these are all in other modules and properly listed in the TCB-allowed file, not in the microvm module itself. Let me cross-reference the cheating-detail report against the allowed list to verify the fix is legitimate.
+[RESULT ✓] bash: === cheating-detail.txt ===
+    - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+    - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+    - mm/phys/frame.rs:137 alloc: exter...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+No external_body in microvm. Now let me check the cfg_gate=7 details and verify none are in-scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/verify-kernel/verus-logs/; echo "=== grep cfg in logs ==="; grep -ri "cfg_
+
+[THINKING] I'm not finding a matching microvm, so let me dig into the cfg_gate=7 details. The cheating-detail output only showed external_body and external_type_spec, but not cfg_gate itself. I need to search through the verus logs to find where cfg_gate is actually defined.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-15_00-55-32.log
+verus_2026-06-15_01-01-27.log
+verus_2026-06-15_01-04-34.log
+verus_2026-06-15_01-06-51.log
+verus_2026-06-15_01-10-45.log
+verus_2026-06-15_01-12-18.log
+verus_2026-06-15_01-19-48.log
+verus_2026-06-15_01-20-04.log
+verus_2026-06-15...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The detail file lists external_body but not the 7 cfg_gate items. Let me find how cfg_gate is detected and where its details live.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "cfg_gate\|cfg-gate\|cfg_gate_count\|cfg gate" scripts/ 2>/dev/null | grep -iv "\.
+
+[THINKING] I'm looking at the cheating-detail.txt file from the latest run, which shows 25 external_body items and 2 external_type_spec items, but the cfg_gate count of 7 isn't appearing there. I need to check the verify.sh script to see how cfg_gate detections are being tracked and where that detail information should be written.
+[RESULT ✓] bash: scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+scripts/verify.sh:559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEAT...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+cfg_gate only counts `verus_keep_ghost` cfg attributes (not feature gates), excluding includes/uses. Let me confirm the in-scope module contributes 0 and locate the 7 crate-wide.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== all verus_keep_ghost cfg in crate ==="; grep -rn "cfg.*verus_keep_ghost\|cfg_attr
+
+[THINKING] I see that `cfg_gate` specifically counts `#[cfg(verus_keep_ghost)]`, `#[cfg(not(verus_keep_ghost))]`, and `#[cfg_attr(verus_keep_ghost)]` patterns, not general feature gates. The microvm module has two of these annotations on lines 9 and 11, but they're paired with `include!(...)` statements that get filtered out, so microvm doesn't contribute to the cfg_gate count.
+
+Let me run a count just on the microvm directory and search the entire crate for where those 7 verus_keep_ghost cfg gates are actually located.
+[RESULT ✓] bash: === all verus_keep_ghost cfg in crate ===
+src/kernel/src/hal/mem/types/address/aligned/page.rs:8:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/aligned/page.rs:10:#[cfg(verus_keep_ghost)]
+src/kernel/src/hal/mem/types/address/aligned/page.rs:230:#[cfg(verus_keep_ghost)]
+src/kernel/src/...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+In-scope module's two `verus_keep_ghost` gates are `include!`-followed (excluded). Now let me verify AST consistency via git baseline, check the TCB-allowed file, and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git status microvm ==="; git --no-pager status --short src/kernel/src/hal/platfor
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -name "tcb-allowed*" 2>/dev/null; echo "---"; ls verus-ai-logs/ | head; echo "=== tc
+
+[THINKING] Both `#[cfg(verus_keep_ghost)]` annotations in the microvm module are paired with `include!(...)` directives, which the cfg_gate counter excludes, so the module contributes zero to the count. The seven cfg_gate items must be elsewhere.
+
+Now I'm working through the remaining checklist items for the in-scope module. The microvm includes are allowed, so that passes. I've confirmed zero admit(), zero assume(), zero trusted functions, zero exec_allows_no_decreases_clause, zero external_body, and zero cfg-gated exec code. The remaining items I need to verify are AST consistency, whether exec rewrites have the VERUS REWRITE comment (though gva_to_gpa's body is unchanged), spec drift, and the full build verification.
+
+Let me check the tcb-allowed file and run the build command to ensure everything compiles cleanly. I'll also verify the AST consistency by comparing the gva_to_gpa exec body against the git baseline to confirm it's byte-identical.
+[RESULT ✓] bash: === git status microvm ===
+=== git log branch ===
+  dev
+  exp
+  verus-ai/bump-allocator
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/hal-phys-address
+* verus-ai/hal-platform-microvm
+  verus-ai/phys-frame
+  verus-ai/phys-kframe
+  verus-ai/phys-manager
+=== diff vs HEAD for mod.r...
+[RESULT ✓] bash: ./verus-ai-logs/tcb-allowed.md
+---
+arch-paging-mod
+bump-allocator
+hal-page-aligned
+nanvix-phys-bump-allocator
+nanvix-phys-hal-memory-region
+nanvix-phys-hal-page-aligned
+nanvix-phys-hal-phys-address
+nanvix-phys-hal-platform-microvm
+nanvix-phys-phys-frame
+nanvix-phys-phys-kframe
+=== tcb-allowed conten...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Working tree is clean — all committed on branch `verus-ai/hal-platform-microvm`. Let me verify AST consistency against the `dev` baseline and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== diff microvm/mod.rs: dev vs current (exec-relevant) ==="; git --no-pager diff dev
+
+[THINKING] Everything's committed on the verus-ai/hal-platform-microvm branch with no uncommitted changes. The microvm module doesn't need external_body, so it shouldn't be in tcb-allowed. Now I'm checking AST consistency by comparing the gva_to_gpa exec body against the baseline branch verus-ai/hal-memory-region to see what's changed.
+
+Actually, let me think about this more pragmatically. The gva_to_gpa function has the exec body `{ gva }` which is unchanged—the only additions are the ghost attributes and spec/proof includes. AST consistency requires that the exec code (after stripping ghost annotations) matches the original, so I should verify this by diffing against the dev branch.
+[RESULT ✓] bash: === diff microvm/mod.rs: dev vs current (exec-relevant) ===
+diff --git a/src/kernel/src/hal/platform/microvm/mod.rs b/src/kernel/src/hal/platform/microvm/mod.rs
+index dc65a532a..a247763dd 100644
+--- a/src/kernel/src/hal/platform/microvm/mod.rs
++++ b/src/kernel/src/hal/platform/microvm/mod.rs
+@@ -5,6...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Only ghost additions — exec body `{ gva }` unchanged. Let me confirm the full diff has no other exec changes and run the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== full diffstat dev..HEAD ==="; git --no-pager diff --stat dev..HEAD 2>&1; echo; ec
+
+[THINKING] Looking at the diff between dev and HEAD for mod.rs, the changes are purely ghost-level additions—import statements for the prelude and conditional ghost includes, plus a spec attribute on the gva_to_gpa function. The actual executable implementation remains untouched, so there are no runtime logic changes to account for.
+
+Now I need to verify the full diff doesn't contain any additional hunks beyond what was shown, then run the build to confirm everything compiles cleanly with no errors or warnings.
+[RESULT ✓] bash: Output too large to read at once (103.0 KB). Saved to: /tmp/copilot-tool-output-1781506833395-g6k99p.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (firs...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "hunks in microvm/mod.rs (dev..HEAD):"; git --no-pager diff dev..HEAD -- src/kernel/sr
+
+[THINKING] The dev..HEAD diff is too broad since it captures changes from other branches. I already reviewed the mod.rs file and confirmed both hunks are ghost code—the module-include block and the verus_spec block—which is enough to verify AST consistency. Let me just double-check the hunk count from the grep output I saved earlier.
+[RESULT ✓] bash: hunks in microvm/mod.rs (dev..HEAD):
+2
+non-ghost exec changes (added lines not cfg/use/include/verus_spec/comment):
++        // Identity: the MicroVM platform contract the caller relies on (the
++        // guest runs in a flat, identity-mapped address space). Directly-usable
++        // form for the...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+AST consistency confirmed — only ghost/comment additions. Now let me run the build and the spec-drift check.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat .github/skills/build/SKILL.md 2>/dev/null | grep -iE "z build|make build|cargo|command"
+
+[THINKING] The remaining lines are just comments and closing syntax, so the function body stays unchanged. The AST checks out and there are no execution rewrites needed. Now I need to run the build command to verify there are no errors or warnings, and then check for any spec drift.
+[RESULT ✓] bash: ### Preferred Build Commands (using `z` utility)
+./z build -- all
+./z build -- kernel
+./z build -- all-nanvixd
+./z build -- all-uservm
+Set these as environment variables or pass them after `--` in the `z` command:
+./z build -- all RELEASE=yes LOG_LEVEL=error
+./z build -- all
+./z build -- all RELEASE...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Let me run the build to confirm 0 errors/0 warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build -- kernel 2>&1 | tail -40
+
+[THINKING] I notice the spec-drift skill isn't available locally, so I'll need to manually verify that the spec guarantees haven't been weakened. Since this is the initial phase of eliminating cheating and the spec was already established during the spec phase, there's no prior guarantee to compare against.
+
+The ensures clause `result == gva` represents the complete contract, and nothing's been compromised. Now I need to run the build to verify there are no errors or warnings.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z][a-zA-Z0-9_-]*:" Makefile 2>/dev/null | head -40
+
+[THINKING] I should look at the Makefile to find the right build target for compiling the kernel.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "kernel" Makefile | grep -iE "elf|build|cargo|\.rs|target" | head -20; echo "=== b
+
+[THINKING] The kernel gets compiled as part of the image build process rather than through a standalone target. I should look for how the kernel crate is actually built—there might be a `verify-kernel` target that compiles it under Verus for type-checking, but I need to find the regular cargo build command that's used.
+[RESULT ✓] bash: 222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+234:    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+262:# Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
+853:# Seed directory used to build the ...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/build/make/kernel.mk
+[RESULT ✓] view: 1. # Copyright(c) The Maintainers of Nanvix.
+2. # Licensed under the MIT License.
+3. 
+4. KERNEL_FEATURES := $(MACHINE) $(LOG_LEVEL)
+5. KERNEL_FEATURES += $(if $(filter yes,$(WHP)),whp,)
+6. KERNEL_FEATURES += $(if $(filter yes,$(RELEASE)),nightly-performance-optimizations,)
+7. KERNEL_FEATURES := $(st...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+The build target is `all-kernel`. Let me build it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 ./z build -- all-kernel MACHINE=microvm 2>&1 | tail -40
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel MACHINE=microvm
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-featur...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Build succeeded (cached). Let me force a fresh recompile to confirm 0 warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/hal/platform/microvm/mod.rs && timeout 1200 ./z build -- check-kernel 
+
+[THINKING] The build succeeded but it's cached, so warnings wouldn't be re-emitted even if they existed. I need to verify there are actually zero warnings as the checklist requires, but running a clean rebuild just for the kernel could be expensive. The cargo output shows no warnings, though that's not definitive given the caching.
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy/src/kernel#0.16.17","manifest_path":"/home/ruize/nanvix-phy/src/kernel/Cargo.toml","target":{"kind":["custom-build"],"crate_types":["bin"],"name":"build-script-build","src_path":"/home/ruize/nanvix-phy/src/kernel/build.rs...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+All checks pass: kernel recompiled fresh with `build-finished success:true` and zero warning entries. Let me record the full review.
+[TOOL] report_intent: Writing review verdict
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/cheating-elimination/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/cheating-elimination/dialogue/STOP
+
+[THINKING] The kernel compiled successfully with no warnings or errors, and I'm verifying the security checklist—confirming zero unsafe functions like admit() and assume(), with no trusted functions present in the codebase.
+
+All twelve checklist items are passing: no exec_allows_no_decreases_clause violations, no cfg-gated exec code, no external_body outside the TCB, AST consistency verified, no weakened specs, and full crate verification shows no regressions. I'm about to document this comprehensive review in turn_001_driver.md and mark it as RESOLVED, but I need to double-check whether the full kernel crate was verified or just the microvm module in isolation. The spec for gva_to_gpa is new to this work since the dev branch had no Verus spec, so there's no original guarantee to weaken — this is the initial spec being introduced, and the ensures clause is as strong as it gets. All checklist items pass, so I'm ready to write up the review and mark this as resolved.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/cheating-elimination/dialogue/STOP with 9 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/cheating-elimination/dialogue/turn_001_driver.md with 4109 characters
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Review complete. I independently verified all 12 checklist items for `hal::platform::microvm`.
+
+**Verdict: RESOLVED** — every item PASS with reproduced evidence:
+
+| Item | Result | Evidence |
+|---|---|---|
+| admit/assume/trusted/no_decreases | PASS | gate=0; sole `admit()` is comment prose at `mod.proof.rs:10` |
+| cfg-gated exec | PASS | only `verus_keep_ghost` gates are `include!`-followed (excluded) |
+| external_body (TCB) | PASS | 0 in scope; `cheating-detail.txt` has no microvm hits |
+| AST consistency | PASS | `git diff dev..HEAD` = 2 ghost-only hunks; exec body `{ gva }` byte-identical |
+| exec rewrites / surviving ext_body | PASS (N/A) | none exist in scope |
+| specs not weakened | PASS | exact `result == gva` + injective lemma (empty, non-admit body) |
+| cross-module regression | PASS | `make verify-kernel` exit 0, all modules |
+| verify + build | PASS | verify exit 0; forced recompile `build-finished success:true`, 0 warnings |
+
+Wrote the full review to `turn_001_driver.md` and `STOP` = `RESOLVED`. The fixer's PASS report was accurate; no fixes required.
+
+
+=== Session End ===
+Session: fca2d242-eb7e-4f19-9b6b-f3baffc08380
+Duration: 223.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/cheating-elimination/dialogue-reviewer-t001-claude-20260615-145839.jsonl
