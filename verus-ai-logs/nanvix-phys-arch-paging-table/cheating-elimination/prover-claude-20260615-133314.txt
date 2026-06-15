@@ -185,3 +185,219 @@ For the in-scope functions with external_body—`Table::read` and `Table::write`
 [RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/table.proof.rs:13:// against its own (interpreted) codec. This replaces the spec-phase `admit()` placeholder with the
 === grep done ===
 <shellId: 3 completed with exit code 0>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but reports `external_body=4` and `cfg_gate=4`. Let me see the detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] The verify-arch tool is reporting 4 external_body and 4 cfg_gate violations, which triggered a "CHEATING_DETECTED" status even though verification passed. I need to dig into the cheating details to understand what these violations represent.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg" verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt; echo "---"; 
+
+[THINKING] I'm reviewing four external body functions that are all listed in tcb-allowed.md: invlpg from mod.rs is out of scope, lemma_entry_roundtrip from table.proof.rs isn't in the scope function list, while read and write from table.rs are both in scope.
+
+Now I need to understand what cfg_gate=4 is detecting. Looking at the cheating detection, it seems to be counting cfg-gated code blocks like the `#[cfg(verus_keep_ghost)]` includes in table.rs, which appear to be standard include patterns rather than actual cheating. Let me check the verify.sh script to see exactly what this counter is measuring.
+[RESULT ✓] bash: ---
+476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+576:        [[ $MOD_CFG_GATE -gt 0 ]] &...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn -E "#\[cfg(_attr)?\((not\()?verus_keep_ghost" src/libs/arch/src/ | grep -v "
+
+[THINKING] I'm scanning through the entire crate to locate the cfg_gate counters—there are four `#[cfg(verus_keep_ghost)]` gates scattered across the architecture crate that guard executable code rather than use statements or module declarations. I need to pinpoint where these are located to see if they fall within my scope of work.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:10:#[cfg(verus_keep_ghost)]
+src/libs/arc...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The 4 cfg_gates are `cfg_attr(verus_keep_ghost, allow(...))` markers in `pte.rs`/`pde.rs` (out of scope, verus tooling markers, not genuine cheating). Let me confirm the in-scope files match the base branch and that these external_body items are pre-existing/TCB-sanctioned, not AI-introduced cheating I should remove.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== table.rs diff vs base ===" && git diff verus-ai-prove -- src/libs/arch/src/
+
+[THINKING] Looking at the cfg_gate count of 4, I'm noting that the counter excludes certain macros like include!, derive, feature, use, mod, and debug_assert/log. The lines gating include! across various files are all excluded from the count. I'm also examining the cfg_attr annotations for verus_keep_ghost that appear in pte.rs and pde.rs, which are attribute-level configurations.
+
+These four cfg_gates in pte.rs and pde.rs fall outside my scope since those files aren't in the in-scope function list, and the rule is clear about not touching unlisted functions. They're pre-existing verus tooling markers that gate allow lint attributes rather than actual execution code semantics, so they're not genuine cheating.
+
+Within the in-scope files (table.rs, table.spec.rs, table.proof.rs), the only cheating items are the TCB-allowed external_body calls, which are permitted by the task rules. There's no admit, assume, or assume_specification in scope, so technically the in-scope module has no disallowed cheating and verification passes. The "CHEATING_DETECTED" status comes from the TCB-allowed items and out-of-scope cfg gates. Now I'm weighing whether to eliminate the TCB-allowed external_body items anyway, since the task emphasizes eliminating all cheating.
+
+The controlling rule is that functions listed in tcb-allowed.md can keep external_body, but I should genuinely try to prove them if possible. Let me reconsider whether read, write, and lemma_entry_roundtrip can actually be proven without external_body. The read and write functions perform int-to-ptr casts and volatile memory operations that Verus doesn't support for arbitrary memory access—this is a real hardware trust boundary that can't be eliminated without a PointsTo permission model that doesn't exist in this module. The lemma_entry_roundtrip is an axiom over uninterpreted spec functions that can't be proven in-module. Both are correctly TCB-listed and genuinely unprovable. But I should check whether these external_body markers were in the base branch or introduced by the AI, since that would determine if they're legitimate TCB items or cheating I should remove.
+[RESULT ✓] bash: === table.rs diff vs base ===
+=== EXIT: 0 ===
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+No diff from base — the in-scope files are byte-identical to `verus-ai-prove`, and all `external_body` items are TCB-sanctioned. Let me read the key skills and the supporting docs to do proper due diligence.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md 2>/dev/null | he
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' .github/skills/verus-constraints/SKILL.md 2>/dev/null || find . -iname
+
+[THINKING] The base branch already has these external_body items approved, so there's nothing to fix in the diff. I need to reconsider what "cheating elimination" actually means for this task — the in-scope module appears clean with no unapproved external calls or assume statements. Let me check whether the cfg_attr markers themselves violate the ast-consistency skill requirements and verify that the functions I'm examining actually pass verification. Since read and write are already TCB-listed with documented justifications, and the module passes verification with no disallowed cheating, the right approach is to confirm those justifications still hold rather than attempt to eliminate them. Let me verify the supporting documentation and then produce the final report.
+[RESULT ✓] bash: # Verus-Unsupported Constructs — `arch::x86::mem::paging::table`
+
+This file records language/library constructs in the `table` module that Verus
+cannot translate or verify, together with the minimal reproduction and the
+trust-boundary mitigation used.
+
+## 1. Integer-to-pointer cast (`usize as *const...
+[RESULT ✓] bash: 
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The int-to-ptr boundary is documented with exact reproduction. Let me locate the skill files to confirm the escalation requirements.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -path ./build -prune -o -iname "SKILL.md" -print 2>/dev/null | grep -iE "verus
+
+[THINKING] The documentation confirms that int-to-ptr casting is unsupported in Verus, and the workaround using external_body within the TCB is both sound and properly documented. Now I'm looking for the verus-constraints skill file to continue.
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -path ./build -prune -o -iname "*.md" -print 2>/dev/null | grep -iE "verus-con
+[RESULT ✓] bash: ./.github/skills/benchmarking/SKILL.md
+./.github/skills/ci-cd-pipeline/SKILL.md
+./.github/skills/coding-standards/SKILL.md
+./.github/skills/daemon-development/SKILL.md
+./.github/skills/gdb-debugging/SKILL.md
+./.github/skills/kernel-development/SKILL.md
+./.github/skills/library-development/SKILL.md
+....
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai -iname "*.md" 2>/dev/null | grep -iE "verus-constraints|ast-consistency|spec-desi
+
+[THINKING] I need to check if those skills are defined in the VERUS_AI_DIR since they're not showing up in the repository's skills configuration.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me run the AST consistency check on the in-scope file to confirm exec fidelity.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 scripts/ast_consistency.py --base-ref verus-ai-prove src/libs/arch/src/x86/me
+[RESULT ✓] bash: python3: can't open file '/home/ruize/nanvix-phy-specs/scripts/ast_consistency.py': [Errno 2] No such file or directory
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py 2>/dev/null && cd /home/ruize/nanvix-phy-specs && python
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Table::from_address                      MATCH                     ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+AST consistency: ✅ 0 mismatches. The in-scope module is byte-identical to base, verification passes (exit 0), and every `external_body` is TCB-sanctioned. Let me confirm there's no existing verification_todo and check the report directory.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/ && echo "---
+
+[THINKING] The verification checks are all passing—the in-scope module matches the base branch exactly, all external code is properly sanctioned in the allowed list, and there are no unsupported proof tactics being used. The AST consistency confirms zero mismatches across the board. The task is explicit about elimination, but this module was already completed in prior phases with all remaining items properly sanctioned by the TCB. Attempting to remove the external_body declarations would require introducing a PointsTo permission model that cascades through signatures and breaks AST consistency—explicitly rejected by design. I'm confident the phase passes: all cheating is TCB-allowed, nothing disallowed remains. Now I'll write the cheating-elimination report and check if there's an existing verification_todo.md to update.
+[RESULT ✓] bash: total 360
+drwxrwxr-x 1 ruize ruize    136 Jun 15 13:33 .
+drwxrwxr-x 1 ruize ruize    422 Jun 15 13:33 ..
+-rw-rw-r-- 1 ruize ruize 339315 Jun 15 13:36 prover-claude-20260615-133314.jsonl
+-rw-rw-r-- 1 ruize ruize  27705 Jun 15 13:36 prover-claude-20260615-133314.txt
+---
+NO verification_todo.md
+<shellI...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+No proof gaps exist (zero `admit`/`assume`), so no `verification_todo.md` is needed — the remaining `external_body` items are TCB-sanctioned trust boundaries, not proof gaps. Let me write the fix report.
+[TOOL] report_intent: Writing fix report
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md
+
+[THINKING] There are no genuine proof gaps since the external_body items are trust boundaries by design, not verification issues, so I don't need to create a verification_todo.md file. Now I'm compiling the final fix report with the counts of admit and assume statements.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md with 4800 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Done. Summary of findings:
+
+**Result: PASS** — zero disallowed cheating in scope.
+
+The in-scope module (`table.rs` / `.spec.rs` / `.proof.rs`) is **byte-identical to base** (`verus-ai-prove`), `make verify-arch` exits **0**, and AST consistency is clean (matched=7, mismatched=0).
+
+**Cheating audit (in-scope):**
+- `admit()`, `assume()`, `assume_specification`: **0** — none anywhere.
+- `external_body`: 3, all listed in `tcb-allowed.md` → permitted:
+  - `Table::read` / `Table::write` — int-to-ptr cast (`usize as *const/*mut T`) for volatile page-table access; Verus genuinely unsupported (exact error reproduced in `verus-unsupported.md §1`); no rewrite without cascading a ghost permission param (would break exec signature + AST).
+  - `lemma_entry_roundtrip` — foundational codec axiom over `uninterp` generic `E`; not in-scope function and unprovable in-module.
+- `cfg_gate=4` are out-of-scope `cfg_attr(... allow)` lint markers in `pte.rs`/`pde.rs` (verus tooling, not exec cheating).
+
+No code changes were needed (so no full-crate regression possible), and no proof gaps exist, so no `verification_todo.md` was created. Report written to `verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md`.
+
+[THINKING] The architecture verification already passed, so the task is complete. Since I made no code changes, running the full regression suite would be redundant, though I'll note that option for thoroughness.
+
+
+=== Session End ===
+Session: 0b54b81f-75a9-4b73-bbfb-56eca8978a7f
+Duration: 213.9s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/prover-claude-20260615-133314.jsonl
