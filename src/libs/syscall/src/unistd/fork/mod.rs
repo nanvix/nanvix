@@ -7,6 +7,7 @@
 
 use ::proc::{
     fork_sync_request,
+    ForkSyncAckMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
 };
@@ -122,7 +123,28 @@ fn sync_child_after_fork() -> Result<(), Error> {
                     let message: ProcessManagementMessage =
                         ProcessManagementMessage::from_bytes(message.payload)?;
                     match message.header {
-                        ProcessManagementMessageHeader::ForkSyncAck => Ok(()),
+                        ProcessManagementMessageHeader::ForkSyncAck => {
+                            // The acknowledgement carries the outcome of the fork synchronization. A
+                            // non-zero status means the process manager daemon could not dispatch the
+                            // fork-clone to the filesystem daemon, so `fork()` should fail rather than
+                            // proceed past a snapshot that was never taken.
+                            let ack: ForkSyncAckMessage =
+                                ForkSyncAckMessage::from_bytes(message.payload);
+                            let status: i32 = ack.status;
+                            if status == ForkSyncAckMessage::STATUS_SUCCESS {
+                                Ok(())
+                            } else {
+                                let reason: &str = "fork synchronization failed";
+                                ::syslog::error!(
+                                    "sync_child_after_fork(): {} (status={:?})",
+                                    reason,
+                                    status
+                                );
+                                let code: ErrorCode =
+                                    ErrorCode::try_from(status).unwrap_or(ErrorCode::TryAgain);
+                                Err(Error::new(code, reason))
+                            }
+                        },
                         header => {
                             let reason: &str = "unexpected process management message while \
                                                 awaiting fork-sync ack";
@@ -194,16 +216,43 @@ pub fn do_fork() -> Result<pid_t, ErrorCode> {
     if child == ProcessIdentifier::from(0) {
         // Child: block until the daemon confirms that the inherited descriptors have been
         // duplicated into the filesystem daemon.
-        sync_child_after_fork().map_err(|e| e.code)?;
+        if let Err(error) = sync_child_after_fork() {
+            // The fork synchronization failed: either the process manager daemon could not dispatch
+            // the fork-clone to the filesystem daemon (and released the child with a failure
+            // acknowledgement), or an unexpected message was observed in the synchronization window.
+            // Either way the child's inherited descriptors are not in a well-defined state, and
+            // POSIX forbids `fork()` from returning -1 in the child. Self-terminate rather than
+            // surface the failure to the application, honoring the contract that no child survives a
+            // failed `fork()`. The parent independently fails `fork()` and best-effort terminates
+            // this child, so self-exiting here merely makes the teardown prompt and race-free.
+            //
+            // NOTE: this self-termination must stay here in the child branch and not move into
+            // `sync_child_after_fork()`, which the parent also calls to block for its own
+            // acknowledgement: the parent must surface the failure, not self-terminate.
+            ::syslog::error!(
+                "do_fork(): child fork synchronization failed, self-terminating (error={error:?})"
+            );
+            // Non-zero status marks abnormal termination of the child.
+            const FORK_FAILURE_EXIT_STATUS: i32 = 1;
+            let Err(exit_error) = ::sys::kcall::pm::__kcall_exit(FORK_FAILURE_EXIT_STATUS);
+            // `__kcall_exit()` does not return on success; reaching here means the exit kcall itself
+            // failed. There is nothing safe for a half-synchronized child to do, so panic rather
+            // than return a forbidden -1 from `fork()`; the panic handler tears the child down and
+            // the parent's best-effort terminate is a further backstop.
+            panic!("do_fork(): child exit kcall returned (error={exit_error:?})");
+        }
         Ok(0)
     } else {
         // Parent: ask the daemon to duplicate our descriptors onto the child, and block until it
         // confirms before resuming.
         if let Err(error) = sync_parent_after_fork(child) {
-            // The child was already created by `__kcall_fork()` and is now blocked in
-            // `sync_child_after_fork()` awaiting a `ForkSyncAck` that the failed synchronization
-            // will never deliver. Best-effort terminate it so it does not deadlock indefinitely,
-            // honoring the POSIX contract that no child survives a failed `fork()`.
+            // The child was already created by `__kcall_fork()`. If the daemon released the
+            // synchronization with a failure acknowledgement, the child received the same failure
+            // and is self-terminating; if instead the synchronization failed before the daemon was
+            // involved (e.g. the request could not be sent), the child is still blocked in
+            // `sync_child_after_fork()` awaiting an acknowledgement that will never arrive. Either
+            // way, best-effort terminate it so no child survives a failed `fork()`, honoring POSIX;
+            // a redundant terminate of an already-exiting child is harmless and merely logged.
             if let Err(terminate_error) = ::sys::kcall::pm::__kcall_terminate(child) {
                 ::syslog::error!(
                     "do_fork(): failed to terminate child {child:?} after fork-sync failure: \
