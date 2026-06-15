@@ -215,3 +215,16 @@ Changes are committed (755f8a542). The kernel migration removed arch-related `as
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-arch 2>&1 | tail -40
 
 [THINKING] The changes are already committed, so now I need to verify the kernel migration actually removed those arch-related assumptions as claimed. I'll run the verification commands to check for any cross-module regressions.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+`make verify-arch` is CLEAN (exit 0, 2/525 contracts, no cheating) but cached. Given the kernel migration, the critical check is cross-module regression. Let me run the full `make verify` to confirm the kernel still passes after the `assume_specification` removals.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | tail -60
+
+[THINKING] I'm concerned the cached result might not be reliable, so I should run a fresh verification to actually exercise the verifier and ensure everything works correctly. The full `make verify` command for cross-module regression testing is especially important given the kernel migration involved.
