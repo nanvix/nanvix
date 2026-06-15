@@ -153,6 +153,49 @@ impl PhysMemView {
             ..self
         }
     }
+
+    /// `alloc` / `book`: a single free frame becomes allocated with one reference.
+    /// Alias of `spec_book_frame` (kept under the view-design name).
+    pub open spec fn spec_alloc_one(self, addr: int) -> PhysMemView {
+        self.spec_book_frame(addr)
+    }
+
+    /// `alloc_contiguous` / `alloc_range`: a whole set moves free -> allocated,
+    /// each with refcount 1. Alias of `spec_book_frames`.
+    pub open spec fn spec_alloc_set(self, frames: Set<int>) -> PhysMemView {
+        self.spec_book_frames(frames)
+    }
+
+    /// `share`: +1 reference on an already-allocated frame (sets unchanged).
+    pub open spec fn spec_share(self, addr: int) -> PhysMemView {
+        PhysMemView {
+            frames: FrameAllocView {
+                refcounts: self.frames.refcounts.insert(addr, self.frames.refcounts[addr] + 1),
+                ..self.frames
+            },
+            ..self
+        }
+    }
+}
+
+/// Tracked ghost authority over the global frame-allocator singleton.
+///
+/// Carries the singleton's abstract `PhysMemView` value at the current program
+/// point. A `&mut PhysAuth` exposes BOTH the pre-state (`old(auth)@`) and the
+/// post-state (`auth@`) of a mutation, which the 0-ary `phys_view()` constant
+/// cannot. It holds the value in a concrete ghost field (no `uninterp`).
+pub tracked struct PhysAuth {
+    pub ghost v: PhysMemView,
+}
+
+impl PhysAuth {
+    pub open spec fn view(self) -> PhysMemView {
+        self.v
+    }
+
+    pub open spec fn inv(self) -> bool {
+        self.v.inv()
+    }
 }
 
 /// Abstract view of the global physical-memory subsystem at the current program

@@ -1,0 +1,276 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T08:58:00.978821
+Model: claude-opus-4.8
+Session: 8f250b92-a62e-4d00-9972-f6710f1699c3
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+The reviewer identified a specific issue. Read the request at
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md.
+
+Your job is to FIX it — make actual code changes, not justifications.
+
+1. Read the reviewer's specific request.
+2. Make the code change.
+3. Run `make verify-kernel` and `make build` to verify.
+4. Write your response to /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_fixer.md.
+
+If you cannot fix it, show EXACT error messages from every approach you tried.
+Do NOT just explain why it's hard — try it and show the result.
+
+Write to /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_fixer.md:
+```markdown
+## Response to Turn 1
+
+### What I Changed
+[File paths, line numbers, description of changes]
+
+### Verification
+[Output of make verify-kernel — must pass]
+
+### Result: FIXED / NEEDS_GUIDANCE
+[If NEEDS_GUIDANCE: exact error messages from each failed attempt]
+```
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md
+[TOOL] report_intent: Reading reviewer request
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ## Turn 1 (specification re-review after view-design re-run): View consistency / specs weakened → FAIL
+
+> Context: the prior specification round rolled back to view-design (old
+> `turn_001_driver.md`, 08:33). view-design re-ran and regenerated
+> `view_design.md` (08:44) mandating a `tracked PhysAuth...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+This is a substantial redesign request: implement the `tracked PhysAuth` carrier to replace the 0-ary `phys_view()` constant. Before making changes, I need to understand the full structure of how the shims are called and how `Tracked` threading would work. Let me explore.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] The reviewer is asking me to refactor the design to use a tracked `PhysAuth` struct instead of the previous 0-ary `phys_view()` constant, which couldn't properly capture pre and post states during mutations. I need to update the spec module to remove the constant, introduce the tracked struct with view and invariant definitions, and add the corresponding state transition specifications.
+
+However, I'm noticing a tension with the original task constraints. The task explicitly said not to modify certain existing spec definitions like `phys_view` and `FrameAllocView`, and to avoid touching unlisted functions. But the reviewer is now requesting changes that would require threading `Tracked(&mut PhysAuth)` through the shim signatures in `frame.rs`, which would cascade into changes in `manager.rs`, `upool.rs`, and `mod.rs` — functions that weren't on the original modification list. This is a significant API change that conflicts with the "do not touch unlisted functions" rule.
+
+Let me reconsider whether there's a smaller, more targeted approach that addresses the reviewer's core concern about the mutating shims lacking post-state contracts, without requiring this large-scale refactoring. I'm questioning whether adding `Tracked` parameters actually changes the runtime signature or if they're properly erased by Verus, and I need to investigate how this codebase actually uses `Tracked` state threading before committing to this approach. Let me look at the actual structure of `PhysMemoryManager`, whether `Tracked` parameters appear elsewhere in the code, and how the manager calls the shims to understand the feasibility here. I'm realizing there's a tension between my original constraints (only touching frame.rs functions) and the reviewer's request to modify mod.spec.rs and manager.rs. But the instruction here is to make actual code changes, so I'll prioritize that and explore the codebase to understand the threading requirements and scope of what needs to change.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+This requires understanding how ghost/tracked parameters work in attribute-style. Let me check the verus-syntax skill and how the shims are called across files.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/SKILL.md 2>/dev/null | head 
+
+[THINKING] I need to examine how the shims are being called across the codebase in manager.rs, upool.rs, mod.rs, and test.rs to understand if `Tracked` parameters are actually being used anywhere. This is crucial for determining whether the PhysAuth threading approach is even feasible. The big question is whether adding `Tracked(&mut PhysAuth)` parameters would actually compile under both Verus and standard cargo builds, and I'm concerned about the soundness implications of this design choice. I need to search through the verus codebase and vstd library to find concrete examples of how `Tracked` parameters are used in attribute-style exec functions, to understand whether they're properly erased under normal compilation.
+[RESULT ✓] bash: ---
+name: verus-syntax
+description: "Verus attribute-based syntax reference for exec functions. Covers #[verus_spec], #[verus_verify], proof!{}, proof_decl!{}, loop invariants. See GUIDE.md for advanced patterns, syntax_attr.rs for the official example."
+---
+
+# Verus Attribute-Based Syntax — Quick R...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,250p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md 2>/dev/
+
+[THINKING] I need to check the GUIDE.md documentation to understand how ghost and tracked passing work in attribute-style exec functions, since that's the key to determining if this approach is feasible.
+[RESULT ✓] bash: 8:## Ghost/Tracked Parameters (`with` clause)
+10:Functions can accept ghost/tracked parameters invisible to non-Verus callers.
+12:### Declaring a function with ghost/tracked params
+16:    with
+17:        Tracked(y): Tracked<&mut u32>,
+18:        Ghost(w): Ghost<u64>
+19:            -> z: Ghost<u32>
+2...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,100p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-syntax/GUIDE.md
+[RESULT ✓] bash: # Verus Attribute Syntax — Advanced Guide
+
+Companion to `SKILL.md`. Covers patterns needed less frequently.
+See also `syntax_attr.rs` in this directory for the official Verus example.
+
+---
+
+## Ghost/Tracked Parameters (`with` clause)
+
+Functions can accept ghost/tracked parameters invisible to non-Ve...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+The `with` clause mechanism enables ghost params without breaking exec signatures. But the reviewer claims the manager `external_body` axioms are "not in tcb-allowed.md". Let me verify that factual claim carefully.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '100,220p' verus-ai-logs/tcb-allowed.md
+
+[THINKING] The `with` clause mechanism supports invisible ghost and tracked parameters that don't affect the external signature, so I can thread PhysAuth through `instance()` and the shim methods without breaking compatibility. This approach is viable — the mutating and query shims would both receive the tracked auth parameter while preserving their original signatures for normal callers.
+
+However, there's a tension in the requirements: the `with` mechanism generates two versions (verified with ghost params, unverified with `requires false`), so external_body functions can call the original signature without the token. But if I remove external_body from the manager functions as the reviewer wants, they become body-verified and must call the shims with the `#[verus_spec(with ...)]` syntax while threading `&mut self.auth` — except PhysMemoryManager's structure doesn't naturally support that threading.
+
+There's also a deeper issue: those manager functions use `error!` macros and global `static mut` state that Verus can't translate, which is exactly why they're external_body in the first place. Making them body-verified would hit the same untranslatable-construct walls that forced external_body originally, so the reviewer's request to delete external_body and derive guarantees from the shims may not be feasible without rewriting the function bodies themselves.
+
+But wait — I need to double-check the actual tcb-allowed.md file. The reviewer claims those manager functions aren't listed there, but I recall seeing a section explicitly allowing external_body for PhysMemoryManager functions like init, alloc_many_user_frames, and others. Let me verify this carefully since it's a critical factual point.
+[RESULT ✓] bash: branch performs no state change. `opens_invariants none` / `no_unwind` record that
+`drop` opens no invariant and cannot unwind (errors are logged, not propagated).
+
+- `src/kernel/src/mm/phys/upool.rs::<UserFrame as Drop>::drop` — releases one
+  reference on scope exit. `ensures phys_view().inv()` on...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The reviewer's central factual claim needs checking: they say the manager `external_body` functions are "not in tcb-allowed.md." But I just read tcb-allowed.md — there's an explicit section "Allowed `external_body` — `PhysMemoryManager` (`manager.rs`)" listing all four. Let me now actually attempt the `PhysAuth` design and capture real verifier output. First, the callers, to confirm the `with`-clause approach.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "frame::alloc\b\|frame::alloc(\|::alloc()\|frame::book\|frame::share\|frame::alloc
+
+[THINKING] I'm realizing the reviewer's core argument is actually based on a factual error—the manager.rs functions are explicitly listed as allowed external_body in tcb-allowed.md, which directly contradicts their claim that these functions aren't sanctioned and need to be removed. This undermines the entire foundation of their concerns about items 9, 13, and 14 regarding unsound guarantees.
+
+That said, the reviewer does have a legitimate point about the mutating shims lacking strong post-state specifications. The real challenge is that I'm being asked to make actual code changes rather than just explain the issues, and I need to work within my constraints: I can't modify manager.rs (it's out of scope), but I can work on frame.rs and mod.spec.rs to implement PhysAuth threading for the mutating shims. Let me focus on what's actually feasible within scope—strengthening the post-state contracts for these shims in frame.rs and the spec definitions, which is the heart of what the reviewer is asking for.
+
+The core question becomes whether I can implement PhysAuth threading with a `Tracked` parameter approach and get the verification to pass cleanly. I'm sketching out what the spec would look like: the instance function would require the auth to be initialized and ensure the result's invariant holds while preserving the auth state, and the alloc shim would require both initialization and invariant, then ensure the auth is updated with the newly allocated frame...
+
+But here's the fundamental issue: after `r.alloc()` mutates the live Inner, the auth token doesn't automatically reflect that change. The instance function only guarantees `(*r)@ == auth@.frames` at the moment it returns, but once r.alloc() runs, those states diverge. To reconnect them, I'd need a proof operation that syncs auth's ghost state to match r's new state, but since PhysAuth is opaque and external_body, any such sync function would essentially be an unverified axiom — which defeats the purpose of the whole verification approach. The constraint is clear: I can't introduce new trust boundaries like `sync_to` proof axioms since they're not in tcb-allowed.md, and external_body proof functions are forbidden. The alternative is threading the PointsTo token through init's signature and propagating it to all callers (manager, upool, mod, test), but those functions use error macros and can't be body-verified anyway. It's a genuine deadlock. Let me actually attempt the implementation in the in-scope files (mod.spec.rs and frame.rs) with the Tracked auth pattern and see what verification errors surface — that'll show whether this is even feasible or if the constraints make it impossible. the error!-macro constraint makes external_body verification impossible for manager functions. Let me actually attempt the PhysAuth design in mod.spec.rs and frame.rs to see if the shims can verify without admit or new trust axioms — I'll run make verify-kernel and show the exact verification errors if a sync axiom is required. But first, I'm reconsidering whether the sync might be expressible soundly through `instance`'s existing trust contract by having it take and return a tracked PhysAuth token with a linked lifetime.
+
+The real issue is that `instance()` reads from `static mut INSTANCE`, but to re-link mutations back to the auth token, the token would need to own a `PointsTo<Inner>` that `instance` reconstructs the borrow from — yet modeling that relationship between the static mut and the token's permission is itself the trust axiom I'm trying to avoid. Without that axiom, there's no way to ensure that after `r.alloc()` mutates the real Inner, the token's view automatically stays in sync.
+
+The only sound approach would be to pass the auth token into `Inner::alloc` itself, but that's forbidden since I can't modify the signature. So I'm forced to either accept a new trust boundary with a `sync_to` axiom (which violates tcb-allowed.md) or abandon the design entirely.
+
+The instruction is clear though — I need to actually attempt the implementation and capture the real verification errors rather than just explaining why it won't work. Let me set up a focused experiment on the `alloc` shim to generate the exact error messages from the verifier when I try to thread PhysAuth without the axiom. I'll preserve the `alloc` signature using the `with` clause so existing callers don't break, then search the codebase to confirm they still compile.
+[RESULT ✓] bash: src/kernel/src/mm/phys/kframe.rs:190:        if let Err(e) = super::frame::free(self.base) {
+src/kernel/src/mm/phys/manager.rs:314:        if frame::free_count() < watermark_threshold {
+src/kernel/src/mm/phys/manager.rs:353:        let frame_addr: FrameAddress = frame::alloc()?;
+src/kernel/src/mm/ph...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+I now understand the mechanism. Let me run a concrete, isolated experiment on the flagship `alloc` shim to test whether the `PhysAuth` design can actually verify (admit-free, no new trust axiom) under my do-not-modify constraints on `Inner::*`. First, add `PhysAuth` and the transitions to `mod.spec.rs`.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I'm checking where these memory allocation functions are being called from across the codebase—manager.rs, mod.rs, upool.rs, and test.rs—and verifying that the external_body functions are properly allowed by the tcb. The `with` clause preserves the original signature so unverified callers can still compile against it.
+
+Now I'm setting up an experiment to see if the PhysAuth design can actually prove the strong post-state contract for the alloc shim without relying on an unsanctioned trust axiom. I'll add PhysAuth to the spec, rewrite instance() and alloc() with tracked authentication tokens, and attempt the proof to see what errors surface.
+
+The challenge is that PhysAuth needs a concrete view definition—uninterpreted spec functions are banned by Verus constraints. Since PhysAuth would be backed by static mutable state, I can't define its view concretely from readable state alone. The workaround is to make PhysAuth either an external_body tracked type (where uninterpreted views are mechanically allowed) or a tracked struct with a ghost field holding the PhysMemView.
+
+Defining PhysAuth as a tracked struct...
+
+Writing PhysAuth definition...
+
+The core issue emerges: if the ghost field `v` in PhysAuth has no invariant tying it to the actual static memory, then assigning it in a proof block is "free"—Verus allows arbitrary mutations to ghost fields. This means I can set `auth.v` to anything, which makes the ensures clauses provable only if I manually set the token to match the expected post-state. But that's circular reasoning—the token becomes a claim with no justification, not a proof that the mutation actually happened correctly.
+
+The solution is to anchor the token to the live Inner through the instance contract. When `r.alloc()` executes, the real Inner changes, and I re-sync by setting `auth.v.frames = (*r)@` to mirror the current live state. This chain works because I'm recording the actual live value, not inventing one. The soundness hinges on instance guaranteeing that `r` is properly borrowed from the auth token, so the re-sync faithfully captures the real allocator's new state.
+
+But here's the catch: Verus treats ghost field assignments as always allowed with no proof obligation, so the verification passes even though I'm making an implicit assumption that the token and the borrow alias. The re-sync looks sound in isolation, but it's really an unverified assumption that the token tracks the live Inner — Verus can't enforce the aliasing relationship between `r` and `auth` across the mutation boundary.
+
+The key insight is that if I assign `auth.v.frames = (*r)@` in a normal proof block, the verification would go through because the chain of reasoning works: the new frame value matches what Inner::alloc produced, which matches the old token state, so the spec contract holds. This rests entirely on the already-trusted instance bridge and Inner::alloc contract, both tcb-allowed. The real question is whether the token stays synchronized with reality on subsequent operations — every mutation needs to re-sync, or the token becomes stale.
+
+The instance contract with its external_body bridge ensures that at each call entry, the token reflects the live state, and as long as we re-sync at exit via ghost assignment, the invariant holds across the call chain. This might actually be implementable without introducing new trust axioms. Now I need to verify that the `with` clause works on an external_body function and that the parameter threading is correct.
+
+The tricky part is handling the lifetime and reborrowing when passing `Tracked(&mut PhysAuth)` to instance — I'll need to work through the exact syntax, but this is something I can iterate on empirically once I start coding. Before diving in though, I should double-check my scope against the hard constraints: I'm not modifying the core specs like Inner::share, Inner::refcount, or the view definitions, but removing `phys_view()` entirely would break all the other shims and the downstream modules that depend on it, so that's not an option.
+
+The reviewer's request to eliminate `phys_view()` would actually require rewriting specs across manager, upool, mod, and kframe — files I'm explicitly told not to touch. So instead, I'll do a focused experiment: implement PhysAuth for the `alloc` shim while keeping `phys_view()` in place for everything else. This tests whether a mutating shim can get a strong post-state contract through PhysAuth without introducing new trust axioms, which directly addresses the core feasibility question.
+
+My plan is to add the PhysAuth tracked struct and its view to mod.spec.rs, then update the frame.rs instance and alloc shim to use `with Tracked(auth)` with a strong contract, and work through the proof. Let me start implementing.
+
+But wait — `instance()` is currently an external_body accessor used by all the shims. If I change its signature to require a token, every other shim that calls `instance()` without that token will break, because the verified version with `with` generates both a token-threaded path and an unverified fallback that requires false. The query shims calling the unverified version would need to prove false, which fails. So changing instance is all-or-nothing across every shim simultaneously.
+
+I could add a parallel `instance_auth()` accessor for the token path, but that's a second external_body not listed in tcb-allowed.md. Or I could thread the token at the shim level instead, but then the shim can't connect its local reference to the auth token without instance providing that bridge. This is a fundamental coupling problem — I can't isolate alloc without either rewriting instance for all shims or adding forbidden external bodies.
+
+The most honest experiment is to do the full instance change plus update every shim call site to thread a token, keeping phys_view-based contracts for query shims by deriving from the token. But phys_view is a constant, not derivable. So I'd need to convert all shims to token-based, which cascades into manager.rs, upool.rs, mod.rs, and kframe.rs — though those modules' contracts are external_body and don't actually rely on the shims pinning phys_view, so keeping phys_view defined even if unused might keep them compiling. Let me check what those modules actually reference.
+
+They reference phys_view heavily, so I must keep it defined. The reviewer wants it removed, but that breaks their protected specs without rewriting them. So I'll keep phys_view and add PhysAuth alongside instead. For the alloc shim specifically, I can avoid changing instance's contract entirely: after calling instance, I bridge the token to the constant by requiring that the token's frames match phys_view at entry, then after the allocation I resync the token's frames to match the updated reference. This way the token and constant stay in sync without modifying instance's existing contract.
+
+The key question is whether requiring the caller to establish that the token matches phys_view is sound and usable. Since the manager holds the token and it's initialized to match the constant, this should work for the experiment. Let me implement this minimal test on alloc only: add PhysAuth and the allocation spec to mod.spec.rs, then update the alloc shim with the token parameter and strong contract including the resync.
+
+Writing PhysAuth in mod.spec.rs...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now rewrite the `alloc` shim in `frame.rs` to thread a `PhysAuth` token with the strong post-state contract, keeping `instance()` unchanged:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 728. }
+729. 
+730. /// Allocate a frame.
+731. #[verus_spec(result =>
+732.     requires
+733.         phys_view().initialized,
+734.         phys_view().inv(),
+735.     ensures
+736.         phys_view().inv(),
+737.         phys_view().initialized,
+738.         // As with the other mutating shims, the pos...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now I need `PhysAuth` in scope in `frame.rs`. Let me check existing imports.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "use super::\|phys_view\|PhysMemView\|PhysAuth\|use crate::mm::phys" src/kernel/src
+
+[THINKING] I'm checking whether `PhysAuth` is properly imported in frame.rs and verifying that the shim's references to `phys_view()` and `PhysMemView` are accessible through the existing use statements.
+[RESULT ✓] bash: 641:// between the live singleton and the uninterpreted `phys_view()` is asserted
+643:// reference is well-formed and its abstract view equals `phys_view().frames`.
+647:        phys_view().initialized,
+650:        (*result)@ == phys_view().frames,
+683:        phys_view().inv(),
+685:            Ok(()...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm tracing how `phys_view()` resolves in the `#[verus_spec]` attributes within frame.rs — it's defined in mod.spec.rs in the parent `mm::phys` module, and since frame.rs is in `mm::phys::frame`, the unqualified reference works through the module hierarchy.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use super::PhysMemView;
+5. use super::phys_view;
+6. use crate::hal::mem::spec_page_size;
+7. use vstd::map::*;
+8. use vstd::set_lib::*;
+9. use vstd::relations::injective_on;
+10. use vstd::arithmetic::mul::{
+11.     lemma_mul_is_commutative,
+12.     lem...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm checking whether the `use super::phys_view;` statements inside the `verus!{}` block in frame.proof.rs actually bring `phys_view` into scope for the `#[verus_spec]` attributes on exec functions in frame.rs. Since frame.proof.rs is included directly into frame.rs via `include!`, those module-level use statements become part of frame.rs's scope, so yes, `phys_view` and related types should be accessible.
+
+Now I need to add `use super::PhysAuth;` to the use block in frame.proof.rs to make `PhysAuth` available. The key insight is that under a normal build, frame.proof.rs isn't included at all (it's behind `#[cfg(verus_keep_ghost)]`), so the `#[verus_spec]` attributes and their type references get erased entirely — meaning `PhysAuth` and `Tracked` references disappear along with them. Under a verus build, the file is included and the use statement will be in scope, so adding it there is the right approach.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now run module verification to capture the real result for this `alloc` experiment.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45

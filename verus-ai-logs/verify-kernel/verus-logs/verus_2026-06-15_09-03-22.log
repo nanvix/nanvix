@@ -1,0 +1,49 @@
+Timestamp: 2026-06-15_09-03-22
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected one of `,`, `:`, or `}`, found `.`
+   --> src/kernel/src/mm/phys/frame.rs:757:13
+    |
+756 |     proof {
+    |     ----- while parsing this struct
+757 |         auth.borrow_mut().v.frames = (*r)@;
+    |         ----^ expected one of `,`, `:`, or `}`
+    |         |
+    |         while parsing this struct field
+    |
+help: try naming a field
+    |
+757 |         auth: auth.borrow_mut().v.frames = (*r)@;
+    |         +++++
+
+error: expected `;`, found `res`
+   --> src/kernel/src/mm/phys/frame.rs:758:6
+    |
+758 |     }
+    |      ^ help: add `;` here
+759 |     res
+    |     --- unexpected token
+
+error: Misuse of #[verus_spec]
+   --> src/kernel/src/mm/phys/frame.rs:753:1
+    |
+753 | pub(super) fn alloc() -> Result<FrameAddress, Error> {
+    | ^^^
+
+error: could not compile `kernel` (bin "kernel") due to 3 previous errors

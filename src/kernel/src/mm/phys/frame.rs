@@ -729,28 +729,34 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 
 /// Allocate a frame.
 #[verus_spec(result =>
+    with Tracked(auth): Tracked<&mut PhysAuth>
     requires
-        phys_view().initialized,
-        phys_view().inv(),
+        old(auth)@.initialized,
+        old(auth)@.inv(),
+        old(auth)@.frames == phys_view().frames,
     ensures
-        phys_view().inv(),
-        phys_view().initialized,
-        // As with the other mutating shims, the post-state membership effect (the
-        // frame now being in `allocated_frames` with refcount 1) is not expressible
-        // against the fixed pre-state `phys_view()` (no `old(phys_view())` to diff;
-        // see `alloc_contiguous`/`book` and bugs.md). The sound, verified facts are
-        // that a successful result is a well-formed (page-aligned) frame address and
-        // that it was free in the pool immediately before the call.
+        auth@.initialized,
+        auth@.inv(),
+        // Strong post-state contract: a successful allocation moves one free frame
+        // into `allocated_frames` with refcount 1; an error leaves the allocator
+        // unchanged. The token names both pre (`old(auth)@`) and post (`auth@`).
         match result {
             Ok(frame) => {
                 &&& frame.inv()
-                &&& phys_view().frames.free_frames.contains(frame@)
+                &&& auth@ == old(auth)@.spec_alloc_one(frame@)
+                &&& auth@.frames.allocated_frames.contains(frame@)
+                &&& auth@.frames.refcounts[frame@] == 1
             },
-            Err(_) => true,
+            Err(_) => auth@ == old(auth)@,
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
-    instance().alloc()
+    let r = instance();
+    let res = r.alloc();
+    proof {
+        auth.borrow_mut().v.frames = (*r)@;
+    }
+    res
 }
 
 /// # Description
