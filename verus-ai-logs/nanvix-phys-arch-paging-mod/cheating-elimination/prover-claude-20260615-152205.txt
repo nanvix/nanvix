@@ -198,3 +198,71 @@ No changes vs base branch. Now running verification.
 
 [THINKING] No changes to the AST against the base branch, so I'll run the architecture verification check next.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). Let me check the cheating-detail to confirm the flagged items are all TCB-allowed and which belong to my module.
+[TOOL] report_intent: Inspecting cheating detail
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] The verification passed, and the cheating check shows external_body=3 and cfg_gate=2 across the entire arch crate, but I need to focus on just the mod.rs file for the invlpg module. Let me look at the cheating-detail.txt to see which specific functions are flagged and verify they're all allowed in the TCB.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All in-scope work is complete: the only item in my scope (`invlpg`) is `external_body`, explicitly TCB-allowed (inline asm unsupported by Verus). The other flagged items (`table.rs` read/write, `lemma_entry_roundtrip`) are in different modules — out of scope and also TCB-listed. I made zero code changes (no diff vs base), so no regressions possible. The cfg_gate=2 is the standard `#[cfg(verus_keep_ghost)] include!` spec/proof pattern, not cfg-gated exec code.
+
+Let me write the report.
+[TOOL] report_intent: Writing fix report
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination && ls verus-a
+
+[THINKING] Looking at the cheating items in the arch crate, I'm tracking which unsafe operations are in scope versus delegated to the table module—the invlpg instruction in mod.rs is something I need to handle, while the lemma and read/write operations in the table module are already TCB-allowed and outside my scope.
+
+The cfg_gate count of 2 appears to be from the standard `#[cfg(verus_keep_ghost)]` include patterns used for spec and proof code, which is the sanctioned pattern across all verified modules and doesn't affect the exec code semantics.
+
+For my scope (invlpg), there's nothing to fix — it's already correctly listed as TCB-allowed with external_body. The whole-crate count includes table module items that are also TCB-listed but outside my scope. Since I made no code changes, verification should pass without regressions.
+
+Now I'll write up the report.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: prover-claude-20260615-152205.jsonl
+prover-claude-20260615-152205.txt
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md with 2800 characters
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Done. Result: **PASS**.
+
+The in-scope module `paging/mod.rs` has exactly one cheating item — `invlpg`'s `external_body` — which is explicitly TCB-allowed (inline `asm!` is unsupported by Verus, an external-bottom hardware boundary with an empty/faithful contract). The `mod.spec.rs`/`mod.proof.rs` files are empty.
+
+- `make verify-arch` → exit 0 (verification passes).
+- No `admit()`, `assume()`, `assume_specification`, or cfg-gated exec code in scope.
+- AST consistency: zero diff vs `verus-ai-prove` (no code changes needed).
+- The crate-wide counts (`external_body=3`, `cfg_gate=2`) are sibling `table` module items (out of scope, TCB-listed) plus the standard `#[cfg(verus_keep_ghost)] include!` spec/proof pattern.
+
+Report written to `verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: 57773248-5ef1-422d-a8f9-30df8d2e75eb
+Duration: 88.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/cheating-elimination/prover-claude-20260615-152205.jsonl
