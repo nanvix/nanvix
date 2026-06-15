@@ -181,3 +181,55 @@ Module verification is CLEAN: `admit=0`, `assume=0`, exit 0. The `gva_to_gpa` co
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
 
 [THINKING] The verification checks out cleanly with no assume or admit statements, and the `gva_to_gpa` function's contracts are holding up along with the injective lemma. Coverage is as expected with just the one function in scope, so I should run the full verify to make sure there are no regressions.
+[RESULT ✓] bash: note: verifying module hal::platform::microvm
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=25 admit=0 trusted=0 no_decreases=0 cfg_gate=7
+  De...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Exit code 0, `admit=0`, `assume=0`. The `CHEATING_DETECTED` flag stems from 25 pre-existing `external_body` functions outside my scope. Let me confirm I made no changes (the files already verified as-is).
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short src/kernel/src/hal/platform/microvm/
+
+[THINKING] The exit code is clean, but the "CHEATING_DETECTED" status is being triggered by external_body functions that were already in the codebase before I started working on this. I'm verifying through git that I didn't introduce any of these functions myself.
+[RESULT ✓] bash: 
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification is complete. No changes were needed — the proof and spec files already verify cleanly.
+
+## Summary
+
+**Target `gva_to_gpa`** (`src/kernel/src/hal/platform/microvm/mod.rs`) verifies fully:
+
+- **Function contract**: `gva_to_gpa(gva) → gva` satisfies both `ensures` clauses (`result == gva` and the View-vocabulary form `result as nat == spec_gva_to_gpa(gva as nat)`), discharged directly from the identity definition.
+- **`lemma_translation_injective`**: proves `injective()` with an empty body — it follows automatically from the `open` identity definition `spec_gva_to_gpa(x) == x`.
+
+**Results:**
+- Module verify (`hal::platform::microvm`): exit 0, status **CLEAN**, `admit=0 assume=0`.
+- Full `make verify`: exit 0, `admit=0 assume=0`, no regressions.
+
+**Notes:**
+- No `admit()`/`assume()` present (the only "admit" string is a comment).
+- No `external_body` added. The `external_body=25` / `cfg_gate=7` that trigger the `CHEATING_DETECTED` banner are **pre-existing** functions outside the in-scope target (unlisted functions I must not touch), not introduced here.
+- `git status` shows zero modifications — specs were not weakened and no bugs were found, so no `bugs.md` entry was warranted.
+
+[THINKING] The verification is complete—both the proof and spec files check out without any changes needed. I confirmed that the `gva_to_gpa` function and its lemma verify cleanly with no admits or assumes, and I didn't introduce any new external_body declarations since none were listed in the allowed set. The CHEATING_DETECTED flag is coming from pre-existing external_body references that were already in the codebase.
+
+
+=== Session End ===
+Session: bfd2985d-aac3-4e33-a635-db2f23f6223c
+Duration: 63.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-platform-microvm/proving/prover-claude-20260615-145232.jsonl
