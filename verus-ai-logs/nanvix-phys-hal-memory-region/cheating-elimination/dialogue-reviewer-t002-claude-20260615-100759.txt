@@ -141,3 +141,46 @@ The comment and reproducer are now present at the call site. Let me re-run verif
 [TOOL] report_intent: Re-running verify and build
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel 2>&1 | grep -E "Exit code|cheating:|status:|region" | head; echo "
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=19 admit=12 trusted=0 no_decreases=0 cfg_gate=19
+  cheating: assume=0 external_body=19 admit=12 trusted=0 no_decreases=0 cfg_gate=19
+  status: CHEATING_DETECTED
+=== build ===
+Warning: Sysroot directory '/home/ruize/nanvix-phy-specs/sysroot-debug' not ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+All region-module items are clean. The global `CHEATING_DETECTED` reflects the 19 external_body + 12 admit in out-of-scope `mm/phys`/`mm/virt`; the build "Warning" is a z-script sysroot-symlink message, not a kernel compiler warning. The region module itself is clean.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/turn_002_driver.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && printf 'RESOLVED' > verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/
+
+[THINKING] The CHEATING_DETECTED status reflects the global aggregate from the out-of-scope mm/phys and mm/virt modules, which account for 19 external_body and 12 admit violations. The region module itself is clean with no cheating detected, and the build warning is just a benign sysroot symlink message rather than an actual compiler issue.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue/turn_002_driver.md with 3178 characters
+[RESULT ✓] bash: RESOLVED
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+**Turn 2 complete — RESOLVED.**
+
+The fixer's change is verified independently: the `VERUS REWRITE` comment + confirmed minimal reproducer (both arms: `Clone::clone` fails 0/1, `clone_address` verifies 1/0) is now present at region.rs:210–220 above `MemoryRegion::start`.
+
+All checklist items PASS/FIXED with tool evidence:
+- admit/assume/trusted/no_decreases/external_body — all zero in region module
+- cfg-gated exec — only spec/proof `include!`
+- AST — the lone MISMATCH is the documented, view-preserving `clone_address` rewrite
+- exec rewrite comment + reproducer — present
+- spec drift — exit 0
+- cross-module verify — exit 0
+- build — 0 compiler warnings (the sysroot message is a z-script note)
+
+The global `external_body=19 admit=12` counts are pre-existing out-of-scope `mm/phys`/`mm/virt` content, unchanged this phase. Wrote `turn_002_driver.md` and created `STOP` with `RESOLVED`.
+
+
+=== Session End ===
+Session: 0485f428-f368-44c7-bfaf-3c72763ba460
+Duration: 66.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/cheating-elimination/dialogue-reviewer-t002-claude-20260615-100759.jsonl
