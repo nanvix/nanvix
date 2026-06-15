@@ -139,3 +139,109 @@ The `assume_specification` is removed (only comment prose remains). `external_bo
 [RESULT ✓] bash: 137:- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::from_raw_value` — succeeds only
 139:- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::into_raw_value` — the raw value is
 162:layer is verified" rationale already used for `FrameAddress::from_raw_value`/`into_raw_value`...
+[RESULT ✓] bash: |                 ^^^^^^
+
+verification results:: 96 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.99s
+
+=== Results ===
+  96 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=20 admit=12 trusted=0 no_decreases...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+96 verified, 0 errors. But I saw `^^^^^^` in the output — possibly a warning. Let me check the log for warnings and confirm the new external_body is the TCB-listed function.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && LOG=verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-20-56.log; echo "=== w
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== frame entries in cheating-detail ==="; grep -i 'address/frame' verus-ai-log
+
+[THINKING] I've verified 96 entries with no errors, and the external_body count is now 20 after adding FrameAddress::from_raw_value, which checks out against the tcb-allowed.md file. Let me confirm that frame.rs is the only frame-related entry in the cheating details and then re-run the spec-drift check to look into that warning that appeared near the top of the output.
+[RESULT ✓] bash: === warnings ===
+=== context around ^^^ ===
+20-note: automatically chose triggers for this expression:
+21-   --> src/kernel/src/mm/phys/frame.proof.rs:344:9
+22-    |
+23-344 |         assert forall|a: int| post.allocated_frames.contains(a)
+24:    |         ^^^^^^
+--
+26-note:   trigger 1 of 1:
+27-   -...
+[RESULT ✓] bash: === frame entries in cheating-detail ===
+    - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+No warnings — the `^^^^^^` are trigger-selection `note:` lines in another module (informational). The frame module's only cheating entry is `from_raw_value: external_body` (TCB-listed). Let me re-run spec-drift and confirm the build.
+[TOOL] report_intent: Confirming spec-drift and build
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in frame.rs frame.spec.rs frame.proof.rs; do echo "== $f =="; python3 /home/rui
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff --stat HEAD -- 'src/kernel/src/hal/mem/types/address/'
+
+[THINKING] The `^^^^^^` markers in the frame module are just informational notes from the proof system, not actual warnings. The only unsafe entry point is `from_raw_value: external_body` which is already on the TCB list. Now I need to re-run the spec-drift check to make sure nothing's been weakened and verify the build succeeds.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 4 completed with exit code 0>
+[RESULT ✓] bash: == frame.rs ==
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+**✅ No contract drift detected.**
+== frame.spec.rs ==
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Spec-drift clean across all three files (0 weakening; the `assume_specification` removal isn't even counted as a function removal). The working tree diff vs HEAD is empty, so changes are committed. Let me run the build to complete item #10.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build -- all-kernel 2>&1 | tail -15
+
+[THINKING] I'm checking whether the spec-drift changes were already committed by looking at the git diff and status. The empty diff output suggests the modifications are staged or committed, so I need to verify what's actually in the working tree versus the proving-start reference point.
+
+The spec-drift report correctly shows no weakening — the ensures clause remains intact, and removing the assume_specification declaration doesn't count as a function removal or contract violation. Now I should run a build to confirm everything compiles cleanly with zero errors and warnings, since the checklist requires both the verify-kernel step and a full build check.
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy-specs/bin
+mkdir -p /home/ruize/nanvix-phy-specs/lib
+mkdir -p /home/ruize/nanvix-phy-specs/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-feat...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Build clean, 0 errors/warnings. All checklist items now PASS/FIXED. Writing the final review and the STOP file.
+[TOOL] report_intent: Writing final review and STOP
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/STOP
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_002_driver.md with 3054 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+**Turn 2 complete — RESOLVED.**
+
+The fixer correctly resolved item #4 (the sole FAIL). I independently verified every claim:
+
+- **`assume_specification` deleted** from `frame.spec.rs` — only comment prose remains (grep confirms).
+- **Trust relocated to TCB boundary**: `FrameAddress::from_raw_value` now `#[verus_verify(external_body)]`, which is explicitly listed in `tcb-allowed.md:137-138`. `cheating-detail.txt` shows it's the only frame entry.
+- **No spec weakening**: ensures `Ok(fa) => fa.inv() && fa@ == raw_addr as int` preserved verbatim; `spec_drift.py` reports 0 drift on all three files.
+- **`make verify-kernel`** (non-cached, run by me): 96 verified, 0 errors, 0 warnings (the `^^^^^^` lines are trigger `note:`s in another module).
+- **`./z build -- all-kernel`** (run by me): clean, exit 0.
+
+All 10 checklist items are PASS/FIXED. Wrote `turn_002_driver.md` and created the `STOP` file with `RESOLVED`.
+
+
+=== Session End ===
+Session: 8f7aa82e-5b27-48b5-9518-a7e7d2e1e80c
+Duration: 93.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-reviewer-t002-claude-20260615-112031.jsonl
