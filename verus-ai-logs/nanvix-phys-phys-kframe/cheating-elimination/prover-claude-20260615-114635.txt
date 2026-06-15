@@ -1015,3 +1015,19 @@ Let me run the full `verify-kernel` check and a normal kernel build to confirm e
 Turn 60
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 1800 make verify-k
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-spe...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Full kernel verify passes (exit 0); the remaining global counts are all pre-existing out-of-scope files. The "cached" note means manager wasn't re-run — but `new`'s *contract* is byte-identical, so manager is unaffected. Let me confirm the normal (non-Verus) build compiles and explicitly re-verify the manager module.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 900 make verify-ke
+
+[THINKING] The full verification only re-checked the kframe module while caching everything else, and the "CHEATING_DETECTED" status is reporting a global count from out-of-scope files like frame, manager, and upool that existed before my changes and aren't relevant to what I'm working on.
+
+Since I didn't change new's contract (it still requires base.inv() and ensures kf@==base@ && kf.inv()), manager's cached verification should still be valid — it only depends on new's spec, which is unchanged. The caching is based on source hashes, so since manager.rs wasn't modified, verus correctly skipped re-verifying it. To be thorough though, I should explicitly re-verify manager to confirm it still passes with my changes.
+
+The key checks remaining are running a normal kernel build to ensure dual-compilation works, then running the full `make verify` to confirm no regressions across the crate. Let me start with the normal build check since it's faster.
