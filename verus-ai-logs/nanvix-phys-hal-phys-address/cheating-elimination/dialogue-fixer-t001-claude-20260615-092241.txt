@@ -297,3 +297,141 @@ Now `into_frame_number` already matches dev's original. Let me verify and re-run
 
 [THINKING] The `into_frame_number` function is now restored to match the dev version with a single line that right-shifts the raw address by the frame shift constant, and I've verified it checks out from the earlier run with most cases passing except for one error in the `from_number` direction.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  6 verified
+  0 errors
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+  Unverified functions:
+=== Summary ===
+  verification:...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/h
+
+[THINKING] I've got 6 verified entries with no errors, but the AST still shows a mismatch with `from_number` due to the `addr_raw` split that's necessary, while `into_frame_number` should now be aligned. There's also an extra `clone_address` field showing up. Let me run the summary to see what's actually happening.
+[RESULT ✓] bash: PhysicalAddress::from_into_frame_address MATCH                                
+PhysicalAddress::from_number             MISMATCH                             
+PhysicalAddress::into_frame_number       MATCH                                
+PhysicalAddress::clone_address           EXTRA_IN_VERUS        ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+`into_frame_number` is now MATCH. Remaining: `from_number` (required split, now documented) needs its reproducer, and `clone_address` (trait-method addition) needs documentation. Let me create the reproducer and verify it actually demonstrates the limitation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && which verus; ls ~/verus-bin/ 2>/dev/null | head; mkdir -p verus-ai-logs/nanvix-phys-h
+
+[THINKING] With `into_frame_number` back to matching the dev original, I'm left with two issues: `from_number` needs a reproducer demonstrating the Verus limitation, and `clone_address` requires documentation since it's an extra trait method addition. Let me create the reproducer file and add the reviewer notes for `clone_address`. Writing reproducer file...
+[RESULT ✓] bash: /home/ruize/verus-bin/verus
+builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs with 3415 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Testing reproducer with verus
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro && echo "=== BAD f
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === BAD form (whole file, expect from_number/bad to fail) ===
+error: possible arithmetic underflow/overflow
+  --> from_number.rs:69:23
+   |
+69 |     let addr: usize = frame.into_raw_value() * SIZE;
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 2 verified, 1 errors
+...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The reproducer confirms it: the `bad` (single-line) form fails with `possible arithmetic underflow/overflow`, while `good` (split) and the lemma verify. Let me verify the `good` form passes in isolation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro && echo "=== GOOD 
+[RESULT ✓] bash: === GOOD form only (expect pass) ===
+Error: When using --verify-function, use --verify-only-module instead of --verify-module
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro && ~/verus-bin/ver
+[RESULT ✓] bash: error: invalid path 
+
+error: aborting due to 1 previous error
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The full-file run already shows `good` among the "2 verified" while `bad` is the "1 error" — the reproducer is conclusive. Now let me document `clone_address`. First confirm its origin via the tool/git.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== clone_address on dev (baseline)? ==="; git show dev:src/kernel/src/hal/mem/
+
+[THINKING] The full-file run already confirmed that `good` and `lemma_no_overflow` pass verification while `bad` fails, so that's sufficient evidence. Now I need to add documentation to the `clone_address` implementation in phys.rs with a VERUS REWRITE comment.
+[RESULT ✓] bash: === clone_address on dev (baseline)? ===
+0
+=== on verus-ai-prove (task base)? ===
+1
+=== trait requires it? sys Address trait ===
+0
+1
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+`clone_address` is a mandatory `Address` trait method added during the verus pipeline (present on `verus-ai-prove`, absent on `dev`) in the out-of-scope `sys` crate — `PhysicalAddress` must implement it. Let me add the documentation comment.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm tracking the differences between versions: `clone_address` doesn't exist on dev but appears in both phys.rs and the Address trait on verus-ai-prove, meaning it became a required trait method that PhysicalAddress must now implement.
+
+Since the trait requirement is out of scope but the implementation in phys.rs is in scope, I need to add a VERUS REWRITE comment to the `clone_address` method around lines 272-274 and document this in verification_todo.md.
+[RESULT ✓] view: 274.         self.0.into_raw_value()
+275.     }
+276. 
+277.     fn clone_address(&self) -> Self {
+278.         PhysicalAddress(self.0)
+279.     }
+280. 
+281.     fn as_ptr(&self) -> *const u8 {
+282.         self.0.as_ptr()
+283.     }
+284. 
+285.     fn as_mut_ptr(&self) -> *mut u8 {
+286.         self.0...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now update `verification_todo.md` and re-run all checks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/verification_todo.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/verification_todo.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Final verification and build
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== verify-kernel module ==="; timeout 600 make verify-kernel MODULE=hal::mem::
+[RESULT ✓] report_intent: Intent logged

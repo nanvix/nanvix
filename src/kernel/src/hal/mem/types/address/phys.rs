@@ -274,6 +274,15 @@ impl Address for PhysicalAddress {
         self.0.into_raw_value()
     }
 
+    // VERUS REWRITE (interface addition): `clone_address` is a *required* method of the
+    // `sys::mm::Address` trait, which gained it during the verus pipeline (it carries a verified
+    // contract `result@ == self@` that the bare `derive(Clone)`/`Clone::clone` supertrait cannot
+    // express — `Clone` has no Verus spec, so generic `Address` callers could not duplicate an
+    // address while retaining the abstract-value guarantee). The trait method lives in the
+    // out-of-scope `sys` crate (`src/libs/sys/src/sys/mm/address/mod.rs:88`); because
+    // `PhysicalAddress` implements `Address`, this impl method is mandatory and cannot be removed
+    // here. It is a view-preserving clone — same value, same complexity as a `Copy`. Recorded in
+    // verus-ai-logs/nanvix-phys-hal-phys-address/verification_todo.md.
     fn clone_address(&self) -> Self {
         PhysicalAddress(self.0)
     }
