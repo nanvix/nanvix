@@ -357,3 +357,43 @@ Verification stable (exit 0, 0 errors; 4 module admits). Let me commit the bug r
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add -A && git commit -q -m "[verus-ai] phys-frame: file §8 ghost-token 
 
 [THINKING] The verification checks out with no errors and the module shows 4 admits, so the state looks stable. Now I'll commit the bug report and push the updates.
+[RESULT ✓] bash: 62755b961 [verus-ai] phys-frame: file §8 ghost-token attachment bug report for 4 deferred-infrastructure admits
+a128748e7 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=7 external_body=16 cfg_gate=13)
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+I've exhausted every sanctioned avenue for the 4 remaining admits and filed the required bug report.
+
+## Outcome
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → exit 0, **0 verification errors**. The only gate trigger is `admit=4` (all in `manager.proof.rs`).
+
+**This session:** Confirmed the 4 remaining admits are an **irreducible deferred-infrastructure blocker**, not a closeable proof gap, and filed it as a bug per `proving-guide`/`bug-reporting`.
+
+**Why the 4 cannot be eliminated by an AI under the rules** — they all rest on the **§8 ghost-token attachment** (`view_design.md` §8: `self@ == phys_view().frames`) that the spec phase deferred to the proving phase:
+- `phys_view()` and the manager/pool views are all `uninterp` with no axioms; `phys_view()` is argument-less (an immutable constant) so it cannot model the mutable global partition.
+- The only sound link is a `tracked` ghost token threaded through `frame::alloc`/`free`/`alloc_contiguous` exec signatures + manager/pool structs — **forbidden** by the cheating-elimination source-integrity rules.
+- A bare `axiom`/`assume_specification` is human-approval-only; `external_body` on a proof fn is banned and not in `tcb-allowed.md`.
+- The skills **forbid weakening the (correct-under-§8) manager contracts** to dodge the failure → the sanctioned action is to report, which I did.
+
+**Decisively:** every workaround (axiom, external_body, spec weakening, exec/struct token changes) is explicitly prohibited, so no AI-available mechanism closes these. This is a genuine architectural gap requiring a human / the dedicated proving phase.
+
+**Deliverables (committed):**
+- `cheating-elimination/bugs.md` — self-contained Context-Dependent bug report.
+- `phys-manager/bugs.md` — OBS-4 cross-reference.
+- `fix_report.md`, `verification_todo.md` — updated (10 → 4 admits; bug-report references).
+
+**Progress across sessions:** 10 → **4** admits, all reductions via real proofs/relocations (including `lemma_user_bulk_ok` this session via loop-invariant restructuring). AST consistency: 0 mismatches. Full `make verify-kernel` and `make verify`: 0 errors, no regressions.
+
+## Result: BLOCKER
+
+4 `admit()` remain — an honest, fully-documented deferred-infrastructure blocker (§8 ghost-token attachment). They cannot be removed without forbidden exec/struct changes, human-approved axioms, or forbidden spec weakening.
+
+
+=== Session End ===
+Session: 14b90c09-2f67-4587-8773-6218c4a98c78
+Duration: 453.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating-fix-claude-20260615-111330.jsonl
