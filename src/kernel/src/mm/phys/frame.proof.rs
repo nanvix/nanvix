@@ -873,7 +873,7 @@ proof fn lemma_book_range(old_inner: &Inner, new_inner: &Inner, lo: int, hi: int
 // The contract of `alloc_range` describes the booked block as
 // `set_int_range(lo, hi).map(|i| i * PAGE_SIZE)`. This coincides with `frame_set(lo, hi)`,
 // letting `alloc_range` reuse `lemma_book_range`'s view transitions.
-pub proof fn lemma_map_range_is_frame_set(lo: int, hi: int)
+proof fn lemma_map_range_is_frame_set(lo: int, hi: int)
     ensures
         vstd::set_lib::set_int_range(lo, hi).map(|i: int| i * spec_page_size())
             =~= frame_set(lo, hi),
@@ -899,7 +899,7 @@ pub proof fn lemma_map_range_is_frame_set(lo: int, hi: int)
 
 // Reconstructs the `alloc_range` contract's booked block — phrased as
 // `set_int_range(start/PS, (start+size)/PS).map(|i| i*PS)` — as `frame_set(lo, hi)`.
-pub proof fn lemma_region_frames_eq(region_start: int, region_size: int, lo: int, hi: int)
+proof fn lemma_region_frames_eq(region_start: int, region_size: int, lo: int, hi: int)
     requires
         lo == region_start / spec_page_size(),
         hi == (region_start + region_size) / spec_page_size(),
@@ -915,7 +915,7 @@ pub proof fn lemma_region_frames_eq(region_start: int, region_size: int, lo: int
 // Bridges `lemma_book_range`'s `frame_set`-based view transition to `alloc_range`'s contract,
 // which phrases the booked block as `set_int_range(...).map(...)`. Establishes the success-case
 // view equality plus the `frames ⊆ free_frames` subset obligation.
-pub proof fn lemma_alloc_range_view(
+proof fn lemma_alloc_range_view(
     old_inner: &Inner,
     new_inner: &Inner,
     region_start: int,

@@ -5277,3 +5277,42 @@ Turn 351
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
 
 [THINKING] I need to verify that `FrameAllocView`, `Map`, and `vstd::set_lib` are properly imported in frame.rs since the contract already uses them.
+[RESULT ✓] bash: error: disallowed: field expression for a non-visible datatype
+   --> src/kernel/src/mm/phys/frame.proof.rs:928:26
+   ::: src/kernel/src/mm/phys/frame.rs:82:1
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not r...
+
+────────────────────────────────────────────────────────────
+Turn 352
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The error persists at that same location, so it's not coming from the FrameAllocView literal itself—I need to examine what's actually on line 928 at column 26.
+[RESULT ✓] view: 926.     requires
+927.         old_inner.inv(),
+928.         0 <= lo <= hi <= old_inner.bitmap@.num_bits,
+929.         lo == region_start / spec_page_size(),
+930.         hi == (region_start + region_size) / spec_page_size(),
+931.         forall|j: int| lo <= j < hi ==> !old_inner.bitmap@.set_bits.c...
+
+────────────────────────────────────────────────────────────
+Turn 353
+────────────────────────────────────────────────────────────
+The issue: `pub proof fn` exposes private `Inner` fields in its public signature. `lemma_book_range` is non-`pub`. Let me make my helpers non-`pub`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -i 's/^pub proof fn lemma_map_range_is_frame_set/proof fn lemma_map_range
+
+[THINKING] I'm puzzled by why accessing the `bitmap` field on `old_inner` is failing at line 928 when the same field access works fine in `lemma_book_range` at line 693 — both are working with an `Inner` reference, so it seems like a visibility issue, but I need to verify whether the field has restricted visibility that would only affect one location.
+
+Actually, I think I've found it: the difference is that `lemma_book_range` is a private `proof fn`, while my function is `pub proof fn`. When a function is public, its specification (requires/ensures clauses) becomes part of the public interface and can only reference publicly visible fields. Since `Inner.bitmap` is likely private, a public function can't expose it in its contract, but a private proof function can reference it freely.
+
+The fix is straightforward: I'll remove the `pub` keyword from my helper lemmas—`lemma_map_range_is_frame_set`, `lemma_region_frames_eq`, and `lemma_alloc_range_view`—making them private `proof fn` instead. They're only called within the same module (frame.rs includes frame.proof.rs), so they don't need to be public, just like `lemma_book_range`.
+[RESULT ✓] bash: 876:proof fn lemma_map_range_is_frame_set(lo: int, hi: int)
+902:proof fn lemma_region_frames_eq(region_start: int, region_size: int, lo: int, hi: int)
+918:proof fn lemma_alloc_range_view(
+<shellId: 175 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 354
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
