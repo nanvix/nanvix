@@ -127,3 +127,9 @@ import in virt.rs that broke `./z build -- all`; the build now passes.
 [2026-06-15 15:53:34] ✅ specification: PASS (0/0)
 [2026-06-15 15:53:34] [GATE] Running build: make build
 [2026-06-15 15:53:34] [GATE] Running verify: make verify
+[2026-06-15 15:53:41] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PHASE: proving
+Module: sys-virt-address
+============================================================

@@ -2,11 +2,12 @@
   "module_name": "sys-virt-address",
   "log_name": "nanvix-phys-sys-virt-address",
   "source_path": "/home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "114ada83b8af6301f5bd49aa1fa8d6569dd1e2e6",
     "view-design": "366921ffd81cb66dac7a97e1b3423d7ebb900a4b",
-    "specification": "7aa98c0aaef7a9d5d4e30f328a6c8b4e4bf71d11"
+    "specification": "7aa98c0aaef7a9d5d4e30f328a6c8b4e4bf71d11",
+    "proving": "819d903e2c7eedee38667f48ccc9ab5cb4163311"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "a4d1b77327110cd5663921dc189a7cf47afdf2b0",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "819d903e2c7eedee38667f48ccc9ab5cb4163311",
       "rollback_iter": 0
     }
   ],
