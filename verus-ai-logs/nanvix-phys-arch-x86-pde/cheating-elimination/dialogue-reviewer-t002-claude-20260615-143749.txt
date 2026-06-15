@@ -165,3 +165,60 @@ Turn 4
 ────────────────────────────────────────────────────────────
 `good` passes. Now re-run `make verify-arch` myself to confirm counts unchanged.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -18
+[RESULT ✓] bash: —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+All independently verified. Let me confirm the cheating-detail still shows only non-PDE (TCB-listed) entries and grep the comment:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt; echo "=== grep comment 
+
+[THINKING] I've confirmed that the three external_body references, one assume statement, and two cfg_gate entries are all outside the PDE scope and properly TCB-listed. Now I need to verify that the cheating detail output still only shows non-PDE entries, check that the build completes without warnings, and search for any VERUS REWRITE occurrences.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== grep comment ===
+420:    // VERUS REWRITE: the original `self.frame.i...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+All checklist items now pass. Item 8 is FIXED with independently-verified evidence. Writing the final review and STOP.
+[TOOL] report_intent: Finalizing review as resolved
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/STOP
+
+[THINKING] Everything checks out now. I'm writing the turn_002_driver.md file and marking this as STOP with RESOLVED status.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/turn_002_driver.md with 3596 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**.
+
+I independently re-verified the fixer's turn-1 changes for the single outstanding FAIL (item 8), trusting nothing verbal:
+
+- **VERUS REWRITE comment** present at pde.rs:420-428 (`grep` confirmed), correctly documenting the `frame_address` `let raw` split and matching the `phys.rs:142-148` convention. Exec semantics unchanged.
+- **Reproducer** created and I ran it myself: `bad` (original single-expression) → **FAILS** (2 postconditions unproven); `good` (the rewrite) → **PASSES**. This proves the rewrite is a genuine Verus-limitation workaround, not a cosmetic change.
+- **`make verify-arch`** re-run by me → exit 0, counts unchanged (`assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2`); `cheating-detail.txt` lists only non-PDE, TCB-listed constructs.
+
+All twelve checklist items are PASS/FIXED with tool-verified evidence. Wrote `turn_002_driver.md` and created `STOP` with `RESOLVED`.
+
+
+=== Session End ===
+Session: e852e899-5d08-457e-834e-a8a8b970e22d
+Duration: 67.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/dialogue-reviewer-t002-claude-20260615-143749.jsonl
