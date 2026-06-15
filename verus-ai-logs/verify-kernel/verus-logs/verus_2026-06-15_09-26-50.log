@@ -1,0 +1,138 @@
+Timestamp: 2026-06-15_09-26-50
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+70 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=14
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:238:17
+    |
+238 |                   Ok(base) => {
+    |                   ^^^^^^^^ failed this postcondition
+...
+356 | /         match FrameAddress::from_frame_number(frame_number) {
+357 | |             Ok(frame_address) => {
+358 | |                 proof! {
+359 | |                     let base = frame_address@;
+...   |
+394 | |             },
+395 | |         }
+    | |_________- at the end of the function body
+
+error: invariant not satisfied at end of loop body
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+    |
+317 |                 forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:317:51
+    |
+317 |                 forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+    |                                                   ^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:317:72
+    |
+317 |                 forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+    |                                                                        ^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:333:17
+    |
+333 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+    |                 ^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: recommendation not met
+   --> src/kernel/src/mm/phys/frame.rs:333:38
+    |
+333 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+    |                                      ^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/seq.rs:62:13
+    |
+ 62 |             0 <= i < self.len(),
+    |             ------------------- recommendation not met
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+    |
+317 |                 forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:317:72
+    |
+317 |                 forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+    |                                                                        ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:332:13
+    |
+332 |             assert forall|k: int| !(lo <= k < hi) implies
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:333:38
+    |
+333 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+    |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> src/kernel/src/mm/phys/frame.rs:332:13
+    |
+332 |             assert forall|k: int| !(lo <= k < hi) implies
+    |             ^^^^^^
+
+verification results:: 70 verified, 2 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

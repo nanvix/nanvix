@@ -4340,3 +4340,80 @@ I need to replace invariant 301 with the correct bitmap facts that actually hold
 Turn 281
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.r
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.rs:309:51
+   --> src/kernel/src/mm/phys/frame.rs:309:72
+   --> src/kernel/src/mm/phys/frame.rs:320:17
+   --> src/kernel/src/mm/phys/frame.rs:320:38
+error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:321:13
+   --> src/kernel/src/mm/phys/frame.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 282
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm tracking down verification errors in the code—there are issues with the invariant at line 309 about reference counts, the assertion in the proof block at line 320, and an unsatisfied precondition when calling lemma_book_range at line 321. The line numbers have shifted by 3, so I need to check the actual range from 308 to 322 to see what's happening.
+[RESULT ✓] view: 296.         #[cfg_attr(verus_keep_ghost, verus_spec(
+297.             invariant
+298.                 lo == frame_number as int,
+299.                 hi == frame_number as int + count as int,
+300.                 lo <= i <= hi,
+301.                 self.bitmap.inv(),
+302.                 self.bitmap...
+
+────────────────────────────────────────────────────────────
+Turn 283
+────────────────────────────────────────────────────────────
+Let me find a verified `for i in range` loop with element updates in the codebase to match the exact idiom:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "verus_spec(" src/libs/bitmap/src/lib.rs | grep -i invariant | head;
+
+[THINKING] I'm working through a Verus loop invariant issue where updating `self.refcount[i]` needs to preserve the invariant for other indices. The question is whether the invariant should hold with the loop counter at its current value during the iteration or after it increments, since Verus checks the invariant at the top of each iteration. So the real issue is that at the end of the loop body, after setting refcount[i]=1, the invariant check is failing because it's still checking against the current i, not i+1. The forall clause for values outside the range requires refcount[k]==old, but k=i now violates this since we just modified refcount[i]. I need to understand whether Verus checks the invariant with the current loop variable or the incremented one—if it's checking P(i) instead of P(i+1), that would explain why the invariant fails even though logically it should hold after the increment.
+
+Looking at the precondition error for lemma_book_range, I'm realizing I may not have properly asserted that the old bitmap had all bits unset in the range [lo, hi). The lemma requires `forall|j| lo<=j<hi ==> !old.set_bits.contains(j)`, and while I know the bitmap is unset in that range from the alloc_range call, I need to verify I'm actually passing that precondition to the lemma.
+
+There's also the lingering question about how Verus handles the loop variable `i` in the invariant at the end of the loop body — whether it refers to the current or next iterator value — which might explain why the k=i case isn't verifying. I'm wondering if the issue is that Verus isn't automatically connecting the assignment `self.refcount[i] = 1` to the update semantics needed for the forall reasoning in the loop invariant. I should add an explicit assertion inside the loop body to help Verus understand the update, similar to how the single allocation case worked. But there's also a potential casting issue — the loop variable `i` is a `usize` while the invariant uses `i as int`, so I need to check if that's causing the mismatch. Let me look for an existing verified range-loop pattern in the codebase to match the exact idiom.
+[RESULT ✓] bash: 5:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+=== search for-loop invariant patterns ===
+464:                    for alloc_offset in 0..size {
+<shellId: 154 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 284
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 455.                         let ghost pre_alloc_self = *self;
+456.                     }
+457. 
+458.                     #[cfg_attr(verus_keep_ghost, verus_spec(
+459.                         invariant
+460.                             self.alloc_range_third_loop_invariant(old(self), pre_alloc_self, s...
+
+────────────────────────────────────────────────────────────
+Turn 285
+────────────────────────────────────────────────────────────
+I need a per-iteration snapshot for the slice update and the missing "unset in range" fact. Let me look at the post-`alloc_range` block and fix both:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see how the bitmap handles this—it takes a snapshot of `self` at the start of each loop iteration, then uses a helper lemma to connect that snapshot to the updated state. I should apply the same pattern to my loop: capture `loop_old_self` at the beginning, perform the update, and add an explicit lemma that relates the old snapshot to the new invariant state so Verus can verify that `self.refcount[i] = 1` holds. I'm realizing the core issue is understanding exactly when Verus checks the loop invariant relative to the loop variable's value. If the invariant is checked at the end of the body with `i` still holding its current iteration value, then my invariant `forall k !(lo<=k<i) ==> refcount[k]==old` would fail at `k=i` since I just set `refcount[i]=1`. I need to either reformulate the invariant to use `<= i` semantics or add explicit per-iteration assertions to establish what the invariant requires after each update.
+
+The most direct fix is to add a snapshot and assertion after updating `refcount[i]` in each loop iteration, then also ensure I'm establishing the `all_bits_unset_in_range` precondition that `lemma_book_range` requires before calling it.
+[RESULT ✓] view: 273.             Err(error) => {
+274.                 proof! { lemma_view_determined(self, &old_self); }
+275.                 #[cfg(not(verus_keep_ghost))]
+276.                 error!("{error:?} (count={count})");
+277.                 return Err(error);
+278.             },
+279.         };
+280.      ...
+
+────────────────────────────────────────────────────────────
+Turn 286
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 287
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.r

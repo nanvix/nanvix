@@ -289,6 +289,14 @@ impl Inner {
             assert(0 <= frame_number);
             assert(frame_number as int + count as int <= self.bitmap@.num_bits);
             assert(old_self.refcount@.len() >= old_self.bitmap@.num_bits);
+            // The range was unset in `old_self`, so booking it does not clobber an owner.
+            assert forall|j: int|
+                frame_number as int <= j < frame_number as int + count as int implies
+                !old_self.bitmap@.set_bits.contains(j) by {
+                assert(old_self.bitmap@.all_bits_unset_in_range(
+                    frame_number as int, frame_number as int + count as int));
+                assert(!old_self.bitmap@.is_bit_set(j));
+            }
         }
         proof_decl! { let ghost lo: int = frame_number as int; }
         proof_decl! { let ghost hi: int = frame_number as int + count as int; }
@@ -311,7 +319,12 @@ impl Inner {
         for i in frame_number..frame_number + count {
             #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
+            proof_decl! { let ghost loop_old = *self; }
             self.refcount[i] = 1;
+            proof! {
+                assert(self.refcount@ == loop_old.refcount@.update(i as int, 1));
+                assert(self.bitmap == loop_old.bitmap);
+            }
         }
         proof! {
             assert(self.refcount@.len() == old_self.refcount@.len());
