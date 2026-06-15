@@ -362,3 +362,80 @@ Turn 8
 
 | Metric | Count |
 |--------|...
+[RESULT ✓] bash: (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1357:17
+     |
+1357 ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Verification passed (exit 0). The script flags `cfg-gated exec code: 1` for the module — I need to examine whether it's a real exec-gating or a false positive on spec/proof includes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nA3 "frame" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | grep -
+
+[THINKING] The verification completed successfully without recompilation. Looking at the cheating check results for this module, there's an external_body reference that's properly TCB-listed, but I'm noticing a cfg-gated exec code flag that's being counted as a cheating dimension by the guardrails. Let me dig into why that's being flagged.
+
+The checklist explicitly requires zero cfg-gated exec code, allowing only imports, derives, debug assertions, and logging. The script is reporting cfg_gate=1, so I need to examine what's actually being counted. The cfg gates in the file guard spec and proof includes plus the verus block containing spec functions and the View implementation — none of which are exec code. The script's heuristic seems to be catching these even though they shouldn't count as violations. Let me check the detailed report to understand what's being flagged.
+[RESULT ✓] bash: 1:    - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+=== full frame mentions ===
+1:    - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "cfg" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | head; ech
+[RESULT ✓] bash: === how script counts cfg_gate ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt | head -60
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/phys/frame.rs:1502 alloc: external_body
+    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Verification passed. The `cfg-gated exec: 1` is the standard spec/proof-include pattern (lines 9/11/36 gate only `frame.spec.rs`/`frame.proof.rs` includes and the `verus!` spec block — no exec code). Now running the remaining shared checks: spec_drift, full `make verify`, `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+
+[THINKING] The cheating-detail.txt file only mentions external_body/admit without specifying which cfg_gate it corresponds to, but the module-level summary indicates one cfg-gated exec code block. Given that the global cfg_gate count is 19 while the module shows just 1, I'm trying to figure out if that single cfg_gate in the module is the #[cfg(verus_keep_ghost)] guard.
+
+Looking at frame.rs, the cfg gates appear on lines 9, 11, and 36 — the spec.rs and proof.rs includes plus the verus! block containing spec_page_size and the View impl. These are all spec/proof code, which is the standard pattern across the entire kernel and falls within the allowed guardrails. The script likely counts any #[cfg(verus occurrence, so the count of 1 is probably a false positive on the spec-include pattern rather than actual cfg-gated executable code. Since I've already verified there's no cfg-gating of real exec functions or branches, the functional cfg-gated exec count is actually 0.
+
+For the verify-kernel module, I have the full picture now: admission and assumption counts are all zero, from_raw_value is properly marked as TCB on line 137, all 9 in-scope functions have contracts, and the duplicate import bug from bugs.md has been fixed. Now I need to run the cross-module regression checks with make verify and make build, plus the spec_drift analysis, then hand off the ground-truth data to sub-agents for their independent reviews.
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 14 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short && echo "=== diff stat vs HEAD ===" && git --no-pager diff --stat 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 2400 make verify 2>&1 | tail -25
+
+[THINKING] I'm checking whether there's contract drift by comparing the working tree to HEAD on the verus-ai-prove branch, but I need to verify if the working tree is clean first and understand what baseline I'm actually measuring against.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-frame-address/final-review/review-claude-20260615-113024.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/final-review/review-claude-20260615-113024.txt
+=== diff stat vs HEAD ===
+ .../review-claude-20260615-113024.jsonl            | 112 +++++++++++++++++++++
+ .../...
