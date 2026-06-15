@@ -59,7 +59,6 @@ pub struct PageDirectoryEntryFlags {
     page_size: PageSizeFlag,
 }
 
-#[verus_verify]
 impl PageDirectoryEntryFlags {
     ///
     /// # Description
@@ -286,7 +285,6 @@ pub struct PageDirectoryEntry {
     frame: FrameNumber,
 }
 
-#[verus_verify]
 impl PageDirectoryEntry {
     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();

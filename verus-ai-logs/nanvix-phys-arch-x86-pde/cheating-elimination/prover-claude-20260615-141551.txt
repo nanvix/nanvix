@@ -408,3 +408,192 @@ Turn 17
 [TOOL] report_intent: Verifying clean pattern
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -30
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: = help: The following declaration may resolve this error:
+            pub assume_specification [crate::x86::mem::paging::flags::PresentFlag::from_raw_value] (_0: u32) -> crate::x86::mem::paging::flags::PresentFlag;
+
+error: could not compile `arch` (lib) due to 16 previous errors
+
+=== Results ===
+  0...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Adding `#[verus_verify]` to the impl block forces verification of ALL methods (from_raw_value, etc.) which lack specs → 16 errors. So the marker is a real scoping mechanism. Let me revert and understand the actual mechanism.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git checkout src/libs/arch/src/x86/mem/paging/pde.rs && grep -n "verus_impl_method_ma
+
+[THINKING] I see the issue now — adding `#[verus_verify]` to the impl block forces Verus to verify every method within it, including ones like `from_raw_value` that lack proper specifications, which triggers 16 compilation errors. The problem cascades because these methods call functions like `PresentFlag::from_raw_value` that don't have the necessary `assume_specification` annotations.
+
+The original workaround makes sense: skip the impl-block marker entirely, then use `#[verus_spec]` on individual methods with the `cfg_attr` allow to selectively opt into verification without forcing the whole impl block to be verified. This is actually a legitimate mechanism for scoping verification, not a workaround hack.
+
+Now I'm reconsidering whether this cfg_gate pattern is truly a blocker for the cheating gate, or if it's a necessary and justified mechanism. The real question is whether I can verify just the `new` methods without the cfg_attr marker — maybe by splitting the impl block so `new` gets its own `#[verus_verify]` impl block separate from the other methods.
+
+But wait, I need to understand how the base case actually works. The base verified `is_present` and `frame_address` even though they only have `#[verus_spec]` without the marker and without the impl block being marked. So `#[verus_spec]` alone must be sufficient for verification, and the marker serves a different purpose. When I added `#[verus_verify]` to the impl block, it tried to verify everything, including methods without specs, which caused the 16 errors. So the distinction is: `#[verus_spec]` on a method marks it for verification, while `#[verus_verify]` on the impl block verifies all methods in it.
+
+The real question is why `new` needs the marker when `is_present` doesn't. Maybe it's because `new` is a constructor returning `Self`, or because it's called from unverified code, or because of how the `result =>` syntax interacts with the verification system. Let me revert and look at the verus-ai macro source to understand the actual mechanism.
+[RESULT ✓] bash: Updated 0 paths from the index
+41:#[verus_verify]
+62:#[verus_verify]
+280:#[verus_verify]
+289:#[verus_verify]
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git checkout HEAD -- src/libs/arch/src/x86/mem/paging/pde.rs && grep -n "verus_impl_m
+
+[THINKING] The grep output shows my edits are still there — the `#[verus_verify]` markers I added at lines 62 and 289 — but git checkout reported updating zero paths, which means the working tree already matched the index. That's strange because I definitely modified the file, so either the index got updated somehow or something else is going on.
+
+Let me just explicitly restore from HEAD to make sure I'm getting the original version.
+[RESULT ✓] bash: 41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+280:#[verus_verify]
+289:#[verus_verify]
+290:impl PageDirectoryEntry {
+473:impl TableEntry for PageDirectoryEntry {
+status:
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -5; echo "=== diff HEAD vs verus-ai-prove for pde ==="; git --no-pa
+
+[THINKING] I'm noticing something odd—after running `git checkout HEAD --`, the file still shows `#[verus_verify]` markers at lines 62 and 289 before the impl blocks, but git status shows the working directory is clean. That's strange because the original view showed line 62 as just `impl PageDirectoryEntryFlags {` with the marker appearing later at line 83, and there's a discrepancy with what the verus-ai diff showed.
+
+Wait, I think I see what might've happened—could the verify-arch make target have auto-committed my changes? The commit messages like "[verus] verify PASS" suggest the verification script might be auto-committing. Let me check the git log to see if that's what occurred.
+[RESULT ✓] bash: ac23bba85 [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+74c88f217 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=4)
+3e590bcac [verus-ai] cheating-elimination START: arch-x86-pde
+ac1d49082 [verus] v...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The verify target auto-commits each run. Let me carefully check what each commit contains for the marker pattern.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for ref in verus-ai-prove 3e590bcac 74c88f217 ac23bba85 HEAD; do echo "=== $ref ===";
+
+[THINKING] Ah, I see what happened—the verify-arch target auto-commits changes, so when I checked out HEAD, I went back to my failing edit with verus_verify on impl blocks rather than the baseline. That's why the current state has those markers missing and the verification is failing.
+
+Now I need to figure out what's actually in each commit. The diff between HEAD and the verus-ai-prove base branch is showing empty for pde.rs, which doesn't make sense if I made edits there. Let me check the actual content of the verus-ai-prove branch directly to see what the markers look like, and then carefully compare what each commit has for the impl block and marker situation.
+[RESULT ✓] bash: === verus-ai-prove ===
+41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+280:#[verus_verify]
+289:#[verus_verify]
+290:impl PageDirectoryEntry {
+=== 3e590bcac ===
+41:#[verus_verify]
+62:impl PageDirectoryEntryFlags {
+83:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_met...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Key finding: base `verus-ai-prove` has `#[verus_verify]` on impl blocks (no markers), but the START commit changed it to the marker pattern. My edit reproduced the base pattern and it FAILED. So the base→START change was necessary. Let me see the full diff to understand what else differs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff verus-ai-prove 3e590bcac -- src/libs/arch/src/x86/mem/paging/pde.
+
+[THINKING] So the pattern is becoming clear—the clean approach uses `#[verus_verify]` directly on impl blocks without any markers, which is what I'm seeing in both the base version and my current HEAD. The earlier commit took a different route with cfg-gated workarounds and explicit markers instead, but that's not the direction we're going.
+
+The real puzzle is that my edit mirrors the base's structure exactly, yet it's failing with 16 errors while the base supposedly passes. This suggests either the base itself doesn't actually verify cleanly with that pattern, or there are other structural differences I'm missing—maybe in how the other methods are defined or what specs they carry. I need to do a full diff between the base and that earlier commit to understand what actually changed and why the markers were introduced in the first place.
+[RESULT ✓] bash: diff --git a/src/libs/arch/src/x86/mem/paging/pde.rs b/src/libs/arch/src/x86/mem/paging/pde.rs
+index 144405bd8..e73aa3b60 100644
+--- a/src/libs/arch/src/x86/mem/paging/pde.rs
++++ b/src/libs/arch/src/x86/mem/paging/pde.rs
+@@ -59,7 +59,6 @@ pub struct PageDirectoryEntryFlags {
+     page_size: PageSize...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The START commit's only change was the marker workaround. Now the puzzle: `is_present`/`frame_address` verify with just `#[verus_spec]` (no marker, no impl-block `verus_verify`), but `new` needs the marker. Let me understand `verus_impl_method_marker` by examining the verus-ai macro source.
+[TOOL] bash: grep -rn "verus_impl_method_marker" /home/ruize/verus-ai-exp/verus-ai 2>/dev/null | grep -v "\.md\|\.jsonl\|test" | head
+
+[THINKING] The workaround in the START commit removes the `#[verus_verify]` attributes from the impl blocks and adds conditional compilation markers to the `new` methods, which allows verification to succeed but introduces cfg_gate=4 cheating. The base state with `#[verus_verify]` on the impl blocks produces 16 errors and doesn't verify at all.
+
+What I actually need is a third approach: split the impl blocks so that only the verified methods (the `new` functions, `is_present`, and `frame_address`) get `#[verus_verify]`, while the unverified methods like `from_raw_value`, `into_raw_value`, and the flag accessors stay in a plain impl block without verification. This way I can verify the in-scope methods cleanly without the cfg_gate cheating and without trying to verify methods that don't have specs.
+
+The cfg gate itself is unavoidable if I use the per-method marker, since `verus_impl_method_marker` is a verus-specific lint that doesn't exist in normal Rust compilation. So splitting impl blocks is the cleaner path forward — it avoids both the marker and the cfg gate entirely. I need to dig into the verus-ai macro source to understand what `verus_impl_method_marker` actually does and why it's triggering on `new` but not on `is_present`.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src/attr_rewrite.rs:339:                quote_spanned! { span => (unused, verus_impl_method_marker)},
+/home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src/attr_rewrite.rs:524:                        if meta_list.tokens.to_str...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '300,360p' /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src/attr_rewrite.rs
+[RESULT ✓] bash: // need to desugar the for loop.
+        // So, if there's no `verus_spec` attribute, we need to add an empty one.
+        if get_verus_spec(&for_loop.attrs).is_none() {
+            for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
+                for_loop.span(),
+                VERUS_SPEC,
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: sed -n '500,540p' /home/ruize/verus-ai-exp/verus-ai/verus/source/builtin_macros/src/attr_rewrite.rs
+
+[THINKING] The `#[verus_verify]` macro automatically adds `#[allow(unused, verus_impl_method_marker)]` to methods marked with `#[verus_spec]` within the impl block, signaling to later processing that these methods belong to a verus-verified impl. This marker is normally generated automatically, but there's a case where it needs to be handled differently.
+[RESULT ✓] bash: verus_item_const.expr = None;
+        verus_item_const.semi_token = None;
+    }
+    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
+}
+
+pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
+    erase: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Now I fully understand: `#[verus_verify]` on an impl block auto-generates the `verus_impl_method_marker` for each `#[verus_spec]` method. The manual cfg-gated marker simulates this for a single method so the *other* (unspec'd) methods aren't verified. 
+
+The clean fix: **split the impl blocks** — put the spec'd methods in a `#[verus_verify]` block (marker auto-generated, no cfg-gate in source) and leave unspec'd methods in a plain block (external, not verified). Let me restore the verifying baseline first.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git checkout 3e590bcac -- src/libs/arch/src/x86/mem/paging/pde.rs && grep -n "verus_i
+
+[THINKING] The `#[verus_spec]` attribute macro needs the `verus_impl_method_marker` allow attribute to recognize when it's processing an impl method, which changes how it rewrites the spec—particularly for handling `self`. Without this marker, the macro can't properly distinguish impl methods from standalone functions.
+
+But then I'm puzzled: `is_present`, `frame_address`, and `PageDirectoryEntryFlags::is_present` don't have the marker, yet they seem to verify successfully. Maybe they're either not actually being verified, or the macro handles impl methods correctly even without the marker in most cases. The real question is whether `#[verus_spec]` on an impl method without the marker can even work—if `self@` references appear in the spec, the macro would need to know it's an impl method to resolve them properly.
+
+Looking at the practical situation: removing the markers and adding `#[verus_verify]` to the impl block gives 16 errors because everything gets verified, which is what the base code does. The START commit's marker workaround verifies cleanly but uses cfg-gating to hide the markers. What I actually need is to verify only the five specified functions without verifying the unspecified methods, and without any cfg-gated markers in the source.
+
+The solution is to split the impl blocks: create one `#[verus_verify]` impl block containing only the spec'd methods, and leave the rest in a plain impl block. The `#[verus_verify]` macro auto-generates the marker at compile time, which doesn't count as a cfg-gate in the source text since the cfg pattern only matches explicit `#[cfg_attr(...verus_keep_ghost...)]` attributes. This way I get zero cfg-gates while keeping verification clean.
+
+For PageDirectoryEntryFlags, I'd split into a `#[verus_verify]` impl with just `new` and `is_present`, and a plain impl with the rest. Same for PageDirectoryEntry: `#[verus_verify]` impl with `new`, `is_present`, and `frame_address`, then a plain impl for the unspecified methods. Moving them to separate impl blocks is a reorganization rather than a modification of the functions themselves, which should satisfy the constraint about not touching unlisted functions.
+
+The real question is whether I can avoid the cfg-gate entirely by using `#[allow(unknown_lints)]` instead of `cfg_attr`, but that runs into issues with how the macro processes the marker in non-verus builds.
+
+Looking at how the crate actually uses these macros — `#[verus_verify]` and `#[verus_spec]` come from builtin_macros and they handle marker removal regardless of build mode. The marker never reaches rustc because the macro strips it first. So the cfg-gating might be unnecessary if the macro always processes correctly.
+
+The safest approach is still to split the impl blocks with `#[verus_verify]` on the impl itself, which matches the idiomatic verus pattern used elsewhere. Let me check whether number.rs actually does this with its impl block. In verus, methods without `#[verus_verify]` are treated as external code and not verified, so splitting the impl blocks means the unspecified methods won't be checked. The verified methods like `new` and `frame_address` can still call proof blocks and reference specs from pde.spec.rs, and they have access to the struct fields. When verified methods call other verified methods like `is_present`, the callee's spec is available, so that works fine. The `self` parameter alone doesn't determine whether the macro treats it as an impl function — that's controlled by the marker. Since `new` is an associated function returning `Self` without a `self` parameter, it needs the marker to resolve `Self` and `result@` properly, whereas `is_present(&self)` works fine with just `#[verus_spec]`. Let me restore pde.rs to the START commit state and then reorganize into split impl blocks to test if this approach verifies cleanly.
+[RESULT ✓] bash: 41:#[verus_verify]
+62:impl PageDirectoryEntryFlags {
+83:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+280:#[verus_verify]
+289:impl PageDirectoryEntry {
+307:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Let me first test the minimal change: does `new` actually need the marker? Remove just the two marker lines (like `is_present` which has no marker) and verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -i '/#\[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))\]/d' 
+
+[THINKING] I'm reconsidering whether I actually need to split the code at all. The real question is whether `new` actually requires that cfg marker—let me test by removing just the attribute from `new` and keeping everything else the same to see what error surfaces. If `new` can verify without the marker like `is_present` does, then I don't need the split approach.
+[RESULT ✓] bash: 41:#[verus_verify]
+62:impl PageDirectoryEntryFlags {
+279:#[verus_verify]
+288:impl PageDirectoryEntry {
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -25
