@@ -231,3 +231,133 @@ I need `proof!` macro syntax in exec code.
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|i
+[RESULT ✓] bash: error: Verus Internal Error: missing type invariant function
+   --> src/kernel/src/mm/virt/identity_map.rs:534:33
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+`use_type_invariant` on the cross-crate `TableIndex` triggers a Verus internal error. Let me investigate how this bound is meant to be obtained.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== how arch's own code satisfies read's index precond ==="; grep -rn "use_type
+
+[THINKING] The `use_type_invariant` call is failing because `TableIndex`'s type invariant is defined in the arch crate but isn't visible when used from the kernel crate—this seems like a Verus limitation where type invariants don't cross crate boundaries for external types. The invariant itself constrains `pde_idx` to be less than `PAGE_T`, so I need to figure out how to properly access or work around this visibility issue. The issue is that calling `use_type_invariant` on the external `TableIndex` type triggers an internal Verus error because the type invariant function isn't accessible across crate boundaries. Let me try removing that call and see if I can satisfy the precondition differently, or check whether the type invariant is automatically available for function parameters without explicitly invoking it.
+[RESULT ✓] bash: === how arch's own code satisfies read's index precond ===
+src/libs/arch/src/x86/mem/paging/pde.rs:311:            result.inv(),
+src/libs/arch/src/x86/mem/paging/pde.rs:314:        proof! { use_type_invariant(frame); }
+src/libs/arch/src/x86/mem/paging/pte.rs:311:            result.inv(),
+src/libs/ar...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+`use_type_invariant` works *within* the arch crate but errors cross-crate from kernel. Let me probe this precisely with small experiments.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "use_type_invariant" src/kernel/ | head; echo "=== does kernel use TableInde
+
+[THINKING] I'm realizing there's a Verus limitation at play here: `use_type_invariant` works fine within the arch crate where `TableIndex` is defined, but when the kernel crate tries to call it on a foreign type, the type invariant function becomes inaccessible. The issue is that even though `TableIndex::inv` is registered as the type invariant, cross-crate access to it doesn't work the way I'd expect.
+
+Actually, I need to reconsider how Verus handles type invariants on parameters. They're not automatically in the proof context just by having the parameter — you need to explicitly invoke `use_type_invariant` to bring `inv()` into scope. But that's exactly where the cross-crate lookup fails. This feels like a genuine Verus limitation with type invariants on external types, and I should check if there's a workaround or if this needs to be documented as unsupported. So the real issue is that this module might not be feasible at all — I'm hitting fundamental Verus limitations with cross-crate type invariants, the bump_view invariant, and the disconnect between Table operations and identity_map_view. Let me verify this is a known Verus constraint where type invariants from external crates aren't available during separate compilation, rather than a workaround I'm missing. I'm wondering if the type invariant actually works when the arch crate is included in the kernel verification, so let me test a few quick variations with the assert approach to see what's viable before documenting the limitations.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.rs:145:    // The bound cannot be obtained via `use_type_invariant(frame)` because `FrameNumber`'s type
+src/kernel/src/mm/virt/identity_map.rs:534:    proof! { use_type_invariant(pde_idx); }
+=== does kernel use TableIndex type invariant anywhere already? ===...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+There's a directly relevant comment. Let me read it.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I found a comment in the code that directly addresses this issue—it explains why the bound can't be obtained through the standard type invariant method for `FrameNumber`.
+[RESULT ✓] view: 137.     // Total constructor: the result is the frame's base address, hence `FRAME_SIZE`-aligned.
+138.     #[verus_spec(result =>
+139.         ensures
+140.             result@ == spec_from_number(spec_frame_raw_value(frame)),
+141.     )]
+142.     // VERUS REWRITE: the original `frame.into_raw_value...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+This is a known, documented Verus limitation in this codebase. Let me check how `from_number` works around it and whether a reusable helper exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "lemma_from_number_no_overflow" src/kernel/src/hal/mem/types/address/*.proof
+
+[THINKING] So this is a known Verus limitation where cross-crate type invariants stay private to their defining crate, which means I can't directly access the invariant function. The workaround is to get the bound through other means — either from a constructor's ensures clause or through a dependency lemma. For `into_frame_number` they added `requires self.inv()`, while `from_number` relies on a lemma that establishes the FrameNumber bound internally. Now I'm looking at `ensure_pt` and need to figure out how to handle the `pde_idx: TableIndex` parameter.
+
+The core issue is that `pde_idx@ < PAGE_TABLE_LENGTH` is required by the `read` precondition, but I can't use the type invariant across crates. I'm considering whether adding a `requires` clause would work, but that would be spec weakening — restricting callers — which violates the task constraints and would constitute spec drift from the reviewer's baseline. Adding a requires is explicitly forbidden. I'm checking if there's a lemma in the arch module that could establish this bound without relying on the type invariant, but the bound only exists within TableIndex's type invariant itself. This appears to be a genuine limitation: the bound is inaccessible cross-crate, adding a requires is forbidden, and there's no alternative lemma available. The type invariant requirement is always satisfied for any TableIndex, so adding it as a precondition doesn't actually restrict real callers—it's just making an implicit constraint explicit due to the cross-crate limitation. The phys.rs precedent shows this pattern is already used in the codebase, though it would be flagged by spec_drift.py. Since the reviewer explicitly forbids weakening the spec, I can't add that requires clause, so the type invariant blocker remains a genuine Verus limitation that should be documented.
+
+Now I'm stepping back to assess all three exec functions: the cross-crate type invariant issue blocks the index preconditions, the bump_view invariant can't be established without a deferred ghost token, and the mapped.contains and accessible postconditions lack any spec connection from the Table operations themselves.
+
+The reviewer's assumption that these are simple Set or arithmetic facts doesn't hold for the exec functions—though it does for the five lemmas I've already proven. Given these genuine blockers, the exec functions can't be verified in-body. I need to decide whether to restore admits as honest placeholders or present the exact verification errors, but the reviewer rejects admits entirely. Let me check if there's an existing workaround in verus-unsupported.md or if arch exposes a helper that could bridge the cross-crate type invariant issue, similar to how `from_number` uses `lemma_from_number_no_overflow` to access the FrameNumber bound.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.proof.rs:17:pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
+=== body ===
+pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
+    requires
+        spec_frame_raw_value(frame) <= spec_max_frame_number(),
+    ensures
+        spec_frame...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm realizing that `lemma_from_number_no_overflow` requires a bound on the frame value, but `from_number` doesn't explicitly state this requirement — instead, the bound gets established through `into_raw_value`'s ensures clause, which guarantees the value stays within the valid range. So the precondition comes from a method's postcondition rather than a type invariant. Now I need to figure out how this applies to TableIndex.
+
+For TableIndex, I'm looking for a method whose ensures clause provides `index@ < PAGE_TABLE_LENGTH`. Methods like `pd_index` and `pt_index` create the index with that bound, but when I receive a parameter like `pde_idx`, there's no constructor to call. The `read` method takes a TableIndex and calls `into_raw()` on it, with a precondition of `index@ < PAGE_TABLE_LENGTH`. So for the caller to satisfy this, I need to find whether TableIndex has a method that returns the raw value with an ensures relating to the bound.
+[RESULT ✓] view: 28. /// The raw representation uses [`PteWord`] — `u32` on x86.
+29. ///
+30. #[verus_verify]
+31. pub trait TableEntry: Copy {
+32.     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
+33.     #[verus_spec(result =>
+34.         ensures result == spec_entry_from_raw::<Self>(...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+I now have conclusive evidence. The cross-crate type-invariant limitation is **documented in this very codebase** (phys.rs:145, verus-unsupported.md). Let me confirm the full picture: the 5 lemmas are genuinely fixable, but the 3 exec functions hit deliberate, sound dependency-spec minimality. Let me verify the bump_view blocker has no workaround, then finalize. First, restore `ensure_pt` cleanly and capture each exact error in isolation.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I can use `into_raw()` on the `TableIndex` to extract a `usize` value that Verus can verify is both less than `PAGE_TABLE_LENGTH` and equal to the original index—this gives me a way to work around the cross-crate type invariant issue by leveraging the method's built-in guarantees. The issue is that `use_type_invariant` doesn't work cross-crate even though `TableIndex.inv()` is publicly exposed as a spec function — Verus's type invariant registration isn't exported in the crate metadata. So I can't assume the bound directly, but I can materialize it through `into_raw()`'s ensures clause. The question is whether calling `into_raw()` in exec code just to extract that bound is acceptable, or if there's a purely proof-based approach.
+
+But stepping back, maybe the type invariant is a red herring. The real blockers are `bump_view(self).inv()` for the allocator and `mapped.contains()` — if those are fundamentally unprovable, then the whole function can't be verified regardless. `PAGE_TABLE_ALLOCATOR` is a global static with an uninterpreted `bump_view` function, and there's no lemma or type invariant that would let me prove its invariant holds. So `ensure_pt` likely can't be satisfied at all.
+
+The same pattern repeats: `ensure_pte` needs a link from `Table::write` to the identity map view that doesn't exist, and `identity_map_page` needs to connect atomic operations to the view layer — all blocked by deferred ghost tokens that the exec layer can't access. The reviewer's assumption that these are straightforward facts is wrong for the execution layer.
+
+So I'm facing a real dilemma: the task demands `admit=0`, but genuine in-body proof is impossible without either exposing ghost tokens through signatures (forbidden) or using `external_body` (forbidden new TCB). The honest move is to keep the five proven lemmas as a real fix and restore the `admit()` placeholders for the three exec functions with exact blocker documentation, but the reviewer explicitly said restoring admits is a failure.
+
+The instructions do acknowledge "cannot fix" as a possible outcome and ask for exact error messages from every approach tried. So my job is to deliver what I can prove — the five lemmas genuinely fixed — and report `NEEDS_GUIDANCE` for the three exec functions with the precise errors and the reason: deferred ghost-token infrastructure plus cross-crate type-invariant limitations make in-body proof impossible. I'll restore the three exec admits so the module verifies cleanly at `admit=3` (a strict improvement from `admit=8`), then explain why the remaining three are genuinely blocked.
+
+Actually, let me reconsider whether I'm being too pessimistic about `ensure_pt`. The reviewer said to derive page alignment from `alloc_as`'s alignment contract, but that contract is itself deferred — it's the bump allocator's `v` token, which I can't access in-body. I'm settling on restoring the three exec admits to keep the module buildable, since there's no way to partially prove these functions without the deferred infrastructure. The honest path forward is to deliver the five proven lemmas, accept the exec admits as necessary placeholders, and document the exact verification gaps with a thorough analysis for the reviewer. I should just restore the three exec functions to clean `admit()` calls rather than keeping partial proof attempts that might error. Let me revert the ensure_pt changes I made and confirm the module compiles green with the admits in place, then document the exact blockers I've identified: the bump_view invariant for the alloc path and the mapped.contains postcondition for ensure_pte, plus the type-invariant workaround causing internal errors.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me probe whether `into_raw()` works around the type-invariant limitation, to pinpoint the true blocker in `ensure_pt`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm testing whether the read precondition can be satisfied independently using the into_raw() workaround, but I'm also reconsidering whether it's worth pursuing the fast-path-only proof to pinpoint exactly which obligation is blocking progress. Given that I already have the full error set, I should focus on whether I can actually prove any of the three exec functions—and I've determined that I can't.
+
+Let me run a targeted probe: fully prove ensure_pt using into_raw for the index bound and observe the exact remaining error, which should be the bump_view invariant on alloc_as. This will give me the precise blocker for the report and confirm that into_raw works as the type-invariant workaround.
+[RESULT ✓] view: 533. fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+534.     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+535.         let reason: &str = "invalid PDE read from kernel PD";
+536.         #[cfg(not(verus_keep_ghost))]
+537.       ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] I'm going to create a temporary probe to test the `into_raw` workaround and capture the exact `bump_view` error without destructively modifying the actual file. I'll insert a proof probe to verify that `into_raw` satisfies the index bound precondition and then check the allocation path.
+
+The `bump_view` invariant is what's blocking this. Let me temporarily modify `ensure_pt` to investigate.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|i
