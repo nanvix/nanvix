@@ -39,3 +39,4 @@ Module: virt-identity-map
 PHASE: specification
 Module: virt-identity-map
 ============================================================
+[2026-06-15 20:45:26] [STRIP-EXT] removed 1 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs

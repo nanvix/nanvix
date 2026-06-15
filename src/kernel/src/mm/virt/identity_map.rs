@@ -651,7 +651,6 @@ fn ensure_pte(
 // `mm::phys` callers can invoke it. The identity-mapping side effect is not
 // caller-observable in the physical-frame abstraction (no `mm::phys` contract
 // names it), so no abstract effect is stated. Removed when `mm::virt` is verified.
-#[verus_verify(external_body)]
 pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     let phys_addr: usize = phys_addr.into_raw_value();
 
