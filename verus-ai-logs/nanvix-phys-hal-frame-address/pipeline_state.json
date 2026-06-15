@@ -2,10 +2,11 @@
   "module_name": "hal-frame-address",
   "log_name": "nanvix-phys-hal-frame-address",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs",
-  "current_phase": "view-design",
-  "current_phase_idx": 1,
+  "current_phase": "specification",
+  "current_phase_idx": 2,
   "completed_phases": [
-    "caller-analysis"
+    "caller-analysis",
+    "view-design"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -18,6 +19,17 @@
       "review_file": null,
       "duration_s": 137.1,
       "review_rounds": 0
+    },
+    "view-design": {
+      "phase": "view-design",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 188.3,
+      "review_rounds": 0
     }
   },
   "prover_session_id": "9edcf3d8-455a-4947-b0a8-8030942f11a2",
@@ -25,11 +37,13 @@
   "base_branch": "verus-ai/sys-virt-address",
   "verus_branch": "verus-ai/hal-frame-address",
   "phase_boundary_shas": {
-    "caller-analysis": "e66d3b542ff717242b9da1f0af15e5985be12ea8"
+    "caller-analysis": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
+    "view-design": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26"
   },
   "phase_start_shas": {
     "caller-analysis": "b5ef4dd3bf27dc3d5ebc1594cdfb6c85e36c4e20",
-    "view-design": "e66d3b542ff717242b9da1f0af15e5985be12ea8"
+    "view-design": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
+    "specification": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26"
   },
   "phase_history": [
     {
@@ -48,6 +62,18 @@
       "phase": "view-design",
       "event": "start",
       "sha": "e66d3b542ff717242b9da1f0af15e5985be12ea8",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "view-design",
+      "event": "end",
+      "sha": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "9d2f5c944aa7cb424f5f4f072bab29c329e3cd26",
       "rollback_iter": 0
     }
   ],
