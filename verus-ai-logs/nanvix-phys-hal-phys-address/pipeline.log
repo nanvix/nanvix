@@ -216,3 +216,8 @@ Module: hal-phys-address
 [2026-06-15 09:31:44] [CHEATING] ❌ Hard cheating detected (attempt 1), report: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/cheating_report_1.md
 [2026-06-15 09:31:44] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 09:36:40]   ↳ cheating-fix done in 4m56s (exit=0)
+[2026-06-15 09:36:40] [CHEATING] No cheating detected
+[2026-06-15 09:36:40] [CHEATING] ✅ No admit/assume/trusted/proof-fn-external-body/multiline-limitation found
+[2026-06-15 09:36:40] ✅ cheating-elimination: PASS (0/0)
+[2026-06-15 09:36:40] [GATE] Running build: make build
+[2026-06-15 09:36:40] [GATE] Running verify: make verify
