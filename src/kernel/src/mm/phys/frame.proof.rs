@@ -89,12 +89,6 @@ proof fn lemma_frame_facts(inner: &Inner, pa: int, fn_: int)
         inner@.refcounts.contains_key(pa) <==> (
             0 <= fn_ < inner.bitmap@.num_bits && inner.bitmap@.set_bits.contains(fn_)
         ),
-        inner@.refcounts.contains_key(pa) ==> inner@.refcounts[pa] == inner.refcount@[fn_],
-        (0 <= fn_ < inner.refcount@.len()) ==> (
-            inner.refcount@[fn_] > 0 <==> (
-                0 <= fn_ < inner.bitmap@.num_bits && inner.bitmap@.set_bits.contains(fn_)
-            )
-        ),
         inner@.free_frames.contains(pa) <==> (
             0 <= fn_ < inner.bitmap@.num_bits && !inner.bitmap@.set_bits.contains(fn_)
         ),
@@ -133,20 +127,6 @@ proof fn lemma_frame_facts(inner: &Inner, pa: int, fn_: int)
 
     // refcounts share the same key predicate as allocated_frames.
     assert(inner@.refcounts.contains_key(pa) <==> inner@.allocated_frames.contains(pa));
-    if inner@.refcounts.contains_key(pa) {
-        assert(inner@.refcounts[pa] == inner.refcount@[pa / ps]);
-        assert(pa / ps == fn_);
-    }
-
-    // refcount slice (for indices within its length) is positive iff the corresponding bit is set.
-    if 0 <= fn_ < inner.refcount@.len() {
-        if fn_ < nbits {
-            assert(inner.bitmap@.set_bits.contains(fn_) <==> inner.refcount@[fn_] > 0);
-        } else {
-            assert(inner.refcount@[fn_] == 0);
-            assert(!inner.bitmap@.set_bits.contains(fn_));
-        }
-    }
 
     // free_frames.contains(pa) <==> (fn_ in range && clear).
     assert(inner@.free_frames.contains(pa) <==> (

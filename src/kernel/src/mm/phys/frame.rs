@@ -454,6 +454,11 @@ impl Inner {
         }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // refcount slice covers at least the bitmap range, so the index is out of the
+                // bitmap too — the frame is not allocated.
+                assert(self.refcount@.len() >= self.bitmap@.num_bits);
+            }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
@@ -461,12 +466,32 @@ impl Inner {
         }
 
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // A zero slot within the slice corresponds to a clear (or out-of-range) bit, so the
+                // frame is not allocated.
+                let fnn = frame_number as int;
+                if fnn < self.bitmap@.num_bits {
+                    assert(self.bitmap@.set_bits.contains(fnn) <==> self.refcount@[fnn] > 0);
+                }
+                assert(!self.bitmap@.set_bits.contains(fnn));
+            }
             let reason: &str = "frame is not allocated";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        proof! {
+            // The slot is non-zero and within the slice, so its frame index is bitmap-managed and
+            // its bit is set; hence the frame is allocated and its refcount equals the slot.
+            let fnn = frame_number as int;
+            assert(self.refcount@[fnn] > 0);
+            if fnn >= self.bitmap@.num_bits {
+                assert(self.refcount@[fnn] == 0);
+            }
+            assert(self.bitmap@.set_bits.contains(fnn));
+            assert(self@.refcounts[pa] == self.refcount@[fnn]);
+        }
         Ok(self.refcount[frame_number])
     }
 

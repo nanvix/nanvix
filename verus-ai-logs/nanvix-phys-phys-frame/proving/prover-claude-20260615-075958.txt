@@ -1887,3 +1887,62 @@ Now let me rewrite `refcount` (read-only, simplest of the three FrameAddress met
 Turn 108
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+  --> src/kernel/src/mm/phys/frame.proof.rs:92:71
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  compilation/setup error (verus did not run)
+  ve...
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+The `&mut` field deref isn't allowed in the lemma's postcondition. Let me remove the `refcount@` facts from the lemma's ensures and derive them in-body instead:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm looking at a type error in the postcondition at line 92 of frame.proof.rs — the issue is that `refcount` is a mutable reference field, and accessing it in a postcondition requires wrapping it with `old` or `final` to properly dereference the mutable reference.
+
+The key insight is that `internal_inv` avoids this problem because it's a spec function body, not a postcondition, so the restriction doesn't apply there. Since I can't easily wrap `inner.refcount@` in the ensures clause, the cleaner approach is to rephrase the lemma's postcondition to avoid directly referencing `inner.refcount@` — instead relying on the bitmap and refcounts array facts, letting the caller extract the refcount slice information from `internal_inv` separately. I realize the restriction on `&mut` dereferences only applies to postconditions, not in-body assertions, so I can reference `self.refcount@` within proof blocks. This means I should strip the refcount-related ensures clauses from the lemma and instead derive those facts in the body using `internal_inv` and the Map definition, which are both accessible in assertions even though they reference the mutable refcount slice.
+
+The alternative of passing refcount as an explicit parameter is murkier since requires clauses might have the same restriction. So I'll simplify by removing those ensures from `lemma_frame_facts` and handling the refcount-slice facts directly in the function bodies—after establishing the membership facts from the lemma, I can assert the count value and derive the allocated/contains_key conditions by checking that the frame number is within bounds and using the internal invariant to connect the nonzero count to the set membership. I need to refactor the lemma to remove the two ensures clauses that reference `refcount@` — the ones about the refcount value equivalence and the bit-to-refcount relationship — and handle those checks inline in the function bodies instead. The `contains_key` ensure is safe to keep since it only depends on the Map domain (set_bits), not the refcount values themselves. Let me make those edits now.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+Now augment `refcount` body to derive the slice/value facts in-body:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] For the error branches, I need to verify that `!self@.allocated_frames.contains(frame@)` holds. When the frame number exceeds the refcount length, the internal invariant guarantees that refcount.len() >= num_bits, so the frame is outside the valid range. Using the lemma that a frame is allocated only when its bit position is within bounds and set, a frame number beyond num_bits can't be in the allocated set—I just need to make sure Verus can connect these pieces. Adding proof blocks to the error branches...
+[RESULT ✓] view: 442.     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
+443.         proof_decl! {
+444.             let ghost pa: int = frame@;
+445.         }
+446.         let raw: usize = frame.into_raw_value();
+447.         let frame_number: usize = raw / mem::FRAME_SIZE;
+448.         proof! {
+449...
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to establish that `!allocated` holds in both error branches. For the first branch where `fn >= refcount.len()`, it's straightforward. In the second branch where `refcount[fn]==0` and `fn<refcount.len()`, I can reason through whether `fn` is below or above `num_bits` to show the bit isn't set either way, which means the memory isn't allocated. Let me add assertion blocks to formalize this.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
