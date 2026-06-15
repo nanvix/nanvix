@@ -125,3 +125,36 @@ Module: arch-paging-table
 [2026-06-15 13:28:37] [DIALOGUE] Reviewer turn 1 (remaining: 7200s)...
 [2026-06-15 13:28:37] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 13:33:06]   ↳ dialogue-reviewer-t1 done in 4m28s (exit=0)
+[2026-06-15 13:33:06] [DIALOGUE] Reviewer created STOP file: RESOLVED
+[2026-06-15 13:33:06] [DIALOGUE] STOP detail:
+RESOLVED
+
+All proving-phase checklist items for arch::x86::mem::paging::table are PASS with
+tool-backed evidence (see turn_001_driver.md).
+
+Summary of evidence:
+- make verify-arch: exit 0 (47 verified, 0 errors). cheating: assume=0 admit=0
+  external_body=4 cfg_gate=4 trusted=0 no_decreases=0.
+- spec_drift.py check arch-paging-table (baseline 83302a5f4e7d -> HEAD): 0 contract
+  drift (0 ensures removed, 0 requires added).
+- make verify (cross-module: bitmap, sys, nanvix-slab, bump-allocator, arch,
+  kernel): all crates exit 0 — no cascade.
+- ./z build -- all: [OK] Build complete (exit 0), no code warnings.
+
+Per-item:
+1. No specs weakened — PASS (spec_drift = 0).
+2. Zero admit() — PASS (admit=0; former lemma_entry_roundtrip admit replaced by
+   external_body axiom).
+3. external_body all TCB-listed — PASS: read, write, lemma_entry_roundtrip (table
+   module) + invlpg (paging-mod) each individually present in tcb-allowed.md.
+4. Zero assume/assume_specification — PASS (assume=0).
+5. No cfg-gated exec code — PASS: table module exec cfg gates = 0 (only include!
+   gates). Crate cfg_gate=4 are benign #[cfg_attr(..., allow(verus_impl_method_marker))]
+   markers in out-of-scope pte.rs/pde.rs, not exec branches/expressions/match arms.
+6. Cheating audit reported with exact counts + locations.
+7. Verus limitation (usize->ptr cast) has an isolated minimal reproducer in
+   verus-unsupported.md.
+8. No exec rewrites (no // VERUS REWRITE; only proof! ghost blocks added).
+9. Cross-module regression — PASS (all crates exit 0).
+10. Verification + build — PASS (0 errors, 0 warnings).
+[2026-06-15 13:33:06] [DIALOGUE] proving ended after 1 turns: RESOLVED (268s)
