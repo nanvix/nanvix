@@ -1,0 +1,162 @@
+Timestamp: 2026-06-15_10-23-10
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+85 verified
+5 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=13
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1317:13
+     |
+1317 |             Ok(frame) => {
+     |             ^^^^^^^^^ failed this postcondition
+...
+1325 |     instance().alloc()
+     |     ------------------ at the end of the function body
+
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1346:13
+     |
+1346 |             Ok(base) => {
+     |             ^^^^^^^^ failed this postcondition
+...
+1354 |     instance().alloc_contiguous(count)
+     |     ---------------------------------- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> src/kernel/src/mm/phys/frame.rs:1400:1
+     |
+1400 | pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: callee may open invariants that caller cannot
+    --> src/kernel/src/mm/phys/frame.rs:1242:1
+     |
+1242 | fn instance() -> &'static mut Inner {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invariants opened by callee
+...
+1397 |     opens_invariants none
+     |                      ^^^^ invariants opened by caller
+...
+1401 |     instance().free(frame)
+     |     ^^^^^^^^^^ at this call-site
+
+error: cannot show this call will not unwind, in function marked 'no_unwind'
+    --> src/kernel/src/mm/phys/frame.rs:1401:5
+     |
+1242 | fn instance() -> &'static mut Inner {
+     | ----------------------------------- perhaps you need to mark this function as 'no_unwind'?
+...
+1401 |     instance().free(frame)
+     |     ^^^^^^^^^^ call to kernel::mm::phys::frame::instance might unwind
+
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1437:13
+     |
+1437 |             Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
+     |             ^^^^^^ failed this postcondition
+...
+1442 |     instance().book(phys_addr)
+     |     -------------------------- at the end of the function body
+
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:1455:13
+     |
+1455 |             Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+     |             ^^^^^^ failed this postcondition
+...
+1462 |     instance().alloc_range(region)
+     |     ------------------------------ at the end of the function body
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:313:17
+    |
+313 | /                 forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < i)
+314 | |                     ==> self.refcount@[k] == old_self.refcount@[k],
+    | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:314:46
+    |
+314 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+    |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:329:13
+    |
+329 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:330:38
+    |
+330 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+    |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1141:17
+     |
+1141 | /                 forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < index)
+1142 | |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1142:46
+     |
+1142 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1186:13
+     |
+1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1187:38
+     |
+1187 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+     |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1186:13
+     |
+1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+verification results:: 85 verified, 5 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 6 previous errors

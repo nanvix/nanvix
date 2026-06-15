@@ -874,3 +874,70 @@ Turn 36
 Turn 37
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|free_co
+[RESULT ✓] bash: verification results:: 85 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    - manager.proof.rs:21 lemma_free_count_bounded: admit
+  Global: assume=0 external_body=16 admit=13 trusted=0 cfg_gate=13
+  verification: 85 verified, 0 errors (exit 0)
+  cheating: assume=0 external_b...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+`free_count` eliminated (85 verified, 0 errors; external_body 17→16). Now let me empirically confirm the remaining 5 wrappers are genuinely blocked, capturing real Verus errors for honest documentation. Let me temporarily remove `external_body` from `book` (post-state class) to capture the error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cp src/kernel/src/mm/phys/frame.rs /tmp/frame.rs.bak
+
+[THINKING] The free_count verification is complete with 85 verified and no errors, and I've eliminated the external_body reference from frame.rs down to 16 remaining instances globally. Looking at what's left in frame.rs, I need to handle the external_body calls in instance, init, alloc, alloc_contiguous, free, book, and alloc_range — most of which are already marked as tcb-allowed or can be skipped. Now I'm working through each of these remaining functions to determine the proper approach.
+
+For alloc, the postcondition requires verifying that the newly allocated frame is in the allocated_frames set, but since the frame was previously free and disjoint from allocated frames, this is unprovable without a ghost token — so I'll keep it marked as external_body with tcb-allowed. I should actually attempt the verification to capture the specific error and document it properly.
+
+For alloc_contiguous, I'm checking whether the address bounds postcondition is provable from the invariants. The frames returned are all within the free_frames set, and since all free frames have valid addresses derived from frame_addr_of with the constraint that frame_addr_of(i) ≤ usize::MAX, the bound base@ + count*PS ≤ usize::MAX should follow from the allocation logic.
+
+However, there's an edge case: when the contiguous allocation reaches the very end of the bitmap (lo+count == num_bits), the address frame_addr_of(num_bits) isn't covered by the internal invariant, which only guarantees bounds for indices less than num_bits. So frame_addr_of(num_bits) = num_bits * PS could actually exceed usize::MAX, making the postcondition unprovable and potentially false in that edge case. This is exactly the kind of address-space range bound that the manager relies on but can't prove internally — it's a tcb-allowed external_body situation.
+
+For the other methods: free can't be no_unwind because instance() can panic, so that stays external_body. The book, alloc_range, and alloc methods all have unprovable postconditions about reserved frames or allocated regions that depend on invariants not present in the current proof state. Only free_count was achievable. Rather than just analyzing theoretically, I should empirically verify by temporarily removing external_body from one representative method like book, attempting a proof, and capturing the actual Verus error to document the exact blocker.
+[RESULT ✓] bash: 
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 - <<'PY'
+import re
+p='src/kernel/src/mm/phys/frame.rs'
+s=open(p).read
+[RESULT ✓] bash: noop
+Manual edit approach instead
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Let me remove `external_body` from all 5 wrappers at once to capture all errors in one run, then revert.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "external_body" src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'll temporarily strip out the external_body parameter from those five wrapper functions and run verification to surface all the errors at once, then revert the changes.
+[RESULT ✓] bash: 1235:#[verus_verify(external_body)]
+1264:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+1268:#[verus_verify(external_body)]
+1312:// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+1314:#[verus_verify(external_body)...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 - <<'PY'
+p='src/kernel/src/mm/phys/frame.rs'
+lines=open(p).read().spl
+
+[THINKING] I need to remove those five wrapper function lines while keeping the instance and init functions, so I'll use Python to target and delete the exact line numbers in reverse order to avoid shifting issues.
+[RESULT ✓] bash: removed {1342, 1314, 1396, 1435, 1454}
+1235:#[verus_verify(external_body)]
+1264:// singleton and the BSS-backed refcount storage. `external_body` because it materializes
+1268:#[verus_verify(external_body)]
+1312:// `external_body` until the `frame` free-function layer is verified; the manager bridges...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|error:
