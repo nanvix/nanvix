@@ -152,3 +152,9 @@ Module: hal-frame-address
 [2026-06-15 11:22:05] ✅ proving: PASS (0/0)
 [2026-06-15 11:22:05] [GATE] Running build: make build
 [2026-06-15 11:22:05] [GATE] Running verify: make verify
+[2026-06-15 11:22:13] [GATE] ✅ Build + Verify passed after proving
+
+============================================================
+PHASE: cheating-elimination
+Module: hal-frame-address
+============================================================
