@@ -10,6 +10,7 @@
     - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
     - mm/phys/manager.proof.rs:153 lemma_user_bulk_err_restored: admit
     - mm/phys/manager.rs:104 init: external_body
+    - mm/phys/manager.rs:536 kernel_watermark: external_body
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
