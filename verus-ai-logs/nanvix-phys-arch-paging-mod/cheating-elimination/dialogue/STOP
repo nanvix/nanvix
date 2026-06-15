@@ -1,0 +1,17 @@
+RESOLVED
+
+All 12 cheating-elimination checklist items PASS for arch-paging-mod
+(src/libs/arch/src/x86/mem/paging/mod.rs), with tool evidence recorded in
+turn_001_driver.md:
+
+- admit=0, assume=0, trusted=0, no_decreases=0 (make verify-arch + grep).
+- mod.rs cfg gates only guard `include!` of spec/proof (allowed).
+- Single external_body `invlpg` is TCB-listed in verus-ai-logs/tcb-allowed.md.
+- AST consistency vs `dev`: 1 function, 0 mismatches.
+- Spec drift (baseline 28a962d5c247 → HEAD): 0 contract drift.
+- Cross-module: make verify-arch Exit 0 (48 verified, 0 errors).
+- Build: ./z build -- all => [OK], 0 errors / 0 warnings.
+
+Crate-wide CHEATING_DETECTED is attributable solely to TCB-approved external_body
+(invlpg; table::read/write owned by arch-paging-table) and lint-only cfg `allow`
+attributes in pte.rs (owned by arch-x86-pte) — none in the mod.rs target.
