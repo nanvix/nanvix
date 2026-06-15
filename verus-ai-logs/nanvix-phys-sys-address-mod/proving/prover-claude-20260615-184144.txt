@@ -161,3 +161,33 @@ Verification is already CLEAN. The three in-scope functions (`is_aligned`, `into
 
 [THINKING] The verification came back clean with no cheating detected—the target functions are trait method declarations without implementations, and the cached result shows zero admits, assumes, or external bodies. Let me double-check the log details to confirm this is a genuine result rather than relying on the cached status.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+  Crate     : kernel
+  Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Task complete. Summary:
+
+**In-scope functions** (`is_aligned`, `into_raw_value`, `from_raw_value`) in `src/libs/sys/src/sys/mm/address/mod.rs` are **trait method declarations** — they have contracts (`#[verus_spec]` ensures clauses) but no bodies, so they carry no proof obligations of their own. Proof obligations fall on the implementors (verified in their own modules).
+
+**State:**
+- `mod.spec.rs` / `mod.proof.rs` already define the spec vocabulary; no standalone lemmas needed.
+- No `admit()`, `assume()`, or `external_body` present in the module.
+- `make verify-sys` → **exit 0, status CLEAN** (assume=0, external_body=0, admit=0).
+- `make verify` (full) → **exit 0**; the kernel crate's `external_body=24`/`cfg_gate=6` are pre-existing TCB items in the `kernel` crate, unrelated to this module and not introduced by me.
+
+No spec weakening, no code changes, and no bugs found. The address module verifies with 0 errors and 0 cheating patterns.
+
+[THINKING] The kernel crate has some pre-existing trusted external_body and cfg_gate items that aren't related to my module in the sys crate, which is clean. The full verification run passed with exit code 0 and no regressions detected, so the task is complete.
+
+
+=== Session End ===
+Session: 6832b435-9022-4ad4-ab01-64701a7156cb
+Duration: 46.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/proving/prover-claude-20260615-184144.jsonl
