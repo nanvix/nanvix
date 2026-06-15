@@ -361,3 +361,83 @@ The `bump_view` invariant is what's blocking this. Let me temporarily modify `en
 Turn 26
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -E "error:|i
+[RESULT ✓] bash: --> src/kernel/src/mm/virt/identity_map.rs:533:1
+error: precondition not satisfied
+   --> src/kernel/src/mm/virt/identity_map.rs:555:9
+556 | |             .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+350 |           requires bump_view(self).inv(),
+    |                    --------------------- failed...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Confirmed precisely. With the `into_raw()` workaround, `ensure_pt`'s read precondition and fast-path alignment **are** provable — the sole remaining wall is `bump_view(&PAGE_TABLE_ALLOCATOR).inv()`, an uninterpreted global with no establishing fact (the bump-allocator's own deferred ghost token). Let me make a final genuine attempt to establish it, then restore.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== ANY lemma/axiom ensuring bump_view(...).inv() anywhere ==="; grep -rn "bump
+
+[THINKING] So I've narrowed down the verification issues in `ensure_pt`: the read precondition at 534 is resolved with the `into_raw()` workaround, and the alignment proof at 542 went through cleanly. The remaining blocker is the `alloc_as` precondition requiring `bump_view(self).inv()` at line 555, which appears in both the error path and the success path. The type invariant and alignment constraints are actually solvable—it's specifically the bump view invariant that's blocking progress. I'm also starting to look at `ensure_pte` around line 632, where there's a postcondition issue at 624 that I need to examine. No, the bump_view invariant is genuinely unprovable without the deferred ghost token that doesn't exist yet — the spec itself acknowledges these constraints are "pinned in the proving phase." So my strategy is to keep the five verified lemma proofs intact, restore the three exec functions to their original bodies with `proof! { admit(); }` at the top so the module compiles green, and document the exact blockers and what guidance is needed to unblock them. I need to restore all three exec functions to their original form exactly as they were, removing the workarounds I added. The into_raw fix in ensure_pt and ensure_pte addresses a real read precondition issue, but since admit() covers everything anyway, keeping those modifications would just clutter the code without adding clarity. The honest path forward is to revert completely and accept the NEEDS_GUIDANCE outcome with the genuine blockers documented.
+[RESULT ✓] bash: === ANY lemma/axiom ensuring bump_view(...).inv() anywhere ===
+=== type_invariant on FixedSizeBumpAllocator? ===
+=== exit: none above means no establishing fact ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+No establishing fact for `bump_view(...).inv()` exists anywhere in the codebase — genuinely unprovable without forbidden changes. Restoring the three exec functions to their original form with the in-scope `admit()` so the module stays green.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+
+[THINKING] There's no foundational evidence to build on here—this is genuinely unprovable. I need to revert those three functions back to their original state and restore the ensure_pt function.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Now let me check the current state of `ensure_pte` and `identity_map_page` to restore their admits.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 632.     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
+633.         let reason: &str = "invalid PTE read from page table";
+634.         #[cfg(not(verus_keep_ghost))]
+635.         error!("ensure_pte(): {reason}");
+636.         Error::new(ErrorCode::InvalidArgument, reason)
+637...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 625.         },
+626. )]
+627. fn ensure_pte(
+628.     pt: Table<PageTableEntry>,
+629.     pte_idx: TableIndex,
+630.     phys_addr: usize,
+631. ) -> Result<(), Error> {
+632.     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 713.             // the `mm::phys` convention of stating the failure-state fact over the global view.
+714.             Err(_) => !identity_map_view().accessible(phys_addr@),
+715.         },
+716. )]
+717. pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+7...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -25
