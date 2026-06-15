@@ -76,7 +76,16 @@ pub proof fn lemma_contig_no_overflow(base_raw: usize, idx: usize, count: usize)
         (idx as int) * spec_page_size() <= usize::MAX as int,
         base_raw as int + (idx as int) * spec_page_size() <= usize::MAX as int,
 {
-    admit();
+    let ps: int = spec_page_size();
+    // `spec_page_size() == arch::mem::PAGE_SIZE as int`, a `usize` cast, hence non-negative.
+    assert(ps >= 0);
+    // Monotonicity of multiplication by a non-negative factor: idx < count ==> idx*ps <= count*ps.
+    assert((idx as int) * ps <= (count as int) * ps) by (nonlinear_arith)
+        requires
+            idx as int <= count as int,
+            ps >= 0,
+    ;
+    // base_raw >= 0 (a `usize`), so both bounds follow linearly from base_raw + count*ps <= MAX.
 }
 
 //==================================================================================================
@@ -107,16 +116,6 @@ pub proof fn lemma_user_bulk_ok(
 /// every frame already taken, restoring the partition to its pre-call state. `Drop` side effects
 /// are not modeled in exec, so the restoration is asserted here.
 pub proof fn lemma_user_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
-    requires
-        pre.wf(),
-    ensures
-        m@ == pre,
-{
-    admit();
-}
-
-/// Same restoration fact for the kernel contiguous bulk path.
-pub proof fn lemma_kernel_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
     requires
         pre.wf(),
     ensures

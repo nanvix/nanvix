@@ -1,23 +1,19 @@
     - mm/phys/frame.rs:1242 instance: external_body
-    - mm/phys/frame.rs:1269 init: external_body
-    - mm/phys/frame.rs:1325 alloc: external_body
-    - mm/phys/frame.rs:1355 alloc_contiguous: external_body
-    - mm/phys/frame.rs:1403 free: external_body
-    - mm/phys/frame.rs:1445 book: external_body
-    - mm/phys/frame.rs:1466 alloc_range: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1416 free: external_body
+    - mm/phys/frame.rs:1458 book: external_body
+    - mm/phys/frame.rs:1479 alloc_range: external_body
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit
     - mm/phys/manager.proof.rs:36 lemma_kernel_alloc_one: admit
     - mm/phys/manager.proof.rs:49 lemma_kernel_alloc_contiguous: admit
-    - mm/phys/manager.proof.rs:71 lemma_contig_no_overflow: admit
-    - mm/phys/manager.proof.rs:88 lemma_user_bulk_ok: admit
-    - mm/phys/manager.proof.rs:109 lemma_user_bulk_err_restored: admit
-    - mm/phys/manager.proof.rs:119 lemma_kernel_bulk_err_restored: admit
+    - mm/phys/manager.proof.rs:97 lemma_user_bulk_ok: admit
+    - mm/phys/manager.proof.rs:118 lemma_user_bulk_err_restored: admit
     - mm/phys/manager.rs:104 init: external_body
     - mm/phys/manager.rs:515 kernel_watermark: external_body
-    - mm/phys/mod.proof.rs:9 lemma_frame_initialized: admit
-    - mm/phys/mod.proof.rs:22 lemma_manager_ready: admit
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
