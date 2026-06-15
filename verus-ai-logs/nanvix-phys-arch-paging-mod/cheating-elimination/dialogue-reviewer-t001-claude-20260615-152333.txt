@@ -552,3 +552,17 @@ description: Guide for building, formatting, linting, and spell-checking Nanvix 
 # Build Nanvix
 Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
 covers all build-system operation...
+[RESULT ✓] bash: === Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decre...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | grep -iE "verified|errors|warning|exit" | head
+
+[THINKING] The whole arch crate passes verification with exit 0, and the "CHEATING_DETECTED" status comes from external dependencies and configuration gates that are outside my scope. For the mod.rs file itself, there's no cheating detected. I'm checking the verified and errors count from the earlier output, which showed 48 verified with 0 errors.
