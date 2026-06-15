@@ -132,3 +132,33 @@ Turn 2
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | tail -40
 
 [THINKING] I don't see any admit/assume statements in the proofs, so they appear to be written out directly. Let me run a verification to check the current state.
+[RESULT ✓] bash: - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 book: external_body
+    - frame.rs:517 is_covered: external_body
+    - frame.rs:565 alloc_range: external_body
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=mm::phys 2>&1 | head -50
+
+[THINKING] The verification completed successfully with exit code 0, though the "CHEATING_DETECTED" warnings are coming from other files outside my scope like frame.rs and manager.rs. Let me check the full output to see if phys.rs itself actually verified.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Module verifies (exit 0), but it's cached. Let me force a clean re-verification to confirm the inline proofs are actually valid.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/kernel/src/hal/mem/types/address/phys.rs src/kernel/src/hal/mem/types/address/phy
+
+[THINKING] The module verification for mm::phys passes with caching, so no recompilation is needed. The external_body warnings are scattered across other files in the same module path like frame.rs and manager.rs, but my target file phys.rs is clean—it has no external_body, admit, or assume issues to worry about.
+
+Actually, I'm realizing the proofs might already be complete. The phys.rs file contains inline proof blocks that are fully filled in, there are no admit() calls left, and verification exits with 0. Let me force a fresh verification run to confirm the proofs actually validate rather than relying on the cached result.
