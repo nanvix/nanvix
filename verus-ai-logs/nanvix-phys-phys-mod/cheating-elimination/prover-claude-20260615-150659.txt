@@ -523,3 +523,99 @@ Let me force a fresh (non-cached) verification to get explicit "verified, 0 erro
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; touch src/kernel/src/mm/phys/mod.rs; timeout 900 make verify-kernel MODULE=mm
 
 [THINKING] The cached run didn't output the verification summary line, so I need to force a fresh run to confirm the init module verifies cleanly. Let me touch the file to invalidate the cache and get explicit confirmation that verification succeeded with zero errors.
+[RESULT ✓] bash: verification results:: 86 verified, 0 errors (partial verification with `--verify-*`)
+  86 verified
+  0 errors
+  Exit code : 0
+    ⚠️  external_body: 14
+    - manager.proof.rs:31 lemma_manager_attached: assume
+    - manager.proof.rs:47 lemma_kernel_alloc_one: assume
+    - manager.proof.rs:61 lemma_k...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Confirmed: **86 verified, 0 errors**. Let me verify the manager.proof.rs lemmas are `external_body` (TCB-allowed) not raw `assume`, and confirm there are no raw assume/admit in module mm::phys.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '28,33p;44,49p' src/kernel/src/mm/phys/manager.proof.rs; echo "=== raw
+
+[THINKING] The verification passed with 86 confirmed and no errors, including the mm::phys module initialization. The status shows CHEATING_DETECTED, but the flagged cheating in mm::phys is all TCB-allowed external_body calls (14 total), while the three admit instances are in mm::virt which is out of scope. I need to double-check the manager.proof.rs lemmas to confirm they're actually marked as external_body rather than raw assumes, since the global count shows assume=0 which suggests they're being counted as external_body.
+[RESULT ✓] bash: /// The manager brokers the *global* frame partition: its abstract view coincides with
+/// `phys_view().frames`. This is the §8 ghost-token attachment, realized in the proving phase
+/// with a token over the `frame::INSTANCE` / `PhysMemoryManager` singletons. Trusted boundary.
+pub proof fn lemma_man...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Important: the manager.proof.rs lemmas use raw `assume(...)`. Let me check their function attributes and how the detector counts them.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '1,40p' src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm noticing a discrepancy — the manager.proof.rs file contains raw `assume(...)` calls within the function bodies, but the global count showed zero assumes. This suggests those proof functions might be marked with `external_body` at the function level, which would cause their internal assume statements to be excluded from the count.
+
+However, there's a deeper issue: tcb-allowed.md describes these lemmas as `external_body` proof functions, but the actual code uses `assume(...)` inside normal proof bodies instead. Since these functions are in manager.proof.rs and fall outside my phys-mod scope, I can't modify them anyway — the hard rule is to only touch my three listed functions. So this discrepancy doesn't affect my task, even though it matters for the overall verify-kernel goal.
+
+The global summary shows `assume=0` but the detailed output lists 4 assumes in manager.proof.rs, which is puzzling. Let me check whether the detector treats `assume()` calls inside proof functions differently, or if these functions have some external_body wrapper I'm missing.
+[RESULT ✓] bash: verus! {
+
+use crate::mm::phys::phys_view;
+
+//==================================================================================================
+// Global-token attachment (§8 ghost-token trust boundary)
+//===============================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+The 4 `assume`s are approved via `approved-trust-boundaries.json` (global count: assume=0). Let me check that file and whether the mm/virt admits are tracked there.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; python3 -c "
+import json
+d=json.load(open('verus-ai-logs/approved-trust-bound
+
+[THINKING] The phys-manager phase already converted these external_body references to `assume()` calls with VERUS-AI LIMITATION ids registered in the approved-trust-boundaries file, which the cheating gate uses to whitelist them — that's why they don't count toward the cheating total despite being labeled as assumes. The detail still shows them as assumes, but they're recognized as approved trust boundaries.
+
+So the cheating gate respects the approved-trust-boundaries file. The key distinction is that the 4 assumes are approved via that file, the 14 external_body references are tcb-allowed, but the 3 admits in mm/virt are neither approved nor tcb-allowed — and critically, they're in a separate module outside my scope. When running the phys-mod phase, I'm only responsible for the files in mod.rs/spec/proof, which are all clean. The admits in mm/virt/identity_map.rs exist because kframe calls identity_map_page, but since map_frame is assume_specification'd in kframe.spec.rs, those functions aren't actually verified as part of mm::phys. The cheating scanner reports global counts, but the phase grader only checks whether cheating items attributable to this module's scope are approved or tcb-allowed — and in mm::phys, they all are.
+[RESULT ✓] bash: {
+ "schema": "approved-trust-boundaries/v1",
+ "catalog_version": "v0.3",
+ "module": "mm::phys",
+ "source": "src/kernel/src/mm/phys/manager.rs",
+ "rationale_source": "verus-ai-logs/tcb-allowed.md",
+ "entry_points": [
+  "src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init",
+  "src/kernel/src/mm...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+The `approved-trust-boundaries.json` is scoped to mm::phys and approves L60–L63 (the manager assumes) and the manager external_body fns. The mm/virt admits are a separate module. Let me honor the escalation ladder by confirming vstd genuinely has no `LinkedList` iterator model (justifying the two in-scope external_body).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; VSTD=$(find ~/toolchain/verus -name "*.rs" -path "*vstd*" 2>/dev/null | head 
+
+[THINKING] The `approved-trust-boundaries.json` file is scoped to the mm::phys module and only approves specific functions and assumptions, but notably excludes the mm/virt admits. This means those virt-related admits fall outside the current approval scope and belong to the mm::virt module, which comes later in the dependency order since phys only depends on virt through the assume_spec.
+
+For the phys-mod phase specifically, I'm checking what's actually in scope: the module files and the four key functions (init, book_mmio_regions, book_physical_memory_regions). All the cheating in those functions is either TCB-allowed external bodies or fully verified code with no shortcuts. The remaining cheating scattered across frame.rs, manager.rs, and other files is either explicitly allowed or belongs to different phases entirely.
+
+This means phys-mod has zero non-allowed cheating in scope, so the result is PASS. I should verify the ast-consistency requirement next by checking if the in-scope files have any diffs from the base branch. The dependency on mm::virt is actually severed by the assume_specification on map_frame, so mm::phys doesn't need the verified bodies there — those admits are a separate concern outside my scope anyway. I can't modify unlisted functions without violating the rules, so my conclusion holds: zero in-scope non-allowed cheating remains.
+
+Let me verify I'm not taking shortcuts. The two external_body functions iterate LinkedList in for loops, but Verus has no LinkedList model and the orphan rule blocks implementing the necessary traits. I've checked the escalation ladder — vstd has no LinkedList support, and rewriting to avoid it would violate ast-consistency and change semantics. So external_body is the correct, sanctioned approach here, and it's tcb-allowed.
+[RESULT ✓] bash: vstd src dir search...
+/home/ruize/toolchain/verus/vstd
+=== grep LinkedList in vstd ===
+=== ForLoopGhostIterator impls for std collections ===
+/home/ruize/toolchain/verus/vstd/pervasive.rs
+/home/ruize/toolchain/verus/libvstd.rlib
+/home/ruize/toolchain/verus/vstd.vir
+<shellId: 28 completed with exit ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+vstd has **zero** `LinkedList` support — confirming the two in-scope `external_body` functions are genuinely unverifiable (escalation ladder exhausted: no vstd model, orphan rule blocks the iterator trait, and a rewrite would change exec data structures / caller signatures → ast-consistency violation). 
+
+The in-scope files are byte-identical to the base branch (no diff), so I've made no changes. Let me run the full kernel verification to confirm 0 errors, then `make verify`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel 2>&1 | grep -iE "verification results|verifie
+
+[THINKING] I've confirmed that vstd doesn't support `LinkedList` at all, so the two functions trying to iterate over a foreign `LinkedList` can't be verified through normal means. Using `external_body` is the sanctioned approach here since the orphan rule prevents implementing the trait downstream, which fully justifies marking these as part of the trusted computing base.
+
+Now I'm double-checking that there's no hidden `assume_specification` or other cheating in the in-scope files, and verifying that the AST remains consistent since I haven't modified anything. The in-scope files are unchanged from the base, so they're trivially consistent. The phys-mod phase is passing — there's nothing to eliminate within scope, and all the in-scope cheating is TCB-allowed with the escalation ladder genuinely exhausted.
+
+Now I need to run the full verification to ensure there are no regressions, starting with `make verify-kernel` for the full kernel crate, then `make verify` to confirm everything still works.
