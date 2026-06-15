@@ -1,0 +1,19 @@
+RESOLVED
+
+All 12 cheating-elimination checklist items for phys-upool are PASS with concrete
+tool evidence (see turn_001_driver.md):
+
+1. admit            = 0 (module scope)
+2. assume           = 0
+3. trusted          = 0
+4. no_decreases     = 0
+5. cfg-gated exec    = only L203 logging guard (allowed); no exec logic gated
+6. external_body    = 3, ALL listed in verus-ai-logs/tcb-allowed.md (Upool struct, new, alloc)
+7. AST consistency  = zero mismatches (git diff dev HEAD is purely additive; zero deletion lines; every exec body byte-identical)
+8. VERUS REWRITE    = vacuous (no exec rewrites exist)
+9. external_body justified = all 3 enumerated with rationale in tcb-allowed.md L91-118
+10. spec-drift      = no specs weakened (spec/proof newly added; no prior guarantee loosened)
+11. cross-module    = make verify-kernel exit 0, no regression
+12. verify + build  = exit 0, 0 errors, 0 warnings
+
+No fix required.
