@@ -434,3 +434,16 @@ The `assert(...) by (nonlinear_arith) requires ...;` syntax is standard Verus, a
 Turn 26
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "error|
+[RESULT ✓] bash: verification results:: 4 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  verification: 4 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+4 verified, 0 errors. Let me confirm `admit=0` now and what triggers the remaining cheating flag:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "admit:
+
+[THINKING] I'm seeing 4 verified items now instead of 3, which suggests the proof functions or from_mmio are being counted differently. But the cheating detection flag is still showing up, so I need to figure out what's actually being flagged.
