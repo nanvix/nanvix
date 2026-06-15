@@ -43,7 +43,7 @@ impl<T: Address> PageAligned<T> {
         ensures
             match ret {
                 Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
-                Err(_) => !spec_aligned(addr@),
+                Err(e) => !spec_aligned(addr@) && e.code == ErrorCode::BadAddress,
             },
     )]
     pub fn from_address(addr: T) -> Result<Self, Error> {

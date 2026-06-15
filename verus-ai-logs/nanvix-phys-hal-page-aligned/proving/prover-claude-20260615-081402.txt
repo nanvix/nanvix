@@ -699,3 +699,62 @@ Per-method isn't allowed — the entire impl must be verified. Let me annotate t
 Turn 44
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel MODULE="kernel::hal::
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module kernel::hal::mem::types::address::aligned::page --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+note: verifying module hal::mem::types::address::aligned::page
+error: postcondition not satisfied
+   | ...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+`from_raw_value` fails because `from_address`'s error spec doesn't expose the `BadAddress` code. I can strengthen `from_address`'s ensures (a listed target — strengthening adds guarantees, not weakening). Let me examine the `Error` type's spec.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -rn "fn new\|struct Error\b\|pub code\|ErrorCode\|verus_spec\|spec.*code\|field.*c
+
+[THINKING] The verification caught the issue: the `from_raw_value` postcondition expects `BadAddress` errors, but `from_address` doesn't guarantee that error code in its contract. I need to update `from_address`'s specification to ensure it propagates `BadAddress` when appropriate, since it's already a target for verification.
+[RESULT ✓] bash: src/libs/error/src/lib.rs:31:pub enum ErrorCode {
+src/libs/error/src/lib.rs:278:impl ErrorCode {
+src/libs/error/src/lib.rs:289:// Manual conversion from i32 to ErrorCode using constants.
+src/libs/error/src/lib.rs:292:impl TryFrom<i32> for ErrorCode {
+src/libs/error/src/lib.rs:306:            EPERM =...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -n "struct Error\|pub fn new\|verus_spec\|pub code\|code:" src/libs/error/src/lib.
+[RESULT ✓] bash: 448:        code: ErrorCode::InvalidArgument,
+454:pub struct Error {
+455:    pub code: ErrorCode,
+460:    pub fn new(code: ErrorCode, reason: &'static str) -> Self {
+539:pub assume_specification[ Error::new ](code: ErrorCode, reason: &'static str) -> (result: Error)
+=== Error::new body & spec ===
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; sed -n '535,550p' src/libs/error/src/lib.rs
+[RESULT ✓] bash: #[verifier::external_type_specification]
+pub struct ExErrorCode(crate::ErrorCode);
+
+/// External specification for Error::new.
+pub assume_specification[ Error::new ](code: ErrorCode, reason: &'static str) -> (result: Error)
+    ensures
+        result.code == code,
+        result.reason == reason,
+;
+...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+`Error::new` ensures `result.code == code`. I'll strengthen `from_address`'s error postcondition to expose the `BadAddress` code (a strengthening, allowed), which lets `from_raw_value` satisfy its trait contract.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs
+
+[THINKING] I can strengthen the ensures clause for `from_address` to explicitly capture that error cases carry the `BadAddress` code, then I'm updating the spec to reflect this constraint along with the alignment and value preservation guarantees. Now I need to verify that the ErrorCode types match across the trait and the page module — since page imports `::sys::error::ErrorCode` and the trait uses `crate::error::ErrorCode::BadAddress` (where crate is sys), they should be the same type for the implementation to typecheck, which it already does. With from_address's spec updated to guarantee BadAddress on error, the from_raw_value implementation should satisfy both the Ok and Err branches of the trait contract. The earlier verification run showed only from_raw_value failing, so the other methods including into_raw_value should already be passing.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel MODULE="kernel::hal::
