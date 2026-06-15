@@ -95,31 +95,15 @@ pub fn kcall_handler() -> ExitStatus {
             },
         }
 
-        // Publish process-termination scheduling events for harvested processes. Each pending
-        // record is drained while no reference to the process manager is held, so subscribers can
-        // be woken safely.
-        let mut notified_termination: bool = false;
-        while let Some(info) = pm!().take_pending_termination() {
-            // SAFETY: the calling process does not hold a reference to the inner state of the
-            // process manager.
-            match unsafe { EventManager::notify_process_termination(info) } {
-                Ok(()) => notified_termination = true,
-                Err(e) => {
-                    error!("failed to notify process termination: {:?}", e);
-                    // Delivery failed without buffering the notification (the scheduling-event
-                    // queue is full, or waking a subscriber failed and the entry was rolled back).
-                    // Restore the record at the front of the queue so it is retried on a later
-                    // iteration instead of being lost, and stop draining to avoid spinning on the
-                    // same failure.
-                    pm!().requeue_pending_termination(info);
-                    break;
-                },
-            }
-        }
-
-        // Publish process-creation scheduling events for newly created processes. Each pending
-        // record is drained while no reference to the process manager is held, so subscribers can
-        // be woken safely.
+        // Publish process-creation scheduling events before process-termination events. A process
+        // is always created before it terminates, so draining creations first biases delivery
+        // toward a child's creation reaching `procd` ahead of its termination: when it does,
+        // `procd` records the child's lineage from the creation event before acting on the
+        // termination, keeping the termination off its `early_terminations` reconciliation path.
+        // This is only a bias, not a guarantee: `EventManager::try_wait()` scans the creation and
+        // termination sub-queues round-robin, so a termination can still be delivered ahead of a
+        // queued creation (which `procd` reconciles). Each pending record is drained while no
+        // reference to the process manager is held, so subscribers can be woken safely.
         let mut notified_creation: bool = false;
         while let Some(info) = pm!().take_pending_creation() {
             // SAFETY: the calling process does not hold a reference to the inner state of the
@@ -134,6 +118,29 @@ pub fn kcall_handler() -> ExitStatus {
                     // iteration instead of being lost, and stop draining to avoid spinning on the
                     // same failure.
                     pm!().requeue_pending_creation(info);
+                    break;
+                },
+            }
+        }
+
+        // Publish process-termination scheduling events for harvested processes after attempting to
+        // publish any pending creations. This preserves creation-before-termination ordering when
+        // both events can be delivered; under backpressure (e.g., the creation scheduling queue is
+        // full), terminations may still be published and `procd` may need to reconcile them.
+        let mut notified_termination: bool = false;
+        while let Some(info) = pm!().take_pending_termination() {
+            // SAFETY: the calling process does not hold a reference to the inner state of the
+            // process manager.
+            match unsafe { EventManager::notify_process_termination(info) } {
+                Ok(()) => notified_termination = true,
+                Err(e) => {
+                    error!("failed to notify process termination: {:?}", e);
+                    // Delivery failed without buffering the notification (the scheduling-event
+                    // queue is full, or waking a subscriber failed and the entry was rolled back).
+                    // Restore the record at the front of the queue so it is retried on a later
+                    // iteration instead of being lost, and stop draining to avoid spinning on the
+                    // same failure.
+                    pm!().requeue_pending_termination(info);
                     break;
                 },
             }

@@ -159,13 +159,16 @@ pub struct ProcessDaemon {
     /// answered later, when a `ProcessTermination` event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
     /// Terminations observed before the corresponding process-creation event, stored as
-    /// `(pid, status)` pairs. The kernel publishes a process's termination event ahead of its
-    /// creation event when both are queued (the `ProcessTermination` scheduling slot is drained
-    /// before `ProcessCreation`), so procd can learn that a child died while the child is still
-    /// unknown. The status is buffered here and replayed once the creation event records the
-    /// child's lineage, so the exit status is never dropped and a parent blocked in `waitpid()` is
-    /// always answered. A `Vec` suffices because only a handful of terminations are ever pending
-    /// reconciliation at once.
+    /// `(pid, status)` pairs. The kernel publishes creation events ahead of termination events in
+    /// its main loop, so lineage is usually recorded before the termination arrives. A termination
+    /// can still be observed first for two reasons: the creation event may not have been
+    /// delivered yet (e.g. the scheduling-event queue was momentarily full and the creation was
+    /// requeued), and even when both are already queued the kernel scans the creation and
+    /// termination sub-queues round-robin, so it may deliver the termination first. In either case
+    /// procd can learn that a child died while the child is still unknown. The status is buffered
+    /// here and replayed once the creation event records the child's lineage, so the exit status
+    /// is never dropped and a parent blocked in `waitpid()` is always answered. A `Vec` suffices
+    /// because only a handful of terminations are ever pending reconciliation at once.
     early_terminations: Vec<(ProcessIdentifier, i32)>,
 }
 
@@ -342,13 +345,15 @@ impl ProcessDaemon {
             }
         }
 
-        // Replay a termination that was observed before this creation event. The kernel publishes
-        // terminations ahead of creations, so procd may have seen this child die while it was still
-        // unknown and buffered the exit status. Now that the child's lineage is recorded and its
-        // fork-clone has been dispatched to the filesystem daemon above, reclaim its filesystem
-        // state (ordered after the fork-clone, so the snapshot is taken before it is torn down) and
-        // finalize the termination, so a parent blocked in `waitpid()` receives the exit status
-        // instead of blocking forever on a child that can never terminate again.
+        // Replay a termination that was observed before this creation event. The kernel normally
+        // publishes creations ahead of terminations, but a termination can still arrive first when
+        // the creation event could not be delivered yet (e.g. the scheduling-event queue was
+        // momentarily full and the creation was requeued), so procd may have seen this child die
+        // while it was still unknown and buffered the exit status. Now that the child's lineage is
+        // recorded and its fork-clone has been dispatched to the filesystem daemon above, reclaim
+        // its filesystem state (ordered after the fork-clone, so the snapshot is taken before it is
+        // torn down) and finalize the termination, so a parent blocked in `waitpid()` receives the
+        // exit status instead of blocking forever on a child that can never terminate again.
         if let Some(pos) = self
             .early_terminations
             .iter()
@@ -392,22 +397,24 @@ impl ProcessDaemon {
         let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
         ::syslog::info!("process terminated (pid={:?}, status={:?})", pid, status);
 
-        // The kernel publishes a process's termination event before its creation event when both
-        // are queued (the `ProcessTermination` scheduling slot is drained ahead of
-        // `ProcessCreation`), so this termination can arrive while the child's lineage is still
-        // unknown. This happens not only when the child is entirely unknown, but also when it sent
-        // its `Signup` before its creation event was processed: such a record exists (with its
-        // name) yet still has no recorded parent, so re-parenting, reaping, and waking a blocked
-        // waiter cannot be resolved correctly yet, and processing the termination immediately would
-        // let the later creation event recreate the record with no buffered status to replay.
-        // Buffer the `(pid, status)` and defer every side effect — filesystem-state reclamation,
-        // re-parenting, reaping, and waking a blocked waiter — until the creation event records the
-        // child's lineage and `handle_process_creation_event()` replays it. This guarantees the
-        // exit status is never dropped and a parent blocked in `waitpid()` is always answered. The
-        // creation event is guaranteed to follow: the kernel buffers it at fork time and the main
-        // loop re-publishes it until it is delivered. Deferring the filesystem-exit notification
-        // also keeps it ordered after the fork-clone that the creation handler dispatches, so the
-        // child's filesystem snapshot is taken before it is reclaimed.
+        // The kernel normally publishes a process's creation event before its termination event
+        // (the `ProcessCreation` scheduling slot is drained ahead of `ProcessTermination`), so a
+        // termination usually arrives with the child's lineage already recorded. It can still
+        // arrive while the lineage is unknown in the residual case where the creation event could
+        // not be delivered yet (e.g. the scheduling-event queue was momentarily full and the
+        // creation was requeued). The same applies when the child sent its `Signup` before its
+        // creation event was processed: such a record exists (with its name) yet still has no
+        // recorded parent, so re-parenting, reaping, and waking a blocked waiter cannot be resolved
+        // correctly yet, and processing the termination immediately would let the later creation
+        // event recreate the record with no buffered status to replay. Buffer the `(pid, status)`
+        // and defer every side effect — filesystem-state reclamation, re-parenting, reaping, and
+        // waking a blocked waiter — until the creation event records the child's lineage and
+        // `handle_process_creation_event()` replays it. This guarantees the exit status is never
+        // dropped and a parent blocked in `waitpid()` is always answered. The creation event is
+        // guaranteed to follow: the kernel buffers it at fork time and the main loop re-publishes
+        // it until it is delivered. Deferring the filesystem-exit notification also keeps it
+        // ordered after the fork-clone that the creation handler dispatches, so the child's
+        // filesystem snapshot is taken before it is reclaimed.
         //
         // A process whose identity is already established without lineage is exempt: the init
         // process (tracked in `init_proc`) and daemons (identified by name) make their termination
