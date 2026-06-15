@@ -466,3 +466,26 @@ verify.sh auto-committed my reproduction edit. My restore is now a working-tree 
 [THINKING] I'm realizing the diff is showing the working tree against HEAD—the minus lines are what's in the repository, and the plus lines are my restored backup. So HEAD actually contains the reproduction comment, which means verify.sh must have auto-committed my test code.
 
 Since the reproduction run failed with an error, verify.sh still committed that broken state. Now I have the correct lemma call restored as a working-tree change, so I need to commit this fix to clean up the repository.
+[RESULT ✓] bash: af1d899a0 [verus] verify FAIL: kernel::mm::phys::manager (17 verified, 1 errors)
+ee918a2ee [verus] verify PASS (cheating detected): kernel::mm::phys::manager (cached (no recompilation), —, admit=7 external_body=15 cfg_gate=12)
+2a854e8f2 [verus] verify PASS (cheating detected): kernel::mm::phys::mana...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Manager verifies again (18 verified, 0 errors) — restoration succeeded and was auto-committed. Let me confirm the working tree is clean and the phys-kframe module remains CLEAN.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== working tree (excluding logs) ==="; git status --porcelain | grep
+
+[THINKING] The manager verification passed with all 18 checks and no errors after restoring the lemma, and git status should show a clean working tree. I've now confirmed that the 4 admits are genuine blockers—they encode the global-singleton to abstract-view attachment through either uninterpreted-to-uninterpreted axioms or transitivity assertions.
+
+The concrete reproduction demonstrates that removing the lemma breaks the postcondition because the implementation doesn't actually mutate self, and there's no locally-coherent spec that reconciles both the `alloc_one` and `== old` interpretations with the watermark accounting without ghost tokens. Any fix would require either forbidden changes to the exec-signature or a deferred architectural decision.
+
+Since I can't soundly eliminate these admits, the honest outcome is to document this as a blocker with fresh evidence and update the verification todo, then report what human decision is needed to proceed.
+
+Actually, stepping back on scope: the phys-kframe module itself is clean with zero cheating. All the reported hard cheating items live in sibling modules (frame, manager, mod, upool) that have their own phases and are documented as pre-existing trust boundaries or genuine architectural blockers. The global verify-kernel counts include those modules, but the phys-kframe phase's actual responsibility is complete.
+
+I need to be maximally honest in my report: show the exact error messages from every approach I tried, confirm that the remaining 4 admits are genuinely intractable (the prior phase already eliminated 6 of the original 10), and explain why the ghost-token approach is forbidden by source-integrity rules that prohibit exec signature and struct changes. This is a real blocker requiring human decision, not a failure to fix it.
+
+The key insight is that the 4 remaining admits live in unlisted sibling modules (manager.proof.rs), which I'm explicitly forbidden to modify under the task constraints. The phys-kframe module itself is clean and fully verified with zero cheating. The architectural issue—uninterpreted global-partition model needing ghost-token attachment—is documented across prior phases and requires either forbidden exec changes or spec redesign outside my scope.
+
+Let me verify the working tree is clean and then write the final report.
