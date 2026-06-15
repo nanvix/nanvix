@@ -513,7 +513,6 @@ fn ensure_identity_mapped_range(
 // PDE from `arch` newtype / enum-flag constructors that are below this module's
 // verification boundary. It does not change the reachability set `mapped`, so the
 // caller-relevant contract is that the map invariant is preserved.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         identity_map_view().inv(),
@@ -598,7 +597,6 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
 // module's verification boundary. On success the page covering `phys_addr`
 // becomes reachable (`maps(phys_addr)`); on the absent-PTE-already-present path
 // it is an idempotent no-op. The map invariant is preserved on every path.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         identity_map_view().inv(),
@@ -686,7 +684,6 @@ fn ensure_pte(
 // invariant holds on every path. A single fixed view cannot witness the
 // `old -> new` growth of a global mutation, so monotonicity is carried by the
 // `spec_identity_map_page` laws in `identity_map.proof.rs`.
-#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         identity_map_view().inv(),
