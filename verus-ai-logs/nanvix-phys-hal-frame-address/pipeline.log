@@ -115,3 +115,6 @@ Module: hal-frame-address
 PHASE: proving
 Module: hal-frame-address
 ============================================================
+[2026-06-15 16:56:30] [STRIP-EXT] no external_body attributes on /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.rs
+[2026-06-15 16:56:30] [PROVER] Running proving...
+[2026-06-15 16:56:30] [COPILOT] Running: copilot --model claude-opus-4.8 ...
