@@ -733,3 +733,59 @@ Let me update the session plan status and confirm final git/verification state.
 Turn 47
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git add -A && git status --short | head && echo "=== admits in module ===" 
+[RESULT ✓] bash: M  verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating-fix-claude-20260615-105633.jsonl
+M  verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating-fix-claude-20260615-105633.txt
+M  verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/fix_report.md
+M  verus-ai-logs/nanv...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -3 && echo "=== src committed? ===" && git diff HEAD --st
+
+[THINKING] I'm checking the git status to see if the source files were already committed by the verify pipeline, and looking at the log to confirm the changes are in the tree.
+[RESULT ✓] bash: f18e7b2fe [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=7 external_body=16 cfg_gate=13)
+303523e80 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3)
+cf27408d7 [verus] verify PASS (cheating detected): bump-all...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Source changes already committed by the verify pipeline. Let me commit the updated reports.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git commit -q -m "[verus-ai] phys-frame: eliminate lemma_user_bulk_ok via l
+
+[THINKING] The source code changes were already committed by the verify pipeline, so I just need to commit the remaining staged report and log files.
+[RESULT ✓] bash: 38ebc21a0 [verus-ai] phys-frame: eliminate lemma_user_bulk_ok via loop invariants; update reports
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+I made real progress this session and reached the honest stopping point.
+
+## Summary
+
+**Eliminated `lemma_user_bulk_ok`** (the one closeable admit) with a **real proof** — not an admit/assume/axiom:
+- Deleted the unprovable standalone lemma (it took the post-state as an arbitrary parameter).
+- Re-derived its facts inline as strengthened loop invariants on `alloc_many_user_frames`: `self@ == g_old.book_all(user_addr_set(frames@))` + length/finiteness/distinctness, advanced one address per `upool.alloc()` transition.
+- Added 4 pure-spec helper lemmas (Set/Map extensionality): `lemma_book_all_empty`, `lemma_book_all_alloc_one`, `lemma_user_addr_set_empty`, `lemma_user_addr_set_push`.
+
+**Verification:** `make verify-kernel MODULE=mm::phys` → 85 verified, 0 errors. Full `make verify-kernel` and `make verify` → 0 errors, no regressions. AST consistency: **0 mismatches** (the `for _`→`for i` change is ghost-only).
+
+**Counts (module `mm::phys`):** admit 5 → **4**; total across sessions **10 → 4**.
+
+## Result: BLOCKER
+
+The 4 remaining admits in `manager.proof.rs` are **irreducible under the hard rules**, all rooted in the absent §8 ghost-token attachment (`phys_view()` is an immutable `uninterp` constant modeling mutable shared state):
+- `lemma_manager_attached` — `uninterp == uninterp` bridge; underivable.
+- `lemma_kernel_alloc_one` / `_contiguous` — kernel paths use **global** `frame::alloc()`, never touch `self.upool`, so the manager specs (`final(self)@ == old.alloc_one/book_all`) are **false for the implementation**.
+- `lemma_user_bulk_err_restored` — `clear()`/`Drop` frees globally without rolling back `self.upool@`; my new loop invariant **proves** the error-path spec is false.
+
+Removing them would require human-approved axioms (AI-forbidden), ghost-token exec/struct redesign (forbidden), or editing unlisted/do-not-touch manager specs (forbidden). All documented in `fix_report.md` and `verification_todo.md`.
+
+
+=== Session End ===
+Session: 14b90c09-2f67-4587-8773-6218c4a98c78
+Duration: 1017.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/cheating-fix-claude-20260615-105633.jsonl
