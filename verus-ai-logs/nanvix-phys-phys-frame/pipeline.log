@@ -640,3 +640,9 @@ Module: phys-frame
 [2026-06-15 09:54:31] ✅ proving: PASS (0/0)
 [2026-06-15 09:54:31] [GATE] Running build: make build
 [2026-06-15 09:54:31] [GATE] Running verify: make verify
+[2026-06-15 09:54:38] [GATE] ✅ Build + Verify passed after proving
+
+============================================================
+PHASE: cheating-elimination
+Module: phys-frame
+============================================================
