@@ -945,12 +945,10 @@ pub proof fn lemma_alloc_range_view(
                 (region_start + region_size) / spec_page_size())
                 .map(|i: int| i * spec_page_size());
             &&& frames.subset_of(old_inner@.free_frames)
-            &&& new_inner@ == FrameAllocView {
-                allocated_frames: old_inner@.allocated_frames.union(frames),
-                free_frames: old_inner@.free_frames.difference(frames),
-                refcounts: old_inner@.refcounts.union_prefer_right(
-                    Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)),
-            }
+            &&& new_inner@.allocated_frames == old_inner@.allocated_frames.union(frames)
+            &&& new_inner@.free_frames == old_inner@.free_frames.difference(frames)
+            &&& new_inner@.refcounts == old_inner@.refcounts.union_prefer_right(
+                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int))
         }),
 {
     lemma_book_range(old_inner, new_inner, lo, hi);
@@ -976,17 +974,13 @@ pub proof fn lemma_alloc_range_view(
     // Rewrite the `frame_set`-phrased view transition in terms of `frames`.
     assert(new_inner@.allocated_frames == old_inner@.allocated_frames.union(frames));
     assert(new_inner@.free_frames == old_inner@.free_frames.difference(frames));
-    assert(new_inner@.refcounts =~= old_inner@.refcounts.union_prefer_right(
+    assert(new_inner@.refcounts == old_inner@.refcounts.union_prefer_right(
         Map::new(|addr: int| frames.contains(addr), |addr: int| 1int))) by {
         assert(Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
             =~= Map::new(|addr: int| fs.contains(addr), |addr: int| 1int));
+        assert(new_inner@.refcounts =~= old_inner@.refcounts.union_prefer_right(
+            Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)));
     }
-    assert(new_inner@ == FrameAllocView {
-        allocated_frames: old_inner@.allocated_frames.union(frames),
-        free_frames: old_inner@.free_frames.difference(frames),
-        refcounts: old_inner@.refcounts.union_prefer_right(
-            Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)),
-    });
 }
 
 

@@ -5198,3 +5198,82 @@ Turn 343
 Turn 344
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
+[RESULT ✓] bash: error: disallowed: field expression for a non-visible datatype
+   --> src/kernel/src/mm/phys/frame.proof.rs:928:26
+   ::: src/kernel/src/mm/phys/frame.rs:82:1
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  verification: 0 verified, compilation/setup error (verus did not r...
+
+────────────────────────────────────────────────────────────
+Turn 345
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm hitting a visibility issue with the FrameAllocView struct at line 928 in frame.proof.rs — the struct fields aren't publicly accessible from this module, even though lemma_book_range's ensures clause uses FrameAllocView. I need to check why the field visibility is restricted and how to properly construct this struct literal.
+[RESULT ✓] view: 920.     new_inner: &Inner,
+921.     region_start: int,
+922.     region_size: int,
+923.     lo: int,
+924.     hi: int,
+925. )
+926.     requires
+927.         old_inner.inv(),
+928.         0 <= lo <= hi <= old_inner.bitmap@.num_bits,
+929.         lo == region_start / spec_page_size(),
+930.         hi ...
+
+────────────────────────────────────────────────────────────
+Turn 346
+────────────────────────────────────────────────────────────
+`FrameAllocView` struct fields aren't constructible from `frame.proof.rs`. Let me check the definition and rework the helper to use field equalities instead of a struct literal:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "struct FrameAllocView\|pub allocated_frames\|allocated_frames:\|fre
+
+[THINKING] I'm looking at an error at line 928 where accessing `.num_bits` on a BitmapView field is failing because the datatype isn't visible. The same pattern appears in `lemma_book_range` at line 693, so it works there — but I'm wondering if the issue is actually with accessing the `.bitmap` field itself on the Inner type rather than the field access that follows. The issue is that FrameAllocView fields aren't visible in frame.proof.rs, so I can't construct the struct literal there. Instead, I'll express the ensures clause as three separate field equalities — the allocated frames union, free frames difference, and refcounts update — then in frame.rs where the struct is visible, I'll assert the full FrameAllocView literal from those field equalities. Let me verify whether FrameAllocView has public fields.
+[RESULT ✓] bash: 
+<shellId: 173 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 347
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "struct FrameAllocView" src/kernel/src/mm/phys/; grep -rn "FrameAllo
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.spec.rs:20:pub struct FrameAllocView
+<shellId: 174 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 348
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 20. pub struct FrameAllocView
+21. {
+22.     pub allocated_frames: Set<int>,
+23.     pub free_frames: Set<int>,
+24.     /// Maps each allocated frame address to its reference count.
+25.     /// A frame is present in the map iff it is currently allocated.
+26.     pub refcounts: Map<int, int>,
+27. }
+28...
+
+────────────────────────────────────────────────────────────
+Turn 349
+────────────────────────────────────────────────────────────
+The `FrameAllocView` struct literal isn't constructible here. Let me rework the helper to emit field equalities instead:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] The struct and its fields are all public, so that's not the issue. Maybe the problem isn't about visibility at all — perhaps error 928:26 is pointing to something different entirely. Let me look at this more carefully.
+
+The error message says "field expression for a non-visible datatype," which means a field access like `something.field`, not a struct literal. Looking at line 928, the field access `old_inner.bitmap` is accessing the `bitmap` field of the `Inner` struct. But wait — `lemma_book_range` already accesses `old_inner.bitmap` and `old_inner.refcount` without issues, so `Inner`'s fields must be visible in frame.proof.rs. That means the culprit is probably the `FrameAllocView` struct literal itself — Verus might be reporting it as a field expression error when the construction references fields, even though they're public. Let me try removing the `FrameAllocView` struct literals and using field-equality assertions instead to see if that resolves it. I think the error might be stemming from the struct literal construction itself or from how the module scope is being resolved. Let me rewrite the helper function to use field equality assertions instead of constructing a FrameAllocView directly — that should sidestep any visibility or parsing issues.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 350
+────────────────────────────────────────────────────────────
+Now in `frame.rs`, after calling the helper, assert the struct equality (where `FrameAllocView` is constructible):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 351
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
+
+[THINKING] I need to verify that `FrameAllocView`, `Map`, and `vstd::set_lib` are properly imported in frame.rs since the contract already uses them.

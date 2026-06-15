@@ -1189,6 +1189,16 @@ impl Inner {
             // Establish `internal_inv` and the contract's `frames`-based view transition.
             lemma_alloc_range_view(&old_self, self, region@.start, region@.size, lo, hi);
             lemma_internal_inv_implies_wf(self);
+            let frames = vstd::set_lib::set_int_range(
+                region@.start / spec_page_size(),
+                (region@.start + region@.size) / spec_page_size())
+                .map(|i: int| i * spec_page_size());
+            assert(self@ == FrameAllocView {
+                allocated_frames: old_self@.allocated_frames.union(frames),
+                free_frames: old_self@.free_frames.difference(frames),
+                refcounts: old_self@.refcounts.union_prefer_right(
+                    Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)),
+            });
         }
         Ok(())
     }
