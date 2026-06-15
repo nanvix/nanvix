@@ -118,3 +118,80 @@ upool itself has **zero** admit, assume, limitation_assume, no_decreases, or tru
 [THINKING] All four admits are located in the manager module's proof file, which falls outside my upool scope and is protected by the rule against modifying unlisted functions. The upool itself contains no admits or assumes, no limitation assumes or exec allows, and two external body declarations for new and alloc that are both tcb-allowed and proven irreducible, with the struct external body already eliminated.
 
 I've reached the limits of what I can legitimately do within my scope constraints. Every specific demand the grader lists targets either items in forbidden out-of-scope files or tcb-allowed exec functions that I'm not permitted to remove. My responsibility now is to confirm that upool itself remains free of all problematic constructs, document the irreducible tcb-allowed items and out-of-scope forbidden items honestly, and verify that the code still passes verification.
+[RESULT ✓] bash: Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Verus passes (exit 0). I've reached the scope boundary. Let me finalize the report to directly address each of the grader's demands and the scope conflict explicitly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; rm -f verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+
+[THINKING] Verus is passing the checks, though the guardrail warning about cheating doesn't actually fail the build. I've hit the limits of what I can reasonably do here—the core issue is that the grader wants those four admits removed from manager.proof.rs, but they're fundamentally outside the scope of what I'm supposed to be modifying. Let me take one more careful look at the constraints to see if there's anything I'm missing.
+[RESULT ✓] bash: 
+<shellId: 5 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md with 7219 characters
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Final verification and confirmation of state:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== upool: cheating-free in scope ==="; grep -cE "admit\(\)|assume\(|li
+
+[THINKING] I'm doing a final check on the verification state to make sure everything lines up. The task constraints are clear—I can only modify the functions explicitly listed under the phys-upool header, and the grader keeps failing on the whole crate, which makes me wonder if there's a broader scope issue. But the hard rules are explicit, and I have to stick to them.
+
+I've eliminated what I could from the Upool struct, confirmed that upool itself is completely free of any verification annotations, and proven that the two remaining external_body references in manager.proof.rs and frame/manager/mod are both tcb-allowed and can't be reduced further given the escalation constraints. Everything's documented honestly, and Verus passes. This is the correct outcome given what I'm allowed to touch.
+[RESULT ✓] bash: === upool: cheating-free in scope ===
+src/kernel/src/mm/phys/upool.rs:0
+src/kernel/src/mm/phys/upool.spec.rs:0
+src/kernel/src/mm/phys/upool.proof.rs:0
+=== upool external_body (both tcb-allowed) ===
+250:    #[verus_verify(external_body)]
+271:    #[verus_verify(external_body)]
+=== deliverables present...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+I've reached the scope boundary. Here is the honest, complete outcome.
+
+## Mapping the grader's whole-crate counts to scope
+
+The grader scans the **entire** `src/kernel/src` tree, so its 14 `external_body` + 4 `admit()` span the whole `mm::phys` subsystem. Mapped to ownership:
+
+| Item | Module | In upool scope? | tcb-allowed? |
+|------|--------|-----------------|--------------|
+| 7× `external_body` (frame.rs) | frame | NO (forbidden) | YES |
+| 2× `external_body` (manager.rs) | manager | NO (forbidden) | YES |
+| 2× `external_body` (mod.rs) + ExLinkedList | mod | NO (forbidden) | YES |
+| **2× `external_body` (upool.rs `new`,`alloc`)** | **upool** | **YES** | **YES** |
+| **4× `admit()` (manager.proof.rs)** | manager | NO (forbidden) | n/a |
+
+## Response to each grader demand
+- **admit/assume → real proofs**: `upool` has **zero** admit/assume. All 4 `admit()` are in `manager.proof.rs` (§8 ghost-token lemmas) — an unlisted file the hard rule **forbids me from touching**.
+- **trusted / external_body on proof fns**: `upool` has none. Its 2 `external_body` are on **exec** facade methods, both tcb-allowed.
+- **multi-line `limitation_assume` (R20c)**: none in upool.
+- **`exec_allows_no_decreases` (R20p)**: none in upool (no recursive exec fn exists).
+
+## What I did
+- **Eliminated** the `Upool` struct `external_body` (whole-crate 15→14, retained from iter 1).
+- Ran the full escalation ladder on `new`/`alloc`: interpreted global view (**unsound** — makes `alloc`'s transition `false`), ghost field (**impossible** — `Upool` lives outside `verus!`; no kernel struct carries `Ghost`/`Tracked`; `manager::init` passes no token), constant view (no constant satisfies both `wf()` and the transition). Real Verus errors captured in `verification_todo.md`.
+
+## Verification
+- `make verify-kernel` → Verus **exit 0** (cheating is a non-fatal warning; build follows Verus exit). `make verify` → exit 0, 116 verified, 0 errors. No regressions.
+
+**Result: PASS within the `phys-upool` mandate.** The remaining flagged items are out-of-scope `frame`/`manager`/`mod` boundaries that the hard rule "do not touch unlisted functions" prohibits me from modifying; they are eliminated when *those* modules are verified (their §8 ghost token also discharges upool's `new`/`alloc`). Reports updated in `fix_report.md` and `verification_todo.md`.
+
+
+=== Session End ===
+Session: da2421e6-9dca-40e7-8c30-1c7026a28ddc
+Duration: 249.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-133524.jsonl
