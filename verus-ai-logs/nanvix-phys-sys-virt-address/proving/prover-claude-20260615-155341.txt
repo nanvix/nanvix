@@ -173,3 +173,16 @@ Turn 3
 [RESULT ✓] report_intent: Intent logged
 [RESULT ✓] bash: src/libs/sys/src/sys/mm/address/virt.rs:266:    // identity fact is therefore held as an `assume_specification` trust boundary
 <shellId: 3 completed with exit code 0>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+The verification is cached. Let me force a clean re-run to confirm proofs actually pass.
+[TOOL] bash: cd /home/ruize/nanvix-phy && touch src/libs/sys/src/sys/mm/address/virt.rs && timeout 600 make verify-sys 2>&1 | tail -2
+
+[THINKING] I see the verification ran but it's showing cached results, so let me force a clean build to get accurate coverage data. Looking at the actual verified functions, only `new` and `from_raw_value` have contracts, but the task requires proving `into_raw_value` as well.
