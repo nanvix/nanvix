@@ -1883,3 +1883,77 @@ The verify script strips the `sys::` prefix, but this verus build wants the full
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=sys::sys::mm::address 2>&1 |
 
 [THINKING] I'm realizing the issue is a version mismatch—the script strips the `sys::` prefix before passing it to verus, but this version expects the full module path including the crate prefix. Rather than modifying the verify script itself, I could just invoke verus directly without going through that stripping step.
+[RESULT ✓] bash: - align_down
+    - is_aligned
+    - max_addr
+    - into_raw_value
+    - as_ptr
+    - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  cheating: assume=0 ex...
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+Now it's module-scoped (2/22). Let me see the actual compilation error:
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '18,90p' verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_18-26-41.log
+
+[THINKING] Coverage improved to 2 out of 22 tests now that it's module-scoped, but there's still a compilation error preventing verus from running. Let me check the actual error message in the logs.
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error: found a cyclic self-reference in a definition, which may result in nontermination
+   --> src/libs/sys/src/sys/mm/address/mod.rs:66:5
+    |
+ 36 | / pub trait Address
+ 37 | | where
+ 38 | |     Self: core::fmt::D...
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+Real verus error: a definition cycle because `spec_addr<T: Address>` is bounded by `Address`, and the trait's method specs reference `spec_addr`. Breaking the cycle by removing the `Address` bound:
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs
+
+[THINKING] I'm hitting a real cyclic dependency issue here. The `spec_addr` function is generic over `T: Address`, which means it references the `Address` trait, but the trait's methods have specs that use `spec_addr` — creating a circular dependency between the trait definition and the spec function. The kernel manages to avoid this somehow, possibly because `spec_addr` is defined in a separate module or crate from the trait itself, though I need to verify exactly where it's located.
+
+The core problem is that I've added `ensures` clauses to the trait method declarations that reference `spec_addr`, and `spec_addr` is bounded by the `Address` trait, which creates the cycle. One way to break it would be to define `spec_addr` without the `Address` bound — just as a generic function with no constraints — so that the trait methods can call it without creating a circular reference back to the trait definition.
+
+The key insight is that the kernel has its own separate `spec_addr` definition in its crate, so removing the bound from my sys-level `spec_addr` wouldn't affect the kernel's version. They're independent functions in different crates, so there's no conflict there.
+
+Now I need to relax the generic bounds on all the spec functions in sys — removing `T: Address` from `spec_addr`, `addr_inv`, and any others that participate in the cycle. This should let the trait method specs reference these unbounded functions without creating a circular dependency. Let me check the current state of mod.spec.rs to see what needs updating.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // `Address` trait — Specifications
+5. //
+6. // To callers, an `Address` is a single pointer-sized location in an address
+7. // space: one mathematical integer in `[0, usize::MAX]`. The three in-scope
+8. // tr...
+
+────────────────────────────────────────────────────────────
+Turn 116
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs
+
+[THINKING] I'm working through a circular dependency in the trait bounds. The issue is that removing `T: Address` from `spec_addr` would leave it unconstrained, but the trait method itself enforces the bound through `Self: Address`. However, `addr_inv` still needs the `Address` constraint since it's referenced by `from_raw_`, so I need to figure out where the actual constraint should live to break this cycle. Making the edits now.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 117
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/mod.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 118
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=sys::sys::mm::address 2>&1 |

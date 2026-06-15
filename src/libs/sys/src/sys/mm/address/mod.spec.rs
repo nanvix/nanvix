@@ -31,13 +31,21 @@ verus! {
 // to exactly `raw`, and `is_aligned` reports `spec_addr` modulo the alignment.
 // This is the standard logical-identity pattern, identical to the kernel's
 // `hal::mem::spec_addr`; no `external_body` axiom feeds it.
-pub uninterp spec fn spec_addr<T: Address>(addr: &T) -> int;
+//
+// The generic parameter is intentionally *unbounded* (`T`, not `T: Address`).
+// Bounding it by `Address` would make this projection part of the `Address`
+// trait's own definition cycle (the trait-method contracts below reference
+// `spec_addr`, which would in turn reference the trait), which Verus rejects as
+// a cyclic self-reference. Callers always instantiate `T = Self` inside an
+// `Address` context, so the bound is recovered at every use site.
+pub uninterp spec fn spec_addr<T>(addr: &T) -> int;
 
 // The pointer-sized well-formedness bound shared by every `Address`
 // implementor. Refinement implementors (aligned / frame-representable) add
 // their own predicate on top in their own `inv()`; only the universal bound
-// belongs here.
-pub open spec fn addr_inv<T: Address>(addr: &T) -> bool {
+// belongs here. Unbounded `T` for the same cycle-avoidance reason as
+// `spec_addr` above; instantiated at `T = Self` in every `Address` context.
+pub open spec fn addr_inv<T>(addr: &T) -> bool {
     0 <= spec_addr(addr) <= usize::MAX as int
 }
 
