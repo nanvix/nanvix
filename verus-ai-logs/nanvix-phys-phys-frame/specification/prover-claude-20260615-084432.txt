@@ -484,3 +484,157 @@ Let me start by running the baseline verification to see what the current error 
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+[RESULT ✓] bash: error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+There's a compilation error. Let me find the actual errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "error\[" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_08-47-13.log | he
+
+[THINKING] I'm seeing compilation errors and need to check the full log to understand what's failing—the coverage report mentions the `alloc` shim is missing contracts, but I should look at the actual error messages to see what's going on.
+[RESULT ✓] bash: ===
+21:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Safe, mutability: Mut, nested: false }, DefId(0:2254 ~ kernel[5062]::mm::phys::frame::INSTANCE))
+27:error: The verifier does not yet support the following Rust feature: Path Def(Static { safety: Saf...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_08-47-13.log
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_08-47-13
+2. Mode: cargo
+3. Crate: kernel
+4. Directory: N/A
+5. Module: mm::phys
+6. Exit code: 101
+7. 0 verified
+8. compilation/setup error (verus did not run)
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=12
+13.   admit=1
+14.   trusted=0
+15.   no_decreases=0
+1...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+The errors are `static mut` accesses in `instance()` and `init()` — both documented trust boundaries. Let me check the TCB allowed list.
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -120
+
+[THINKING] I'm seeing the core issue now: both `instance()` and `init()` are trying to access `static mut` variables, which Verus doesn't support in verified code. These functions are marked as trust boundaries in the documentation and have external contracts, but they're missing the `external_body` annotation that would tell Verus to skip verification and treat them as trusted external code.
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The build
+  toolchain's `vstd`...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "external_body\|external\b\|verus_verify\|#\[verus_spec" src/kernel/src/mm/phys/fra
+
+[THINKING] Looking at the tcb-allowed.md file, I can see that `instance()` should be marked as `external_body` since it's the singleton bridge, and `init()` is in the skip list. The `Inner::*` methods are already allowed. The issue is that the current code doesn't have the `#[verifier::external_body]` annotation on `instance()` and `init()`, which is why Verus is failing to compile with `static mut`. I need to add that attribute to both methods.
+[RESULT ✓] bash: 81:#[verus_verify]
+103:#[verus_verify]
+115:    #[verus_spec(result =>
+180:    #[verus_spec(result =>
+252:    #[verus_spec(result =>
+336:    #[verus_spec(result =>
+407:    #[verus_spec(result =>
+454:    #[verus_spec(result =>
+499:    #[verus_spec(ret =>
+528:    #[verus_spec(result =>
+634:// here as a...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Let me check the verus-syntax skill for how `external_body` works in attribute style, and how other modules mark it.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "external_body\|verus_verify\|verus_spec" src/kernel/src/mm/phys/kframe.rs | head; 
+
+[THINKING] I'm noticing that none of the functions in frame.rs have the `external_body` marker, but the tcb-allowed.md documentation indicates that `instance`, `init`, and `Inner::*` methods should be marked as such. The current implementation relies on `#[verus_verify]` applied to the impl block, though that doesn't actually mark the bodies as external. I'm wondering how `#[verus_spec]` interacts with `external_body` — whether the attribute syntax supports combining them.
+[RESULT ✓] bash: 41:#[verus_verify]
+64:#[verus_verify]
+79:    #[verus_spec(result =>
+118:    #[verus_spec(result =>
+140:    #[verus_verify(external_body)]
+176:#[verus_verify]
+178:    #[verus_spec(
+=== how clear is marked ===
+    /// Clears the target kernel frame.
+    ///
+    /// Uses the identity-map `memset` backe...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Let me see how manager.rs combines `external_body` with a `#[verus_spec]` contract.
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '100,115p' src/kernel/src/mm/phys/manager.rs; echo "=== grep external_body context =
+
+[THINKING] I'm seeing that the pattern combines `#[verus_verify(external_body)]` with `#[verus_spec(...)]` for the contract specification. For the `instance()`, `init()`, and `Inner::*` methods that should be marked as external_body according to the tcb-allowed.md file, I need to add the `#[verus_verify(external_body)]` attribute to each one. The current code has `#[verus_verify]` on the impl block and struct level, but the individual Inner methods need their own annotations.
+
+The baseline compilation only reported 2 errors on `instance` and `init` related to `static mut` accesses, not on the `Inner::*` methods, which is interesting since the tcb-allowed.md suggests those methods also can't be translated. This could mean either the macros like `error!` and `debug_assert_eq!` are being handled by Verus now, or the tcb-allowed.md is being overly conservative. Once I fix the two `static mut` access errors by marking `instance` and `init` as external_body, Verus should be able to proceed further and potentially reveal any other issues with the Inner methods.
+
+Both `instance` and `init` are listed in tcb-allowed.md as external_body trust boundaries, so marking them that way is consistent with the requirements. I should also check whether the `alloc` shim needs a contract based on the coverage report, and I need to be careful not to mark anything external_body unless it's explicitly listed in tcb-allowed.md.
+
+The key question is whether I can combine `#[verus_spec(...)]` with `#[verus_verify(external_body)]` on the same method, or if they conflict. Looking at how other files like manager.rs handle external_body methods with specs should clarify the right pattern to use here.
+[RESULT ✓] bash: requires
+            phys_view().initialized,
+            phys_view().inv(),
+        ensures
+            phys_view().inv(),
+            phys_view().initialized,
+    )]
+    pub(super) fn init(upool: Upool) -> Result<(), Error> {
+        if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
+            ...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Now I understand the situation. The previous attempt left `instance()` and `init()` without their required `external_body` markers (both are listed in tcb-allowed.md), causing the `static mut` compile errors. The `alloc()` shim also lacks a spec. Let me make these fixes.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm seeing the pattern now — `#[verus_verify(external_body)]` needs to come right before `#[verus_spec(result => ...)]`, so I should add it to `instance()` and `init()`. The `Inner::*` methods should also get the external_body attribute according to the guidelines, but they didn't trigger errors in the baseline run, which suggests the Verus front-end might be stopping after reporting the initial static mut errors rather than continuing through all unsupported features.
+
+The tcb-allowed.md explicitly states that Inner methods are intended to be external_body because their bodies use unsupported macros like `error!` and `debug_assert_eq!` along with arch newtypes that Verus can't translate. So while they're allowed to have external_body, the safest approach is to make the minimal fix first — just adding external_body to instance and init with the alloc shim spec — then re-run to see what actually breaks before adding external_body to the Inner methods.
+
+For the alloc shim spec, I need to follow the pattern of other mutating shims like book. Since the caller expects the returned frame to be page-aligned and in allocated_frames with refcount==1, but the fixed phys_view() makes post-state facts about allocated_frames unverifiable (same issue as the other shims), I can only express the pre-state facts: the frame was in free_frames before the call, and the returned frame satisfies the invariant. The `admit()` defers proof to later, but the spec itself should be sound — I need to write what the caller actually expects from `alloc()` without worrying about the proof body. The key insight is that the pre-state facts (like `free_frames.contains`) are provable from the instance binding, while post-state membership facts would require proving the relationship between the mutated frame and the fixed `phys_view()`, which is where the admit comes in. For `alloc()`, I should specify what the caller needs: the frame is allocated and has refcount 1 in the post-state, even though proving this will require deferring to the proof phase. Writing the spec...
+
+Actually, I realize the ensures clause about `phys_view().frames.free_frames.contains(frame@)` is provable directly from the instance's alloc guarantee and the fact that `old(r)@` equals `phys_view().frames`. Since the instance's alloc already ensures the frame was in the old free_frames, and we have the initialized precondition, the proof should go through without needing admit. But to stay consistent with the other shims and avoid over-engineering, I'll add the spec with the same pattern and let verification tell me if admit is needed. Let me make all three changes—adding external_body to instance and init, and adding the spec to alloc—then run verify-kernel to see what actually happens.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Now add a spec to the `alloc()` shim, mirroring its sibling shims (`book`/`alloc_contiguous`):
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+Now re-run module verification to see the next set of issues.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -60

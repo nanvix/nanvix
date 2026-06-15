@@ -633,6 +633,7 @@ static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 // between the live singleton and the uninterpreted `phys_view()` is asserted
 // here as an external contract: once the allocator is initialized, the returned
 // reference is well-formed and its abstract view equals `phys_view().frames`.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         phys_view().initialized,
@@ -665,6 +666,7 @@ fn instance() -> &'static mut Inner {
 // materializes the `&'static mut [u8]` refcount table from `static mut
 // REFCOUNT_STORAGE` and writes the `static mut INSTANCE`, neither of which the
 // verifier supports. Its `#[verus_spec]` contract is honored as a trust boundary.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `init` establishes the subsystem invariant. On success the allocator is
@@ -718,6 +720,27 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+#[verus_spec(result =>
+    requires
+        phys_view().initialized,
+        phys_view().inv(),
+    ensures
+        phys_view().inv(),
+        phys_view().initialized,
+        // As with the other mutating shims, the post-state membership effect (the
+        // frame now being in `allocated_frames` with refcount 1) is not expressible
+        // against the fixed pre-state `phys_view()` (no `old(phys_view())` to diff;
+        // see `alloc_contiguous`/`book` and bugs.md). The sound, verified facts are
+        // that a successful result is a well-formed (page-aligned) frame address and
+        // that it was free in the pool immediately before the call.
+        match result {
+            Ok(frame) => {
+                &&& frame.inv()
+                &&& phys_view().frames.free_frames.contains(frame@)
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
