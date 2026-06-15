@@ -163,3 +163,19 @@ No cheating in region.rs itself; proof file is empty. The scoped functions have 
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -40
 
 [THINKING] I'm checking the region.rs file to see what verification state we're in—the proof file is empty and there are no assume/admit directives in the source. The scope functions `start` and `size` are defined with `#[verus_spec]` and `ensures` clauses, so I need to run the verification for the `hal::mem::types::region` module to understand what's failing. Looking at the dependencies, `start` calls `self.start.clone_address()` and the view defines the relationship between the field and its specification.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=19 admit=12 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unveri...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Module `hal::mem::types::region` is already CLEAN: assume=0, admit=0, external_body=0 within scope. The global counts (admit=12, external_body=19) are in other modules. The 4 target functions have contracts. But it shows "cached" — let me force a real verification to confirm the proofs actually hold.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/region.rs src/kernel/src/hal/mem/types/region.spec
+
+[THINKING] The module checks out as clean with no cheating detected—the four functions in scope already have contracts that verify correctly. I'm confirming the verification actually passed with exit status CLEAN, though the external counts for external_body and admit are tracked globally elsewhere, not within this module itself. The other modules with cheating issues are listed in tcb-allowed.md and out of scope, so I just need to verify that the hal-memory-region module itself is actually clean. Let me force a fresh verification run to confirm the proofs hold rather than relying on the cached result.
