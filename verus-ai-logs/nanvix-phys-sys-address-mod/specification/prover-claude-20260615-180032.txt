@@ -1981,3 +1981,31 @@ Status **CLEAN, 2 verified, 0 errors**. The cycle is fixed. Now run the full sys
 [THINKING] The verification status shows 2 functions with contracts are verified, likely the VirtualAddress inherent methods, while the three trait method declarations don't count as verified since they have no bodies—their specs are just checked for well-formedness rather than actual verification.
 
 The coverage metric of 2/22 reflects the whole sys::mm::address module including the virt submodule, which makes sense since I only added specs to the trait methods (declarations without bodies) plus the two inherent functions. Now I need to run the full crate verification with `make verify-sys` to ensure my changes don't break anything else, then check for regressions across all modules.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected.
+
+=== Function Coverage ===
+  2/254 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheat...
+
+────────────────────────────────────────────────────────────
+Turn 120
+────────────────────────────────────────────────────────────
+Full sys crate CLEAN. Now the critical cross-module check — `make verify` (all modules), especially the kernel `into_raw_value` concern:
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "^verify:\|VERUS_CRATES" Makefile | head
+
+[THINKING] The sys crate compiled cleanly, so now I'm running the full verification suite across all modules to catch any regressions, particularly around the kernel's into_raw_value specification handling. I need to set the Verus executable directory path to ensure the kernel module verification works correctly.
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 106 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 121
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; time make verify VERUS_EXECUTABLE_DIR=/tmp/verus-0531 2>&1 | grep -iE "verification:|status:|
