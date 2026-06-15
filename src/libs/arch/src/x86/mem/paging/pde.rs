@@ -59,6 +59,7 @@ pub struct PageDirectoryEntryFlags {
     page_size: PageSizeFlag,
 }
 
+#[verus_verify]
 impl PageDirectoryEntryFlags {
     ///
     /// # Description
@@ -80,7 +81,6 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
-    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_flags_new(
@@ -115,7 +115,9 @@ impl PageDirectoryEntryFlags {
             page_size,
         }
     }
+}
 
+impl PageDirectoryEntryFlags {
     ///
     /// # Description
     ///
@@ -289,7 +291,10 @@ pub struct PageDirectoryEntry {
 impl PageDirectoryEntry {
     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+}
 
+#[verus_verify]
+impl PageDirectoryEntry {
     ///
     /// # Description
     ///
@@ -304,7 +309,6 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
-    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_new(flags@, frame@),
@@ -314,7 +318,9 @@ impl PageDirectoryEntry {
         proof! { use_type_invariant(frame); }
         Self { flags, frame }
     }
+}
 
+impl PageDirectoryEntry {
     ///
     /// # Description
     ///

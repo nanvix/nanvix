@@ -703,3 +703,132 @@ Rather than getting lost in the macro dispatch logic, I should just test empiric
 Turn 35
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -25
+[RESULT ✓] bash: === Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '18,40p' verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_14-24-22.log
+[RESULT ✓] bash: --- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error[E0425]: cannot find function `new` in this scope
+  --> src/libs/arch/src/x86/mem/paging/pde.rs:97:12
+   |
+97 |     pub fn new(
+   |            ^^^ not found in this scope
+
+error[E0425]: cannot find func...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Per-method `#[verus_verify]` doesn't add the marker (only impl-block does). Splitting is required. Let me restore the START baseline and implement the split cleanly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git checkout 3e590bcac -- src/libs/arch/src/x86/mem/paging/pde.rs && echo "restored"
+
+[THINKING] The `#[verus_verify]` attribute on individual methods doesn't trigger the marker addition since the visitor only processes items within impl blocks, not standalone methods. So the only viable approach is applying the attribute to the impl block itself, which would add the marker to all spec'd methods, though that has its own limitations.
+
+To make this work cleanly, I need to split the impl block: create a separate `#[verus_verify]` impl containing just `new`, while leaving `is_present` and other methods in a plain impl block where they can verify using bare `#[verus_spec]` annotations. This minimizes disruption and keeps the unspec'd methods untouched.
+
+Rather than continue patching the current state, I should restore to the START commit and apply this split cleanly from there.
+[RESULT ✓] bash: restored
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now I'll implement the split for `PageDirectoryEntryFlags`. View the boundary after `new`.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm going to split out the `new` method for each type into its own `#[verus_verify]` impl block, removing the cfg-gated marker and isolating it from the rest of the implementation. For PageDirectoryEntryFlags, I'll extract the `new` method from the beginning of its impl block and wrap it separately.
+[RESULT ✓] view: 116.         }
+117.     }
+118. 
+119.     ///
+120.     /// # Description
+121.     ///
+122.     /// Checks if the present flag is set.
+123.     ///
+124.     /// # Returns
+125.     ///
+126.     /// `true` if the present flag is set, `false` otherwise.
+127.     ///
+128.     #[inline(always)]
+129.     #[...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I need to add the `#[verus_verify]` attribute to the PageDirectoryEntryFlags impl block, remove a marker line, and then split the impl block so that the `new` method stays within the verus_verify block while the `is_present` method and others move to a separate plain impl block.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now the same split for `PageDirectoryEntry`. Let me view that region.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm checking the structure of the Flags constructor to make sure the field definitions are consistent between the new body and the into_raw_value method, particularly around where page_size appears and how the closing braces align.
+[RESULT ✓] view: 290. 
+291. impl PageDirectoryEntry {
+292.     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
+293.     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+294. 
+295.     ///
+296.     /// # Description
+297.     ///
+298.     /// Constructs a [`PageD...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+`PageDirectoryEntry` has a `SIZE` const before `new`; I'll keep it in a plain block and isolate `new` in a `#[verus_verify]` block.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs
+
+[THINKING] I'm thinking through whether adding `#[verus_verify]` to a block containing both `new` and a `SIZE` const would cause issues. The visitor would add a verus_spec to the const if verify_const is enabled, which would make SIZE get verified even though it's just a size calculation. That seems unnecessary since SIZE is just computing the size of PteWord.
+
+So I'm restructuring the impl blocks: keeping SIZE in a plain impl block, then opening a `#[verus_verify]` impl block for the `new` function, and finally another plain impl block for the remaining methods like `from_raw_value`. This means I need to close the first impl after SIZE, add the attribute and open a new impl for `new`, remove the marker line, then close after `new` and open another plain impl for the rest.
+
+Editing the structure now...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Let me verify the structure is correct before running verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verus_impl_method_marker\|^impl Page\|^#\[verus_verify\]\|^impl Table" src/l
+[RESULT ✓] bash: 41:#[verus_verify]
+62:#[verus_verify]
+63:impl PageDirectoryEntryFlags {
+120:impl PageDirectoryEntryFlags {
+282:#[verus_verify]
+291:impl PageDirectoryEntry {
+296:#[verus_verify]
+297:impl PageDirectoryEntry {
+323:impl PageDirectoryEntry {
+479:impl TableEntry for PageDirectoryEntry {
+<shellId: 29 compl...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+No markers remain; structure is clean. Now run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -28
+
+[THINKING] I'm reviewing the structure of the Rust code to verify the organization of the PageDirectoryEntry and PageDirectoryEntryFlags implementations, checking where the verification attributes are placed and which methods belong to each block.
