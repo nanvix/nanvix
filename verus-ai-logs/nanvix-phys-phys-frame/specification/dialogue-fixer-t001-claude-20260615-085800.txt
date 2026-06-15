@@ -309,3 +309,22 @@ Syntax error: I used `proof {` instead of `proof! {` and an unnecessary `borrow_
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "^error\|^warning\|-->\|veri
+[RESULT ✓] bash: 16:error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+17:   --> src/kernel/src/mm/phys/frame.rs:738:9
+24:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+27:  0 verified
+32:  verification: 0 verified,...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Need `final(auth)@` instead of bare `auth@` in postconditions (mutable-ref disambiguation). Let me fix.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm running into a Verus semantic error around how to reference mutable tracked state in postconditions. The issue is that `auth` is a mutable reference, so I need to use `final(auth)@` in the ensures clause rather than just `auth@`. Looking at the guide's example with `Tracked<&mut u32>`, I see they used `*y` and `*old(y)` for dereferencing, so I need to figure out the right syntax for disambiguating the tracked reference in my postcondition. So the pattern in this codebase for `&mut` parameters is to use `final(auth)@` and `old(auth)@` to access the view in different states, just like they do with `&mut self`. The bare `auth@` on lines 738-739 is the problem — I need to replace those with `final(auth)@` in the ensures clause to properly disambiguate which state I'm referring to.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "^error\|^warning\|-->\|veri

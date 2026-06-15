@@ -735,19 +735,19 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
         old(auth)@.inv(),
         old(auth)@.frames == phys_view().frames,
     ensures
-        auth@.initialized,
-        auth@.inv(),
+        final(auth)@.initialized,
+        final(auth)@.inv(),
         // Strong post-state contract: a successful allocation moves one free frame
         // into `allocated_frames` with refcount 1; an error leaves the allocator
-        // unchanged. The token names both pre (`old(auth)@`) and post (`auth@`).
+        // unchanged. The token names both pre (`old(auth)@`) and post (`final(auth)@`).
         match result {
             Ok(frame) => {
                 &&& frame.inv()
-                &&& auth@ == old(auth)@.spec_alloc_one(frame@)
-                &&& auth@.frames.allocated_frames.contains(frame@)
-                &&& auth@.frames.refcounts[frame@] == 1
+                &&& final(auth)@ == old(auth)@.spec_alloc_one(frame@)
+                &&& final(auth)@.frames.allocated_frames.contains(frame@)
+                &&& final(auth)@.frames.refcounts[frame@] == 1
             },
-            Err(_) => auth@ == old(auth)@,
+            Err(_) => final(auth)@ == old(auth)@,
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
