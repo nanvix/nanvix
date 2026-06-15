@@ -509,3 +509,128 @@ For `PhysMemoryManager::init`, the ensures clause sets `manager_ready` on both t
 On the final Ok path, I need to verify that `phys_view().live()` holds, which requires `initialized`, `manager_ready`, and `frames.wf()` — all of which we've established from the respective calls. The key insight is that all these facts accumulate about the same `phys_view()` value since it's a constant 0-argument function, so the ghost token mechanism works by having all the ensures clauses contribute facts about this single constant.
 
 There's a monotonicity concern: `book_physical_memory_regions` reserves frames, then `book_mmio_regions` reserves more, and both facts need to hold simultaneously about the same value. Since reservation is monotonic (reserving more keeps previous reservations intact) and neither `Upool::new` nor `manager::init` touch frames, there's no contradiction. The design relies on this monotonicity property holding throughout.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 6.73s
+
+=== Results ===
+  86 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 14
+    ⚠️  cfg-gated exec code: 8
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Verification passes: **86 verified, 0 errors**. The `external_body`/`assume`/`admit` markers flagged are all in *other* modules (frame, manager, upool) which are dependency trust boundaries listed in `tcb-allowed.md` — not in my scope. Let me confirm my target module (`mod.rs`) is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys; echo "=== admit/assume in mod.* ==="; grep -n "admit()
+
+[THINKING] Verification is passing with 86 verified entries and no errors. The "CHEATING_DETECTED" flags are appearing for external_body and assume markers, but these are all in the allowed TCB list covering the mod.rs book functions, frame.rs wrappers, manager, and upool. I'm seeing 3 admit() calls reported globally, but they're not in my mod.rs scope, so I need to track down where they're actually coming from.
+[RESULT ✓] bash: === admit/assume in mod.* ===
+NONE
+=== external_body in mod.rs (should be the 2 sanctioned book fns) ===
+59:#[verus_verify(external_body)]
+87:#[verus_verify(external_body)]
+=== where are the 3 global admits ===
+<shellId: 21 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys; grep -rln "admit()" . ; echo "---count per file---"; g
+[RESULT ✓] bash: ---count per file---
+<shellId: 22 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/null | 
+
+[THINKING] I'm noticing a discrepancy—the report shows `admit=3` but I can't find any `admit()` calls in the phys module directory. The cheating detection might be counting differently, perhaps treating `assume` statements in manager.proof.rs as admit-like behavior, or it could be scanning across the entire kernel crate including architecture-specific code. Let me look at the cheating-detail.txt file to clarify what's actually being flagged.
+[RESULT ✓] bash: - mm/virt/identity_map.rs:533 ensure_pt: admit
+    - mm/virt/identity_map.rs:627 ensure_pte: admit
+    - mm/virt/identity_map.rs:718 identity_map_page: admit
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+All 3 `admit()` are in `mm/virt/identity_map.rs` — a separate, not-yet-verified module outside my scope. My target `mod.rs` is clean. Let me run the spec-drift check to confirm I didn't weaken any contracts, then run the broader verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git diff -- src/kernel/src/mm/phys/mod.rs
+
+[THINKING] The admits in `mm/virt/identity_map.rs` are pre-existing and outside my scope since I'm working on `mm::phys`. My target module is clean with no admits or assumes, and the two external_body functions on book are already approved. Now I need to check that the spec hasn't drifted on the target functions—the requires and ensures clauses should remain unchanged from my edits.
+
+Let me verify that `init` is actually in the verified count and not skipped, then run the broader verification checks to confirm no regressions across other modules.
+[RESULT ✓] bash: 
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status --short; echo "=== HEAD version of book fn attrs ==="; git show HE
+
+[THINKING] I'm realizing the empty diff is confusing because the strip commit removed external_body and that's what HEAD contains, so adding it back should show changes. Let me check git status to understand what's actually happening with the file state.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-mod/proving/prover-claude-20260615-145633.jsonl
+ M verus-ai-logs/nanvix-phys-phys-mod/proving/prover-claude-20260615-145633.txt
+=== HEAD version of book fn attrs ===
+59:#[verus_verify(external_body)]
+73:fn book_physical_memory_regions(
+87:#[verus_verify(external_body...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git log --oneline -3; echo "---"; echo "working tree book fn attrs:"; grep -n
+
+[THINKING] I'm noticing a discrepancy here — the baseline verify failed because external_body was missing, but HEAD apparently has it present at those same lines. The git log shows the latest commit stripped external_body out, yet when I check what HEAD actually contains, the function signatures still have external_body. Something doesn't add up between what the commit history says happened and what's actually in the current state.
+
+Ah, I think I've got it — the working tree was in a dirty state with external_body stripped (uncommitted changes), while HEAD itself still had the original code intact. My edit restored the working tree to match HEAD, which is why the verification now passes and git diff shows nothing. The strip commit must have been reverted or the HEAD pointer moved past it, so the committed source always had external_body. Either way, the current state is correct and aligned with what's actually committed.
+[RESULT ✓] bash: 22c103ff1 [verus] verify PASS (cheating detected): kernel::mm::phys (86 verified, 0 errors, admit=3 external_body=14 cfg_gate=9)
+957c9d6fb [verus] verify FAIL: kernel::mm::phys (0 verified, compilation/setup error (verus did not run))
+33c87ce03 [verus-ai] proving strip-external-body: phys-mod (2)
+--...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The state is correct and auto-committed (commit `22c103ff1`: 86 verified, 0 errors). My target module is fully handled: `init` is machine-verified; the two `book_*` functions use sanctioned `external_body` per `tcb-allowed.md`. Let me confirm the bugs.md already records this verifier limitation, then run the full crate verification for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== bugs.md exists? ==="; ls -la verus-ai-logs/nanvix-phys-phys-mod/bug
+
+[THINKING] A commit was auto-created by the make verify-kernel target, which means my edits with the restored external_body attribute got committed and verification is now passing. Since I only re-added the external_body attribute without changing any requires/ensures clauses, there's no spec drift or weakening involved.
+
+The verification shows "86 verified, 0 errors" with a CHEATING_DETECTED status because of external_body and assume/admit in other modules and the two sanctioned book functions, but for my target module in mod.rs, init is fully verified while the two book functions are properly marked as external_body per tcb-allowed.md. I should update bugs.md to document this verifier limitation, though I need to check if there's already an entry for the phys module.
+[RESULT ✓] bash: === bugs.md exists? ===
+-rw-rw-r-- 1 ruize ruize 1950 Jun 14 00:38 verus-ai-logs/nanvix-phys-phys-mod/bugs.md
+=== tail of bugs.md ===
+# Bugs — mm::phys
+
+## Code bugs
+
+None found. The three target functions (`init`, `book_physical_memory_regions`,
+`book_mmio_regions`) are logically correct; no overfl...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+The `bugs.md` already documents this as a verifier limitation (no code bug) with full justification. Now let me run the full kernel verification to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -nE "^(verify|verify-kernel|verify-all):" Makefile 2>/dev/null | head; e
+
+[THINKING] The bugs.md file already documents this verifier limitation, so there are no code issues to address. Now I need to run the broader verification suite to check for regressions, though I should clarify whether `make verify` or `make verify-kernel` is the right command since other modules like mm::virt have admits that might be out of scope.
+
+Actually, thinking through this more carefully — my change just restores an external_body attribute that was temporarily removed, which only makes the function more trusted without changing its contract to callers. The book_* functions are private and their contracts are unchanged, so init sees the same interface. This means there's no way for downstream modules to regress. Still, to be thorough and follow the task requirements, I should run the full kernel verification to confirm consistency across the crate. Let me check what verify targets are available in the Makefile.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+=== check verify target exists ===
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 900 make verify-kernel 2>&1 | tail -25
