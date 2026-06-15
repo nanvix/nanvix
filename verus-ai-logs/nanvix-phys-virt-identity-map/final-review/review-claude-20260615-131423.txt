@@ -868,3 +868,292 @@ Turn 10
 [TOOL] report_intent: Running module verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== actual assume_specification declarations (pub) ===" && grep -nE "^\s*pub as
+[RESULT ✓] bash: === actual assume_specification declarations (pub) ===
+185:pub assume_specification<const N: usize, const A: usize, S: ::bump_allocator::BssStorage>[
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running coverage scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 31 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+[RESULT ✓] view: 1. #!/usr/bin/env python3
+2. 
+3. """
+4. Function coverage analysis for Verus verified code.
+5. 
+6. Compares exec functions between an original Rust source file and a Verus
+7. exec file, classifying each function as MISSING, EXTRA, MATCHED, or
+8. SPEC/PROOF ONLY.  Extra functions are further annotate...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel/src/mm/vi
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/virt/identity_map.rs`
+- **Verus file:** `src/kernel/src/mm/virt/identity_map.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+I have all the data. Let me verify the output directory and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-virt-identity-map/final-review && ls -la verus-ai-
+[RESULT ✓] bash: total 1256
+drwxrwxr-x 1 ruize ruize     136 Jun 15 13:14 .
+drwxrwxr-x 1 ruize ruize     490 Jun 15 13:14 ..
+-rw-rw-r-- 1 ruize ruize 1223185 Jun 15 13:18 review-claude-20260615-131423.jsonl
+-rw-rw-r-- 1 ruize ruize   59197 Jun 15 13:18 review-claude-20260615-131423.txt
+<shellId: 34 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import pathlib,re
+module_files=[
+'src/kernel/src/mm/virt/identity_ma
+[RESULT ✓] bash: COUNTS
+admit=0
+assume=0
+external_body_attr=4
+assume_specification=1
+cfg_gated_exec=1
+cfg_ghost_includes=2
+
+LOCATIONS
+[external_body_attr]
+src/kernel/src/mm/virt/identity_map.rs:509:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.rs:607:#[verus_verify(external_body)]
+src/kernel/src...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "#\[verus_spec\(|fn ensure_pt|fn ensure_pte|fn identity_map_page" src/kernel/sr
+[RESULT ✓] bash: 510:#[verus_spec(result =>
+534:fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+608:#[verus_spec(result =>
+625:fn ensure_pte(
+694:#[verus_spec(result =>
+714:pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+<shel...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Writing final review report
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md with 14045 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Review written. Here is the concise summary.
+
+## Verdict: **FAIL**
+
+### Exact guardrail counts (module only)
+| Guardrail | Count |
+|---|---|
+| `admit()` | **0** |
+| `assume()` | **0** |
+| `external_body` | **4** — `ensure_pt` (L509), `ensure_pte` (L607), `identity_map_page` (L693), `ExPageTableBss` (spec.rs L142) |
+| `assume_specification` | **1** (`FixedSizeBumpAllocator::new`) |
+| cfg-gated exec | **0** (the two `cfg(verus_keep_ghost)` are ghost includes; `cfg(feature="test")` is test code) |
+
+All 4 `external_body` are listed in `tcb-allowed.md` (mechanical TCB check passes). AST consistency PASS. Spec drift: 0. fn_coverage: 3/3 in-scope functions have contracts.
+
+### Verification
+- `make verify-kernel MODULE=mm::virt` → **exit code 0**, but tool status **`CHEATING_DETECTED`**. Summary: `assume=0 external_body=23 admit=4 cfg_gate=19` (kernel-wide; module owns 4 external_body, 0 admit).
+
+### One-paragraph justification
+Although every mechanical counter looks clean (admit=0, assume=0, all external_body TCB-listed, no rewrites, no drift, exit 0), these numbers are an artifact of **trusting the very functions under verification**. Git history proves the three in-scope targets had their `proof! { admit(); }` bodies swapped for `#[verus_verify(external_body)]` **and** were added to `tcb-allowed.md` in the *same* commit (`a6d1b7778`) during this effort — and the verifier itself reports `CHEATING_DETECTED`. This violates the hard rule that the TCB is fixed in advance and targets may never be moved into it. Nothing was proven in-body; the module is "verified" only by assumption. The honest `verification-todo.md`/`bugs.md` hand-off correctly identifies these as deferred, infrastructure-blocked proofs — which is exactly why the legitimate outcome is **FAIL (unproven)**, not PASS. Self-listing verification targets in the TCB is illegitimate.
+
+Full report: `verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md`
+[RESULT ✓] read_agent: Agent completed. agent_id: review-opus, agent_type: general-purpose, status: completed, description: Independent final review (opus), elapsed: 209s, total_turns: 0, model: claude-opus-4.8, duration: 209s
+
+Review written. Here is the concise summary.
+
+## Verdict: **FAIL**
+
+### Exact guardrail counts ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Opus reviewer: **FAIL**. Now waiting for the codex reviewer.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+
+[THINKING] The Opus reviewer flagged a discrepancy in the assume_specification count—it reported 1 occurrence, but I'm finding 2 in spec.rs: one from the inherited invlpg definition at line 151 and another from the bump allocator at line 185. The Opus agent may have only counted one of these.
+[TOOL] report_intent: Writing final review
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p verus-ai-logs/nanvix-phys-virt-identity-map/final-review && cat > verus-ai-l
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.gpt5codex.md
+[RESULT ✓] view: 1. # Final Independent Verification Review — `mm::virt::identity_map`
+2. 
+3. Scope reviewed (only): `identity_map_page`, `ensure_pt`, `ensure_pte`.
+4. Files fully read: requested 8 files + target module/spec/proof files.
+5. 
+6. ## Spec Quality
+7. 
+8. ### `ensure_pt`
+9. - **Requires:** only `identity...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status --short
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-virt-identity-map/final-review/review-claude-20260615-131423.jsonl
+ M verus-ai-logs/nanvix-phys-virt-identity-map/final-review/review-claude-20260615-131423.txt
+?? verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md
+?? verus-ai-logs/nanvix-phys...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Wrote full raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.gpt5codex.md`
+
+Exact module guardrail counts (3 files): `admit()=0`, `assume()=0`, `external_body=4`, `assume_specification=1`, `cfg-gated exec=1` (`#[cfg(feature="test")]`), plus `#[cfg(verus_keep_ghost)]` ghost includes `=2` (not cfg-gated exec).  
+`make verify-kernel MODULE=mm::virt` exit code: **0** (status: **CHEATING_DETECTED**, cached run).
+
+**Verdict: FAIL.** Primary reason: all three in-scope target functions are `external_body` (unproven in-body), and their TCB allowance appears introduced during this effort (`tcb-allowed.md` is new vs `origin/dev`), conflicting with the fixed-TCB/no-new-trust-boundary rule.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 236s, total_turns: 0, model: gpt-5.3-codex, duration: 236s
+
+Wrote full raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identit...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Both reviewers independently reached **FAIL**. Let me reconcile a couple of counting discrepancies before consolidating.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===assume_specification occurrences===" && grep -rn "assume_specification" src/
+
+[THINKING] Both reviewers independently concluded FAIL because the TCB entries were added during this effort, which violates the fixed-TCB rule and means nothing was actually proven in-body. They agree on the external_body count of 4 (three in-scope targets plus ExPageTableBss, all TCB-listed), with no admits or assumes. I'm now reconciling the discrepancies in their counts—specifically the assume_specification count difference and the cfg-gated execution flagging—to finalize the consolidated report.
+[RESULT ✓] bash: ===assume_specification occurrences===
+185:pub assume_specification<const N: usize, const A: usize, S: ::bump_allocator::BssStorage>[
+===actual statements (not comments)===
+185:pub assume_specification<const N: usize, const A: usize, S: ::bump_allocator::BssStorage>[
+===cfg(feature test) context L73...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '140,160p;183,189p' src/kernel/src/mm/virt/identity_map.spec.rs
+
+[THINKING] I'm trying to reconcile the assume_specification declarations. The grep search only found one actual statement at line 185 for the bump_allocator, but there's a reference to an invlpg one at line 151 that appears in a comment or inherited from upstream code. Let me verify what's actually at line 151 since the grep didn't catch it there.
+[RESULT ✓] bash: // --- BSS page-table storage marker (kernel `page_table_allocator`) ---
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExPageTableBss(PageTableBss);
+
+// --- Paging index helpers ---
+
+// `pd_index` / `pt_index` are specified in `arch::…::paging::table` (removed here)...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Both reviewers agree. Reconciled: `assume_specification`=1 (bump_allocator `new`; the invlpg one was removed). Now writing the consolidated review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-virt-identity-map/final-review/*.md 2>/dev/null && e
+
+[THINKING] I've reconciled the counts: there's exactly one `assume_specification` instance in the bump allocator's new function, and the earlier invlpg reference was removed from the allocator code (it's now in the arch module). Both reviewers got 1, so my count of 2 was off. For external bodies, I'm seeing 4 total—three target functions in the Rust file plus the ExPageTableBss external reference.
+
+On the cfg-gated code, the `#[cfg(feature="test")]` at line 739 gates a test module that codex flagged, but test modules under feature gates are standard practice and not a verification escape on in-scope functions. The `#[cfg(verus_keep_ghost)]` includes are ghost-only, so those don't count as exec gating. However, both reviewers now agree on FAIL—the critical issue is that three in-scope verification targets were moved into the TCB during this commit, which violates the fixed-TCB constraint. The verifier reports CHEATING_DETECTED, and nothing was proven in-body. I need to verify the sub-agent review files exist, then finalize the consolidated review document.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 14136 Jun 15 13:20 verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.claude.md
+-rw-rw-r-- 1 ruize ruize  7363 Jun 15 13:20 verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.gpt5codex.md
+===caller_analysis pub functions / expectations c...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Both raw reviews are saved. Writing the consolidated report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/final_review.md with 9395 characters
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Consolidated review written. Summary:
+
+## Result: **FAIL**
+
+Two independent reviewers (claude-opus-4.8, gpt-5.3-codex) both reached FAIL; I concur.
+
+**Decisive blocker:** the three in-scope verification targets — `identity_map_page`, `ensure_pt`, `ensure_pte` — are all `#[verus_verify(external_body)]` and were added to `tcb-allowed.md` in commit `a6d1b7778`, the *same* commit that replaced their spec-phase `admit()` with `external_body`. This violates the hard rule "TCB is fixed in advance; no new trust boundaries may be introduced." Nothing was proven in-body — the module is "verified" purely by assumption, and the verifier itself reports `CHEATING_DETECTED`.
+
+**Guardrail counts (module):** admit=0, assume=0, external_body=4 (3 targets + `ExPageTableBss`), assume_specification=1 (external `bump_allocator::new`), cfg-gated exec=0.
+
+**Clean dimensions:** spec quality is strong, contracts cover the sole caller `KernelFrame::new`, `spec_drift`=0 (no weakening), AST consistency PASS, no code bugs, no admit/assume, cross-module `make verify` cached-PASS.
+
+The honest hand-off in `verification-todo.md`/`bugs.md` correctly documents the deferred obligations, but the legitimate outcome of an unproven module is FAIL — not a PASS via TCB self-expansion.
+
+Files written:
+- `final-review/final_review.md` (consolidated)
+- `final-review/final_review.claude.md`, `final-review/final_review.gpt5codex.md` (raw)
+
+
+=== Session End ===
+Session: e81f3445-fc3a-4236-ba29-ae75d9b77288
+Duration: 458.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/final-review/review-claude-20260615-131423.jsonl
