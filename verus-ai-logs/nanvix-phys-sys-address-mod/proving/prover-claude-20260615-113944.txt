@@ -774,3 +774,48 @@ No source changes were needed — only session logs. The module verifies cleanly
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-sys 2>&1 | grep -iE "verification results|verified,|errors|ex
 
 [THINKING] Since I haven't made any source changes, running the full crate verification will just establish a baseline, but I should do it anyway to be thorough about what the task requires. The full verification might take a while and could surface issues with the global cfg_gate.
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+=== Function Coverage ===
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Full `sys` crate verifies (exit 0). The `cfg_gate=1` is a global pre-existing flag, not in my module. Let me locate it to confirm it's out of scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/sys/src')
+cf
+
+[THINKING] The verification passed but flagged a cheating detection due to a global cfg_gate=1 in the sys crate that's pre-existing and not part of my module changes. I need to locate where this cfg_gate is set to confirm it's outside my scope.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs 151 -> verus! {
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+The global `cfg_gate=1` is in `mm/alignment.rs` (a pre-existing `#[cfg(verus_keep_ghost)] verus! {}` spec block) — out of my scope (`mm::address`). My module is fully clean. Let me write the bugs file for the proving phase.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md 2>/dev/null && echo "EXISTS"
+
+[THINKING] I found the cfg_gate in `src/libs/sys/src/sys/mm/alignment.rs` at line 151 — it's wrapping a `spec_align_value` spec function with `#[cfg(verus_keep_ghost)]` followed by `verus! {`. This is in the `mm::alignment` module, which is outside my scope, and it's a legitimate pre-existing cfg-gate on a verus spec block that my detection flagged because of the pattern it creates.
+
+My module is clean with no issues: the `sys::mm::address` module verifies successfully with 2 verified items and zero errors, the mod.rs file contains only trait declarations with pre-written specs, and there's no use of admit, assume, or external_body anywhere in scope. The full sys crate verifies cleanly. Now I need to write the bugs.md file for the proving phase — since no bugs were found, I'll document "None" with brief reasoning and check if that file already exists.
+[RESULT ✓] bash: does not exist at top level
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/bugs.md with 2110 characters
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Final confirmation of the module-scoped verification:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && timeout 600 make verify-sys MODULE=sy
+
+[THINKING] Running a final module verification to confirm the CLEAN status and ensure source integrity hasn't been compromised.
