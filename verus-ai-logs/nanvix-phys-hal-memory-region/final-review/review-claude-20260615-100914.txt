@@ -798,3 +798,117 @@ Guardrails: zero matches in region files. Now let me verify the `clone_address` 
 src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:44:    fn clone_address(&self) -> Self {
 src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:45:        PageTableAligned(self.0.clone_address())
 src/kernel/src/hal/m...
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=19 admit=12 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unveri...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Checking AST mismatch
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '==cfg lines in region.rs==' && rg -n "#\[cfg\(" src/kernel/src/hal/mem/types/re
+[TOOL] rg: clone_address
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs:257:    fn clone_address(&self) -> Self {
+/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs:88:    fn clone_address(&self) -> Self;
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs:277:   ...
+[RESULT ✓] bash: ==cfg lines in region.rs==
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+==ast diff MemoryRegion::start==
+## MemoryRegion::start (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,3 @@
+     pub fn start(&self) -> T {
+-        self.start.clone()
++        self.start.clone_address()
+     }...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me inspect the `clone_address` trait contract and impls.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== sys/mm/address/mod.rs around 80-90 ==="; sed -n '78,95p' src/libs/sys/src/s
+[RESULT ✓] bash: === sys/mm/address/mod.rs around 80-90 ===
+    /// (which has no Verus contract) cannot provide.
+    ///
+    /// # Returns
+    ///
+    /// A copy of the target [`Address`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            result@ == self@,
+    )]
+    fn clone_address(&self) -> Self;
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/page.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/aligned/pgtab.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 240.     }
+241. 
+242.     ///
+243.     /// # Description
+244.     ///
+245.     /// Checks if the target [`PhysicalAddress`] is aligned to the provided `alignment`.
+246.     ///
+247.     /// # Parameters
+248.     ///
+249.     /// - `alignment`: The alignment to check.
+250.     ///
+251.     /// # Retu...
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 40. impl<T: Address> PageAligned<T> {
+41.     /// Constructs a page address from an aligned virtual address.
+42.     #[verus_spec(ret =>
+43.         ensures
+44.             match ret {
+45.                 Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+46.                 Err(e) => !spec_ali...
+[RESULT ✓] view: 220.     }
+221. 
+222.     ///
+223.     /// # Description
+224.     ///
+225.     /// Checks if the target [`VirtualAddress`] is aligned to the provided `alignment`.
+226.     ///
+227.     /// # Parameters
+228.     ///
+229.     /// - `alignment`: The alignment to check.
+230.     ///
+231.     /// # Retur...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::mem::types::region
+[RESULT ✓] report_intent: Intent logged
