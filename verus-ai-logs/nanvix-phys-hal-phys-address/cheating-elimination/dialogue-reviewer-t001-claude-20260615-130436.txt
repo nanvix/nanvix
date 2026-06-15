@@ -737,3 +737,110 @@ Both defects fixed. Now full regression: verify, build, spec-drift, AST.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel 2>&1 | tail -25
 
 [THINKING] Both issues are resolved—the ExFrameNumber is now properly typed and the physical config gate count is zero. I should run the verification suite including make verify-kernel, build, spec-drift, and ast-consistency checks to ensure nothing regressed.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+verification results:: 37 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.65s
+
+=== Results ===
+  37 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== phys in detail ==="; grep -i "phys/address\|address/phys\|ExFrameNumber" verus-ai
+
+[THINKING] The verification passed with 37 checks and no errors—cfg_gate dropped from 9 to 8 after removing the redundant physical gate, while external_body remains at 25 but ExFrameNumber is now correctly classified as external_type_spec instead of eb_fn. I'm checking whether the detail no longer flags the physical gate as a blocking external_body and confirming ExFrameNumber shows up as external_type_spec, though the global "CHEATING_DETECTED" status still flags the approved external_body=25 and cfg_gate=8 across the whole-kernel scan.
+[RESULT ✓] bash: === phys in detail ===
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+exit grep: 0
+=== any hal/mem/types/address/phys entry? ===
+    - hal/mem/types/address/phys.spec.rs:40 ExFrameNumber (struct): external_type_spec
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+ExFrameNumber now correctly classified as `external_type_spec` and documented. Final regression checks:
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec drift ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py 
+
+[THINKING] With `ExFrameNumber` now properly configured as an external type spec and documented, I need to run the build, spec-drift, and ast-consistency checks to make sure nothing broke.
+[RESULT ✓] bash: === spec drift ===
+- **Contract drift (⚠ review required): 0**
+**✅ No contract drift detected.**
+=== ast consistency ===
+⚠️  2 mismatched (14 functions match)
+<shellId: 38 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ./z build -- all 2>&1 | tail -8
+
+[THINKING] The spec drift check shows zero changes, and the AST consistency still has the two pre-approved rewrites as expected—the fix only touched verification code, not the execution logic itself. The exit code 1 from ast_consistency is just flagging the expected mismatches, which is fine. Now moving on to the build.
+[RESULT ✓] bash: ================================================================================
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+==============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+All checks pass. Recording resolution.
+[TOOL] sql: {'description': 'Update verdicts to fixed', 'query': "UPDATE check_items SET ver
+
+[THINKING] Now I'm updating the SQL tracking to mark the issue as fixed and writing the turn_002 documentation, then setting the stop status to resolved.
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. UPDATE
+   1 row(s) updated.
+
+2. UPDATE
+   2 row(s) updated.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/turn_002_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/turn_002_driver.md with 3058 characters
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && printf 'RESOLVED\n' > verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialo
+[RESULT ✓] bash: RESOLVED
+cleaned temp
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+Review complete — **RESOLVED**.
+
+## Summary
+
+As strict reviewer I verified all 12 cheating-elimination checklist items for `hal-phys-address`. Ten passed immediately; two failed with a shared root cause, which I fixed and re-verified.
+
+**FAILs found (Turn 1):**
+- **#5 cfg-gated exec** — `phys.spec.rs:21` had `#[cfg(verus_keep_ghost)]` gating `verus! {` (a counted violation; redundant since the file is already `include!`d under that cfg).
+- **#6/#9 external_body** — that same cfg gate perturbed the tree-sitter AST, misclassifying `ExFrameNumber` as a *blocking* `external_body on user fn` (`eb_fn=1`); it was also undocumented in `tcb-allowed.md`.
+
+**Fixes applied + verified (Turn 2):**
+1. Removed the redundant cfg gate → phys cfg_gate count `0`; `eb_fn` `1→0`; `ExFrameNumber` now correctly reported as `external_type_spec`.
+2. Documented `ExFrameNumber` + the six `assume_specification` boundaries in `tcb-allowed.md`.
+
+**Regression (all green):** `make verify-kernel` → 37 verified, 0 errors, `assume=0 admit=0 trusted=0 no_decreases=0`; `./z build -- all` → 0 errors/warnings; spec-drift `0`; AST consistency unchanged (only the 2 pre-approved equivalent rewrites).
+
+Wrote `turn_001_driver.md`, `turn_002_driver.md`, and `STOP` (`RESOLVED`).
+
+
+=== Session End ===
+Session: 5724e111-87bc-4302-bcb0-043acdbe8ab4
+Duration: 563.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue-reviewer-t001-claude-20260615-130436.jsonl
