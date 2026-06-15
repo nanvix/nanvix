@@ -702,7 +702,7 @@ pub fn chdir(path: &str) -> Result<(), Fat32Error> {
     // always valid), then persist it so it survives context switches and is inherited by forked
     // children.
     let cwd: String = crate::fd::current_cwd();
-    let normalized: String = state::with_vfs(|vfs| {
+    let normalized: String = state::with_vfs_mut(|vfs| {
         let normalized: String = vfs.normalize_path(path, &cwd)?;
         if !normalized.is_empty() && normalized != "/" {
             let _ = vfs.resolve(&normalized, &cwd)?;
@@ -747,7 +747,7 @@ pub fn normalize(path: &str) -> Result<String, Fat32Error> {
 /// A tuple of `(mount_index, relative_path)`.
 fn resolve_path(path: &str) -> Result<(usize, String), Fat32Error> {
     let cwd: String = crate::fd::current_cwd();
-    state::with_vfs(|vfs| vfs.resolve(path, &cwd))
+    state::with_vfs_mut(|vfs| vfs.resolve(path, &cwd))
 }
 
 /// Returns [`Fat32Error::ReadOnly`] if the mount at `mount_idx` is read-only.
