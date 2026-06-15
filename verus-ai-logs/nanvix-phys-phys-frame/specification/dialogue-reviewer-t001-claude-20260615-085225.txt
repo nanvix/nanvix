@@ -135,3 +135,451 @@ Turn 0
 10. use vstd::arithmetic::mul::{
 11.     lemma_mul_is_commutative,
 12.     lem...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy && cat verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>&1 | head -80
+
+[THINKING] The verification checks out, but the cheating detector is flagging some metrics at the crate level that I need to investigate further. I should dive into the frame.rs module specifically and examine both the source code and the detailed cheating report to understand what's happening there.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+[RESULT ✓] bash: - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+    - mm/phys/frame.rs:137 alloc: external_body
+    - mm/phys/frame.rs:210 alloc_contiguous: external_body
+    - mm/phys/frame.rs:290 free: external_body
+    - mm/phys/frame.rs:368 share: external_body
+    - mm/phys/frame.rs:428 refc...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noticing a significant issue in the frame.rs module—there are eleven functions marked with `external_body`, meaning they have specifications but their implementations aren't actually verified. This is a key violation of the verification checklist. Let me examine the full file to understand the module's structure and scope.
+[RESULT ✓] view: 103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+113.     /// returned inst...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 300.         if self.refcount[frame_number] == 0 {
+301.             let reason: &str = "frame is already free";
+302.             error!("{reason} (frame={frame:?})");
+303.             return Err(Error::new(ErrorCode::BadAddress, reason));
+304.         }
+305. 
+306.         self.refcount[frame_number]...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 540.         ensures
+541.             final(self).inv(),
+542.             ({
+543.                 let start_frame_number = region@.start / spec_page_size();
+544.                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+545.                 let frame_numbers = vstd::s...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 720.             *slot = 1;
+721.         }
+722.     }
+723. 
+724.     // SAFETY: single-threaded boot; no other reference to `INSTANCE` exists.
+725.     unsafe { INSTANCE.write(Inner { bitmap, refcount }) };
+726.     INSTANCE_INIT.store(true, ORDER);
+727.     Ok(())
+728. }
+729. 
+730. /// Allocate a f...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 950.     instance().share(frame)
+951. }
+952. 
+953. /// Returns the current reference count of an already-allocated frame.
+954. #[verus_spec(result =>
+955.     requires
+956.         phys_view().initialized,
+957.         phys_view().inv(),
+958.         frame.inv(),
+959.     ensures
+960.         phys_v...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -R verus-ai-logs/nanvix-phys-phys-frame/ 2>&1 | head -60; echo "---PHYS MOD---"; ls src/
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I'm reviewing the supporting files—caller analysis, view design, bugs documentation, and the spec-completeness and function coverage tools—to get a complete picture of what's in the verus-ai-logs directory.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysMemoryManager - Specifications
+5. //
+6. // This file contains specification functions and view types.
+7. 
+8. verus! {
+9. 
+10. use crate::hal::mem::spec_page_size;
+11. use vstd::map::*;
+12. 
+13. pub unin...
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-phys-frame/:
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+find_callers_output.md
+pipeline.log
+pipeline_state.json
+proving
+reproducers
+rollback_proving_to_specification_1.md
+rollback_specification_to_view-design_1.md
+specification
+usage.jsonl
+verificatio...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "===== bugs.md =====" && cat verus-ai-logs/nanvix-phys-phys-frame/bugs.md 2>&1 | head 
+
+[THINKING] I need to review the key documentation files—caller_analysis.md, view_design.md, and bugs.md—along with the verification plan to get a clear picture of what's actually in scope for the checklist items.
+[RESULT ✓] bash: ===== bugs.md =====
+# Bugs / specification limitations — `src/kernel/src/mm/phys/frame.rs`
+
+No *code* bugs were found (no overflow, off-by-one, missing bounds check, or
+unchecked cast). One **specification-architecture limitation** is recorded below;
+it constrains what the mutating shims can soundly...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -name "fn_coverage.py" 2>/dev/null; find . -name "tcb-allowed.md" 2>/dev/null; ls ve
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== view_design.md ===" && sed -n '1,80p' verus-ai-logs/nanvix-phys-phys-frame/view_d
+
+[THINKING] I'm realizing there's a tension here: in the specification phase, `external_body` on the module's own functions isn't allowed—these should be verified, not treated as external dependencies. The checklist is catching that these Inner functions are marked as unverified when they shouldn't be.
+
+I need to work through the reviewer checklist systematically, checking the caller analysis and design docs, then run the coverage tool to see what's actually happening with these functions.
+[RESULT ✓] bash: === view_design.md ===
+# View Design: `mm::phys::frame`
+
+> **Re-run after rollback (specification → view-design, attempt 1/1).**
+> The previous design modeled the global frame-allocator singleton with an
+> **argument-free, uninterpreted constant** `phys_view() -> PhysMemView`. A
+> constant has the s...
+[RESULT ✓] bash: ./verus-ai-logs/tcb-allowed.md
+arch-paging-mod
+bump-allocator
+nanvix-phys-bump-allocator
+nanvix-phys-phys-frame
+nanvix-phys-phys-kframe
+nanvix-phys-phys-manager
+nanvix-phys-phys-mod
+nanvix-phys-phys-upool
+tcb-allowed.md
+verification-plan.json
+--- spec-completeness skill ---
+<shellId: 4 completed wit...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '80,220p' verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+
+[THINKING] I'm noticing a critical disconnect: the view_design.md file (post-rollback) specifies that `PhysAuth` should be a tracked token to replace the zero-ary `phys_view()` constant, enabling post-state effects to be expressed. However, the actual implementation in mod.spec.rs still declares `phys_view()` as an uninterpreted spec function constant, and bugs.md documents the weakened pre-state specs as a temporary workaround for this gap.
+
+This is the core issue flagged in both the "View consistency" and "No specs weakened" checklist items. The design explicitly prescribes `PhysAuth` to avoid weakening the shims, but the code took the opposite path—keeping the constant and relaxing the specs instead. I need to check caller_analysis.md to see what callers actually expect versus what the weakened specs now allow, and review the rest of view_design.md for the full `PhysAuth` specification.
+[RESULT ✓] bash: ///
+/// Its abstract value is the current `PhysMemView`. Exactly one `PhysAuth`
+/// exists (minted by `init`, thereafter held by `PhysMemoryManager`); holding
+/// `&mut PhysAuth` is the right to mutate the singleton and, crucially, exposes
+/// BOTH the pre-state `old(auth)@` and the post-state `auth...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '220,400p' verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+[RESULT ✓] bash: PhysMemView {
+                frames: FrameAllocView {
+                    refcounts: self.frames.refcounts.insert(addr, self.frames.refcounts[addr] - 1),
+                    ..self.frames
+                },
+                ..self
+            }
+        }
+    }
+}
+```
+
+Each transition rewrites only th...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,140p' verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+
+[THINKING] Looking at the view_design.md specification, I need to replace the zero-ary `phys_view()` constant with a `PhysAuth` tracked token, and ensure all the mutating operations—`alloc`, `alloc_contiguous`, `book`, `alloc_range`, and `share`—enforce strong post-state contracts that track how the authorization state evolves with each allocation.
+
+But when I examine the actual implementation, I see the code still declares `phys_view()` as an uninterpreted spec function, `PhysAuth` doesn't exist anywhere, and the mutating shims have been weakened to only pre-state facts rather than maintaining the post-state invariants the design prescribes. The manager's external body axioms for allocation functions are still present too, which the design says should be derived from the threaded shims instead.
+
+The bugs.md file even acknowledges this gap—it notes that expressing post-state membership requires either a state-indexed `phys_view(state)` or a tracked ghost token, and calls it a subsystem-wide redesign deferred to a later phase. Yet view_design.md was explicitly re-run after the rollback to mandate exactly this PhysAuth fix, so the implementation appears to have ignored that directive and reverted to the weakened approach the rollback was meant to correct.
+
+This is the core contradiction: the view consistency checklist fails because the specs reference a `PhysAuth` token that doesn't exist in the code, and the reservation shims were weakened to pre-state facts, directly contradicting what the design specifies.
+
+Now I need to step back and think carefully about scope. During the specification phase, having external bodies on the module's own functions is normal—specs get written with requires and ensures, and bodies get verified later in the proving phase. The checklist flags cheating, but the real question for this review is whether the specs themselves are correct, strong, and aligned with the view design and caller expectations. The caller analysis would show whether the weakened specs actually provide what callers need—specifically, post-state facts about frame allocation and refcount. That's where the real failure likely shows up.
+[RESULT ✓] bash: # Caller Analysis: `mm::phys::frame`
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+(raw output of `find_callers_lsp.py` for `src/kernel/src/mm/phys/frame.rs`).
+
+Summary from the script: 19 exec functions (10 `pub(super)` / trait-pub, 9
+private), 1 type (`Inner...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== PhysAuth references in code ==="; grep -rn "PhysAuth" src/ 2>/dev/null | head; ec
+
+[THINKING] The issue is that the current weakened specification for `alloc` only guarantees the frame is in `free_frames` beforehand, but doesn't ensure it ends up in `allocated_frames` with a refcount of 1 — which is what callers actually depend on. The same problem applies to `book`.
+
+For `alloc_range`, callers expect every frame in the region to be reserved and in `allocated_frames`, but the spec only provides that they were in `free_frames` initially. All four functions fail the caller coverage check because they're using the weak approach that the design explicitly rejected in favor of PhysAuth strong post-state contracts.
+
+I need to verify that manager.rs still contains the external_body axioms that should be removed and confirm PhysAuth isn't present anywhere in the codebase.
+[RESULT ✓] bash: === PhysAuth references in code ===
+(none = not implemented)
+
+=== phys_view constant still present ===
+src/kernel/src/mm/phys/mod.spec.rs:171:pub uninterp spec fn phys_view() -> PhysMemView;
+
+=== manager alloc axioms (should be deleted per design) ===
+98:    #[verus_verify(external_body)]
+177:    #[...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "frame.rs\|manager.rs\|alloc_user_frame\|alloc_kernel_frame\|alloc_many\|instance\|
+
+[THINKING] The implementation isn't aligned with the post-rollback view_design.md—PhysAuth is missing, phys_view() is still a constant, and the manager allocation functions remain as external_body when they should be deleted and derived from threaded shims instead. Let me check tcb-allowed.md to understand what external_body is actually permitted.
+[RESULT ✓] bash: 17:  caller-relevant guarantee: allocator stays initialized and well-formed.
+21:  `lemma_book_mmio_books_tracked`. `ensures` keeps allocator initialized and
+23:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+24:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+25:- `src/kernel/sr...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '39,105p' verus-ai-logs/tcb-allowed.md
+[RESULT ✓] bash: ## Allowed `external_body` — frame allocator core (`frame.rs`)
+
+`frame.rs` is now the proof target. Two layers form the trust boundary of the
+global frame-allocator singleton; everything else in the module (the `frame::*`
+free-function shims) is **body-verified** against these contracts.
+
+### 1. The...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== rollback spec->view-design ==="; sed -n '1,60p' verus-ai-logs/nanvix-phys-phys-fr
+
+[THINKING] I'm noticing a discrepancy between the documentation and the actual implementation. The tcb-allowed.md file describes the shims as "body-verified" with the `Inner::*` types forming the trust boundary, and it claims the mutating shims carry a deferred `proof! { admit(); }`. However, looking at the code itself, only `free` actually has an `admit()` call, while the mutating operations like `alloc`, `alloc_contiguous`, `book`, `alloc_range`, and `share` have neither `admit()` nor `external_body` annotations.
+
+Checking the frame.rs file more carefully, I can see `external_body` markers on the `Inner::*` methods at specific line numbers (137 for alloc, 210 for alloc_contiguous, 290 for free, and so on through init at 689), which totals 10 in mm/phys/frame.rs plus one in hal's address frame.rs. These are legitimately TCB-allowed since the `Inner::*` methods can't have their bodies translated due to error and architecture-specific newtypes. The mutating shims without `external_body` are instead verified against weakened specifications based only on pre-state facts, which aligns with the more recent reconciliation in bugs.md.
+
+The real issue is that the specifications themselves were weakened — contradicting what view_design.md mandates after the rollback. This creates three critical failures: the view consistency breaks because PhysAuth isn't implemented and phys_view() remains constant, the specs were weakened when they shouldn't be, and callers of alloc/book/alloc_range/alloc_contiguous don't get the post-state facts they need. The manager external_body axioms that the design explicitly says to remove are still present.
+
+The bugs.md justifies keeping weakened specs as out-of-scope, but view_design.md was specifically re-run after the rollback to mandate exactly this fix, presenting PhysAuth as the in-scope solution. Per the rules, justification isn't a fix — the authoritative design says to strengthen the specs, so that's what should happen.
+
+I need to check the rollback report to confirm this is airtight.
+[RESULT ✓] bash: === rollback spec->view-design ===
+ROLLBACK
+
+## Root Cause
+
+The View for `mm::phys` models the global frame-allocator singleton through
+
+    pub uninterp spec fn phys_view() -> PhysMemView;        // mod.spec.rs:171
+
+— an **argument-free, uninterpreted constant**. A constant has the same value at
+ev...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs
+
+[THINKING] The rollback report makes it clear: the weakening directly contradicts what callers expect, the actual guarantee got moved into external body axioms that aren't approved in tcb-allowed.md, and the proper fix requires implementing PhysAu.
+
+The current code still has those weakened specs and the manager external body axioms—it never actually implemented the PhysAuth fix the rollback mandated. The verification only passes because the specs are weak. This is a definitive failure across multiple checklist items. The reviewer's verdict is FAIL, and the required fix is to implement the PhysAuth tracked-token mechanism per view_design.md, restore the strong post-state contracts on the reservation shims, and remove those manager external body alloc axioms.
+
+I have the decisive evidence now to write a thorough review. Let me verify the manager.rs alloc_user_frame spec to confirm it contains that relocated strong guarantee.
+[RESULT ✓] view: 249.     #[verus_verify(external_body)]
+250.     #[verus_spec(result =>
+251.         requires
+252.             phys_view().initialized,
+253.             phys_view().inv(),
+254.         ensures
+255.             phys_view().inv(),
+256.             phys_view().initialized,
+257.             match result...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+I have conclusive evidence. Let me verify the build target and then write the review.
+[TOOL] report_intent: Writing strict review verdict
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "Err(_) => true\|Err(_) =>" src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm seeing that `manager::alloc_user_frame` has an axiom asserting that allocated frames are contained in `phys_view()` after execution, but this is exactly what the rollback report flags as problematic — the guarantee shouldn't be relocated into an external body axiom outside the tcb-allowed list. The axiom makes a post-state claim about `phys_view()` that reproducer 02 has already shown to be provably false.
+
+Now I'm going through the checklist systematically. Specification coverage looks mostly good — the free_count shim does have a spec at line 802-814, so all public shims are covered. But caller coverage fails because alloc/alloc_contiguous/book/alloc_range only deliver pre-state facts while callers need post-state guarantees like allocated_frames membership and refcount==1. View consistency also fails since the code keeps `phys_view()` constant instead of tracking the PhysAuth token that view_design.md mandates. I'm finding multiple tautological ensures across alloc, alloc_contiguous, manager::alloc_user_frame, and init where the Err branch just returns true. There's also partial subsumption with `phys_view().initialized` repeated alongside the invariant.
+
+Error paths are weak across the board, loop invariants are either N/A or pass since the verified shims have no loops, and specs aren't written for callers to actually use — the weak pre-state specs force manager to be an external_body axiom. The nondeterminism here isn't intentional but forced by weakening. On the cheating front, there's one admit() in the free shim at line 854 and ten external_body declarations in frame.rs for Inner methods, which are TCB-allowed, but the real problem is that manager's external_body axioms are carrying relocated guarantees that shouldn't be outside the TCB.
+
+The core issues driving everything are caller coverage, view consistency, specs weakened from post-state to pre-state, and the relocated axioms plus admit in the manager. All of these trace back to one root cause: the PhysAuth mechanism from view_design.md was never implemented, so the shim contracts stayed weak and the manager axioms had to compensate. I need to walk through the full checklist on this first pass, flag all the failures, then focus the fix request on the first failing item while making clear that view consistency is the central problem underlying everything else.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 131:                Err(_) => {
+205:                Err(_) => {
+284:                Err(_) => {
+358:                Err(_) => {
+423:                Err(_) => {
+475:                Err(_) => {
+558:                    Err(_) => {
+686:            Err(_) => true,
+749:            Err(_) => true,
+786:    ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md
+
+[THINKING] I'm noticing a discrepancy in how the error cases are handled across these shims. The verified shims at lines 749 and 786 have trivial `Err => true` patterns, while the underlying `Inner::*` methods at lines 131 and 205 contain actual error handling logic. The caller analysis suggests that when allocation fails, the allocator should remain unchanged and initialized, but the shim's error arm only asserts the invariant without capturing that semantic about the allocator's state.
+
+Since `phys_view()` is constant, the "unchanged" property is implicitly preserved, which makes the error arm less obviously wrong but still somewhat weak. I'll flag this as a secondary concern and move forward with writing the review.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md; echo 
+
+[THINKING] The file already exists from a previous run with multiple reviewer timestamps, so I need to check what's in it and overwrite it.
+[RESULT ✓] bash: 94 verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md
+---
+turn_001_driver.md
+turn_001_fixer.md
+turn_002_driver.md
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,40p' verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_002_driver.
+[RESULT ✓] bash: ## Turn 2: Verify Turn-1 fix (tautological/error-path ensures) → RESOLVED
+
+### Progress
+- Done (PASS/FIXED): all 17 checklist items (see verdict table).
+- Current: verified the fixer's Turn-1 changes to the 4 flagged Err arms.
+- Remaining: none.
+
+### Verification
+
+**Fixer's claim audited against act...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The existing turn files contain prior-round history. Let me understand the current state before deciding where to write.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== STOP/ROLLBACK files ==="; ls -la verus-ai-logs/nanvix-phys-phys-frame/specificati
+
+[THINKING] I'm seeing there's a complex review history here—the existing turn_001 already filed a rollback to view-design, and turn_002 marked all 17 items as resolved after fixes were applied. But there's no STOP file yet, and it looks like a new review cycle is starting.
+
+The real issue is that the code state doesn't match what view_design.md mandates. The PhysAuth design is documented there, but the actual implementation still uses the weakened phys_view() constant approach with compromised shims and manager axioms. Turn_002 claims everything passes, but it apparently didn't re-examine whether the code aligns with the view consistency requirements from the design document. The timestamps suggest multiple reviewer sessions, so I need to figure out whether turn_002 was from an earlier specification round or if there's a genuine inconsistency between what was marked resolved and what the code actually contains. I'm realizing the existing turn_001_driver.md is from a prior review cycle that already identified the same failure and triggered a rollback, but the code still hasn't been corrected—PhysAuth is still missing from the specification despite being required by the new view design. Since turn_001 and turn_002 already exist from that earlier process, overwriting them would destroy legitimate dialogue history, so the right move is to acknowledge that the current state remains FAIL and the prior rollback conclusion still stands.
+[RESULT ✓] bash: === STOP/ROLLBACK files ===
+ls: cannot access 'verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/STOP': No such file or directory
+verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/:
+total 20
+drwxrwxr-x 1 ruize ruize  106 Jun 15 08:52 .
+drwxrwxr-x 1 ruize ruize 1412 Jun 15 08:52 ....
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The timeline is clear: the rollback already happened, `view_design.md` was regenerated at 08:44 with the mandated `PhysAuth` design, `frame.rs` was touched at 08:50 — but `mod.spec.rs` (02:27) was never updated, so `PhysAuth` was never implemented. This is the fresh specification re-review. My FAIL finding stands. I'll overwrite turn_001_driver.md (as the prior reviewer did) with the current-round review, framed as a fix request to implement the already-designed PhysAuth (no new rollback needed).
+[TOOL] bash: cd /home/ruize/nanvix-phy && rm verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md && echo r
+
+[THINKING] I'm tracking the timeline of changes: the initial specification round resolved the Err arms issue, then at 08:33 there was a review that led to a rollback from the specification back to the view-design approach, and now at 08:44 the view-design file has been regenerated with PhysAuth included after that rollback.
+
+But here's the problem: frame.rs was touched at 08:50, yet mod.spec.rs hasn't been updated since 02:27 and still contains the old phys_view() constant without PhysAuth. So the new design mandate from the regenerated view-design.md was never actually implemented in the code. Now I'm launching as the reviewer for this fresh specification round, and the code still doesn't have PhysAuth, which means the FAIL verdict is justified. The prior turn_001_driver.md from 08:33 already failed and triggered the rollback, but now that view-design has re-run with the new design, this is a legitimate fresh specification attempt that should overwrite the old turn_001_driver.md—though there's an odd inconsistency where turn_002 from 07:19 predates the turn_001 from 08:33, suggesting the dialogue files got out of sync during the rollback cycle.
+
+Since the view design is now correct and already mandates PhysAuth, I shouldn't be requesting another rollback to view-design. Instead, my review should frame this as a FAIL with a fix request directed at the specification phase: implement the PhysAuth pattern that's already been designed. That's what my drafted review does, so I just need to refine the header to clarify this is the post-rerun specification review and then overwrite turn_001_driver.md.
+[RESULT ✓] bash: removed
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue/turn_001_driver.md with 8934 characters
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Review complete. I walked the entire checklist with tool-backed evidence and wrote the verdict to `turn_001_driver.md`. **Verdict: FAIL** — no STOP file created.
+
+**Root cause:** The regenerated `view_design.md` (08:44) mandates a `tracked PhysAuth` carrier to replace the 0-ary `phys_view()` constant, but the spec code was never realigned — `mod.spec.rs` (untouched since 02:27) still declares the constant, `PhysAuth` doesn't exist anywhere in `src/`, and the reservation shims keep the weakened pre-state specs.
+
+**Per-item:**
+- PASS: 1, 7, 8, 10, 12, 15, 16, 17
+- FAIL: 2 (caller coverage), 3 (view consistency — `PhysAuth` absent), 4/6 (tautological `Err ⇒ true` arms), 9 (specs not caller-usable), 13 (relocated `manager::alloc_*` `external_body` axioms not in `tcb-allowed.md` + `free` `admit`), 14 (specs weakened)
+- Advisory FAIL: 11
+
+**Fix requested:** Implement `PhysAuth` per `view_design.md` (mod.spec.rs token + transitions), thread `Tracked(&mut PhysAuth)` through the mutating shims to restore strong post-state contracts with meaningful `Err` arms, delete the four `manager` alloc axioms, remove the `free` `admit()`, and update `bugs.md`. Verify: `make verify-kernel` must show 0 errors, `admit=0` for frame.rs, no `CHEATING_DETECTED`.
+
+`make verify-kernel` currently passes (exit 0) only because the specs are weak — `status: CHEATING_DETECTED`.
+
+[THINKING] I've completed the full checklist review with tool verification for each item and written up the fix request. Since all items have been verified, I'm reconsidering whether to create the STOP file given the single-shot nature of this invocation.
+
+
+=== Session End ===
+Session: f744366b-58c3-4661-ad74-4e97bc6d7bc3
+Duration: 335.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/specification/dialogue-reviewer-t001-claude-20260615-085225.jsonl
