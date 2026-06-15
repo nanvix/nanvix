@@ -78,20 +78,28 @@ impl KernelFrame {
             },
     )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
-        let phys_addr: PageAligned<PhysicalAddress> =
-            PageAligned::from_raw_value(base.into_raw_value())?;
-        crate::mm::virt::identity_map_page(phys_addr)?;
+        // Ensure the frame is identity-mapped in the kernel address space so that
+        // Deref/DerefMut can safely access it. This lazily installs a page
+        // table entry if needed (page tables come from a BSS pool, so no recursive frame
+        // allocation occurs).
+        Self::map_frame(base)?;
 
         Ok(Self { base })
     }
 }
 
 // Exec-only helper: installs the identity mapping for `base` via `mm::virt::identity_map_page`.
-// Kept outside Verus (no `#[verus_verify]`) because `identity_map_page`'s precondition
-// `identity_map_view().inv()` is a global invariant of the not-yet-verified `mm::virt` module
-// that cannot be discharged from within `mm::phys`. Mirrors the `deref`/`clear` exec-only helpers
-// that also reach into `mm::virt`. Carries no `external_body` attribute, so it is not part of the
-// trusted spec surface — it has no contract Verus relies on.
+// VERUS REWRITE: extracted from the body of `KernelFrame::new` so the pure frame-wrap can be
+// machine-verified while the cross-module page-table side effect is isolated behind a single,
+// empty trusted contract (`assume_specification[ KernelFrame::map_frame ]` in kframe.spec.rs,
+// ledgered in verus-ai-logs/tcb-allowed.md). Inlining the side effect back into the verified
+// `new` is impossible: (1) `identity_map_page` requires `identity_map_view().inv()`, an
+// `uninterp spec fn` in the PRIVATE `mod identity_map` that is not re-exported and therefore
+// cannot even be NAMED from `mm::phys`; (2) `PageAligned::from_raw_value` is external and would
+// itself need an `assume_specification`; (3) the `error!` logging macros fail to verify
+// ("Unsupported constant type") and would require cfg-gated exec. Option A thus multiplies
+// trusted surface and still cannot discharge the precondition; this extraction trusts strictly
+// less. Kept outside Verus (no `#[verus_verify]`); carries no `external_body`.
 impl KernelFrame {
     fn map_frame(base: FrameAddress) -> Result<(), Error> {
         let phys_addr: PageAligned<PhysicalAddress> =

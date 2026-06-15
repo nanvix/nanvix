@@ -100,3 +100,135 @@ Let me try a cleaner approach instead: strip out the error logging closures enti
 Turn 6
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 900 make verify-ke
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+  --> src/kern...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Option A requires yet another trusted contract (`PageAligned::from_raw_value`). Let me confirm `identity_map_view` isn't even nameable from `mm::phys`, then save a minimal reproducer.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -rn "pub.*identity_map_view\|pub(crate).*identity_map_view\|identity_m
+
+[THINKING] I'm running into another blocker: `PageAligned::from_raw_value` isn't specified in the tcb-allowed list, even though it's a trait method on `PageAligned<PhysicalAddress>`. The list only covers `into_raw_value` and `Deref::deref`, so verifying the `new` function body would require yet another `assume_specification` annotation.
+
+This actually makes option A worse than the original approach—I'd need multiple trusted contracts just to get past the external function calls, plus I still can't even name the `identity_map_view().inv()` invariant that `identity_map_page` requires. The cleanest evidence is that calling `identity_map_page` from verified code hits these barriers at multiple points, making a minimal reproducer difficult to construct without hitting the same walls.
+[RESULT ✓] bash: src/kernel/src/mm/virt/identity_map.spec.rs:36:pub uninterp spec fn identity_map_view() -> IdentityMapView;
+=== is it re-exported anywhere reachable from mm::phys? ===
+src/kernel/src/mm/phys/kframe.rs:66:    // not-yet-verified `mm::virt` layer, whose global `identity_map_view().inv()` precondition
+...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/virt/mod.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Confirmed: `mod identity_map` is private and `identity_map_view` is not re-exported — it cannot be named from `mm::phys`. Option A is impossible. Now restore the working state and execute option B.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cp /tmp/kframe.rs.bak src/kernel/src/mm/phys/kframe.rs && cp /tmp/kframe.sp
+
+[THINKING] The `identity_map` module is private and only exports a few specific items, so `identity_map_view` isn't accessible from outside, which means I can't use it in a precondition on `new` or satisfy it. I'm finding strong evidence that option A won't work—the `error!` macro verification is already failing.
+
+Option A would require multiple workarounds: cfg-gating the macro (which feels like cheating), adding another external assumption for `PageAligned::from_raw_value`, and still wouldn't discharge the precondition since `identity_map_view().inv()` is uninterpreted and lives in a private module. This converts one clean contract into several messy ones. Option B is the sanctioned approach, so I'm restoring the working state from backups and moving forward with that instead.
+[RESULT ✓] bash: restored
+    ///
+    /// - `base`: Frame address.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+    ///
+    // Wrapping a frame produces a handle whose abstract address is the same physical frame
+    // (`kf@ == base@`...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Working state restored. Now add the `// VERUS REWRITE:` comment at the extraction site and update `tcb-allowed.md`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now update `tcb-allowed.md`. Let me find the stale `KernelFrame::new` entry.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "KernelFrame\|kframe\|Cross-module\|external_body\|assume_specifica
+[RESULT ✓] bash: 3:Any `external_body` outside this list must be removed.
+5:## Allowed `external_body`
+13:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref`
+14:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::deref_mut`
+15:- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::clear`
+25:## `external_body` introduc...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 83. ## Cross-module dependencies marked `external_body` (eliminated when their module is verified)
+84. 
+85. - `src/kernel/src/mm/phys/frame.rs::init` — also listed under skip; callable from verified `init`.
+86. - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — no specs yet; opaque cal...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me view the `assume_specification` section to add the `map_frame` entry appropriately.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+
+[THINKING] I'm removing the outdated `KernelFrame::new` entry and adding a `map_frame` entry to the `assume_specification` section.
+[RESULT ✓] view: 141. ## `assume_specification` for not-yet-verified callees (eliminated when their module is verified)
+142. 
+143. These `assume_specification` (and one `external_type_specification`) declarations live in
+144. `src/kernel/src/mm/phys/frame.spec.rs`. They give trusted contracts to callees of the (now
+...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+
+[THINKING] I need to clean up the stale `KernelFrame::new` entry and add a new section for `map_frame` under the cross-module section, since it's a kframe-specific assume_specification at the mm::virt boundary.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The entry sits in the cross-module section. Let me update that section header to cover both `external_body` and the `assume_specification` trust kinds, since it now hosts both.
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+
+[THINKING] I'm realizing the map_frame entry doesn't belong under the external_body section since it's actually an assume_specification, so I should move it to the correct section for consistency.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Now verify: confirm stale entry is gone, new entry present, then run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== KernelFrame::new stale entry (should be 0) ==="; grep -c "KernelF
+[RESULT ✓] bash: === KernelFrame::new stale entry (should be 0) ===
+1
+=== map_frame entry (should be >=1) ===
+2
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "KernelFrame::new" verus-ai-logs/tcb-allowed.md
+
+[THINKING] I still need to track down one remaining `KernelFrame::new` reference.
+[RESULT ✓] bash: 93:  identity-mapping side effect extracted from `KernelFrame::new`. Declared in
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+That's just descriptive text in the new `map_frame` entry, not a ledger entry. The stale entry is gone. Now run module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 900 make verify-ke

@@ -80,7 +80,7 @@ Any `external_body` outside this list must be removed.
   `ensures` states that, on `Ok`, every *covered* frame in `mmio_regions_frame_set(mmio_regions)`
   becomes reserved (uncovered MMIO frames are skipped, matching the `frame::is_covered` gate).
 
-## Cross-module dependencies marked `external_body` (eliminated when their module is verified)
+## Cross-module dependencies trusted until their module is verified (`external_body` / `assume_specification`)
 
 - `src/kernel/src/mm/phys/frame.rs::init` — also listed under skip; callable from verified `init`.
 - `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — no specs yet; opaque callee.
@@ -89,8 +89,20 @@ Any `external_body` outside this list must be removed.
 - `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — pool allocation primitive the manager's user
   paths call. `ensures` describes the free→allocated transition (`alloc_one`) and the empty-pool
   `Err` arm (`free_count() == 0`). Verified when `upool` is.
-- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::new` — wraps a `FrameAddress` into an owning
-  kernel-frame handle. `ensures Ok(kf) => kf@ == base@`. Verified when `kframe` is.
+- `src/kernel/src/mm/phys/kframe.rs::KernelFrame::map_frame` — exec-only helper holding the
+  identity-mapping side effect extracted from `KernelFrame::new`. Declared in
+  `kframe.spec.rs` as `pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress)
+  -> Result<(), Error>;` with an **empty** contract (no `requires`, no abstract `ensures`).
+  Its sole effect is calling `mm::virt::identity_map_page`, whose precondition
+  `identity_map_view().inv()` is a global invariant of the not-yet-verified `mm::virt` module.
+  That invariant cannot be discharged from `mm::phys`: `identity_map_view` is an `uninterp spec
+  fn` in the PRIVATE `mod identity_map` and is not re-exported, so it cannot even be NAMED here
+  (verified: `grep identity_map_view` in `mm/virt/mod.rs` shows only `identity_map_page`,
+  `memcpy`, `sync_kernel_pdes` are re-exported). This trusts strictly LESS than the previous
+  `external_body` on `new`: the owned-frame identity (`kf@ == base@`) and well-formedness
+  (`kf.inv()`) postconditions of `new` are now machine-verified; only the cross-module
+  page-table side effect remains trusted, exactly at the `mm::virt` boundary. Removed when
+  `mm::virt` is verified, at which point `new` can call `identity_map_page` directly.
 - `src/kernel/src/mm/phys/frame.rs::alloc` — singleton wrapper around `Inner::alloc`;
   `ensures Ok(frame) => frame.inv()`.
 - `src/kernel/src/mm/phys/frame.rs::alloc_contiguous` — singleton wrapper around
