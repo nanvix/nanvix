@@ -448,3 +448,25 @@ No admits or assumes anywhere in pte. The proofs are complete. Let me force a fr
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; touch src/libs/arch/src/x86/mem/paging/pte.rs src/libs/arch/src/x86/mem/paging/pte.spec
 
 [THINKING] I need to verify that the proofs are actually passing without relying on cached results. Let me force a fresh compilation by touching the source file to invalidate any stale cache and ensure the verification genuinely succeeds.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  6 verified
+  0 errors
+  Exit code : 0
+  Global: assume=0 external_body=3 admit=0 trusted=0 cfg_gate=2
+  Unverified functions:
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=3 admi...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Fresh verification: **6 verified, 0 errors, exit 0, admit=0, assume=0** for the pte module. The `CHEATING_DETECTED` status comes solely from out-of-scope items: `external_body` on hardware/MMIO TCB functions in `mod.rs` (invlpg) and `table.rs` (read/write), plus the mandatory `#[cfg(verus_keep_ghost)] include!` guards (identical to the verified pde sibling). None are in the pte module.
+
+Let me record the bugs file (none found) and run the full verify to confirm no regressions.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/bugs.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; timeout 600 make verify-arch 2>&1 | grep -iE "exit code|admit|errors|verified|status:|m
+
+[THINKING] The verification passed cleanly with 6 verified items covering the target exec functions and their associated View/spec functions, but the CHEATING_DETECTED status is flagged due to external dependencies—the invlpg instruction in mod.rs and the read/write operations in table.rs are hardware TCB and MMIO functions respectively, and there are a couple of configuration gates involved as well.
+
+Since my task scope is strictly the 4 functions in the pte module itself, and those verify with zero errors, zero admits, and zero assumes, the cheating flags from other modules are out of scope. Now I need to create the bugs.md file documenting that no bugs were found, then run the full verification suite to confirm there are no regressions.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/bugs.md with 640 characters
