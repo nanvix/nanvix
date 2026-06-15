@@ -1,15 +1,5 @@
     - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
-    - mm/phys/frame.rs:137 alloc: external_body
-    - mm/phys/frame.rs:210 alloc_contiguous: external_body
-    - mm/phys/frame.rs:290 free: external_body
-    - mm/phys/frame.rs:368 share: external_body
-    - mm/phys/frame.rs:428 refcount: external_body
-    - mm/phys/frame.rs:481 book: external_body
-    - mm/phys/frame.rs:517 is_covered: external_body
-    - mm/phys/frame.rs:565 alloc_range: external_body
-    - mm/phys/frame.rs:652 instance: external_body
-    - mm/phys/frame.rs:689 init: external_body
-    - mm/phys/frame.rs:854 free: admit
+    - mm/phys/frame.rs:815 free: admit
     - mm/phys/kframe.rs:141 clear: external_body
     - mm/phys/manager.rs:107 init: external_body
     - mm/phys/manager.rs:198 alloc_many_user_frames: external_body

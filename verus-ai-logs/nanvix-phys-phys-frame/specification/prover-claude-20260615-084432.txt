@@ -1,0 +1,486 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T08:44:32.950289
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
+
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+Source file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+Spec file:  /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-kernel` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the skills and context files to understand the methodology and requirements.
+[TOOL] skill: spec-design
+[TOOL] report_intent: Reading skills and context
+
+[THINKING] I'm starting by loading the relevant skills and context files to understand what I'm working with.
+[RESULT ✓] report_intent: Intent logged
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The Verus skills aren't in the standard skill list. Let me find them in the filesystem.
+[TOOL] bash: find /home/ruize/verus-ai-exp -maxdepth 3 -iname "*spec-design*" -o -iname "*verus-constraints*" 2>/dev/null; echo "---s
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+
+[THINKING] I need to locate those skills in the filesystem since they're not showing up in the available list. Let me check the scripts directory at /home/ruize/verus-ai-exp/verus-ai/scripts/ to find them.
+[RESULT ✓] bash: # Caller Analysis: `mm::phys::frame`
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+(raw output of `find_callers_lsp.py` for `src/kernel/src/mm/phys/frame.rs`).
+
+Summary from the script: 19 exec functions (10 `pub(super)` / trait-pub, 9
+private), 1 type (`Inner...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/virt-mm-spec-design.md
+---skills dir---
+/home/ruize/verus-ai-exp/verus-ai/docs/skills
+/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix/.github/skills
+/home/ruize/verus-ai-exp/verus-ai/target-systems/nanvix-refine/.github/skills
+/home/ruize/ve...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me read the skill docs and the view design, plus the source/spec/proof files.
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/
+[TOOL] bash: cat /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+
+[THINKING] I need to locate the skill documentation to see what's available.
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+<shellId: 3 completed with ...
+[RESULT ✓] bash: Output too large to read at once (25.1 KB). Saved to: /tmp/copilot-tool-output-1781484288572-s2g5gn.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Let me read the key skills and the view design carefully.
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md 2>/dev/null || ls /home/ruize/verus-ai-exp/verus-
+[TOOL] view: /tmp/copilot-tool-output-1781484288572-s2g5gn.txt
+[RESULT ✓] view: File too large to read at once (25.1 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] bash: Output too large to read at once (23.2 KB). Saved to: /tmp/copilot-tool-output-1781484292227-5zb789.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781484292227-5zb789.txt
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat /tmp/copilot-tool-output-1781484292227-5zb789.txt
+[RESULT ✓] bash: Output too large to read at once (23.2 KB). Saved to: /tmp/copilot-tool-output-1781484296395-vo3i4e.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781484292227-5zb789.txt
+
+[THINKING] I'm going to examine those temporary files using the view command with a specific range to see what's been captured.
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781484292227-5zb789.txt
+[RESULT ✓] view: 250.   verified function with no additional logic.
+251. 
+252. ### Property Coverage Checklist
+253. 
+254. When writing specs, systematically cover these four dimensions for each
+255. function and type. This ensures no important properties are missed.
+256. 
+257. 1. **Functional Correctness** — What do...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now the verus-constraints and verification-order skills, plus the view design and source files.
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] bash: cat /home/ruize/verus-ai-exp/verus-ai/docs/skills/verification-order/SKILL.md
+
+[THINKING] I need to review the verus-constraints, verification-order skills, and the view_design.md file along with the source code to understand the full context.
+[RESULT ✓] bash: ---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+
+# Verus Constraints
+
+## A...
+[RESULT ✓] bash: ---
+name: verification-order
+description: "Determine function-level verification order within a module using the verification plan. Use at the start of proving to know which function to verify first and how to sequence work."
+---
+
+# Verification Order
+
+## Purpose
+
+When proving a module, you must ver...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now the view design and the actual source/spec/proof files.
+[TOOL] view: /tmp/copilot-tool-output-1781484288572-s2g5gn.txt
+
+[THINKING] I'm going to review the view design document and examine the source, spec, and proof files to understand the structure and requirements.
+[RESULT ✓] view: 1. # View Design: `mm::phys::frame`
+2. 
+3. > **Re-run after rollback (specification → view-design, attempt 1/1).**
+4. > The previous design modeled the global frame-allocator singleton with an
+5. > **argument-free, uninterpreted constant** `phys_view() -> PhysMemView`. A
+6. > constant has the same v...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /tmp/copilot-tool-output-1781484288572-s2g5gn.txt
+[RESULT ✓] view: 200.                 ..self.frames
+201.             },
+202.             ..self
+203.         }
+204.     }
+205. 
+206.     /// `free`: −1 reference; the last reference returns the frame to the pool.
+207.     /// (Defined for completeness / for the manager-level reasoning that *can*
+208.     ///  thread...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+The view design proposes a major `PhysAuth` redesign. Let me examine the actual current state of the source, spec, and proof files before deciding.
+[TOOL] bash: cd /home/ruize/nanvix-phy && wc -l src/kernel/src/mm/phys/frame.rs src/kernel/src/mm/phys/frame.spec.rs src/kernel/src/m
+[TOOL] view: /tmp/copilot-tool-output-1781484288572-s2g5gn.txt
+
+[THINKING] I'm realizing there's a constraint conflict here — the redesign wants to replace the constant `phys_view()` with a tracked token, but the existing specs and view definitions can't be modified, and the shim specs already depend on `phys_view()` being in place.
+
+Actually, wait — re-reading the task more carefully, the do-not-modify list is specifically the `Inner::*` methods and the view definitions like `FrameAllocView` and `View for Inner`. The free-function shims (`alloc`, `free`, `share`, etc.) aren't in that protected list — they're in the verification target, which means I can modify them. So there's actually room to work with the shims while keeping the core `Inner` methods and view definitions untouched.
+
+The real tension is that the view_design proposes adding `Tracked<&mut PhysAuth>` parameters to functions, which would change their signatures and require updates across the entire codebase. But the constraint says not to change function signatures. Let me check whether `phys_view()` itself is in the do-not-modify list, since that's what the redesign is trying to modify.
+
+Looking at the protected specs, `phys_view()` isn't explicitly listed as untouchable, so technically it could be changed. But it's defined in a different spec file, which complicates things. I need to stop speculating and actually examine the current state of the frame.rs, frame.spec.rs, and frame.proof.rs files to see what's really there.
+[RESULT ✓] view: 450. - **Strengthening `instance()`'s `external_body` `ensures` to reflect post-state
+451.   into the constant.** Forces `pre == post` for any mutation, i.e. an inconsistent
+452.   (false) axiom on a trusted accessor — strictly worse than `admit`. ❌
+453. 
+454. - **Per-handle `Tracked<FrameRef>` perm...
+[RESULT ✓] bash: 944 src/kernel/src/mm/phys/frame.rs
+   11 src/kernel/src/mm/phys/frame.spec.rs
+  149 src/kernel/src/mm/phys/frame.proof.rs
+ 1104 total
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me read the actual current files — this is what matters most.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm looking at this proposed redesign in view_design.md and realizing it's fundamentally incompatible with the constraints—it wants to overhaul manager.rs, upool.rs, and mod.rs, add Tracked parameters throughout, and remove external_body axioms, but I'm explicitly forbidden from changing function signatures, weakening specs, or modifying anything outside the mm::phys module. The goal is just to get `make verify` passing for this specific module, not to restructure the entire codebase.
+
+Rather than chase this massive redesign proposal, I need to step back and examine what's actually in the code right now. The view_design.md is just a proposal—it may not have been applied yet. Let me look at the real files: frame.spec.rs, frame.proof.rs, and frame.rs to understand the current state, then check what specs already exist for the shim functions like alloc, free, and is_covered that apparently reference phys_view() from mod.spec.rs.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. }
+12. 
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use super::PhysMemView;
+5. use super::phys_view;
+6. use crate::hal::mem::spec_page_size;
+7. use vstd::map::*;
+8. use vstd::set_lib::*;
+9. use vstd::relations::injective_on;
+10. use vstd::arithmetic::mul::{
+11.     lemma_mul_is_commutative,
+12.     lem...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me read the actual source file `frame.rs` and check how `phys_view` is defined upstream.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm examining how `phys_view` is defined in the module specs and comparing it with the existing frame specifications to understand what's already implemented versus what needs to be added.
+
+I'm noticing a critical conflict: the view_design.md proposes a major `PhysAuth` redesign that would require changing function signatures and modifying multiple unlisted modules like manager.rs and upool.rs. But my constraints explicitly forbid touching unlisted functions and modifying existing specs. The design proposal fundamentally contradicts these hard rules, so I need to treat the current shim specs over `phys_view()` as the accepted state and focus on adding specs to the target functions that currently lack them while keeping everything else intact.
+
+The concrete task is to add specs to `alloc_contiguous`, `free_count`, and `instance()` — the functions identified as gaps in the caller analysis — then verify the module compiles with zero errors. Before I start writing specs, I should check the current baseline by reading frame.rs to see what specs already exist and then run the verification to establish the starting state.
+[RESULT ✓] view: File too large to read at once (34.9 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 120.             match result {
+121.                 Ok(frame) => {
+122.                     &&& frame.inv()
+123.                     &&& old(self)@.free_frames.contains(frame@)
+124.                     &&& final(self)@ == FrameAllocView {
+125.                         allocated_frames: old(self)@.al...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 330.     /// - `frame`: Address of the frame to share.
+331.     ///
+332.     /// # Returns
+333.     ///
+334.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+335.     ///
+336.     #[verus_spec(result =>
+337.         requires
+338.             old(self).inv(),
+33...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 560.     ) -> Result<(), Error> {
+561.         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+562.         let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+563. 
+564.         // Check that all frames in the range are covere...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see that the shims already have specs defined for `phys_view()` and `alloc_contiguous`, so now I'm checking which other shims are missing specs.
+[RESULT ✓] view: 760. }
+761. 
+762. ///
+763. /// # Description
+764. ///
+765. /// Returns the number of free frames in the system.
+766. ///
+767. /// # Returns
+768. ///
+769. /// The number of free frames in the system.
+770. ///
+771. #[verus_spec(result =>
+772.     requires
+773.         phys_view().initialized,
+774.    ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now I understand the current state. The file is already substantially specified using the `phys_view()` approach. The only shim missing a `#[verus_spec]` is `alloc()` (lines 720-723). The view_design.md proposes a large `PhysAuth` redesign, but that would require changing function signatures and touching unlisted files (manager.rs, upool.rs, mod.rs) — both explicitly forbidden by my hard rules. Let me first establish the verification baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "verify-kernel\|verify:" Makefile | head -20
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "phys_view\|PhysMemView\|FrameAllocView\|spec_alloc\|covered\|region_frames\|PhysA
+
+[THINKING] I'm noticing that all the shims in frame.rs have specs except for the `alloc()` function at line 721, which is missing the `#[verus_spec]` annotation—that's the only one without it.
+
+But wait, the caller_analysis said `alloc_contiguous` and `free_count` shims had no specs, yet the actual code shows they do have them now. This suggests the file has already been substantially worked on and most of the specification is complete. The current state appears to be mostly done except for that one missing `alloc()` spec, though I notice the `free()` shim contains `admit()` in its body, indicating the proof phase is still in progress. The view_design.md proposed a `PhysAuth` redesign, but the actual implementation still uses `phys_view()` instead—that redesign wasn't implemented.
+
+Given my constraints—I can't change function signatures, can't touch unlisted functions like manager.rs or upool.rs, and need to verify just this module with zero errors—the `PhysAuth` redesign is incompatible with what I'm allowed to do. It would require modifying those unlisted files and changing signatures. So I should stick with the existing `phys_view()` framework that's already in place. My focus should be adding the missing `#[verus_spec]` to the `alloc()` shim and ensuring the module verifies cleanly, rather than pursuing the redesign that conflicts with my constraints.
+
+Let me run the baseline verification first to see what errors I'm actually dealing with.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+<shellId: 9 completed with exit code 0>
+[RESULT ✓] bash: 20:pub struct FrameAllocView
+29:impl FrameAllocView
+90:pub struct PhysMemView {
+98:    pub frames: FrameAllocView,
+101:impl PhysMemView {
+109:    /// Frames the allocator actually tracks (covered by the bitmap): the union
+110:    /// of reserved and free frames. The abstract form of `is_covered`.
+11...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Let me run the baseline verification for this module.
+[TOOL] view: /home/ruize/nanvix-phy/Makefile
+
+[THINKING] Looking at the design proposal, I see that `phys_view()` is currently used as an uninterpreted spec function in mod.spec.rs, and the view_design.md suggests replacing it with PhysAuth. The key constraint is that certain specific items like `byte_at_address`, `FrameAllocView`, and related definitions are marked as do-not-modify, but mod.spec.rs itself isn't off-limits for changes.
+
+However, modifying mod.spec.rs would ripple through other already-verified modules like manager, upool, and kframe, which creates substantial risk. Given these constraints and the existing verification work, the practical approach is to stick with the current `phys_view()` design, complete the missing `alloc()` shim spec, and aim for zero errors. The PhysAuth redesign falls outside what's feasible right now.
+
+Let me start by running the baseline verification to see what the current error state looks like.
+[RESULT ✓] view: 615. 	@true
+616. else
+617. 	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+618. 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+619. 	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+620. 	VERUS_EXTRA_CARGO_ARGS="--locked $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)" \
+621. 	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-d...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
