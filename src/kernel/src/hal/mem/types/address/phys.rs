@@ -92,7 +92,7 @@ impl PhysicalAddress {
             },
     )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
-        Ok(Self(addr))
+        Ok(PhysicalAddress(addr))
     }
 
     pub fn into_virtual_address(self) -> VirtualAddress {
@@ -122,7 +122,7 @@ impl PhysicalAddress {
     pub fn from_number(frame: FrameNumber) -> Self {
         proof! { admit(); }
         let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
-        Self(VirtualAddress::new(addr))
+        PhysicalAddress(VirtualAddress::new(addr))
     }
 
     // Total projection: yields the containing frame (`self@ / FRAME_SIZE`). The

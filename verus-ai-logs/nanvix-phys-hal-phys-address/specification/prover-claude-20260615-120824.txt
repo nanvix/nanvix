@@ -798,3 +798,188 @@ Turn 39
 [THINKING] The spec helper functions from phys.spec.rs are being referenced in the `#[verus_spec]` attributes on the exec functions, and since they're public in the included module, they should resolve correctly by their bare names.
 
 Now I'm going to run verify-kernel scoped to the module using `MODULE=hal::mem::types::address::phys` to check if verification works, starting with a normal build first to confirm compilation still succeeds with Verus erased.
+[RESULT ✓] bash: Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_mmio_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/phys.rs:94:19
+   |
+94 |     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+   |                ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The `#[verus_spec]` attribute macro is generating a spec function, but it's throwing an E0425 error saying it can't find the original function `from_mmio_address` in scope when it tries to expand the macro with the `result =>` syntax and `requires`/`ensures` clauses. This is happening during the macro expansion phase itself. The error is coming from the normal cargo check phase, not the verus verification. The `#[verus_spec]` macro is a proc macro that's always active and should erase ghost content, but something about how I structured the attributes or comments might be interfering. I need to look at the actual file to see why `from_mmio_address` and `from_number` are failing to resolve while `into_frame_number` compiles fine — there's something different about how these functions are defined or annotated.
+[RESULT ✓] view: 76.     /// # Safety
+77.     ///
+78.     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
+79.     ///
+80.     // Deliberately bypasses the RAM-range validity check (MMIO GPAs may lie
+81.     // outside tracked RAM). On success it is pure identity wrapping
+82.     // (`...
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -n "from_mmio_add
+
+[THINKING] The error message suggests a scope issue where the macro is generating a function call that can't be resolved. The `#[verus_spec]` attribute with the `ensures` clause might be creating a recursive reference for `from_mmio_address` and `from_number`, but interestingly `into_frame_number` has the same pattern and doesn't error, so there's something specific about those two functions causing the problem. Maybe the issue is that `#[verus_spec]` isn't fully stripping the spec function references in the non-ghost build, so when `from_mmio` and `from_number` reference spec functions that don't exist outside the `verus!{}` block, the compiler can't find them. But `into_frame_number` references a spec function too and didn't error, so I need to look at the actual error context more carefully to understand what's different.
+[RESULT ✓] bash: 20:error[E0425]: cannot find function `from_mmio_address` in this scope
+23:94 |     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+26:error[E0425]: cannot find function `from_number` in this scope
+29:122 |     pub fn from_number(frame: FrameNumber) -> Self {
+32:For mo...
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '1,45p'
+[RESULT ✓] bash: Timestamp: 2026-06-15_12-20-14
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=2
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "external_derive\|verus_verify\]" docs 2>/dev/null | head; echo "=== search verus-
+
+[THINKING] I'm looking at a Verus compilation error where two functions—`from_mmio_address` and `from_number`—can't be found in scope. Both seem to involve `Self` in their return types or bodies, with one returning `Result<Self, ...>` and the other returning `Self` directly, so there's likely a common issue with how they're defined or referenced.
+
+The error might be that the `verus_spec` macro is generating a call to `from_mmio_address` somewhere that needs the full `Self::` prefix since it's an associated function, though that doesn't quite explain why `into_frame_number` works fine. Looking at the spec conditions, `from_mmio_address` uses `spec_max_frame_number` and `r.inv()`, while `from_number` references `spec_from_number` and `spec_frame_raw_value`—these might be the functions that are actually missing or inaccessible in the current scope.
+
+Wait, I just realized something: the two failing functions both construct `Self(...)` directly in their bodies, whereas `into_frame_number` doesn't use the tuple struct constructor at all. Since `PhysicalAddress` is a tuple struct with a private field, maybe Verus's spec code generation is trying to reference the constructor as a function and can't find it in the transformed code.
+
+The key difference is that none of the existing verified functions actually construct a tuple struct in their body — they either have no spec annotation or use `external_body`. So when Verus processes a body containing `Self(addr)`, it might be generating a separate spec version where the constructor isn't in scope, which would explain the misleading error message about not finding the function itself. The key insight is that the impl block itself might need `#[verus_verify]` for associated functions to be processed correctly, similar to how page.rs annotates its impl block. But that doesn't fully explain why only the two functions that construct `Self(...)` are erroring while `into_frame_number` compiles fine, since they're all in the same impl block. The real issue seems to be specifically about constructing the tuple struct with a private field inside a Verus-processed body — the error message about "cannot find function `from_mmio_address`" suggests the macro expansion is generating a call by name rather than through the proper path. Let me trace through the actual error span more carefully to understand what the macro is really generating.
+[RESULT ✓] bash: === search verus-syntax for tuple struct / Self( ===
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '18,40p'
+
+[THINKING] I could try adding the `#[verus_verify]` attribute to the impl block and re-running, though full verification takes a couple minutes. Or I could reason through the error more carefully — the message "cannot find function `from_mmio_address` in this scope" suggests I'm calling it as a free function when it's likely a method that needs to be called on something.
+
+Looking at the pattern, the two failing functions both construct `Self(...)` at the end, while the passing one does too but doesn't fail. The issue might be how Verus handles the tuple struct constructor in spec context, especially since the field is private — when Verus tries to reason about the field through the View abstraction, it might be generating malformed references to the constructor that rustc can't resolve.
+
+I should try adding `#[verus_verify]` to the impl block like page.rs does, but that would pull the other unspecced associated functions into verification scope too, which could cause them to fail on unspecced calls like `is_valid_physical_address`. Let me check how page.rs actually structures this to avoid that problem.
+
+Actually, wait — `into_frame_number` already got past the initial error without impl-level `#[verus_verify]`, which means `#[verus_spec]` alone is sufficient for per-method verification. So the impl annotation isn't the blocker. The real issue is that `Self(addr)` tuple construction in a Verus-processed body might be getting transformed in a way that breaks the reference to `from_mmio_address`. Let me dig into what Verus does with struct construction in tail expressions.
+
+I could test by replacing `Self(addr)` with the explicit `PhysicalAddress(addr)` to see if that resolves the E0425 error, but that modifies exec code. Before making changes, I need to understand whether the macro is generating the body in a context where `Self` isn't properly bound, or if the real issue is something else entirely — maybe missing spec functions or a cascade from an earlier error. Let me check if there are any compiler hints or notes in the full error log that might point to the actual root cause.
+[RESULT ✓] bash: --- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error[E0425]: cannot find function `from_mmio_address` in this scope
+  --> src/kernel/src/hal/mem/types/address/phys.rs:94:19
+   |
+94 |     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== structs constructed in verified libs ==="; grep -rn "verus_verify\|pub struct\|st
+
+[THINKING] I'm noticing a pattern here—both failing functions return values that involve `Self` construction, and their `ensures` clauses reference `result@`. The `into_frame_number` function specifically uses `spec_frame_raw_value(result)` in its ensures, which also depends on the return value. This suggests the `verus_spec` macro might be generating duplicate declarations or forward references, or the `requires`/`ensures` macros are constructing something problematic when they reference the return value.
+
+Looking closer at the differences: `from_mmio`'s ensures has `r.inv()` and `r@`, `from_number` has `result@`, and `into_frame_number` has `spec_frame_raw_value(result)`. The key insight is that the two failing functions both invoke the `@` operator (the View trait) on a `PhysicalAddress` result, while the passing function doesn't use `@` on its result since `FrameNumber` has no View implementation. The issue appears to be that invoking `@` on a `PhysicalAddress` value inside the spec is problematic—the View implementation for `PhysicalAddress` is defined in the inline `verus!{}` block at the bottom of phys.rs, which might not be accessible or properly resolved when the macro tries to use it in the ensures clause.
+
+But wait, `into_frame_number` also uses `self@` on a `PhysicalAddress` in its ensures clause and it didn't error, so that theory breaks down. The real difference is that `from_mmio` and `from_number` both construct `Self(...)` in their bodies, while `into_frame_number` doesn't construct anything. The E0425 error about "cannot find function from_mmio_address" might be triggered by how Verus handles tuple-struct construction within the verification harness. I should test whether replacing `Self(addr)` with the explicit type name `PhysicalAddress(addr)` resolves the issue—this would isolate whether the problem is specifically with using the `Self` keyword in tuple construction within a Verus context. I'm realizing that `PhysicalAddress` is likely the first struct being constructed inside a verified function body in this codebase, which means Verus needs to understand its constructor. The issue might be that `#[verus_verify(external_derive)]` doesn't actually register the struct's constructor with Verus the way a full `#[verus_verify]` annotation would. Let me look at how other verified libraries in the repo declare and construct structs to see what pattern they use.
+[RESULT ✓] bash: === structs constructed in verified libs ===
+200:#[verus_verify]
+202:#[verus_verify(reject_recursive_types(T))]
+203:#[verus_verify(external_type_specification)]
+204:#[verus_verify(external_body)]
+205:pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
+216:#[verus_verify]
+217:#[verus_verify(reject_r...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== slab struct + construction ==="; grep -rn "pub struct\|verus_verify\|Self {\|Self
+
+[THINKING] I'm reconsidering whether the issue is actually about `Self(...)` versus named struct literals. Let me check how the slab library constructs newtypes in verified bodies and examine the bitmap patterns to understand the struct attribute handling.
+[RESULT ✓] bash: === slab struct + construction ===
+9:// To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
+66:#[verus_verify(external_derive)]
+68:pub struct Slab {
+83:#[verus_verify]
+107:    #[verus_spec(result =>
+241:        #[cfg_attr(verus_keep_ghost, verus_spec(
+277:    #[verus_s...
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/slab/src/lib.rs
+[RESULT ✓] view: 66. #[verus_verify(external_derive)]
+67. #[derive(Debug)]
+68. pub struct Slab {
+69.     /// An index that keeps track of free blocks.
+70.     index: Bitmap,
+71.     /// Base address of data blocks.
+72.     data_addr: *mut u8,
+73.     /// End of data blocks.
+74.     end_addr: *const u8,
+75.     /// S...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/slab/src/lib.rs
+
+[THINKING] I'm checking how the Slab struct is constructed in the `from_raw_parts` function—specifically whether it uses `Self { ... }` or `Slab { ... }` syntax, given that both the impl block and struct have their respective `#[verus_verify]` attributes.
+[RESULT ✓] view: 140.         block_size: usize,
+141.     ) -> Result<Slab, Error> {
+142.         // Make sure the address isn't null, e.g., from a failed allocation.
+143.         if addr.is_null() {
+144.             return Err(Error::new(ErrorCode::InvalidArgument, "null pointer"));
+145.         }
+146. 
+147.       ...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/slab/src/lib.rs
+[RESULT ✓] view: 235.         //
+236.         // The uppermost bits of the index may point beyond the end of
+237.         // the allocated region. So, we need to set those bits to mark
+238.         // them "in use" and thereby prevent them from being
+239.         // allocated. Note that there are at most 7 such bits...
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+The two failing functions both construct `Self(...)` (a tuple-struct constructor); `into_frame_number` doesn't and compiled. Let me test replacing `Self(` with the explicit type name:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm noticing the Slab struct uses explicit named-field construction with `Slab { index, data_addr, ... }` rather than `Self(...)`, and the impl block is marked with `#[verus_verify]` at the module level instead of relying on per-function verification attributes like mine does.
+
+The error about "cannot find function from_mmio_address" suggests that for tuple structs, Verus might be transforming `Self(...)` constructor calls into function references that fail to resolve in the spec context. Adding `#[verus_verify]` to the entire impl block would pull all the untouched methods into verification scope, and several of them—like from_frame_address and from_virtual_address—would fail because they construct Self or call unspecced functions without proper proofs, so that's not a viable fix.
+
+The real issue might be something specific about how `verus_spec` generates companion specs for functions that construct or return Self, and whether there's a separate pattern I should use for tuple-struct constructors. The compile error came back quickly since it failed during the checking phase before Verus even ran, so re-running should be fast. The pattern is clear: `into_frame_number` doesn't construct `Self` and had no error, while `from_mmio` and `from_number` both use `Self(addr)` and failed. I'll replace those `Self(` calls with explicit `PhysicalAddress(` and re-run to test.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -45
