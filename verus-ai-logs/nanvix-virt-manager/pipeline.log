@@ -158,3 +158,4 @@ Phases: specification → specification
 PHASE: specification
 Module: manager
 ============================================================
+[2026-06-16 01:30:34] [STRIP-EXT] removed 7 external_body attribute(s) from /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs

@@ -260,7 +260,6 @@ impl VirtMemoryManager {
     // external_body: depends on the not-yet-verified `phys`, `kpage`, and
     // `PageDirectory` modules (no Verus contracts yet). The contract above is the
     // trusted boundary until those modules are verified.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
         // Allocate a kernel page for the new page directory.
         let pgdir_page: KernelPage = {
@@ -343,7 +342,6 @@ impl VirtMemoryManager {
     // see verus-syntax/verus-constraints). The callback-based iteration API cannot be expressed
     // without such a capture, so this function is kept `external_body` and its `#[verus_spec]`
     // contract above is the trusted boundary. See `verus-unsupported.md`.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
         // Process the parent's user mappings in fixed-size chunks. We cannot mutate
         // `parent` while borrowing its page tables via `for_each_user_mapping`, so each
@@ -608,7 +606,6 @@ impl VirtMemoryManager {
     // external_body: depends on the not-yet-verified `arch::cpu::excp::ErrorCode`
     // accessors, `sys::mm::align_down`, and `hal` `PageAligned::from_raw_value`
     // (no Verus contracts yet). The contract above is the trusted boundary.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_resolve_cow_fault(
         &mut self,
         vmem: &mut Vmem,
@@ -723,7 +720,6 @@ impl VirtMemoryManager {
     )]
     // external_body: uses `Vec::drain(..)`/`Vec::capacity()`, std iterator types
     // that vstd does not model. See `verus-unsupported.md`.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_upages(
         &mut self,
         vmem: &mut Vmem,
@@ -912,7 +908,6 @@ impl VirtMemoryManager {
     )]
     // external_body: depends on the not-yet-verified `phys` and `kpage` modules
     // (no Verus contracts yet). The contract above is the trusted boundary.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no concurrent
         // or re-entrant access to the physical memory manager is possible.
@@ -953,7 +948,6 @@ impl VirtMemoryManager {
     )]
     // external_body: uses `iter_mut().try_for_each(..)`, std iterator combinators
     // that vstd does not model. See `verus-unsupported.md`.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpages(
         &mut self,
         clear: bool,
@@ -1007,7 +1001,6 @@ impl VirtMemoryManager {
     )]
     // external_body: delegates to the not-yet-verified `elf::elf32_load` (no Verus
     // contract yet). The contract above is the trusted boundary.
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn load_elf(
         &mut self,
         vmem: &mut Vmem,
