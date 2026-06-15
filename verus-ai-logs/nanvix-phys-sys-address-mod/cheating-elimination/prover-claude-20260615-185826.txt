@@ -650,3 +650,72 @@ Exec code is unchanged — only ghost `#[verus_spec]` attributes and the standar
 The method signatures themselves remain unchanged — only ghost annotations are being added through the `#[verus_spec(...)]` attributes, so there's no actual change to the executable logic or complexity. The `use vstd::prelude::*` import is necessary because the spec files reference vstd types, and the conditional includes follow the standard pattern used throughout the repo for ghost code. The AST consistency looks good since no exec logic has been modified.
 
 Now I'm running the full verification build to check for any regressions, which will take a bit longer since it includes the kernel build.
+[RESULT ✓] bash: status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-15_19-04-10.log
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+All crates verify with **0 errors** (sys: 6, bitmap: 70, slab: 35, kernel: 47). The kernel's `external_body=24 cfg_gate=6` is pre-existing, TCB-allowed, and unchanged from baseline (commit `245138857`) — no regression, and outside the address-module scope. The sys crate itself has **zero cheating**.
+
+Let me write the fix report.
+[TOOL] report_intent: Writing fix report
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/ 2>/dev/null; ls verus-ai
+
+[THINKING] The verification run completed successfully across all crates with zero errors, though the kernel module has some pre-existing cheating flags that are outside my scope since I'm focused on the address module.
+
+My sys-address-mod shows zero cheating items and matches the baseline counts exactly — no regressions introduced. The bump-allocator's pre-existing cheating is also unchanged and out of scope. For my module specifically, both admit and assume counts remain at zero with no proof gaps to address.
+
+The real issue turned out to be the toolchain version mismatch, which I've now resolved. Let me write up the fix report.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: prover-claude-20260615-185826.jsonl
+prover-claude-20260615-185826.txt
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+cheating-elimination
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+<shellId: 29 completed wit...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md with 3262 characters
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Done. Result: **PASS**.
+
+## Summary
+
+The `sys-address-mod` module was already **cheating-free** — its three in-scope items (`is_aligned`, `into_raw_value`, `from_raw_value`) are trait method declarations carrying only ghost `#[verus_spec]` contracts. No `assume`/`admit`/`external_body`/`assume_specification`/cfg-gated exec existed.
+
+The real blocker was environmental: `make verify-sys` failed because the installed Verus at `/home/ruize/toolchain/verus` had drifted to `0.2026.06.14`, while the repo pins `0.2026.05.31` (`build/verus-version`, matching `vstd` in `Cargo.lock`). The mismatch broke vstd compilation for **all** crates (reproduced on `verify-bitmap`). I reinstalled the pinned version via `scripts/setup/verus.sh` (from the local cache, no network).
+
+Verification after the fix:
+- `make verify-sys` → **6 verified, 0 errors**, CLEAN, zero cheating.
+- `make verify` → all crates 0 errors (sys 6, bitmap 70, slab 35, kernel 47). Pre-existing TCB-allowed kernel/bump-allocator `external_body` counts are unchanged from baseline — no regression.
+
+AST consistency: only ghost contracts + standard cfg-gated spec/proof includes; no exec semantics or complexity changed. Report written to `verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/fix_report.md`.
+
+
+=== Session End ===
+Session: a9b5f6f4-d68f-4a09-8d9b-cc129b07ddbf
+Duration: 402.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/prover-claude-20260615-185826.jsonl
