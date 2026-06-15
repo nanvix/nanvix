@@ -619,3 +619,18 @@ The in-scope files are byte-identical to the base branch (no diff), so I've made
 Now I'm double-checking that there's no hidden `assume_specification` or other cheating in the in-scope files, and verifying that the AST remains consistent since I haven't modified anything. The in-scope files are unchanged from the base, so they're trivially consistent. The phys-mod phase is passing — there's nothing to eliminate within scope, and all the in-scope cheating is TCB-allowed with the escalation ladder genuinely exhausted.
 
 Now I need to run the full verification to ensure there are no regressions, starting with `make verify-kernel` for the full kernel crate, then `make verify` to confirm everything still works.
+[RESULT ✓] bash: Exit code : 0
+  status: CHEATING_DETECTED
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'shellId': '29', 'delay': 5}
+[RESULT ✓] read_bash: 
+<shellId: 29 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel 2>&1 | grep -iE "verified, 0 errors|verificat
