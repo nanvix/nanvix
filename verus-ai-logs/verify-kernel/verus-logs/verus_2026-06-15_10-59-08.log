@@ -1,0 +1,56 @@
+Timestamp: 2026-06-15_10-59-08
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::aligned::page
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: assume_specification trait bound mismatch
+  --> src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:41:1
+   |
+41 | / pub assume_specification<T: Address + View<V = int>> [
+42 | |     <PageAligned<T> as Address>::into_raw_value
+43 | | ](addr: PageAligned<T>) -> (result: usize)
+   | |_________________________________________^
+   |
+   = help: assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds
+           but the proxy function's trait bounds are:
+             - T: core::marker::Sized
+             - T: sys::mm::Address
+             - T: vstd::string::View
+             - <T as vstd::string::View>::V == vstd::prelude::int
+           the external function's trait bounds are:
+             - T: core::marker::Sized
+             - T: sys::mm::Address
+
+error: assume_specification trait bound mismatch
+  --> src/kernel/src/hal/mem/types/address/aligned/page.spec.rs:55:1
+   |
+55 | / pub assume_specification<T: Address + View<V = int>> [
+56 | |     PageAligned::<T>::from_address
+57 | | ](addr: T) -> (result: Result<PageAligned<T>, Error>)
+   | |____________________________________________________^
+   |
+   = help: assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds
+           but the proxy function's trait bounds are:
+             - T: core::marker::Sized
+             - T: sys::mm::Address
+             - T: vstd::string::View
+             - <T as vstd::string::View>::V == vstd::prelude::int
+           the external function's trait bounds are:
+             - T: core::marker::Sized
+             - T: sys::mm::Address
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
