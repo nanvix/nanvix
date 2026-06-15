@@ -1957,3 +1957,27 @@ Turn 117
 Turn 118
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 MODULE=sys::sys::mm::address 2>&1 |
+[RESULT ✓] bash: - as_mut_ptr
+    - fmt
+    - add
+    - add_assign
+    - from
+    - from
+    - from
+    - from
+
+=== Summary ===
+  verification: 2 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 2/22 exec functions have contracts
+  status: CLEAN...
+
+────────────────────────────────────────────────────────────
+Turn 119
+────────────────────────────────────────────────────────────
+Status **CLEAN, 2 verified, 0 errors**. The cycle is fixed. Now run the full sys crate (no module scope) to check for regressions:
+[TOOL] bash: cd /home/ruize/nanvix-phy; time make verify-sys VERUS_EXECUTABLE_DIR=/tmp/verus-0531 2>&1 | tail -14
+
+[THINKING] The verification status shows 2 functions with contracts are verified, likely the VirtualAddress inherent methods, while the three trait method declarations don't count as verified since they have no bodies—their specs are just checked for well-formedness rather than actual verification.
+
+The coverage metric of 2/22 reflects the whole sys::mm::address module including the virt submodule, which makes sense since I only added specs to the trait methods (declarations without bodies) plus the two inherent functions. Now I need to run the full crate verification with `make verify-sys` to ensure my changes don't break anything else, then check for regressions across all modules.
