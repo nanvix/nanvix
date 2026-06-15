@@ -226,3 +226,18 @@ The module already verifies. Let me confirm the target functions are genuinely b
 [THINKING] Looking at this coverage report, I'm realizing the list shows exec function names across different modules without their contracts, and many of these `from_raw_value`/`into_raw_value` functions likely belong to other types like pte, pde, or flags rather than FrameNumber itself. The key question is whether FrameNumber's specific versions are among the 18 verified functions out of the 525 total.
 
 Since the FrameNumber functions have explicit `#[verus_spec(...)]` ensures clauses and `make verify-arch` reports 48 verified with zero errors and no admits or external bodies in the frame module, they should be verified. But to confirm the verification is actually running and not silently skipped, I could test by temporarily removing the `use_type_invariant` call from the proof and seeing if verification fails — that would prove the proofs are genuinely being checked rather than ignored.
+[RESULT ✓] bash: error: postcondition not satisfied
+verification results:: 47 verified, 1 errors
+error: could not compile `arch` (lib) due to 1 previous error
+  47 verified
+  1 errors
+  verification: 47 verified, 1 errors (exit 101)
+  Unverified function list written to: verus-ai-logs/verify-arch/verus-logs/coverage...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Confirmed the proofs are genuinely active. Let me verify the restore and run the full verification suite to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && diff /tmp/number.rs.bak src/libs/arch/src/x86/mem/paging/frame/number.rs && echo "RES
+
+[THINKING] The proof removal confirmed that `into_raw_value` is properly verified with its complete contract, so I'm restoring it and running the full verification suite to ensure there are no regressions.
