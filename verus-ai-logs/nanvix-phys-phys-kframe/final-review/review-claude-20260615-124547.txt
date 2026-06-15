@@ -1148,3 +1148,230 @@ z.py
 Turn 20
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; make verify-kernel MODULE=mm::phys 2>&1 | tail -60; echo "VERIFY_EXIT=${PIPES
+[RESULT ✓] bash: Module    : mm::phys
+  Source dir : /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+1. Wrote full review to `verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.gpt.md`.  
+2. **Result: FAIL**.  
+3. **Single most important blocker:** AST consistency failure (`2 mismatched, 1 extra`).  
+4. KFRAME guardrails: `admit=0, assume=0, external_body=0, assume_specification=1, cfg-gated-exec=1`.  
+5. In-scope (`new/base/drop`) guardrails: `admit=0, assume=0, external_body=0, assume_specification=0, cfg-gated-exec=1 (logging-only)`.  
+6. TCB check: `assume_specification[KernelFrame::map_frame]` is listed in `tcb-allowed.md`; no unlisted `external_body`.  
+7. AST status: **FAIL** (`new` mismatch, `drop` mismatch, `map_frame` extra-in-verus).  
+8. Verify status: `make verify-kernel MODULE=mm::phys` exit **0**; module cheating detected (`external_body=15, admit=4`).  
+9. Caller coverage: **4/6 covered**; missing `new` Err non-consumption and `drop` deallocation postcondition.  
+10. Top issues: AST mismatch blocker; weak/tautological `new` error spec; `drop` contract incompleteness; stale `bugs.md` note about `new external_body`.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 254s, total_turns: 0, model: gpt-5.3-codex, duration: 254s
+
+1. Wrote full review to `verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.gpt.md...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Codex review completed (FAIL, citing AST consistency). I need to verify that claim myself since the `drop` logging cfg-gate is an allowed exception. Let me read the codex review and run the AST check while waiting for the claude review.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+
+[THINKING] The codex review failed due to AST consistency issues—specifically mismatches in `new`/`drop` and an extra `map_frame` in the verus-erased version. I need to dig into whether these are genuine semantic problems or just artifacts from how the cfg gating is set up.
+
+Looking at the actual differences: `drop` has a cfg gate around an error! log that gets removed under verus_keep_ghost, which creates an AST mismatch but is explicitly allowed by the task rules. The `new` mismatch appears tied to the `#[verus_spec]` attribute. I should run the ast_consistency tool myself and check the skill documentation to properly interpret what's being flagged, since the logging exception shouldn't count as a real blocker. Let me wait for the claude review first, then investigate whether this is actually blocking or a false positive.
+[RESULT ✓] bash: ⚠️  INCONSISTENCIES FOUND: 2 mismatched, 0 missing
+# AST Consistency Report: ast_orig_jhzl1nts
+
+**Source:** `/tmp/ast_orig_jhzl1nts.rs`
+**Verus:** `src/kernel/src/mm/phys/kframe.rs`
+
+## Summary
+
+- Functions matched: 4/6
+- Functions mismatched: 2
+- Missing in Verus: 0
+- Extra in Verus: 1
+- **Consiste...
+Verification passed (exit 0). Let me confirm no kframe entries in the cheating detail and check cfg-gate attribution.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== any kframe in cheating-detail? ==="; grep -in "kframe" verus-ai-log
+[RESULT ✓] bash: === any kframe in cheating-detail? ===
+NONE (kframe not in cheating detail)
+
+=== cfg_gate lines in detail ===
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== cheating-detail.txt content (cfg section) ==="; sed -n '1,80p' veru
+[RESULT ✓] bash: === cheating-detail.txt content (cfg section) ===
+---- full grep for cfg_gate functions ----
+<shellId: 42 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; wc -l verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt; echo "---";
+[RESULT ✓] bash: 22 verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+---
+    - mm/phys/frame.rs:1242 instance: external_body
+    - mm/phys/frame.rs:1282 init: external_body
+    - mm/phys/frame.rs:1338 alloc: external_body
+    - mm/phys/frame.rs:1368 alloc_contiguous: external_body
+    - mm/phys/frame.rs:14...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+I have all the evidence I need. Let me verify the final-review directory and confirm map_frame's impl block has no verus attribute, then write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls verus-ai-logs/nanvix-phys-phys-kframe/final-review/ 2>/dev/null; echo "---
+[RESULT ✓] bash: final_review.gpt.md
+review-claude-20260615-124547.jsonl
+review-claude-20260615-124547.txt
+--- map_frame impl attribute context (lines 102-104) ---
+// less. Kept outside Verus (no `#[verus_verify]`); carries no `external_body`.
+impl KernelFrame {
+    fn map_frame(base: FrameAddress) -> Result<(), Err...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Confirmed all evidence. Now I'll write the comprehensive review file.
+[TOOL] report_intent: Writing final review file
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.claude.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.claude.md with 16078 characters
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Review written. Here is the 10-line summary:
+
+1. **Result: FAIL** (strict). kframe's in-scope `new`/`base`/`drop` are themselves clean and verify at exit 0, but several in-scope integrity checklist items can't be checked off.
+2. **Guardrail counts (kframe):** admit:0, assume:0, external_body:0, assume_specification:1 (`map_frame`, TCB-listed), cfg-gated-exec:1 (`drop` logging — ALLOWED). Out-of-scope siblings: admit:7, external_body:15, cfg_gate:12 — all TCB-listed, not a kframe failure.
+3. **AST status: FAIL** — 2 MISMATCH + 1 EXTRA. `drop` mismatch = sanctioned logging cfg-gate; `new` mismatch + `map_frame` EXTRA = unsanctioned exec extraction (no pre-approved deviation, no reproducer).
+4. **Verify status: PASS, exit 0** (`make verify-kernel MODULE=mm::phys`); `spec_drift --before HEAD` exit 0 (no drift).
+5. **Top blocker:** the `new` → `map_frame` exec rewrite **added a new `assume_specification` trust boundary** to the *fixed* TCB (commit `a2b7376d8` removed `new`, added `map_frame`) — forbidden exec rewrite + no isolated reproducer for the claimed Verus limitation.
+6. **Secondary:** `assume_specification` is on **workspace-internal** code (cross-module `mm::virt`, not external-bottom) — flagged tension.
+7. **Bug reconciliation:** bugs.md "Proving-phase note" is **stale/contradictory** — claims `new` retains `external_body`; current code does not (uses map_frame + assume_specification).
+8. **Caller coverage:** new(Ok) ✅, base ✅; **gaps** — `new` Err path `=> true` (weak), and `drop` has **no functional ensures** for "frees frame once" (root cause: `frame::free` empty TCB contract).
+9. **TCB compliance:** every external_body and `map_frame` are listed — but map_frame's listing is itself the violation of "TCB is fixed."
+10. **File written:** `verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.claude.md`.
+[RESULT ✓] read_agent: Agent completed. agent_id: review-claude, agent_type: general-purpose, status: completed, description: Independent final review (claude), elapsed: 435s, total_turns: 0, model: claude-opus-4.8, duration: 435s
+
+Review written. Here is the 10-line summary:
+
+1. **Result: FAIL** (strict). kframe's in-sco...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Both reviewers independently concluded **FAIL**, citing the same root cause. Let me examine the actual AST diffs to confirm the nature of the mismatch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && D=$(ls -d /tmp/ast_*/full 2>/dev/null | head -1); echo "DIR=$D"; for f in K
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,80p' /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+
+[THINKING] Both reviewers flagged this as a failure, and the AST consistency check is showing 2 mismatches plus 1 extra node. I need to understand what ast_consistency.py is actually comparing — it looks like it's checking the file against some baseline in /tmp/ast_orig, but I'm not entirely clear on whether it's comparing two different processing methods or versions of the same file.
+
+Looking at the specific failures: the `drop` function differs because of the `#[cfg(not(verus_keep_ghost))]` attribute that removes a logging line in the verus version, which is an expected exception. The `new` function shows a mismatch because its body changed when a side-effect was extracted. And `map_frame` appears as extra in the verus file, meaning it was added after the baseline was created. I need to check what the baseline `/tmp/ast_orig_jhzl1nts.rs` actually represents — whether it's the git HEAD version or a stripped version of the file.
+[RESULT ✓] bash: 6:Compares executable code between an original Rust source file and its
+16:    ast_consistency.py --base-ref <ref> <verus> count    # auto-extract original from git
+<shellId: 45 completed with exit code 0>
+[RESULT ✓] bash: DIR=/tmp/ast_block_r2/full
+===== KernelFrame__new.diff =====
+===== KernelFrame__drop.diff =====
+===== map_frame_verus =====
+<shellId: 46 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+
+[THINKING] I need to locate the actual temp directory from my current run and examine the diffs there, since the previous diff directory was from an earlier execution. I should also review how the script determines the "original" version when no --base-ref is specified.
+[RESULT ✓] bash: #!/usr/bin/env python3
+
+"""
+AST consistency checker and per-function diff generator for Verus verification.
+
+Compares executable code between an original Rust source file and its
+Verus-verified counterpart using tree-sitter AST hashing.  Ghost, proof,
+and spec annotations are stripped before compari...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Both reviewers independently reached **FAIL** with overlapping blockers. The AST baseline is the git base ref — so `new` was restructured (side-effect extracted into `map_frame`) and `drop`'s log was cfg-gated. Let me read both raw reviews to consolidate faithfully.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.claude.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.gpt.md
+
+[THINKING] In single-arg mode on verus-ai branches, the tool auto-detects the original baseline by extracting the base ref from git—in this case the `verus-ai-prove-bottom-up` branch—then compares the current working tree's kframe.rs against that upstream version. So any mismatches are relative to the original upstream code.
+
+The verified code extracted the `new` function's exec AST into a separate `map_frame` function and added cfg-gating to the `drop` log. The extraction is semantically equivalent—`new` still calls `map_frame` which performs exactly what the old inline body did, and there's a `// VERUS REWRITE` comment documenting it. But both reviewers blocked it because the extraction introduces a new `assume_specification` trust boundary on `map_frame`, and even though `map_frame` is TCB-listed, the task constraint says no new trust boundaries can be introduced. They also flagged the lack of an isolated minimal reproducer for the claimed Verus limitation. From a pure allow-list standpoint it passes, but the deeper review criteria seem to require something more.
+
+Looking at the checklist more carefully, there's a violation: `assume_specification` should only be used for external-bottom code (std/external crates), not workspace-internal code like `map_frame` which calls other workspace modules. Both reviewers reasonably concluded FAIL on strict reading. Since the task requires ALL checklist items to be checked and any unchecked item means FAIL, and both independent reviewers identified overlapping blockers, the consolidated review should be FAIL. The key issues are the AST consistency mismatches (the `new` extraction plus the extra `map_frame`) and the improper use of `assume_specification` on workspace-internal code.
+[RESULT ✓] view: 1. # Final Review (claude-opus-4.8): phys-kframe
+2. 
+3. Independent, strict, tool-verified review of the Verus effort for `mm::phys::kframe`.
+4. In-scope functions: `KernelFrame::new`, `KernelFrame::drop`, `KernelFrame::base`.
+5. All commands below were run by the reviewer; claims in prior logs were...
+[RESULT ✓] view: 1. # Final Review (gpt-5.3-codex): phys-kframe
+2. 
+3. ## Checklist — copy the master item list below; mark each [x]/[ ] with justification
+4. 
+5. ### Caller Analysis
+6. - [x] pub fns callers searched (tool-verified) — validated with `caller_analysis.md` and fresh rg on manager/kpage (`src/kernel/src...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Both independent reviews are complete, thorough, and agree on **FAIL** with the same core blockers. I confirmed the AST mismatch myself. Now consolidating into the master `final_review.md`.
+[TOOL] report_intent: Writing consolidated final review
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && rm -f verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.md
+
+[THINKING] Both reviewers reached the same conclusion, so I'm consolidating their findings into the master review document. They both flagged the same critical failures: AST consistency issues with mismatches in the `new` rewrite and an extra `map_frame` entry, plus a new trust boundary being introduced into the fixed TCB through `map_frame`'s assume_specification that crosses workspace boundaries.
+
+There's also a minor discrepancy in module admit counts between the reviewers—one reported 4 and the other 7—but that's just because they were counting different scopes (module-level vs. global), so the numbers actually align when you account for identity_map being in different modules.
+
+Writing the consolidated final_review.md now...
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 48 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/final_review.md with 13212 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Done. Both independent sub-agent reviews are saved alongside the consolidated master review.
+
+**Files written:**
+- `final_review.claude.md` (claude-opus-4.8)
+- `final_review.gpt.md` (gpt-5.3-codex)
+- `final_review.md` (consolidated)
+
+**Result: FAIL** (strict — both reviewers agreed independently).
+
+**In-scope strengths (verified):** `new`/`base`/`drop` have `admit=0, assume=0, external_body=0`; `make verify-kernel MODULE=mm::phys` exits 0; no spec drift.
+
+**Blockers (why FAIL):**
+1. **New trust boundary in a FIXED TCB** — commit `a2b7376d8` removed `KernelFrame::new` and added `KernelFrame::map_frame`; `new`'s exec body was rewritten to extract the side effect into `map_frame` with an empty `assume_specification`.
+2. **AST consistency FAIL** — 2 mismatch + 1 extra. `drop` = allowed logging cfg-gate; `new` + `map_frame` = unsanctioned exec extraction, no isolated reproducer.
+3. **assume_specification on workspace-internal code** (`map_frame` → `mm::virt`), not an external-bottom boundary.
+4. **Caller coverage gaps** — `new` Err arm `=> true` (tautological); `drop` has no "frees once" postcondition.
+5. **Stale `bugs.md`** — proving-phase note still claims `new` retains `external_body` (it doesn't).
+
+Guardrail counts (kframe): `admit:0, assume:0, external_body:0, assume_specification:1 (TCB-listed), cfg-gated exec:1 (logging)`.
+
+[THINKING] I'm verifying the files are in place and wrapping up with a summary for the user. Those leftover session transcript files were already there, so I'll leave them as is.
+
+
+=== Session End ===
+Session: 8d44a24b-7914-464b-b2c8-9d34131bebf0
+Duration: 712.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/final-review/review-claude-20260615-124547.jsonl
