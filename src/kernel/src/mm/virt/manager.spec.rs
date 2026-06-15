@@ -82,6 +82,20 @@ impl ErrorCodeBits for ::arch::cpu::excp::ErrorCode {
 }
 
 //==================================================================================================
+// Abstract physical-frame projection of the opaque kernel-frame RAII handle
+//
+// `KernelFrame` is owned by the not-yet-verified `mm::phys` module and modeled
+// here as opaque (`ExKernelFrame`). Its byte address is an uninterpreted
+// projection (mechanical consequence of the type being `external_body`), letting
+// `alloc_kpages` state per-frame validity exactly as `alloc_kpage` does for
+// `KernelPage`.
+//==================================================================================================
+
+impl AddrNat for KernelFrame {
+    uninterp spec fn addr_nat(&self) -> nat;
+}
+
+//==================================================================================================
 // Pure architectural predicates (no `&self`, instance-independent)
 //==================================================================================================
 

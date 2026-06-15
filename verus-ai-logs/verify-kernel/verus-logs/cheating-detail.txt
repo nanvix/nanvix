@@ -4,8 +4,8 @@
     - mm/virt/manager.rs:612 try_resolve_cow_fault: external_body
     - mm/virt/manager.rs:727 alloc_upages: external_body
     - mm/virt/manager.rs:916 alloc_kpage: external_body
-    - mm/virt/manager.rs:957 alloc_kpages: external_body
-    - mm/virt/manager.rs:1011 load_elf: external_body
+    - mm/virt/manager.rs:967 alloc_kpages: external_body
+    - mm/virt/manager.rs:1021 load_elf: external_body
     - mm/virt/manager.spec.rs:47 ExExcpErrorCode (struct): external_type_spec
     - mm/virt/manager.spec.rs:52 ExKernelFrame (struct): external_type_spec
     - mm/virt/manager.spec.rs:57 ExElf32Fhdr (struct): external_type_spec
