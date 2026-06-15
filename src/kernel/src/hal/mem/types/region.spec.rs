@@ -27,6 +27,21 @@ verus! {
 use crate::hal::mem::spec_page_size;
 use crate::hal::mem::spec_addr;
 
+// `<T as Clone>::clone` for the `Address` family is value-preserving (the
+// address newtypes wrap a plain integer, so cloning copies the abstract
+// address). `MemoryRegion::start` returns `self.start.clone()`; without this
+// fact Verus cannot relate `spec_addr(&clone)` to `spec_addr(&orig)` because
+// `spec_addr` is `uninterp`. `Clone` is an external (std) trait whose impl for
+// each `T: Address` lives outside the verification scope, so the fact is drawn
+// at the library edge with `assume_specification`, mirroring the
+// `<PageAligned<T> as Address>::into_raw_value` trust boundary in
+// `page.spec.rs`. The obligation it stands in for — `<T as Address>` clone is
+// newtype identity — is discharged when the `Address` family is verified.
+pub assume_specification<T: Address>[ <T as Clone>::clone ](addr: &T) -> (result: T)
+    ensures
+        spec_addr(&result) == spec_addr(addr),
+;
+
 // Abstract value of a memory region: the geometry `(start, size)` (in bytes,
 // as mathematical integers) plus the three metadata tags callers observe.
 pub struct MemoryRegionView {
