@@ -596,3 +596,17 @@ Turn 31
 [TOOL] report_intent: Running full make verify
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -40
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+`make verify` now passes: **bitmap 70, sys 6, slab 35, kernel 47 verified — 0 errors, exit 0**. The kernel `external_body=24`/`cfg_gate=6` are pre-existing TCB items (unchanged by me), not new cheating. Let me confirm the overall exit code and current git state.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify >/tmp/verify_out.log 2>&1; echo "make verify exit: $?"; echo "=== git status ==
+
+[THINKING] All the verification checks are passing now—bitmap, sys, slab, and kernel crates all verified with zero errors and exit code 0. The "CHEATING_DETECTED" status showing up for the kernel crate is from pre-existing TCB items that were already there before my changes, so that's not something I introduced. Let me just double-check that the overall `make verify` command is returning the right exit code.
+
+Now I need to fix the bugs.md file to correct the environment note—it had the situation backwards, saying the pinned toolchain couldn't compile when the real issue was that the toolchain got overwritten to a different version. I should also document this config bug properly and then commit the Cargo.toml and Cargo.lock revert to get the working tree back in sync with the correct state. Let me check the git status and verify the make exit code first.
