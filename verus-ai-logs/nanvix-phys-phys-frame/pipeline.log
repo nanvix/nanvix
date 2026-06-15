@@ -294,3 +294,4 @@ and were re-executed independently by the reviewer.
 PHASE: specification
 Module: phys-frame
 ============================================================
+[2026-06-15 08:00:46] [STRIP-EXT] removed 10 external_body attribute(s) from /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
