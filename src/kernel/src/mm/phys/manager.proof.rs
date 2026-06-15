@@ -20,7 +20,6 @@ use crate::mm::phys::phys_view;
 /// The manager brokers the *global* frame partition: its abstract view coincides with
 /// `phys_view().frames`. This is the §8 ghost-token attachment, realized in the proving phase
 /// with a token over the `frame::INSTANCE` / `PhysMemoryManager` singletons. Trusted boundary.
-#[verus_verify(external_body)]
 pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
     ensures
         m@ == phys_view().frames,
@@ -35,7 +34,6 @@ pub proof fn lemma_manager_attached(m: &PhysMemoryManager)
 /// `addr` was free and becomes reserved with refcount 1. `frame::alloc` carries no `self`, so the
 /// link to `self@` is supplied here and discharged by the global-token attachment in the proving
 /// phase.
-#[verus_verify(external_body)]
 pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, addr: int)
     requires
         pre.wf(),
@@ -48,7 +46,6 @@ pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, a
 
 /// Effect of a contiguous kernel-frame allocation: `frames` owns `count` physically contiguous
 /// frames starting at some page-aligned `base`, all of which were free and become reserved.
-#[verus_verify(external_body)]
 pub proof fn lemma_kernel_alloc_contiguous(
     pre: FrameAllocView,
     post: FrameAllocView,
@@ -161,7 +158,6 @@ pub proof fn lemma_user_addr_set_push(frames: Seq<UserFrame>, uf: UserFrame)
 /// On a mid-bulk failure the implementation `clear()`s the vector, which drops (and thus frees)
 /// every frame already taken, restoring the partition to its pre-call state. `Drop` side effects
 /// are not modeled in exec, so the restoration is asserted here.
-#[verus_verify(external_body)]
 pub proof fn lemma_user_bulk_err_restored(m: &PhysMemoryManager, pre: FrameAllocView)
     requires
         pre.wf(),
