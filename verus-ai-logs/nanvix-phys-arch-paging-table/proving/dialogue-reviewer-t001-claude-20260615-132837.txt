@@ -241,3 +241,254 @@ Now let me run the verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "VERUS_EXECUTABLE_DIR=$VERUS_EXECUTABLE_DIR" && make verify-arch 2>&1 | tail -60
 
 [THINKING] I'm going to run the architecture verification check now.
+[RESULT ✓] bash: VERUS_EXECUTABLE_DIR=
+Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification passed (exit 0, cached) but cheating check flags external_body=4 and cfg_gate=4. Let me examine the detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+[THINKING] The cached verification shows two issues to investigate: external_body=4 indicates there are multiple read/write operations in the table module that verify-arch needs to cover across the whole architecture crate, and cfg_gate=4 is a checklist violation for cfg-gated executable code. I should run a fresh verification to get the current details.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: external_body
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/verify-arch/verus-logs/; echo "=== grep cfg in detail/log ==="; grep
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg_gate\|cfg_count\|verus_keep_ghost\|cfg(" scripts/verify.sh | head -30
+
+[THINKING] I'm tracking down the details on external_body references like invlpg from the paging module, and trying to understand what cfg_gate refers to since it's not showing up in the detail file I'm looking at.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-14_08-09-50.log
+verus_2026-06-14_08-10-07.log
+verus_2026-06-14_08-13-23.log
+verus_2026-06-14_08-13-34.log
+verus_2026-06-14_08-14-25.log
+verus_2026-06-14_08-18-15.log
+verus_2026-06-14_08-18-29.log
+verus_2026-06-14_08-20-25.log
+verus_2026-06-14...
+[RESULT ✓] bash: 478:count_cfg_gates() {
+486:cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+584:        echo "  Global:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+
+[THINKING] I'm looking at the regex pattern that detects `#[cfg(verus_keep_ghost)]` annotations, which shows up twice in table.rs and four times across the crate. Now I need to check the script logic to see how these cfg gates are classified—whether they're treated as exec code gates or something else.
+[RESULT ✓] view: 478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+485. count = 0
+486. cfg_pat = re.compile(r'#\[cfg(_attr)?\((not\()?verus_keep_ghost')
+487. 
+488. for rs_file in sorted(src_dir.glob('**...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg(verus_keep_ghost)\|cfg(not(verus_keep_ghost))\|cfg_attr(verus_keep_ghos
+
+[THINKING] The cfg_gate count is scoped to the entire crate under src/libs/arch/src, and the regex pattern specifically targets `#[cfg(verus_keep_ghost)]` attributes while filtering out cases where the following non-attribute line is a use statement, include macro, extern declaration, or module definition. Looking at table.rs around lines 9-12, there's an include macro being pulled in after the cfg attribute.
+
+Since the include macros are excluded from the count, table.rs doesn't contribute to the cfg_gate total. The 4 cfg_gate instances must be coming from other files in the arch crate where `#[cfg(verus_keep_ghost)]` is actually gating executable code rather than includes or module declarations. I need to search across the arch crate to find which files contain these cfg-gated exec code patterns.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/frame/number.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:8:#[cfg(verus_keep_ghost)]
+src/libs/arch/src/x86/mem/paging/mod.rs:10:#[cfg(verus_keep_ghost)]
+src/libs/arc...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+
+[THINKING] I'm checking which regex matches get excluded based on what follows them—those preceded by include!, extern, mod, derive, feature, or log macros don't count. Looking through the files, most instances in number.rs, mod.rs, table.rs, and pte.rs are followed by include! statements, so they're filtered out, leaving just a few that actually match the criteria.
+
+The four that remain are in pte.rs and pde.rs—they're attribute markers applying `allow(unused, verus_impl_method_marker)` to functions, which is a Verus-generated pattern rather than actual code gating. Since those files are separate modules outside the scope of the current proving task, the table.rs module itself has zero cfg-gated exec code.
+[RESULT ✓] view: 80.     ///
+81.     /// # Returns
+82.     ///
+83.     /// A new [`PageTableEntryFlags`] with the given flags.
+84.     ///
+85.     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+86.     #[verus_spec(result =>
+87.         ensures
+88.             result@ == spec_pte_flags_new(
+8...
+[RESULT ✓] view: 303.     /// # Returns
+304.     ///
+305.     /// A [`PageTableEntry`].
+306.     ///
+307.     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+308.     #[verus_spec(result =>
+309.         ensures
+310.             result@ == spec_pte_new(flags@, frame@),
+311.             result.i...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -path ./target -prune -o \( -iname '*drift*' -o -iname '*body_removed*' \) -pr
+
+[THINKING] I'm realizing these `cfg_attr` directives are applying lint allowances gated on the `verus_keep_ghost` marker, which is a Verus tooling annotation rather than actual conditional compilation of executable code. The regex detector is overcounting them since it's treating `cfg_attr` the same way it would gate branches or expressions, but these are just metadata in the pte.rs and pde.rs modules that fall outside the scope of the arch-paging-table proving work.
+
+For the arch-paging-table module itself, there's no conditional gating of executable code—only `include!` macros which are excluded from the count—so this checklist item passes. The four instances flagged crate-wide are tooling markers in sibling modules that are already separately verified.
+
+Now I need to verify the build completes without warnings, but I'm noticing the checklist has placeholder variables like `{spec_drift_cmd}`, `{tcb_allowed_file}`, and `{verus_cmd}` that weren't substituted. I'll need to infer what these commands are: the spec-drift check likely compares specifications, the TCB allowed file is probably in verus-ai-logs, and the Verus commands are probably `make verify-arch` for the module or `make verify` for the full crate. Let me search for the spec-drift tooling to understand what that command should be.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/body_removed_source.rs
+./verus-ai-logs/nanvix-phys-phys-mod/body_removed_source.rs
+./verus-ai-logs/nanvix-phys-phys-manager/body_removed_source.rs
+./verus-ai-logs/nanvix-phys-phys-upool/body_removed_source.rs
+./verus-ai-logs/nanvix-phys-phys-kframe/body_rem...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && head -30 verus-ai-logs/nanvix-phys-arch-paging-table/body_removed_source.rs; echo "==
+
+[THINKING] I'm looking at the spec-drift skill concept, which checks whether current spec contracts have been weakened compared to a baseline. There's a `body_removed_source.rs` file in the module directory that I need to examine, and I notice the `spec_drift_cmd` placeholder hasn't been substituted yet.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use vst...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -12 -- src/libs/arch/src/x86/mem/paging/table.spec.rs; echo "=== sp
+
+[THINKING] I'm checking the git history to find when the specification phase was completed, then comparing the contract specifications in the Rust code between that commit and the current state. The main thing I'm looking for is whether any contracts got weakened during the proving process—specifically, I noticed that the `write` function lost some of its `ensures` clauses that were apparently deemed unsound.
+[RESULT ✓] bash: 95312327f [verus] verify PASS (cheating detected): arch::all (23 verified, 0 errors, admit=1 external_body=2)
+00b303345 [verus] verify FAIL: arch::all (16 verified, 6 errors)
+5ad576955 [verus] verify FAIL: arch::all (0 verified, compilation/setup error (verus did not run))
+07eb0d8e4 [verus-ai] calle...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "VERUS_AI_DIR guess"; ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null | head; 
+
+[THINKING] So the spec phase concluded at commit 95312327f with the lemma_entry_roundtrip using admit=1 and external_body=2 for read/write operations. Then the proving phase in commits 8c820ae7f and ff5af3692 replaced that admit() call with the external_body axiom form, which gets TCB-logged. Now I need to locate the spec_drift.py file that was mentioned in the STOP directive to understand how it checks for spec drift.
+[RESULT ✓] bash: VERUS_AI_DIR guess
+EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+=== find spec_drift.py / fn_coverage.py ===
+/home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+/home/ruize/ver...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py --help 2>&1 | head -4
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check --help 2>&1 | h
+[RESULT ✓] bash: usage: spec_drift.py check [-h] [--phase PHASE] [--logs-dir LOGS_DIR]
+                           [--before BEFORE] [--after AFTER] [-o OUTPUT]
+                           [--json]
+                           module
+
+positional arguments:
+  module                Module name (e.g. volume_impl)
+
+options:...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py check arch-paging-tab
+[RESULT ✓] bash: Module:   arch-paging-table
+Phase:    proving
+Source:   /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+Baseline: 83302a5f4e7d
+Current:  HEAD
+
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Re...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Spec drift clean. Now cross-module regression and build. Let me check the build skill and run both.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -i -A2 "build\|z " | 
+
+[THINKING] The spec_drift check for proof.rs comes back clean at zero, which is good. Now I'm running the cross-module regression tests with `make verify` across all crates to ensure everything still passes, along with the function coverage analysis and the full verification command to confirm all modules are properly verified.
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system ope...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build -- all 2>&1 | tail -40
+
+[THINKING] I need to run the build command for everything, but I should be careful about potential conflicts with the target directory if I run multiple builds in parallel. Let me start with the full build first, then run the cross-module verification afterward. The arch crate should already be compiled from the earlier verification step, so that's one less thing to worry about during the proving phase review.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/bin/procd.elf\;procd \
+	/home/ruize/nanvix-phy-specs/bin/memd.elf\;memd \
+	/home/ruize/nanvix-phy-specs/bin/vfsd.elf\;vfsd \
+	/home/ruize/nanvix-phy-specs/bin/mount-bench-nostd.elf\;mount-bench-nostd
+mkimage: adding '/home/ruize/nanvix-phy-specs/bin/procd.elf' (4030016 b...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Build OK. Now cross-module regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | grep -iE "Summary|verification:|cheating:|status:|Exit code|error|
+
+[THINKING] The build completed successfully, so now I'm running the full cross-module regression check to verify all crates and the kernel together. This might take a while, but with caching it should be reasonably fast for already-verified modules.
