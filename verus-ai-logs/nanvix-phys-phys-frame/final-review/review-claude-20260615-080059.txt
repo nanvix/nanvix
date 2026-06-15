@@ -955,3 +955,17 @@ Turn 13
 [TOOL] report_intent: Running full verification
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify
 [RESULT ✓] report_intent: Intent logged
+The Inner specs are strong and complete. Now let me view the wrapper (free-function) specs which are the external-top API callers use.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys; sed -n '1483,1593p' frame.rs
+[RESULT ✓] bash: INSTANCE_INIT.store(true, ORDER);
+    Ok(())
+}
+
+/// Allocate a frame.
+// Dependency contract for the manager layer: thin singleton wrapper around `Inner::alloc`.
+// `external_body` until the `frame` free-function layer is verified; the manager bridges the
+// returned address into its own abstract fr...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
