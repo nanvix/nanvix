@@ -141,3 +141,252 @@ virt.rs
 virt.spec.rs
 === virt dir ===
 <shellId: 1 completed with exit code 2>
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Verification passes (exit 0), but there's `cfg_gate=1` flagged. Let me examine the detail and the virt submodule files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.spec.rs
+
+[THINKING] The verification passed, but the cheating check flagged cfg_gate=1, which violates the requirement against cfg-gated exec code. I need to examine the cheating details and review the virt files to understand what's happening.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] bash: 
+<shellId: 3 completed with exit code 0>
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The cheating-detail file is empty but summary reports `cfg_gate=1`. Let me understand the detection logic and find the relevant skill/TCB files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat scripts/verify.sh 2>/dev/null | grep -n -i "cfg\|cheat\|external_body\|admit\|ass
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls .github/skills/ && echo "===" && find . -iname "*tcb*" 2>/dev/null | grep -v targe
+
+[THINKING] I'm noticing the cheating-detail.txt file is empty even though the summary indicates cfg_gate=1, so I need to track down where the cfg gates actually are. I can see `#[cfg(target_pointer_width = "32")]` annotations on lines 39 and 296, plus `#[cfg(verus_keep_ghost)]` includes in mod.rs. The checklist is looking for cfg-gated executable code like branches, expressions, or match arms, but the detail file seems to have been cleared or the information is stored elsewhere.
+
+Let me dig into the verify.sh script to understand how cfg_gate is being detected and counted, since the template placeholders like `{spec_drift_cmd}` and `{tcb_allowed_file}` aren't substituted yet. I need to find the actual commands being used for the spec-drift-check and verus-constraints checks.
+[RESULT ✓] bash: 3:# Generic Verus verification script with cheating detection and git tracking.
+103:# Determine verification mode and source directory for cheating detection.
+279:# Cheating pattern detection (tree-sitter AST via guardrails.py).
+282:echo "=== Cheating Pattern Check ==="
+290:CHEATING_DIR="${CRATE_SRC...
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+===
+./verus-ai-logs/tcb-allowed.md
+=== spec-drift skill ===
+<shellId: 5 completed with exit code 2>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "cfg_gate\|cfg_gated\|cfg-gate\|cfg_exec" scripts/verify.sh | head -30
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -60
+
+[THINKING] I need to track down where the TCB allowed file is located and understand how cfg_gate detection works in the codebase. The spec-drift-check and verus-constraints skills seem to be missing from the .github/skills directory, so I'm looking into the cfg_gate computation logic to see how it's being scanned and detected.
+[RESULT ✓] bash: 476:# Count cfg-gated exec code (cheating indicator).
+478:count_cfg_gates() {
+534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEATING_DIR")" || MOD_CFG_GATE=0
+576:        [[ $MOD_CFG_GATE -gt 0 ]] && ec...
+[RESULT ✓] bash: # TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+  module-level `static mut INSTANCE: MaybeUninit<Inner>` singleton (guarded by `INSTAN...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+
+[THINKING] The address module has cfg_gate enabled, so I need to trace through the cfg_gate detection logic to find which file and line is triggering it in the global configuration.
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The cfg_gate count is crate-wide (whole `sys` crate). Let me find exactly which line triggers it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/sys/src')
+cf
+
+[THINKING] The cfg_gate counter is scanning through the entire sys crate looking for `#[cfg(verus_keep_ghost)]` patterns while filtering out includes, use statements, mod declarations, derives, and features. Since it's finding cfg_gate=1, that means there's exactly one match somewhere in the crate—not just in the address module but anywhere in the sys crate. I need to run the counting logic to pinpoint which line is triggering it.
+[RESULT ✓] bash: src/libs/sys/src/sys/mm/alignment.rs:151: #[cfg(verus_keep_ghost)]  -> target: verus! {
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The cfg_gate=1 is in `alignment.rs` — a different module, NOT the address module under review. Let me confirm the address module itself has zero.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "
+import re
+from pathlib import Path
+src_dir = Path('src/libs/sys/src/sys/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "admit\|external_body\|assume\|no_decreases\|assume_specification" src/libs/
+
+[THINKING] I'm realizing the cfg_gate is actually in alignment.rs, not in the address module I'm reviewing. Since the address module's includes are all skipped because they use `include!`, the cfg_gate=1 belongs to a different module entirely. This matters because the checklist item about cfg-gated exec code is specifically scoped to the sys-address-mod module under review.
+
+Let me verify this by checking the count just within the address module directory.
+[RESULT ✓] bash: exit: 1
+<shellId: 10 completed with exit code 0>
+[RESULT ✓] bash: address-module cfg_gate count = 0
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Address module: cfg_gate=0, no admit/external_body/assume/no_decreases. Now let me check git history for spec drift and look for the build command + warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -10 -- src/libs/sys/src/sys/mm/address/ && echo "=== status ===" &&
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_drift\|spec-drift" scripts/ .github/ 2>/dev/null | head; echo "=== fin
+
+[THINKING] The address module has cfg_gate disabled and lacks the typical verification annotations. I need to check the spec-drift to ensure the original guarantees haven't been weakened, which means looking at git history for the original specifications. I also need to find the build command—the checklist mentions `make verify-sys` for Verus and a separate build command, so I should check for any warnings there.
+
+Looking at the Verus output, verification passed with 2 out of 255 contracts verified, but I don't see warnings logged. Since the spec-drift command placeholder wasn't substituted in the checklist, I'll need to manually compare the current spec contracts against git history to verify they haven't been degraded.
+[RESULT ✓] bash: === find baseline ===
+body_removed_source.rs
+bugs.md
+caller-analysis
+caller_analysis.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+verus-ai-logs/nanvix-phys-sys-address-mod/verification-plan.json
+verus-ai-logs/nanvix-phys-sys-...
+[RESULT ✓] bash: 8f9b8dd4b [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+a85df8c38 [verus] verify PASS: sys::sys::mm::address (2 verified, 0 errors)
+192f966ee [verus-ai] caller-analysis START: sys-address-mod
+26902c59f [verus] verify PASS (cheating detected): sys::all (6 verified, 0 errors, cfg_g...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff spec phase end (a85df8c38) -> now for mod.rs ===" && git --no-pager di
+
+[THINKING] I need to check the body_removed_source.rs file to understand the baseline specifications and verify that the proving phase hasn't weakened any specs that were established during the specification phase. The key is comparing the current state against the last specification commit to catch any spec-drift in the address handling.
+[RESULT ✓] bash: === diff spec phase end (a85df8c38) -> now for mod.rs ===
+diff --git a/src/libs/sys/src/sys/mm/address/mod.rs b/src/libs/sys/src/sys/mm/address/mod.rs
+index 885f42a46..0af904c3e 100644
+--- a/src/libs/sys/src/sys/mm/address/mod.rs
++++ b/src/libs/sys/src/sys/mm/address/mod.rs
+@@ -27,7 +27,6 @@ use cra...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== Full address dir diff from caller-analysis START (192f966ee) to HEAD ===" &
+
+[THINKING] I'm checking what actually changed between the specification phase and the current state — it looks like just a duplicate import was removed, which isn't a meaningful spec change. Now I need to look at what the proving phase commits actually did to understand the full picture of any potential drift.
+[RESULT ✓] bash: === Full address dir diff from caller-analysis START (192f966ee) to HEAD ===
+diff --git a/src/libs/sys/src/sys/mm/address/mod.rs b/src/libs/sys/src/sys/mm/address/mod.rs
+index d0f60863a..0af904c3e 100644
+--- a/src/libs/sys/src/sys/mm/address/mod.rs
++++ b/src/libs/sys/src/sys/mm/address/mod.rs
+@@ -27...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Proving-phase diff is clean: `from_raw_value` got a contract **added** (strengthening), and `is_aligned` was refactored from an inline predicate to the `open spec fn spec_addr_is_aligned` whose body is identical — no weakening. Now let me check for warnings and the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rni "warning" verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_11-47-27.log
+
+[THINKING] In the proving phase, adding `from_raw_value` strengthens the spec by introducing a new contract on the trait, while changing `is_aligned` to use a dedicated spec function is definitionally equivalent to the original inline check, so there's no weakening happening. I'm tracing through the git history to understand when these specs were actually introduced. The key question is whether the `from_raw_value` contract existed at the end of the specification phase or was added during proving. Looking at the commits, there's no separate specification phase commit in the address module history between the caller-analysis start and the first verify PASS, which suggests the specs were committed together with that initial verification pass.
+
+For the spec-drift check itself, the `is_aligned` predicate is now a named open spec function instead of inline, which is definitionally identical and poses no drift since it's exposed. The `from_raw_value` contract strengthening is acceptable. I should verify there are no `assume_specification` calls anywhere and confirm the trait's other methods align with the specification-phase design decisions — not all methods have contracts, which is intentional.
+
+Now I need to check the build output for any warnings and verify the verus command ran cleanly.
+[RESULT ✓] bash: === verus full log tail ===
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+note: verifying module sys::mm::address
+
+note: verifying module sys::mm::address...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Verus passed with 0 errors/warnings. Let me run the build to confirm clean compilation and check the Makefile for the all-modules verify target.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "verify\|^build:\|build-sys\|check" Makefile 2>/dev/null | head -30
+
+[THINKING] Verus verification passed cleanly, so now I need to run the build to check for any compile warnings or errors. The standard build command is `./z build -- all`, though that might be resource-intensive. Since the focus is on the sys crate, I should look for a lighter build option like cargo check or a lint command rather than a full build.
+
+Looking at the cross-module regression requirements, `verus_cmd_all` should verify all modules across the crate. The `make verify-sys` command already verified the sys crate and exited cleanly—it only reported the two modules with actual Verus contracts, which is expected since Verus only lists modules it actively verifies. The cached output means it reused previous results. I need to check the Makefile to see what targets are available and run a build on the sys crate to ensure there are no warnings.
+[RESULT ✓] bash: 116:NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
+130:# All command-line goals are check-only — disable sccache.
+254:export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) check --locked $(GUEST_CARGO_FLAGS)  $(GUE...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+`make verify` covers all crates; `make verify-sys` already verified all sys modules cleanly. Let me run `make check` to confirm the normal (non-ghost) build is clean, then run full `make verify` for cross-module regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make check 2>&1 | tail -30
+
+[THINKING] Looking at the verification workflow, `make verify` runs the full test suite across all crates and the kernel, while `make verify-sys` focuses specifically on the sys crate. The cross-module regression tests within sys have already passed cleanly—both the address and virt modules verified successfully. Now I'm checking what the build command needs to do.
+
+For the build side, I should run `make check` to ensure the code compiles without warnings or errors. The verus verification already handles compilation, but a regular non-ghost build is important too since `#[cfg(verus_keep_ghost)]` directives are excluded in normal builds. Let me run `make check` with a reasonable timeout to verify the build is clean.
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#icu_collections@2.2.0","manifest_path":"/home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/icu_collections-2.2.0/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"icu_coll...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+`make check` succeeded (exit 0, no warnings). Now the cross-module regression — running full `make verify` (all crates + kernel).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify 2>&1 | grep -iE "error|fail|warning|verified|exit code|status
+
+[THINKING] The build passed cleanly with no warnings. Now I need to run the full cross-module regression check as specified in the checklist, though it might take a while since it includes the kernel. Let me proceed with `make verify` and see if it's cached, using a longer timeout to be safe.
