@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_09-11-55
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+72 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=11
+  admit=21
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+verification results:: 72 verified, 0 errors (partial verification with `--verify-*`)
+error[E0080]: evaluation panicked: does not have the expected size
+   --> src/kernel/src/mm/phys/frame.proof.rs:1:1
+    |
+  1 | / verus! {
+  2 | |
+  3 | | use super::FrameAllocView;
+  4 | | use crate::hal::mem::spec_page_size;
+...   |
+698 | | }
+    | |_^ evaluation of `mm::phys::frame::_` failed here
+
+For more information about this error, try `rustc --explain E0080`.
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

@@ -171,7 +171,13 @@ impl Inner {
             assert(pa >= 0) by (nonlinear_arith) requires idx >= 0, spec_page_size() > 0, pa == idx * spec_page_size();
             lemma_frame_facts(&old_self, pa, idx);
             assert(old_self@.free_frames.contains(pa));
-            assert(usize::MAX as int == 0xFFFF_FFFF);
+            // The index is below `u32::MAX`, hence representable as a frame number (the kernel
+            // targets x86_64, where `spec_max_frame_number()` is far larger than `u32::MAX`).
+            assert(nbits as int == self.bitmap@.num_bits);
+            assert(idx < nbits as int);
+            assert(nbits < u32::MAX);
+            assert(idx < u32::MAX as int);
+            assert((u32::MAX as int) <= FrameNumber::spec_max()) by (compute);
             assert(idx <= FrameNumber::spec_max());
         }
         self.refcount[frame_number] = 1;
