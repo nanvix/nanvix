@@ -125,3 +125,20 @@ Module: manager
 [2026-06-16 01:07:56]   ↳ dialogue-reviewer-t1 done in 5m34s (exit=0)
 [2026-06-16 01:07:56] [DIALOGUE] Reviewer created STOP file: RESOLVED
 [2026-06-16 01:07:56] [DIALOGUE] specification ended after 1 turns: RESOLVED (334s)
+[2026-06-16 01:07:56] [PHASE] specification: dialogue-RESOLVED (30m13s)
+[2026-06-16 01:07:56] [SPEC DRIFT] (within specification) Comparing 453128e6 → d852139f
+[2026-06-16 01:07:56] [SPEC DRIFT] (within specification) No changes detected
+[2026-06-16 01:07:56] [TOPLEVEL DRIFT] No verification-plan.json — skipping
+[2026-06-16 01:07:56] ✅ specification: PASS (0/0)
+[2026-06-16 01:07:56] [GATE] Running build: make build
+[2026-06-16 01:07:56] [GATE] Running verify: make verify
+[2026-06-16 01:08:01] [GATE] ✅ Build + Verify passed after specification
+
+============================================================
+PIPELINE COMPLETE: manager
+  ✅ property-analysis         no-review                 6m54s
+  ✅ specification             dialogue-RESOLVED        30m13s (1 dialogue turns)
+  ──────────────────────────────────────────────────────────
+  Total: 37m12s
+============================================================
+[2026-06-16 01:08:01] [USAGE] Summary: 7 calls, 0 tokens, 1h16m56s total → /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-manager/usage_summary.json
