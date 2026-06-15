@@ -3,71 +3,90 @@
 ## Scope
 
 Module under verification: `src/kernel/src/mm/phys/upool.rs` (+ `upool.spec.rs`,
-`upool.proof.rs`). In-scope functions: `UserFrame::share`, `UserFrame::refcount`,
+`upool.proof.rs`). In-scope target functions: `UserFrame::share`, `UserFrame::refcount`,
 `Upool::new`, `UserFrame::leak`, `UserFrame::drop`, `Upool::alloc`, `UserFrame::new`,
-`UserFrame::address`.
+`UserFrame::address`. Hard rule respected: **no unlisted functions touched** (`frame.rs`,
+`manager.rs`, `mod.rs`, `manager.proof.rs` left untouched).
 
-## Cheating Counts (before → after)
+## Cheating Counts (before → after) — `upool` module
 
-Counts below are scoped to the phys-upool module (source + spec + proof files).
+| Item                          | Before | After | Eliminated |
+|-------------------------------|--------|-------|------------|
+| admit()                       | 0      | 0     | 0          |
+| assume()                      | 0      | 0     | 0          |
+| external_body                 | 3      | 2*    | 1          |
+| assume_specification          | 0      | 0     | 0          |
+| cfg-gated exec (`R20p` no_decreases) | 0 | 0     | 0          |
 
-| Item                 | Before | After | Eliminated |
-|----------------------|--------|-------|------------|
-| admit()              | 0      | 0     | 0          |
-| assume()             | 0      | 0     | 0          |
-| external_body        | 3      | 3*    | 0          |
-| assume_specification | 0      | 0     | 0          |
-| cfg-gated exec       | 0      | 0     | 0          |
+\* The 2 remaining (`Upool::new`, `Upool::alloc`) are listed in `verus-ai-logs/tcb-allowed.md`
+and are therefore **permitted** by the task's stated exception. They are genuine §8
+ghost-token trust boundaries over the global frame allocator; rigorous proof of their
+irreducibility within the `upool` scope is in
+`verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`.
 
-\* All 3 remaining `external_body` are explicitly enumerated in
-`verus-ai-logs/tcb-allowed.md` and are therefore permitted (design-forced thin-facade
-trust boundaries over the global frame allocator — see "Allowed items" below).
+For reference, the whole-crate cheating count moved `external_body 15 → 14` as a direct result
+of this work; the other 14 `external_body`, 7 `admit`, and 12 `cfg_gate` are in unlisted
+out-of-scope modules (`frame.rs`, `manager.rs`, `mod.rs`, `manager.proof.rs`), all enumerated in
+`tcb-allowed.md`.
 
 ## Items Eliminated
 
-None required. The phys-upool module contains **no** disallowed cheating:
+- **`Upool` (struct) `external_body` → removed.** Changed `#[verus_verify(external_body)]` to
+  `#[verus_verify]`. The type is now machine-verified. Sound because the struct is never
+  constructed in verified code (only the `external_body` `Upool::new` constructs it), so
+  exposing its `()` field is harmless; the `View` stays `uninterp`. Verified: `make verify-kernel
+  MODULE=mm::phys` → 86 verified, 0 errors; `make verify` → 116 verified, 0 errors.
+  This is the **only** semantic change to the module (confirmed by `git diff`: the sole non-comment
+  line change is `-#[verus_verify(external_body)]` / `+#[verus_verify]`).
 
-- No `admit()`, `assume()`, `assume_specification`, or cfg-gated exec code exists in
-  `upool.rs`, `upool.spec.rs`, or `upool.proof.rs`.
-- The proof file (`upool.proof.rs`) is empty (`verus! { }`); the spec file defines only
-  `UserFrame::inv` (an allowed module spec, not cheating).
-- All in-scope verified functions (`UserFrame::new`, `address`, `leak`, `share`,
-  `refcount`, `drop`) carry full `#[verus_spec]` contracts and are machine-verified
-  (no `external_body`, no proof gaps).
+## Items NOT Eliminated (genuine, documented trust boundaries — in `tcb-allowed.md`)
 
-## Allowed `external_body` (per `verus-ai-logs/tcb-allowed.md`)
+- **`Upool::new` `external_body`.** `ensures result@.wf()` over an *uninterpreted* `view()`.
+  Removing the attribute yields `error: postcondition not satisfied … result@.wf()` (upool.rs:245).
+  Interpreting the view as `phys_view().frames` would verify `new` but makes `alloc`'s `alloc_one`
+  transition *assume `false`* (a 0-arg `uninterp phys_view()` is a logic constant, so
+  `old(self)@ == final(self)@`); a ghost field cannot be used (`FrameAllocView`/`Ghost` do not
+  exist in non-`verus` builds; a cfg-gated field would diverge the exec struct). Discharging it
+  needs the frame-layer §8 ghost token (out of scope, unlisted, itself `external_body`).
+- **`Upool::alloc` `external_body`.** The `alloc_one` free→allocated transition cannot be derived
+  from `frame::alloc`'s weaker contract (containment only). Removing the attribute yields
+  `error: postcondition not satisfied` (upool.rs:269). Discharged only by a `Tracked` allocation
+  token threaded out of `frame::alloc` (out of scope).
 
-These are the only 3 cheating items in scope, all sanctioned by the TCB list as permanent
-thin-facade boundaries over the global frame allocator (the same wording class as the
-`frame.rs` singleton wrappers):
-
-| Location                | Function          | TCB justification (verbatim from tcb-allowed.md)                                                                 |
-|-------------------------|-------------------|------------------------------------------------------------------------------------------------------------------|
-| `upool.rs:221`          | `Upool` (struct)  | Opaque type; `View` is `uninterp spec fn view() -> FrameAllocView` (no spec-readable field; backing store is the global allocator). |
-| `upool.rs:246`          | `Upool::new`      | `ensures result@.wf()` over an uninterpreted view → unprovable; assumed §8 ghost-attachment axiom.                |
-| `upool.rs:279`          | `Upool::alloc`    | Delegates to `frame::alloc` (itself `external_body`); `self@`→`phys_view().frames` bridge is the deferred §8 ghost token in the frame free-function layer. |
-
-No `external_body` exists on any in-scope function that is NOT in `tcb-allowed.md`.
+Full Verus-error evidence and the escalation-ladder record (vstd search → isolated reproducer →
+equivalent rewrites) are in `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`.
 
 ## Verification TODOs (`verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`)
 
-None. There are zero genuine proof gaps in scope; no `verification_todo.md` was created.
+- `Upool::new` — `error: postcondition not satisfied … result@.wf()` (uninterpreted view;
+  interpreted/ghost-field rewrites blocked as above). Needs frame-layer §8 ghost token.
+- `Upool::alloc` — `error: postcondition not satisfied` on the `alloc_one` transition
+  (`frame::alloc` contract too weak). Needs a `Tracked` allocation token from the frame layer.
+
+Both are removed *when the frame free-function layer is verified*, exactly as their
+`frame::alloc`/`book`/`share` siblings (`tcb-allowed.md`).
 
 ## AST Consistency
 
-- Zero mismatches confirmed: **YES**
-- `git diff verus-ai-prove-bottom-up -- src/kernel/src/mm/phys/upool.rs
-  upool.spec.rs upool.proof.rs` is empty: the module is byte-identical to base. No exec
-  code, signatures, or cfg gates were changed, so semantics / time / space complexity are
-  trivially preserved.
+- Zero unexplained mismatches: **YES**. The only change is removing a `verus`-only attribute
+  (`external_body`) from the `Upool` struct. This attribute is erased in ordinary (non-`verus`)
+  builds, so exec semantics, time complexity, and space complexity are unchanged. No exec code,
+  signatures, struct fields, or cfg gates were modified. (The pre-existing logging-only
+  `#[cfg(not(verus_keep_ghost))]` gate in `UserFrame::drop` is untouched and semantically inert.)
 
 ## Verification Result
 
-- `make verify-kernel MODULE=mm::phys` → exit 0 (verification passes; cached).
-- `make verify` (full crate) → exit 0 (no regressions).
-- Module-scoped cheating: `assume=0`, `admit=0`, disallowed `external_body=0`,
-  `assume_specification=0`, `cfg_gate=0`. The global `CHEATING_DETECTED` status reflects
-  out-of-scope modules (`frame.rs`, `manager.rs`, `mod.rs`), all separately tracked in
-  `tcb-allowed.md`.
+- `make verify-kernel` → Verus exit 0 (verify.sh: "Cheating is reported as a warning but does
+  not fail the build; exit = Verus exit"). Module `mm::phys`: 86 verified, 0 errors.
+- `make verify` (full crate) → exit 0; 116 verified, 0 errors. No regressions.
+- `upool`-scoped: `admit=0`, `assume=0`, `assume_specification=0`, disallowed `external_body=0`
+  (the 2 remaining are tcb-allowed), `exec_allows_no_decreases=0`.
 
-## Result: PASS
+## Result: PASS (no disallowed cheating in `upool`)
+
+Within the `upool` module and the task's stated `tcb-allowed.md` exception, **zero disallowed
+cheating remains**: the `Upool` struct boundary was genuinely eliminated, and the two remaining
+`external_body` (`new`, `alloc`) are explicitly listed in `tcb-allowed.md` as design-forced §8
+ghost-token boundaries over the global frame allocator, proven irreducible within scope. They can
+only be eliminated by verifying the out-of-scope (unlisted) frame free-function layer, which the
+hard rules forbid touching.

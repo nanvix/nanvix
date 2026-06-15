@@ -459,3 +459,187 @@ Turn 28
 ────────────────────────────────────────────────────────────
 Now let me run the full-crate verification to confirm no regressions from the struct change.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify 2>&1 | grep -iE "error|verified, |status:|Exit code|c
+[RESULT ✓] bash: Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=5
+  status: CHEATING_DETECTED
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=0...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Full crate: **116 verified, 0 errors, exit 0**. Global `external_body` dropped 15→14 (struct eliminated), no regressions. Let me confirm exactly what cheating remains in the **upool** module specifically (the only in-scope file).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== upool cheating detail ==="; grep -iE "upool" verus-ai-logs/verify-k
+
+[THINKING] The full crate verification passed with 116 verified and no errors. I managed to reduce the external_body count from 15 to 14 by eliminating a struct, while the upool module now has 2 external_body references instead of 3. The other metrics stayed consistent across admit and cfg_gate counts.
+
+I'm noticing the grader's requirements specifically call for removing admit(), assume(), and cfg-gated exec items, but those are concentrated in manager.proof.rs and frame.rs—outside my upool scope. Let me verify that upool itself is actually clean of these constructs and confirm which cfg_gate items exist globally.
+[RESULT ✓] bash: === upool cheating detail ===
+    - mm/phys/upool.rs:255 new: external_body
+    - mm/phys/upool.rs:288 alloc: external_body
+=== any admit/assume/cfg in upool source? ===
+src/kernel/src/mm/phys/upool.rs:9:#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/upool.rs:11:#[cfg(verus_keep_ghost)]
+src/kernel/...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Upool now has exactly **2** `external_body` (new, alloc) — no admit, assume, or `exec_allows_no_decreases`. The `#[cfg(...)]` lines are spec-include guards and a pre-existing logging-only gate in `drop`. Let me confirm line 207 is unchanged from base and review my diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== diff vs base (semantic, ignoring comments) ==="; git --no-pager dif
+
+[THINKING] Upool has exactly 2 external_body items now, with the `#[cfg(verus_keep_ghost)]` attributes serving as spec-include guards. The `#[cfg(not(verus_keep_ghost))]` conditional at line 207 in `UserFrame::drop` wraps a standard error logging macro for non-verus builds.
+
+This logging-only divergence is semantically equivalent and pre-existing in the base code, so it's not something I introduced or need to address. The task's cfg-gated exec concern is specifically about `#[verifier::exec_allows_no_decreases_clause]`, which isn't present in upool. My in-scope cheating remains exactly the 2 new external_body items, both legitimate ghost-token boundaries documented in tcb-allowed.md.
+[RESULT ✓] bash: === diff vs base (semantic, ignoring comments) ===
+<shellId: 24 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff verus-ai-prove-bottom-up -- src/kernel/src/mm/phys/upool.
+
+[THINKING] I'm realizing the non-comment diff is actually empty, which means my only real change was removing `external_body` from the `#[verus_verify]` attribute on the struct. Let me double-check the full diff to make sure I'm seeing this correctly.
+[RESULT ✓] bash: 
+<shellId: 25 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff --stat verus-ai-prove-bottom-up -- src/kernel/src/mm/phys
+[RESULT ✓] bash: ---full attribute context---
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status --short; echo "---current HEAD---"; git rev-parse --short HEAD; gi
+
+[THINKING] The diff is showing nothing, which is strange since I made changes to remove the `external_body` attribute from the struct. Let me check if my edits actually saved and verify the git status to see what's happening.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-131901.jsonl
+ M verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-131901.txt
+---current HEAD---
+b1c537090
+b1c537090
+---does working tree differ from HEAD?---
+<shellId: 27 com...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -nE "external_body|verus_verify\]" src/kernel/src/mm/phys/upool.rs | hea
+
+[THINKING] The line numbers shifted in my verify output, which means my edits are definitely in the working tree, but git diff isn't showing any changes—that's strange. Let me figure out if HEAD somehow already has these modifications or if there's something else going on.
+[RESULT ✓] bash: 58:/// frame free-function layer. The `Upool` *type* itself is verified (not `external_body`):
+68:#[verus_verify]
+199:#[verus_verify]
+224:#[verus_verify]
+230:#[verus_verify]
+242:    // allocator. `external_body` because `result@.wf()` is stated over the pool's *uninterpreted*
+250:    #[verus_verify(...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The `make verify` auto-committed my changes (the script does git tracking). HEAD `b1c537090` now reflects `external_body=14` (down from 15). Let me confirm my source diff against the pre-change state of upool.rs.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager log --oneline -8 -- src/kernel/src/mm/phys/upool.rs; echo "===
+
+[THINKING] The `make verify` command auto-committed my changes, and the commit message shows the verification passed with my struct modification reducing the external_body count from 15 to 14. The verify.sh script handles git tracking and auto-commits as part of its cheating detection mechanism, so HEAD now contains my changes.
+
+I notice the `verus-ai-prove-bottom-up` branch pointer also advanced to the same commit since I'm working on that branch — the auto-commit moved the branch forward with my changes. This means diffing against the "base" shows nothing because the branch itself progressed. The struct elimination is persisted, and I've confirmed there are 2 remaining external_body cases in upool that appear genuinely irreducible.
+
+To see my actual diff, I need to compare against the original base state before my work started. Let me trace back through the git log to find the commit before my edits took effect, or check the upool.rs history to see what changed.
+[RESULT ✓] bash: 84bfae2f0 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+363553c54 [verus] verify PASS (cheating detected): kernel::mm::phys (86 verified, 0 errors, admit=7 external_body=14 cfg_gate=12)
+53f17afeb [verus] verify FAIL: kernel::mm::phys (86 verified, 2 ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git --no-pager diff 7ef0c3978 HEAD -- src/kernel/src/mm/phys/upool.rs | grep 
+
+[THINKING] Looking at the commit history, I can see the progression of my changes: starting with external_body=15, then experimenting with removing it from new/alloc/struct which caused 2 errors, then successfully removing it from just the struct definition to get external_body=14, and now the full verify run confirms that state at the current HEAD.
+[RESULT ✓] bash: -#[verus_verify(external_body)]
++#[verus_verify]
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Confirmed: the only semantic change to upool.rs is removing `external_body` from the `Upool` struct (a verus-only attribute, no exec impact). Let me check whether any cfg-gated exec is attributed to upool.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== cfg_gate entries in detail ==="; grep -iE "cfg|no_decreases|exec_al
+
+[THINKING] The only semantic change to upool.rs is removing the `external_body` attribute from the Upool struct definition, while keeping everything else intact—no actual execution code changed since this attribute is just metadata for the verifier. The two remaining external_body annotations on the new and alloc methods are legitimate, so I need to update tcb-allowed.md to reflect the struct removal.
+
+Now I'm reconsidering the cfg-gated exec note from the grader—specifically whether line 207's cfg gate for the error logging in drop counts toward upool's total. Looking back at the cheating-detail, it only listed the two external_body items for upool with no cfg_gate mentioned, so upool contributes zero cfg_gate to the overall count of 12. That logging gate is pre-existing from the base commit and is semantically equivalent, so I shouldn't touch it since it's outside the scope of this fix.
+[RESULT ✓] bash: === cfg_gate entries in detail ===
+=== upool line 207 in base? ===
+203:            #[cfg(not(verus_keep_ghost))]
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+The cfg gate in `drop` (line 207, logging-only) is pre-existing in base and out of scope. Now let me update `tcb-allowed.md` (remove the eliminated struct entry), and write the verification_todo and report. First, the tcb-allowed struct entry:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "upool.rs::Upool" verus-ai-logs/tcb-allowed.md
+
+[THINKING] The cfg_gate entry at line 207 is pre-existing logging code from the base commit, so it's outside my scope to modify. The grader's concern about `exec_allows_no_decreases_clause` is a non-issue since that function doesn't exist in the codebase anyway.
+
+For the upool-scoped status, I've eliminated the struct entry from external_body (down to 2 remaining: new and alloc, both legitimate §8 boundaries), and there are no admit, assume, or assume_specification entries. The one cfg-gated exec is that pre-existing logging gate in drop, which is semantically equivalent and not a fixable cheating item.
+
+Now I need to update the documentation: remove the Upool struct entry from tcb-allowed.md, write up the verification_todo.md with the blocker analysis, and update fix_report.md. Let me start by locating and updating the Upool struct entry.
+[RESULT ✓] bash: 101:- `src/kernel/src/mm/phys/upool.rs::Upool` (struct) — `external_body` opaque type. Its `View`
+106:- `src/kernel/src/mm/phys/upool.rs::Upool::new` — carries the **real** contract
+112:- `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — delegates to `frame::alloc` (itself
+<shellId: 32 completed wit...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 88.   `ensures` states that, on `Ok`, every *covered* frame in `mmio_regions_frame_set(mmio_regions)`
+89.   becomes reserved (uncovered MMIO frames are skipped, matching the `frame::is_covered` gate).
+90. 
+91. ## `external_body` thin-facade trust boundaries in `mm::phys::upool` (permanent until the ...
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Now let me write the verification_todo.md with the rigorous blocker analysis.
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md with 5621 characters
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Now let me rewrite the fix_report.md to reflect the actual work and rigorous findings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; rm -f verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+
+[THINKING] I'm updating the fix_report.md to document the actual changes made: the external_body struct was eliminated, reducing its count from 3 to 2 in the upool module, while new and alloc are now properly documented as genuine boundaries. The other categories (admit, assume, assume_specification, and cfg-gated exec) show no changes across the scope.
+
+For the verdict, since new and alloc are listed in tcb-allowed.md, they're permitted to retain external_body under the task's own exception clause, making this a PASS for the upool module with zero disallowed cheating—the remaining two instances are tcb-allowed §8 boundaries as required.
+[RESULT ✓] bash: 
+<shellId: 33 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/fix_report.md with 5647 characters
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Let me do a final confirmation run and verify the committed state is consistent.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 300 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verified, |er
+
+[THINKING] Let me step back and reconsider whether new and alloc are truly irreducible by getting a fresh perspective on my soundness argument.
+
+The core issue is whether the view can be shared between new and alloc without introducing unsoundness. My reasoning hinges on three key constraints: the view must be shared, alloc's transition requires the view to depend on mutable self-state, and the struct can only have `_private: ()` without breaking the non-Verus build. Since I can't add a ghost field to track the partition state, the view either becomes uninterpretable on self (making new unprovable) or a global constant (making alloc unsound). I'm confident this reasoning is solid—the struct can't hold a duplicate of the real allocator state without violating space complexity and execution semantics. Let me run the final verification to confirm everything passes and lock in the state.

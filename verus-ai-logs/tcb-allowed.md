@@ -90,25 +90,31 @@ Any `external_body` outside this list must be removed.
 
 ## `external_body` thin-facade trust boundaries in `mm::phys::upool` (permanent until the frame free-function layer is verified)
 
-`upool` *is* the module under verification, so these three are **not** "trusted until upool
+`upool` *is* the module under verification, so these are **not** "trusted until upool
 is verified" — they are design-forced thin-facade boundaries over the global frame allocator,
 the same wording class as the `frame.rs` singleton wrappers (`frame::alloc` … "external_body
 until the free-function layer is verified"). The verified part of `upool` is everything that
 reasons through `UserFrame` (its `view`/`inv`, `new`, `address`, `leak`, `share`, `refcount`,
-`drop` — all machine-verified); only the `Upool` facade, whose abstract state *is* the global
-`FrameAllocView` it does not own, stays trusted.
+`drop` — all machine-verified) **plus the `Upool` type itself**; only the two `Upool` facade
+methods, whose abstract state *is* the global `FrameAllocView` they do not own, stay trusted.
 
-- `src/kernel/src/mm/phys/upool.rs::Upool` (struct) — `external_body` opaque type. Its `View`
-  is `uninterp spec fn view() -> FrameAllocView` (the pool carries no spec-readable field; its
-  real backing store is the global frame allocator). With an uninterpreted view the constructor
-  `Self { _private: () }` is unconstructible in verified code and no body can connect the view
-  to the allocator, so the type is opaque by design.
+- `src/kernel/src/mm/phys/upool.rs::Upool` (struct) — **ELIMINATED** (no longer `external_body`).
+  The type is now machine-verified (`#[verus_verify]`). It is never constructed in verified code
+  (only the `external_body` `Upool::new` constructs it), so exposing its `()` field is harmless;
+  its `View` remains `uninterp spec fn view() -> FrameAllocView`. Removing the attribute verifies
+  cleanly (`make verify-kernel MODULE=mm::phys` → 86 verified, 0 errors).
 - `src/kernel/src/mm/phys/upool.rs::Upool::new` — carries the **real** contract
   `ensures result@.wf()`. `FrameAllocView::wf()` is a non-trivial conjunction (page-alignment,
   allocated/free disjointness, allocated↔refcount consistency, u8-bounded refcounts) over the
   pool's *uninterpreted* `view()`; it is **unprovable from an uninterpreted view**, so the body
   is an assumed §8 ghost-attachment axiom (the pool introduces no frames of its own — `wf()` is
   the one fact its boot-time caller needs before handing the pool to `PhysMemoryManager::init`).
+  Making the view spec-readable is impossible within the `upool` module: an interpreted view
+  (`phys_view().frames`) makes `alloc`'s `alloc_one` transition self-contradictory (a 0-arg
+  `uninterp phys_view()` is a logic constant, so `old(self)@ == final(self)@`), and a ghost field
+  cannot be added because `FrameAllocView`/`Ghost<_>` do not exist in non-`verus` builds and a
+  cfg-gated field would diverge the exec struct (ast-consistency violation). See
+  `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`.
 - `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — delegates to `frame::alloc` (itself
   `external_body`). Its postcondition speaks of `self@` (the uninterpreted pool view: the
   `alloc_one` free→allocated transition plus the empty-pool `Err` arm `free_count() == 0`),
