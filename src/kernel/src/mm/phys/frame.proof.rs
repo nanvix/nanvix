@@ -6,12 +6,6 @@ use ::bitmap::BitmapView;
 use vstd::map::*;
 use vstd::set::*;
 
-// The kernel targets x86_64, where `usize` is 8 bytes (`MAX_ADDRESS == usize::MAX == 2^64 - 1`).
-// Encoding the target word size lets the verifier discharge frame-number representability bounds
-// (e.g. that a bitmap index, capped below `u32::MAX`, is always a valid frame number). This is a
-// crate-global fact and weakens no specification.
-global size_of usize == 8;
-
 /// Helper: convert a bitmap index to a frame (physical) address.
 pub open spec fn frame_addr_of(i: int) -> int {
     i * spec_page_size()
@@ -73,6 +67,11 @@ impl Inner {
             &&& frame_addr_of(i) >= 0
             &&& frame_addr_of(i) <= usize::MAX as int
         }
+        // Every managed bitmap index is a representable frame number. Established by `init`, which
+        // sizes the bitmap from `MEMORY_SIZE / FRAME_SIZE` (far below `FrameNumber::spec_max()`), so
+        // `from_raw_value`/`from_frame_number` never reject an in-range index. This is the real
+        // representability fact (target-agnostic; holds on both 32- and 64-bit builds).
+        &&& self.bitmap@.num_bits <= FrameNumber::spec_max() + 1
         // Tail-zero: refcount slots beyond the bitmap range must be zero
         &&& forall|i: int| self.bitmap@.num_bits <= i < self.refcount@.len() ==>
             self.refcount@[i] == 0

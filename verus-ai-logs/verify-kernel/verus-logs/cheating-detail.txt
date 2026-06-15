@@ -1,11 +1,11 @@
-    - mm/phys/frame.rs:1245 instance: external_body
-    - mm/phys/frame.rs:1272 init: external_body
-    - mm/phys/frame.rs:1328 alloc: external_body
-    - mm/phys/frame.rs:1358 alloc_contiguous: external_body
-    - mm/phys/frame.rs:1379 free_count: external_body
-    - mm/phys/frame.rs:1397 free: external_body
-    - mm/phys/frame.rs:1439 book: external_body
-    - mm/phys/frame.rs:1460 alloc_range: external_body
+    - mm/phys/frame.rs:1244 instance: external_body
+    - mm/phys/frame.rs:1271 init: external_body
+    - mm/phys/frame.rs:1327 alloc: external_body
+    - mm/phys/frame.rs:1357 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1378 free_count: external_body
+    - mm/phys/frame.rs:1396 free: external_body
+    - mm/phys/frame.rs:1438 book: external_body
+    - mm/phys/frame.rs:1459 alloc_range: external_body
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:21 lemma_free_count_bounded: admit

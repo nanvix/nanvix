@@ -171,13 +171,11 @@ impl Inner {
             assert(pa >= 0) by (nonlinear_arith) requires idx >= 0, spec_page_size() > 0, pa == idx * spec_page_size();
             lemma_frame_facts(&old_self, pa, idx);
             assert(old_self@.free_frames.contains(pa));
-            // The index is below `u32::MAX`, hence representable as a frame number (the kernel
-            // targets x86_64, where `spec_max_frame_number()` is far larger than `u32::MAX`).
+            // The index is a representable frame number: `internal_inv` carries
+            // `num_bits <= spec_max() + 1`, and `idx < num_bits`, hence `idx <= spec_max()`.
             assert(nbits as int == self.bitmap@.num_bits);
             assert(idx < nbits as int);
-            assert(nbits < u32::MAX);
-            assert(idx < u32::MAX as int);
-            assert((u32::MAX as int) <= FrameNumber::spec_max()) by (compute);
+            assert(self.bitmap@.num_bits <= FrameNumber::spec_max() + 1);
             assert(idx <= FrameNumber::spec_max());
         }
         self.refcount[frame_number] = 1;
@@ -339,11 +337,12 @@ impl Inner {
             Some(frame_number) => frame_number,
             None => {
                 proof! {
-                    // `frame_number < num_bits < u32::MAX <= spec_max()`, so the conversion is
-                    // total on the verification (x86_64) target.
+                    // `frame_number < num_bits <= spec_max() + 1`, so `frame_number <= spec_max()`
+                    // and the conversion is total. The bound comes from `internal_inv`, not the
+                    // word size, so it holds on every target.
                     assert(frame_number < nbits);
                     assert(nbits as int == self.bitmap@.num_bits);
-                    assert((u32::MAX as int) <= FrameNumber::spec_max()) by (compute);
+                    assert(self.bitmap@.num_bits <= FrameNumber::spec_max() + 1);
                     assert(frame_number as int <= FrameNumber::spec_max());
                     assert(false);
                 }
