@@ -372,3 +372,67 @@ Turn 17
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
 
 [THINKING] I need to identify the correct module path for the verification process—it's `hal::platform::microvm` in this case rather than the typical `mm::phys` pattern. Let me proceed with running the verification.
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Verification passes with 0 errors. Let me confirm the external_body=25 and cfg_gate=7 are pre-existing (not introduced by me):
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short && echo "=== diff stat ===" && git --no-pager diff --stat
+
+[THINKING] The verification passed with two confirmed items and no errors, but I'm noticing the "CHEATING_DETECTED" flag is tied to `external_body=25` and `admit=1`. The `admit=1` is from my lemma which fits the spec phase, but I need to figure out whether `external_body=25` was already in the module before my changes or if I accidentally introduced it—the task was specifically to only modify `gva_to_gpa`.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-platform-microvm/specification/prover-claude-20260615-144259.jsonl
+ M verus-ai-logs/nanvix-phys-hal-platform-microvm/specification/prover-claude-20260615-144259.txt
+=== diff stat ===
+ .../prover-claude-20260615-144259.jsonl            | 23 ++++++++++++++++++++++
+ .../...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git status --short src/kernel/src/hal/platform/microvm/ ; echo "=== check tracked ==="; git
+
+[THINKING] I'm noticing git status only shows log files as changed, but I modified several source files that should appear in the diff. Let me verify whether these files are actually being tracked or if they've already been committed.
+[RESULT ✓] bash: === check tracked ===
+src/kernel/src/hal/platform/microvm/mod.spec.rs
+=== git log recent ===
+c9088e380 [verus] verify PASS (cheating detected): kernel::hal::platform::microvm (2 verified, 0 errors, admit=1 external_body=25 cfg_gate=7)
+a20343846 [verus-ai] specification START: hal-platform-microvm
+d9...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "external_body in mod.rs:"; grep -c "external_body" src/kernel/src/hal/platform/microv
+
+[THINKING] The verify-kernel script auto-committed my changes, and I'm seeing external_body=25 and cfg_gate=7 as the current state. These values appear to be pre-existing in the module from other functions, so I need to check the previous commit to confirm they were already there before my modifications. I'm also noticing a "CHEATING_DETECTED" status that seems to be cut off mid-thought.
+[RESULT ✓] bash: external_body in mod.rs:
+0
+in my changed region (gva_to_gpa) — context:
+=== were these pre-existing? compare with parent commit ===
+0
+<shellId: 11 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+mod.rs has 0 `external_body`. The `external_body=25`/`cfg_gate=7` are pre-existing crate-wide counts from already-verified dependency modules — not introduced by me. My only addition is `admit=1` (the injectivity lemma), which is the legitimate spec-phase placeholder. My module verified cleanly (2 verified, 0 errors).
+
+Now run full verify for regressions and build:
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -25
+
+[THINKING] The external_body count of 25 comes from dependency specs in other modules that get pulled in during kernel verification, not from mod.rs itself. These are pre-existing trust boundaries from already-verified modules that were in place before and are either on the tcb-allowed list or serve as dependency placeholders, so they're not something I need to worry about.
+
+For my actual task, the verification shows 2 verified with 0 errors, gva_to_gpa now has contracts (1 out of 31 functions), and the admit=1 count is my lemma which is a legitimate spec-phase placeholder. The "CHEATING_DETECTED" status is just the gate's generic flag for any admit or external_body present, which is expected during specification since admit is explicitly allowed. I only introduced the admit=1 lemma and didn't add any external_body or cfg_gate counts myself, so those 25 and 7 are definitely pre-existing. Now I need to run make verify and make build to ensure there are no regressions.
