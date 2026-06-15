@@ -1,0 +1,27 @@
+Timestamp: 2026-06-15_19-44-15
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+
+thread 'rustc' (3789443) panicked at rust_verify/src/verus_items.rs:740:17:
+unexpected verus diagnostic item verus::verus_builtin::two_phase_mutable_reference_tie
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: could not compile `arch` (lib)
+
+Caused by:
+  process didn't exit successfully: `/home/ruize/verus-bin/verus /home/ruize/.cargo/bin/rustc --crate-name arch --edition=2021 src/libs/arch/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata -C opt-level=3 -C embed-bitcode=no -C codegen-units=1 -C debuginfo=2 --deny=warnings --deny=unexpected_cfgs '--deny=clippy::all' --check-cfg 'cfg(verus_keep_ghost)' --check-cfg 'cfg(verus_keep_ghost_body)' --check-cfg 'cfg(target_os, values("nanvix"))' -C debug-assertions=on --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("acpi", "compiler_builtins", "core", "cpuid", "default", "ioapic", "madt", "microvm", "msr", "pic", "pit", "putb", "puts", "rustc-dep-of-std", "std", "stdio", "xapic"))' -C metadata=c1b8084eb2f26fc8 -C extra-filename=-501431d2bffab43f --out-dir /home/ruize/nanvix-phy/target/x86-kernel/debug/deps --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json -Zunstable-options -C incremental=/home/ruize/nanvix-phy/target/x86-kernel/debug/incremental -L dependency=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps -L dependency=/home/ruize/nanvix-phy/target/debug/deps --extern 'noprelude,nounused:alloc=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/liballoc-7a9d91d7c8f78543.rlib' --extern cfg_if=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcfg_if-69026a8b61481355.rmeta --extern 'noprelude,nounused:compiler_builtins=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcompiler_builtins-87ec5c91af693f29.rlib' --extern config=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libconfig-686a516b01e88d22.rmeta --extern 'noprelude,nounused:core=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libcore-0157cf8607007ad3.rlib' --extern error=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/liberror-0183d49633e7fdbd.rmeta --extern static_assert=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libstatic_assert-4a4c55ee33fedd36.rmeta --extern sys=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libsys-9fbfd8817a7b1a1f.rmeta --extern vstd=/home/ruize/nanvix-phy/target/x86-kernel/debug/deps/libvstd-6426b76f2a120f0a.rmeta -Z unstable-options -C relocation-model=static -C prefer-dynamic=no` (exit status: 1)

@@ -517,3 +517,90 @@ Let me first add arch to VERUS_CRATES and attempt to verify it in its current em
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-bin 2>&1 | tail -40
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_19-43-07
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/s...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+`arch` lacks a `vstd` dependency. Let me see how an existing Verus crate declares it.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===bitmap Cargo deps==="; grep -n "vstd\|builtin\|verus" src/libs/bitmap/Cargo.toml; ec
+
+[THINKING] The arch crate doesn't pull in vstd, so the other Verus crates like bitmap and sys need to declare vstd as a dependency themselves, probably with a cfg gate for the verus feature. I should look at how bitmap's Cargo.toml sets this up.
+[RESULT ✓] bash: ===bitmap Cargo deps===
+12:[package.metadata.verus]
+19:error = { workspace = true, features = ["verus"] }
+22:vstd = { workspace = true }
+===root Cargo workspace vstd===
+126:compiler_builtins = "0.1.160"
+231:vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false, features = ["alloc"] }...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/bitmap/Cargo.toml
+[RESULT ✓] view: 1. # Copyright(c) The Maintainers of Nanvix.
+2. # Licensed under the MIT License.
+3. 
+4. [package]
+5. name = "bitmap"
+6. version.workspace = true
+7. license-file.workspace = true
+8. edition.workspace = true
+9. authors.workspace = true
+10. homepage.workspace = true
+11. 
+12. [package.metadata.verus]
+1...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+I need to add `vstd` and verus metadata to arch's Cargo.toml. Let me see the full file first.
+[TOOL] view: /home/ruize/nanvix-phy/src/libs/arch/Cargo.toml
+
+[THINKING] I need to update the arch crate's Cargo.toml to enable Verus verification and add vstd as a dependency. The concern is whether vstd should be a regular dependency for a no_std kernel crate — it's configured with `default-features = false` and the `alloc` feature, which should work fine since the build uses build-std, similar to how bitmap handles it. I need to figure out whether vstd should be an optional dependency for arch given the rustc-dep-of-std feature, since bitmap doesn't have that constraint but arch does. Let me review the full arch Cargo.toml to see how this is structured.
+[RESULT ✓] view: 1. # Copyright(c) The Maintainers of Nanvix.
+2. # Licensed under the MIT License.
+3. 
+4. [package]
+5. name = "arch"
+6. version.workspace = true
+7. license-file.workspace = true
+8. edition.workspace = true
+9. authors.workspace = true
+10. description = "Architecture-Specific Library"
+11. homepage.work...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===who enables arch rustc-dep-of-std==="; grep -rn "arch.*rustc-dep-of-std\|rustc-dep-o
+
+[THINKING] I'm wondering whether the `mem` module can compile without a machine feature when `--no-default-features` disables the `microvm` feature, since the arch crate needs machine-specific constants like PAGE_SIZE and MAX_ADDRESS. Let me check if the verify build pattern actually compiles under these conditions.
+
+The kernel builds arch with the `microvm` feature, but the verify process uses `--no-default-features`, so I need to understand whether those constants are architecture-dependent or feature-gated. The safest approach is to add vstd as a workspace dependency and set up the metadata for Verus verification, then run the verify build to see what errors surface. I'm concerned about making vstd optional since arch has the `rustc-dep-of-std` feature for custom std builds, which could cause compilation issues if vstd becomes a hard dependency in that context.
+[RESULT ✓] bash: ===who enables arch rustc-dep-of-std===
+./src/libs/sysalloc/Cargo.toml:31:    "arch/rustc-dep-of-std",
+./src/libs/syscall/Cargo.toml:52:    "arch/rustc-dep-of-std",
+===verify.sh features/metadata===
+111:    CRATE_META="$(cargo metadata --no-deps --format-version 1 2>/dev/null \
+149:    CMD=($CARGO_C...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/Cargo.toml
+
+[THINKING] I'm verifying arch with no features enabled through cargo, and the rustc-dep-of-std flag for arch only gets activated transitively when sysalloc or syscall are built in that configuration—which is separate from the standard build. Now I'm considering whether making vstd a hard dependency would cause issues when those components build arch with rustc-dep-of-std enabled.
+
+Looking at how bitmap and bump-allocator handle this—they both have vstd as a hard dependency with unconditional imports, and they compile fine in normal mode since vstd's ghost code gets erased. The real question is whether the rustc-dep-of-std path for arch (through sysalloc/syscall) would break, but that's only relevant if `make build` actually exercises that path for the user-space libc build. Since the constraint requires the vstd import to remain unconditional and not cfg-gated, vstd has to be available during normal cargo builds anyway, so it can't be optional. I'll just make the change and test it—adding vstd as a dependency to arch's Cargo.toml and including the metadata.verus configuration, then running `make build` to see if it works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/Cargo.toml updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-bin 2>&1 | tail -35
