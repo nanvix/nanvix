@@ -1,0 +1,39 @@
+{
+  "_comment": "Approved trust-boundary deck for the arch::x86::mem::paging::table module. Mirrors verus-ai-logs/tcb-allowed.md in the machine-readable form the cheating gate honors. read/write/invlpg are genuine external-bottom boundaries (int-to-ptr materialization of volatile page-table memory, and the invlpg inline-asm instruction) that Verus' front end cannot translate; see verus-ai-logs/nanvix-phys-arch-paging-table/verus-unsupported.md for the exact errors and minimal reproducers. L1 is the TableEntry codec injectivity law over uninterp generics (verus-ai-logs/nanvix-phys-arch-paging-table/repros/L1.rs).",
+  "approved_limitation_ids": [
+    "L1"
+  ],
+  "approved_external_body_fns": [
+    "read",
+    "write",
+    "invlpg"
+  ],
+  "approved_external_body_callsites": [
+    "table.rs:202",
+    "table.rs:241",
+    "mod.rs:79"
+  ],
+  "approved_callees": {
+    "arch::x86::mem::paging::Table::read": {
+      "verdict": "TCB_EXTERNAL_BODY",
+      "callsites": [
+        "table.rs:202"
+      ],
+      "reason": "Materializes a raw *const PteWord from the integer base address (`usize as *const`) and performs a volatile load of caller-owned, externally-managed page-table memory. Verus does not support the `usize -> *const T` cast (no int-to-ptr provenance / no PointsTo in scope). Same int-to-ptr boundary as bump_allocator::alloc and frame::instance. Full contract retained: requires index@ < PAGE_TABLE_LENGTH; ensures result == spec_table_read::<E>(self@.addr, index@)."
+    },
+    "arch::x86::mem::paging::Table::write": {
+      "verdict": "TCB_EXTERNAL_BODY",
+      "callsites": [
+        "table.rs:241"
+      ],
+      "reason": "Materializes a raw *mut PteWord from the integer base address (`usize as *mut`) and performs a volatile store. Same unsupported int-to-ptr cast as read. Carries only the sound requires index@ < PAGE_TABLE_LENGTH (no contents ensures, which would be unsound for an assumed contract)."
+    },
+    "arch::x86::mem::paging::invlpg": {
+      "verdict": "TCB_EXTERNAL_BODY",
+      "callsites": [
+        "mod.rs:79"
+      ],
+      "reason": "Body is a single core::arch::asm! block issuing the invlpg instruction (TLB flush). Verus does not support inline-asm expressions. External-bottom hardware boundary; effect is purely on CPU TLB state, invisible to every caller's Rust-visible state (empty faithful contract)."
+    }
+  }
+}
