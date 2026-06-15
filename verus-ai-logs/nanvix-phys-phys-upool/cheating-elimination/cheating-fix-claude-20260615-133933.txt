@@ -90,3 +90,44 @@ Confirmed: `PhysMemoryManager::inv()` = `self.upool@.wf()`, so `Upool::new`'s `r
 [THINKING] So the manager's invariant depends directly on the pool's `wf()` condition, which means the postcondition for `Upool::new` genuinely needs to establish that `wf()` holds—weakening it would break the manager's invariant. This confirms that the `external_body` in `Upool::new` carries a real semantic requirement that can't be removed.
 
 I've now exhaustively checked every angle: the two remaining `external_body` contracts in upool are genuinely irreducible within scope and correctly marked as tcb-allowed, while all other flagged items are out-of-scope or forbidden by hard rules. Running the final verification to confirm everything checks out.
+[RESULT ✓] bash: Exit code : 0
+  verification: cached (no recompilation), — (exit 0)
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+I've now exhaustively exhausted every sound avenue. My position is final and evidence-backed. I will not violate the hard rules or introduce unsound/dishonest changes to satisfy a mechanical gate.
+
+## Definitive findings (iteration 3)
+
+Report 3 is **byte-identical** to report 2 — an automated loop emitting generic demands. The mechanical gate scans the **entire crate** and never consults `tcb-allowed.md`, so it reports `CHEATING_DETECTED` as long as *any* `external_body` exists anywhere. For this codebase that condition is **unsatisfiable by design** (the frame allocator is built on raw `static mut`/pointer ops Verus fundamentally cannot verify — the exact reason `tcb-allowed.md` exists). The task's own exception clause acknowledges this.
+
+**Every flagged item, mapped:**
+- **4× `admit()`** → all in `manager.proof.rs` (§8 ghost-token lemmas). **Out of scope; forbidden** by "do not touch unlisted functions."
+- **12× `external_body`** → `frame.rs`/`manager.rs`/`mod.rs`/`mod.spec.rs`. **Out of scope; forbidden.** All tcb-allowed.
+- **2× `external_body`** → `upool.rs` `new`/`alloc`. **In scope, tcb-allowed, proven irreducible.**
+
+**`Upool::new`/`alloc` irreducibility — every rewrite tried and rejected this iteration:**
+1. Interpreted global view → unsound (`alloc`'s transition becomes `false`).
+2. Ghost field → no kernel struct has one; `Upool` is defined *outside* `verus!` (breaks non-verus build); doesn't fix `alloc`; empty-state model would break the future `lemma_manager_attached`.
+3. **Weakening `new`'s contract** → just confirmed **impossible**: `PhysMemoryManager::inv()` *is* `self.upool@.wf()`, so the `wf()` postcondition is a genuinely-required downstream guarantee.
+
+**upool-scope checks (the grader's specific demands):**
+- `admit`/`assume`: **0** ✓
+- `trusted`/`external_body` on proof fns: **0** ✓
+- multi-line `limitation_assume` (R20c): **0** (none in entire `mm/phys`) ✓
+- `exec_allows_no_decreases` (R20p): **0** (no recursive exec fn exists) ✓
+
+**Verification:** `make verify-kernel` → Verus **exit 0** (verify.sh: cheating is a non-fatal warning; build status = Verus exit). `make verify` → 116 verified, 0 errors.
+
+**Work delivered this effort:** eliminated the `Upool` struct `external_body` (whole-crate 15→14), with full evidence and escalation-ladder records in `fix_report.md` and `verification_todo.md`.
+
+The remaining items require verifying the out-of-scope `frame`/`manager`/`mod` modules — work the hard rules explicitly forbid and which is assigned to those modules' own proving tasks. I cannot eliminate them from the `phys-upool` mandate without violating the constraints I was given.
+
+
+=== Session End ===
+Session: da2421e6-9dca-40e7-8c30-1c7026a28ddc
+Duration: 173.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/cheating-elimination/cheating-fix-claude-20260615-133933.jsonl
