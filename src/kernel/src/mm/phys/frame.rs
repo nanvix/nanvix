@@ -257,25 +257,79 @@ impl Inner {
             },
     )]
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
-        proof! { admit(); }
+        proof_decl! { let ghost old_self = *self; }
+        // `Bitmap::alloc_range` requires `count <= num_bits`. Reject oversized requests up front;
+        // this leaves the allocator state untouched, satisfying the `Err` contract.
+        let nbits: usize = self.bitmap.number_of_bits();
+        if count > nbits {
+            proof! { lemma_view_determined(self, &old_self); }
+            let reason: &str = "contiguous request exceeds bitmap capacity";
+            #[cfg(not(verus_keep_ghost))]
+            error!("{reason:?} (count={count})");
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
+                proof! { lemma_view_determined(self, &old_self); }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (count={count})");
                 return Err(error);
             },
         };
+        proof! {
+            // Bits `[frame_number, frame_number + count)` were free and are now set; the refcount
+            // slice still matches `old_self` (only the bitmap changed).
+            assert(self.refcount@ == old_self.refcount@);
+            assert(self.bitmap@.num_bits == old_self.bitmap@.num_bits);
+            assert(self.bitmap@.set_bits
+                == old_self.bitmap@.set_bits.union(
+                    ::bitmap::BitmapView::range_set(
+                        frame_number as int, frame_number as int + count as int)));
+            assert(0 <= frame_number);
+            assert(frame_number as int + count as int <= self.bitmap@.num_bits);
+            assert(old_self.refcount@.len() >= old_self.bitmap@.num_bits);
+        }
+        proof_decl! { let ghost lo: int = frame_number as int; }
+        proof_decl! { let ghost hi: int = frame_number as int + count as int; }
         // Newly allocated frames have a single owner.
-        #[cfg_attr(verus_keep_ghost, verus_spec(invariant false))]
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                lo == frame_number as int,
+                hi == frame_number as int + count as int,
+                lo <= i <= hi,
+                self.bitmap == old_self.bitmap,
+                self.refcount@.len() == old_self.refcount@.len(),
+                self.refcount@.len() >= self.bitmap@.num_bits,
+                hi <= self.bitmap@.num_bits,
+                forall|j: int| lo <= j < i ==> self.refcount@[j] == 1,
+                forall|k: int| !(lo <= k < i) ==> self.refcount@[k] == old_self.refcount@[k],
+        ))]
         for i in frame_number..frame_number + count {
             #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
             self.refcount[i] = 1;
         }
+        proof! {
+            assert(self.refcount@.len() == old_self.refcount@.len());
+            assert forall|j: int| lo <= j < hi implies self.refcount@[j] == 1 by {}
+            assert forall|k: int| !(lo <= k < hi) implies
+                self.refcount@[k] == old_self.refcount@[k] by {}
+            lemma_book_range(&old_self, self, lo, hi);
+            lemma_internal_inv_implies_wf(self);
+        }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
+                proof! {
+                    // `frame_number < num_bits < u32::MAX <= spec_max()`, so the conversion is
+                    // total on the verification (x86_64) target.
+                    assert(frame_number < nbits);
+                    assert(nbits as int == self.bitmap@.num_bits);
+                    assert((u32::MAX as int) <= FrameNumber::spec_max()) by (compute);
+                    assert(frame_number as int <= FrameNumber::spec_max());
+                    assert(false);
+                }
                 let reason: &str = "frame number is out of bounds";
                 #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
@@ -284,7 +338,38 @@ impl Inner {
         };
 
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+                proof! {
+                    let base = frame_address@;
+                    assert(base == lo * spec_page_size());
+                    // The contract's `frames` set coincides with `frame_set(lo, hi)`.
+                    let frames = Set::new(|addr: int|
+                        exists|i: int| 0 <= i < count as int
+                            && addr == #[trigger] (base + i * spec_page_size()));
+                    assert(frames =~= frame_set(lo, hi)) by {
+                        assert forall|addr: int| frames.contains(addr) implies
+                            #[trigger] frame_set(lo, hi).contains(addr) by {
+                            let i = choose|i: int| 0 <= i < count as int
+                                && addr == base + i * spec_page_size();
+                            assert(addr == (lo + i) * spec_page_size()) by (nonlinear_arith)
+                                requires base == lo * spec_page_size(),
+                                    addr == base + i * spec_page_size();
+                            assert(lo <= lo + i < hi);
+                            assert(addr == frame_addr_of(lo + i));
+                        }
+                        assert forall|addr: int| frame_set(lo, hi).contains(addr) implies
+                            #[trigger] frames.contains(addr) by {
+                            let j = choose|j: int| lo <= j < hi && addr == frame_addr_of(j);
+                            assert(addr == (lo + (j - lo)) * spec_page_size());
+                            assert(addr == base + (j - lo) * spec_page_size()) by (nonlinear_arith)
+                                requires base == lo * spec_page_size(),
+                                    addr == j * spec_page_size();
+                            assert(0 <= j - lo < count as int);
+                        }
+                    }
+                }
+                Ok(frame_address)
+            },
             Err(error) => {
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");

@@ -1,0 +1,38 @@
+Timestamp: 2026-06-15_09-23-30
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=14
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> src/kernel/src/mm/phys/frame.rs:352:37
+    |
+352 |   ...                   let i = choose|i: int| 0 <= i < count as int
+    |  _______________________________^
+353 | | ...                       && addr == base + i * spec_page_size();
+    | |________________________________________________________________^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
