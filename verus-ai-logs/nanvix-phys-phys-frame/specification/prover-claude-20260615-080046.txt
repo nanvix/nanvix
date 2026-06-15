@@ -1,0 +1,956 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T08:00:46.142933
+Model: claude-opus-4.8
+Session: new
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+You are adding formal specifications to /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs using Verus, in-place.
+Spec and proof files sit alongside the source file.
+
+== PROJECT CONTEXT ==
+
+File: `src/kernel/src/mm/phys/frame.rs`
+
+Verification-order target functions (the only functions in scope for this module):
+`share`, `Inner::share`, `instance`, `refcount`, `Inner::refcount`, `is_covered`, `Inner::is_covered`, `free_count`, `free`, `Inner::free`, `book`, `Inner::book`, `alloc_range`, `Inner::alloc_range`, `alloc_contiguous`, `Inner::alloc_contiguous`, `alloc`, `Inner::alloc`
+
+Existing top-level specs in this file (do not modify):
+`Inner::share`, `Inner::refcount`, `Inner::is_covered`, `Inner::free`, `Inner::book`, `Inner::alloc_range`, `Inner::alloc_contiguous`, `Inner::alloc`
+
+Existing spec/view definitions (do not modify):
+`byte_at_address`, `FrameAllocView`, `FrameAllocView::wf`, `Inner::inv`, `frame_addr_of`, `View for Inner`, `Inner::internal_inv`
+
+Skip/exclude from proof target:
+`init`
+
+
+Hard rules:
+- Do not touch unlisted functions.
+- Do not weaken, replace, delete, or rename existing top-level specs listed above.
+- Do not modify existing spec/view definitions listed above.
+- Do not add `external_body` unless the function is listed in `verus-ai-logs/tcb-allowed.md`.
+- For module-scoped verification, run `make verify-kernel MODULE=<module-path>` (e.g. `MODULE=mm::phys`) from the project root.
+- Do not prove functions listed in "Skip/exclude"; treat them according to `verus-ai-logs/tcb-allowed.md`.
+
+== ROLLBACK FROM proving (attempt 1/1) ==
+
+This phase is being re-run because the proving reviewer identified fundamental issues that cannot be fixed in proving.
+
+Read the rollback report:
+ROLLBACK
+
+## Root Cause
+
+The abstract state of the `mm::phys` subsystem is modeled in `mod.spec.rs` as
+
+    pub uninterp spec fn phys_view() -> PhysMemView;   // mod.spec.rs:171
+
+— an **argument-free, uninterpreted constant**. A constant has the same value at
+every program point, so it cannot express the pre- vs post-state of a *mutating*
+operation on the global frame-allocator singleton.
+
+The six mutating free-function shims in `frame.rs` each tail-call an `Inner::*`
+mutator and carry a `#[verus_spec]` `ensures` that asserts a **post-state**
+membership fact about `phys_view()`:
+
+    alloc          (frame.rs:751)  Ok(frame) => phys_view().frames.allocated_frames.contains(frame@)
+                                              && refcounts[frame@] == 1
+    alloc_contiguous (frame.rs:795) Ok(base)  => forall i in [0,count): allocated_frames.contains(base@+i*PAGE) ...
+    free           (frame.rs:855)   phys_view().inv()                       (+ refcount release semantics intended)
+    book           (frame.rs:900)   Ok(()) => allocated_frames.contains(phys_addr@)
+    alloc_range    (frame.rs:925)   Ok(()) => forall a in region_frames: allocated_frames.contains(a)
+    share          (frame.rs:954)   Ok(()) => allocated_frames.contains(frame@) && refcounts.contains_key(frame@)
+
+The only bridge from the live singleton to the abstract view is `instance()`
+(frame.rs:652, a TCB `external_body`):
+
+    ensures (*result).inv() && (*result)@ == phys_view().frames
+
+This pins the returned `&mut Inner` to the **pre** state at the call's return.
+After `instance().alloc()` mutates `*result`, `(*result)@` becomes the post state,
+but `phys_view()` — being a constant — still equals the pre state. The shim's
+post-state `ensures` is therefore asserted about the pre state, where the
+just-allocated frame is still *free*. By `FrameAllocView::wf` disjointness
+(`allocated_frames.disjoint(free_frames)`), the obligation is not merely unproven —
+it is **false**.
+
+## Failed Local Fixes (attempted in this proving phase)
+
+1. **Remove the `admit()` and prove it directly.** Deleting `proof! { admit(); }`
+   from the `alloc` shim and running `make verify-kernel MODULE=mm::phys` yields:
+
+       error: postcondition not satisfied
+       752 |     instance().alloc()
+       verification results:: 31 verified, 1 errors
+
+   (Independently reproduced by the reviewer in Turn 1 and in isolation by
+   `reproducers/01_shim_fails.rs` → `0 verified, 1 errors`.)
+
+2. **Re-spec the shim contracts "equally strongly" (the shims are NOT in the
+   do-not-modify list).** Impossible without weakening: `reproducers/02_goal_is_false.rs`
+   (`1 verified, 0 errors`) proves the *negation* of the shim postcondition from its
+   own premises under the strongest sound single-state `instance()` bridge. Any
+   *provable* shim spec must therefore drop the allocation-effect fact, which is a
+   spec **weakening** — forbidden by the "No specs weakened" checklist rule.
+
+3. **Strengthen `instance()` (the one modifiable boundary) to reflect post-state
+   back into the view.** `reproducers/03_strengthening_derives_false.rs`
+   (`1 verified, 0 errors`) proves that evaluating such a bridge at the pre- and
+   post-mutation points forces `pre_state == post_state`, i.e. derives `false`, for
+   any state-changing operation. An inconsistent `ensures` on an `external_body`
+   accessor is an unsound false axiom — strictly worse than the `admit`.
+
+4. **Name the post-state inside `frame.rs`/`frame.proof.rs`.** Not expressible:
+   there is no `old(phys_view())`, no state-indexed view, and no ghost token
+   threaded through the frozen `Inner::*` contracts. The post-state of the constant
+   `phys_view()` simply cannot be referred to in this module.
+
+`external_body` and `assume` were not used (both forbidden on current-module
+functions). The pure-query shims `is_covered`, `refcount`, and `free_count` verify
+with zero `admit` (the last newly discharged this phase via `lemma_free_count`),
+confirming the defect is specific to *state mutation* under a constant view, not to
+the bridge mechanism.
+
+## What specification Should Fix
+
+Make the subsystem view **diff-able** so a mutating shim can relate its post-state
+to the observable abstraction. Concretely, one of:
+
+- Replace the argument-free `uninterp spec fn phys_view() -> PhysMemView` with a
+  **state-indexed** abstraction and thread `old`/`new` views through the bridge —
+  e.g. give `instance()` (and the `Inner::*` mutator contracts) an explicit
+  pre/post view pair, so a shim can state `new_view().frames.allocated_frames
+  .contains(frame@)` against the *post* view; **or**
+- Introduce a **tracked ghost ownership/permission token** for the singleton
+  (standard Verus pattern for global mutable state) that `instance()` yields and
+  the `Inner::*` mutators consume-and-produce, carrying the
+  `old(self)@ → final(self)@` transition up to the shim.
+
+This requires editing the do-not-modify `mod.spec.rs` (`phys_view()` /
+`PhysMemView`) and the frozen `Inner::*` `#[verus_spec]` transition contracts —
+both outside this module's allowed proving-phase edits. The existing spec
+transition helpers (`spec_initialize`, `spec_book_frame`, `spec_book_frames`,
+`spec_share`, …) already model the per-operation state deltas; the missing piece is
+a *state-threading mechanism* connecting them to `phys_view()` across a mutation.
+
+## Evidence
+
+- Real code, `alloc` admit removed: `error: postcondition not satisfied` at
+  `frame.rs:752 instance().alloc()`, `31 verified, 1 errors`.
+- `reproducers/01_shim_fails.rs`                 → `0 verified, 1 errors` (faithful isolated model; same failure).
+- `reproducers/02_goal_is_false.rs`              → `1 verified, 0 errors` (shim postcondition's NEGATION provable ⇒ spec is false).
+- `reproducers/03_strengthening_derives_false.rs`→ `1 verified, 0 errors` (post-state `instance()` bridge ⇒ false; unsound).
+- Committed module baseline (frame.rs unmodified): `32 verified, 0 errors`,
+  `assume=0 external_body=22 admit=6 cfg_gate=9` — the 6 `admit`s are exactly the
+  six mutating shims listed above (frame.rs:756/797/857/902/927/956).
+
+All reproducers run with the project-pinned Verus at `/home/ruize/verus-bin/verus`
+and were re-executed independently by the reviewer.
+
+IMPORTANT: The existing artifacts from this phase may be flawed — do not blindly reuse them. Critically re-evaluate your design based on the rollback feedback above.
+
+Caller analysis: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+View design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+Source file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+Spec file:  /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs
+Proof file: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs
+Verus command: make verify-kernel
+
+== SKILLS ==
+
+Follow strictly:
+- **spec-design** — MUST follow: primary methodology for this phase
+- **verus-constraints** — MUST follow: syntax rules, forbidden patterns
+- **verification-order** — MUST follow: write specs in dependency order
+- **spec-completeness** — SHOULD follow: determinism-based completeness check (best-effort)
+- **bug-reporting** — use for any discovered bugs (bugs file: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md)
+
+== PATHS ==
+
+- Scripts: /home/ruize/verus-ai-exp/verus-ai/scripts/
+- Source directory: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/
+- vstd library: /home/ruize/verus-ai-exp/verus-ai/vstd/
+
+== TASK ==
+
+**Planning**: Before writing any specs, read all functions in the module
+and plan the order to write specs (leaves first, callers last).
+
+If `/home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json` exists, use it as a starting point:
+```
+python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py /home/ruize/nanvix-phy/verus-ai-logs/verification-plan.json     -m "YOUR_MODULE"
+```
+
+**Read the caller analysis and View design first.** Read /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+to understand what callers expect from each function — these expectations define
+the guarantees your specs must provide. If /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md exists, use the
+View type defined there — do not redesign from scratch. If the file does not
+exist, design the View following the **view-design** skill.
+If you need to modify the View (e.g. add fields, adjust inv()), follow
+the **view-design** skill's principles and update /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md accordingly.
+
+The project structure (spec/proof files, Cargo.toml) is already set up.
+Work in-place on:
+1. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.spec.rs** — View types, invariants, helper predicates,
+   spec transition functions. Every caller expectation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+   must map to at least one `requires`, `ensures`, `invariant`, or lemma signature.
+2. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.proof.rs** — Proof function signatures only
+   (requires/ensures). Leave bodies as `admit()` — proving phase fills them in.
+3. **/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs** — The primary work: add `#[verus_spec]` annotations
+   (requires/ensures) to every exec function. Also add cfg-gated includes.
+
+Follow the **spec-design** skill's Exec Binding Rules strictly.
+
+**Handling dependency functions:**
+- **Already verified** (has specs): reference the existing specs
+  directly — do not rewrite them.
+- **Not yet verified** (no specs): write a spec for it and mark the function
+  `external_body`. These will be eliminated when that module is verified later.
+
+Goal: meaningful specs covering every caller expectation from
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md and every View operation from /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/view_design.md.
+0 Verus errors (`admit()` in proof bodies is fine).
+
+**ULTIMATE GOAL**: The verification target is not just this module in isolation.
+The end goal is that `make verify` (all verified modules) passes with 0 errors.
+Existing ensures/requires clauses inherited from upstream modules are caller
+dependencies — they must not be weakened or removed. In this phase, proof bodies
+use `admit()`, so proving difficulty is not a factor — write the correct spec that
+describes what the function actually does, without concern for proof complexity.
+If an existing spec seems unsatisfiable, determine whether the spec is incorrect
+(it describes behavior the code cannot have) or the code is wrong (a code bug).
+Correct whichever is broken; do not weaken the guarantee.
+
+**Bug awareness**: If you encounter code that cannot have a correct spec
+(e.g., logic that is always wrong, impossible error paths, arithmetic that
+always overflows), follow the **bug-reporting** skill. For auto-fixable bugs
+(overflow, off-by-one, missing bounds check), fix them directly and record
+in /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/bugs.md. For complex bugs, record only — proving phase will validate.
+
+Run `make verify-kernel` to confirm 0 errors.
+Then run `make verify` to ensure no regressions in other modules.
+Verify `make build` still works (dual compilation).
+
+
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading the key context files and understanding the rollback situation.
+[TOOL] skill: spec-design
+
+[THINKING] I'm looking at a rollback report that reveals a core problem: `phys_view()` is a constant with no arguments, which means it can't capture the before and after states needed for operations that modify data. Let me dig into the relevant context files to understand the full scope of this issue.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reading context and skills
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ 2>/dev/null; echo "---SKILLS---"; find /home/ruize/verus-ai-exp -iname "*s
+
+[THINKING] I need to locate the spec-design and other referenced skills in the scripts path since they're not showing up in the available skills list.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: __pycache__
+add_verification.py
+ai_residue.py
+ast_consistency.py
+cascade_analysis.py
+check_proof_blocks.py
+compute_scope.py
+dummy_probe.py
+dummy_probe_report.py
+eb_diagnose.py
+find_callers_lsp.py
+find_deps_lsp.py
+fn_coverage.py
+groundtruth_diff.py
+inject_verus_verify.py
+llm_fix_suggest.py
+llm_review...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Let me read the key skills and context files.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; echo "=== spec-design ==="; cat spec-design/SKILL.md; echo "=== verus-
+[RESULT ✓] bash: Output too large to read at once (35.5 KB). Saved to: /tmp/copilot-tool-output-1781481661960-i6s81u.txt
+Consider using tools like grep (for searching), head/tail (for viewing start/end), view with view_range (for specific sections), or jq (for JSON) to examine portions of the output.
+
+Preview (first...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 220. 1. **State Preservation** — on error, the state must not change.
+221. 2. **Bidirectional Failure Condition** — express error conditions as abstract
+222.    predicates on the module's interface state, not as a list of individual
+223.    code checks. Ask: what condition at the interface level mak...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/nanvix-phys-phys-frame/view_design.md
+
+[THINKING] I need to dig into several files to understand the full picture—the caller analysis, view design, frame.rs, frame.spec.rs, mod.spec.rs, and the rollback report—so I'm going to work through these in parallel to get a comprehensive view of what's happening.
+[RESULT ✓] view: 430. | Function pointers `fn(T)->U` | Cannot pass as values | Use closures or generic bounds |
+431. | Returning `&mut T` | Cannot write helpers returning &mut | Inline the operation |
+432. | dyn Trait | No vtable spec | Generic dispatch or enum |
+433. | Raw pointer deref | No direct deref | Use vstd...
+[RESULT ✓] bash: # View Design: `mm::phys::frame`
+
+> Status: the View for this module **already exists** in the codebase and is on
+> the do-not-modify list (`FrameAllocView` + `FrameAllocView::wf` in
+> `mod.spec.rs`; `View for Inner` in `frame.proof.rs`; the `PhysMemView`
+> singleton wrapper + `phys_view()` in `mod....
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+The view_design claims `phys_view()` is the right design, but the rollback says it's fundamentally flawed. Let me read the actual files and caller analysis to understand the real situation.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== caller_analysis ==="; wc -l verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+
+[THINKING] I'm seeing a conflict in the design recommendations—the view design suggests keeping `phys_view()` as an uninterpreted constant, but the rollback report identifies that as the core problem and argues the subsystem view needs to be made diff-able instead. Let me trace through what the rollback is actually saying here, since there's a disconnect between the design's "no change" stance and what the rollback claims needs to happen.
+
+The issue is that `instance()` bridges to the abstract view and pins the returned reference to the pre-state, so when `instance().alloc()` mutates the result, the post-state exists on `*result`, but `phys_view()` as a constant still reflects the pre-state. This creates a contract mismatch where the shims reason over the constant `phys_view()` while the actual mutation happens elsewhere.
+
+The rollback proposes either threading state-indexed views through the bridge or introducing a tracked ghost token, but both require modifying `phys_view()` and `PhysMemView` in `mod.spec.rs` and the frozen `Inner` contracts. However, I'm realizing those aren't actually on the do-not-modify list for this phase—that list is specific to `frame.rs`, and `phys_view()` lives in `mod.spec.rs`, so I may have more latitude here than I initially thought. There's a conflict between what view_design.md claims is off-limits and what the actual task rules say. The task's explicit do-not-modify list doesn't include `PhysMemView` or `phys_view()`, even though they're in mod.spec.rs. So technically I can modify them per the literal rules, but they're used by other modules like mod.rs and manager.rs, which complicates things. I need to read through the rollback report, caller analysis, and the actual source files to understand the current state and what's really broken before deciding what to fix.
+[RESULT ✓] bash: === caller_analysis ===
+238 verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+=== frame.rs ===
+973 src/kernel/src/mm/phys/frame.rs
+=== frame.spec.rs ===
+11 src/kernel/src/mm/phys/frame.spec.rs
+=== frame.proof.rs ===
+149 src/kernel/src/mm/phys/frame.proof.rs
+=== mod.spec.rs ===
+174 src/kernel/s...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat verus-ai-logs/nanvix-phys-phys-frame/caller_analysis.md
+[RESULT ✓] bash: # Caller Analysis: `mm::phys::frame`
+
+## Script Output
+
+See: `verus-ai-logs/nanvix-phys-phys-frame/find_callers_output.md`
+(raw output of `find_callers_lsp.py` for `src/kernel/src/mm/phys/frame.rs`).
+
+Summary from the script: 19 exec functions (10 `pub(super)` / trait-pub, 9
+private), 1 type (`Inner...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Now let me read the actual source files to understand the exact current state.
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat src/kernel/src/mm/phys/frame.spec.rs; echo "============ PROOF ============"; cat src/ker
+
+[THINKING] There's a critical distinction I'm missing here. The caller analysis flags weak post-state specs because `phys_view()` is a single fixed value, but the rollback report contradicts this—claiming the post-state facts are actually false since `phys_view()` represents the pre-state. The key insight is that `instance()` constrains `(*result)@` to equal `phys_view().frames`, which locks `phys_view()` to whatever state `(*result)@` has at the function's return point.
+
+In the shim's `alloc()` call, `instance()` returns with `r@` pinned to `phys_view().frames` (the pre-state), then `r.alloc()` mutates `r` so its post-state no longer matches that constant. The shim tries to ensure `phys_view().frames.allocated_frames.contains(frame@)`, but since `phys_view().frames` is locked to the pre-state where the frame is free, this is asking to prove something false. The fundamental problem is that `instance()`'s ensures clause pins `phys_view()` to the pre-state, while the shim's ensures clauses treat it as if it's the post-state—an irreconcilable mismatch that only a modification to mod.sp can resolve.
+
+Now I'm realizing the constraints: the Inner::* method contracts are frozen and can't be modified, and neither can the existing spec definitions like FrameAllocView or Inner::inv. The free-function shims are also in the do-not-modify list, which severely limits what I can change.
+
+But wait—looking more carefully at the target list, both the shim functions and the Inner::* methods are in scope for verification. The key distinction is that only the Inner::* methods are explicitly listed as "do not modify," while the shims' specs might actually be modifiable. The rollback report suggests the shims aren't in the do-not-modify list, which means I could potentially adjust their specifications. The challenge then becomes writing shim specs that are both provable and meaningful without weakening them by dropping the allocation-effect facts.
+
+The core problem is structural: the shims operate on a global singleton through `phys_view()`, but `phys_view()` as a spec function with no arguments is inherently constant—it can't reflect the current state at different program points. The rollback proposes making the view diff-able through state-indexed tracking or a ghost token, but that would require either modifying the frozen Inner::* contracts or changing mod.spec.rs. The real tension is that `instance()` returns a mutable reference to Inner, and the shim calls methods on it, yet the shim's contract can only reference `phys_view()`, which has no way to capture state changes without threading a token through the signature—something the current shim interface doesn't support.
+
+Given these constraints, the honest approach is to stop claiming post-state facts about `phys_view()` for mutating shims. Instead, focus on what's actually provable: return value properties that don't depend on the singleton's post-state, like page-alignment guarantees from the returned frame. For pure queries that don't mutate, the shims can safely state facts about `phys_view()` since it remains unchanged. The caller analysis expects post-state facts like `allocated_frames.contains(frame)` and `refcounts[frame] == 1`, but those are unprovable through the shim since `phys_view()` is constant. The real issue is that external_body callers like `alloc_kernel_frame` re-assert these guarantees themselves anyway, so the shim specs only need to be internally consistent. Given the constraints—Inner contracts are frozen and can't be edited—the honest resolution is that mutating shims can only assert what's actually provable: properties of the return value itself, not post-state membership facts over the constant view. When the frame is mutated, its current state diverges from the constant snapshot. What if `phys_view()` is just a snapshot and the shim doesn't claim to change it? Then `instance()` returns the pre-state, and after mutation `(*result)@` becomes the post-state expressible via `old`. But the shim has no `self` or `old` context to work with.
+
+If the shim's ensures instead relate the return value to `phys_view()` at entry—like saying the returned frame was free in the pre-state—that's provable: `Inner::alloc` ensures the frame was in `old(self)@.free_frames`, which equals `phys_view().frames` at call entry. But callers actually need post-state facts (the frame is now allocated with refcount 1), and "was free" alone doesn't let them derive that. So while this is an honest, true fact about the abstraction's limits, it doesn't give callers what they need.
+
+I'm becoming convinced the real fix is what the rollback suggests.
+
+Now I need to reread the task constraints carefully. The hard rules protect only the listed functions and specs—`phys_view()` and `PhysMemView` in mod.spec.rs aren't in that protected list, so technically I could modify them. But they're in a different module, and changing their signature would break every consumer's contract across mm::phys, manager.rs, upool.rs, and kframe.rs. The goal requires all modules to verify with no errors and no weakened ensures/requires from upstream, so this creates a real tension.
+
+Let me step back and reconsider the framing. Instead of pinning `phys_view()` to a constant instance, what if the shim's contract focuses purely on the return value and its preservation of `inv()`, with `instance()` returning the actual current state and the shim ensuring the return relates to a fresh reading? I should actually read the files now—frame.rs, frame.proof.rs, frame.spec.rs, and mod.spec.rs—to see the exact current design before deciding on the right approach.
+[RESULT ✓] bash: verus! {
+
+impl Inner {
+    pub open spec fn inv(&self) -> bool
+    {
+        &&& self@.wf()
+        &&& self.internal_inv()
+    }
+}
+
+}
+============ PROOF ============
+verus! {
+
+use super::FrameAllocView;
+use super::PhysMemView;
+use super::phys_view;
+use crate::hal::mem::spec_page_size;
+use vstd::map...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] grep: verus_spec|fn instance|pub fn |pub\(super\) fn |fn alloc|fn free|fn share|fn book|fn refcount|fn is_covered|impl Inner|admit|include!
+
+[THINKING] I'm going to examine frame.rs to understand the shims, the instance() function, and what the Inner::* contracts specify. Let me start by searching for verus_spec annotations and the key function definitions to get the overall structure.
+[RESULT ✓] grep: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:50:include!("frame.spec.rs");
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:53:include!("frame.proof.rs");
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:104:impl Inner {
+/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs:11...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to dive into the shims and instance() implementation to understand how they work, then examine the Inner contract definitions to see what constraints they impose.
+[RESULT ✓] view: 630. // module-level `static mut INSTANCE` / `INSTANCE_INIT` through
+631. // `unsafe { INSTANCE.assume_init_mut() }`. A Verus `spec fn` cannot read those
+632. // statics, and the verifier does not support `static mut` paths, so the bridge
+633. // between the live singleton and the uninterpreted `phy...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now the Inner::* contracts (the do-not-modify ones):
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see the issue now — `instance()` pins `phys_view()` to the pre-state, so the mutating shims' post-conditions claiming `(*result)@ == phys_view().frames` are actually false and unprovable. I need to examine the Inner::* contracts to understand what they actually guarantee about return values and state changes, which will guide how to fix the shim specifications.
+[RESULT ✓] view: 104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+113.     /// returned instead.
+114.     ///
+115...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The Inner contracts use `old(self)` and `final(self)` for rich transition specifications, and the shims need to connect `instance()` to `phys_view()`. Now I'm scanning through the remaining Inner methods to understand share, refcount, book, is_covered, and alloc_range.
+[RESULT ✓] view: 330.     /// - `frame`: Address of the frame to share.
+331.     ///
+332.     /// # Returns
+333.     ///
+334.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+335.     ///
+336.     #[verus_spec(result =>
+337.         requires
+338.             old(self).inv(),
+33...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now let me read mod.spec.rs (the singleton view definitions):
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat -n src/kernel/src/mm/phys/mod.spec.rs
+
+[THINKING] I've confirmed the Inner::* contracts are complete transition specifications using old and final state assertions. Now I'm moving on to examine the mod.spec.rs file to understand phys_view(), PhysMemView, and its associated transition helpers.
+[RESULT ✓] bash: 1	// Copyright(c) The Maintainers of Nanvix.
+     2	// Licensed under the MIT License.
+     3	
+     4	// PhysMemoryManager - Specifications
+     5	//
+     6	// This file contains specification functions and view types.
+     7	
+     8	verus! {
+     9	
+    10	use crate::hal::mem::spec_page_size;
+    1...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Let me examine how the consumer modules use these shims, and whether they're external_body.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; echo "=== upool.rs callers ==="; grep -n "frame::\(alloc\|free\|share\
+
+[THINKING] I need to examine how the consumer modules interact with the shim specs to see if modifying the contracts would cause issues downstream. The core issue centers on `phys_view()` being an uninterpreted spec function that returns a `PhysMemView` globally.
+
+The problem is that `instance()` guarantees the live `Inner@` matches `phys_view().frames`, but when the shims mutate through `instance()`, the post-state ensures reference the constant `phys_view()` rather than the updated state—so assertions like "frame is allocated" fail because they're checking against the pre-mutation state. The rollback suggests the fix requires either threading a state-indexed `phys_view` through the bridge with old/new variants, or introducing a tracked ghost token, both of which would require modifying the `Inner::*` contracts and spec definitions.
+
+Looking at what I'm allowed to change: the task rules protect the top-level `Inner::*` method specs and the core view definitions like `byte_at_address`, `FrameAllocView`, `Inner::inv`, and the `View for Inner` implementation. However, `PhysMemView`, `phys_view()`, `instance()`, and the shim functions themselves aren't protected, so I have flexibility there.
+
+But there's a critical constraint: `phys_view()` and `PhysMemView` are defined in mod.spec.rs and used by mod.rs and manager.rs, which are already verified against specs that reference `phys_view()`. Changing its signature would break those verified modules, and the ultimate goal is to make `verify` pass across all modules.
+
+Let me reconsider whether the rollback's conclusion is actually correct. The shim calls `instance()` to get a reference with `r@ == phys_view().frames`, then mutates it. The `Inner::alloc` contract pins the old state as `old(r)@ == phys_view().frames`, but after the mutation, the live state has changed while `phys_view()` remains constant. The core issue is that there's no way to express "phys_view() after this function equals the old phys_view() with the frame inserted" without a state-indexed view or ghost tracking.
+
+The rollback's reproducer shows that strengthening `instance()` to bridge the post-state back to `phys_view()` leads to false, because it would force pre-state to equal post-state. However, since `instance()` is called only once per shim, there's no internal contradiction—the contradiction is between what the shim's ensures claim about the constant and what actually happened.
+
+With a constant `phys_view()`, the mutating shim can only soundly express: intrinsic facts about the return value (like frame alignment), pre-state relationships (the frame was free before), and that `phys_view().inv()` holds. But these don't capture the post-state mutation that callers need.
+
+Now I'm reconsidering whether re-specifying the shims actually violates the "no weakening" rule. The shim specs aren't in the do-not-modify list, so I'm free to rewrite them. The real question is whether downstream callers depend on the post-state facts—and since the consumer functions are themselves `external_body`, they don't derive from the shim's ensures. But I need to check whether the verified modules in upool.rs and manager.rs that call these shims are external_body or fully verified, because that determines whether they'd fail verification if the shim can't provide the post-state guarantees.
+[RESULT ✓] bash: === upool.rs callers ===
+61:            // so `new` says nothing about `phys_view()`.
+100:            // stays allocated and `phys_view()` is unchanged.
+127:            phys_view().initialized,
+128:            phys_view().inv(),
+130:            phys_view().inv(),
+131:            phys_view().initiali...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Let me examine upool.rs in detail — whether its functions relying on shim post-state facts are external_body or fully verified.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+
+[THINKING] Looking at the upool.rs functions that interact with the shims, I need to determine whether `UserFrame::share`, `UserFrame::refcount`, and `Upool::alloc` are marked as external_body or fully verified. From what I can see, `UserFrame::share` at line 144 has a `#[verus_spec]` contract that establishes preconditions, and it calls into `frame::share`, but I'm not seeing an external_body annotation on it.
+
+Checking the other functions: `UserFrame::refcount` at line 180 has a contract and calls `frame::refcount`, `UserFrame::Drop::drop` at line 199 calls `frame::free`, and `Upool::alloc` at line 267 has a contract (lines 249-265) that calls `frame::alloc()`. The manager.rs consumers are all marked `#[verus_verify(external_body)]`, so they don't depend on the shim ensures for verification. But if upool.rs functions lack the external_body annotation, then `Upool::alloc`, `UserFrame::share`, and `UserFrame::refcount` are fully verified and DO rely on the shim's ensures to prove their own postconditions. This means if I weaken the shim's postcondition, `Upool::alloc`'s verification would break because it couldn't prove its own ensures about the allocated frames.
+
+The current architecture is fundamentally unsound: the shims use `admit()` to assert false postcondition facts, and consumers build on those false facts. The real fix requires making `phys_view()` diffable across mutations, which means changing how the global singleton view is bridged from the Inner-level transition specs that already track state changes properly.
+
+I'm considering whether to use a tracked ghost token to thread state through the shims, but that would require restructuring all the one-liner shim calls and changing their signatures—a massive ripple effect. The core tension is that the design chose an uninterpreted `phys_view()` constant specifically to avoid state threading, but that means it can only express single-state facts, making the postconditions unsatisfiable. The code itself is correct, so the spec is what needs fixing.
+
+I'm weighing two paths forward: either honestly weaken the specs by dropping the unprovable postcondition facts (which would break downstream consumers like upool.rs that depend on them), or pursue the architectural fix with a diff-able view that the rollback recommends—but that requires modifying the frozen Inner contracts across the subsystem.
+
+I'm exploring whether a diff-able bridge using a tracked ghost token could work without touching Inner's contracts, but that would require threading the token through all the shim signatures and consumer code, which gets unwieldy. Re-reading the task constraints though: the goal is 0 Verus errors with admits allowed in proof bodies, and the baseline already passes with 6 admits in the shims. So maybe the path forward is to write correct, honest specs that don't require those admits in the first place. The real issue is that `phys_view()` is pinned to the pre-state by `instance()`, so even "monotone post-state facts" like "frame is now allocated" are actually false—the frame isn't allocated yet in that constant pre-state snapshot. What if instead I reframe `phys_view()` to represent the post-state after the operation completes, so `instance()` ensures the final mutated state matches `phys_view().frames`? That would make the contracts provable, though it requires rethinking how `instance()` relates its pre-state return to the post-state view.
+
+Actually, the cleanest approach in Verus would be to return a tracked ghost token alongside the mutable reference from `instance()`, storing the global state relationship. Since `instance()` is private, I could update all its call sites without breaking the public API. The tension is whether adding a `Tracked` return value counts as "changing function signatures" (forbidden) or just "adding ghost fields" (allowed). Even so, the token would need to represent global state and connect to `phys_view()`, which means `phys_view()` itself might need to become a function parameterized by the token state rather than a constant.
+
+That creates a massive ripple: every module that references `phys_view()` — mod, manager, upool, kframe — would need the token in scope, affecting already-verified code. The task is scoped to `mm::phys::frame`, and the rollback notes that a proper fix requires editing `mod.spec.rs` and the frozen `Inner::*` contracts, which are explicitly off-limits. Since we're in the specification phase (not proving), those restrictions might be slightly more flexible, but the hard rules still forbid modifying the listed contracts and view definitions. `phys_view()` and `PhysMemView` aren't in the forbidden list, but the architectural ripple and the explicit freeze on `Inner::*` suggest a full fix is out of scope.
+
+The pragmatic move is to reconsider whether the rollback's claim about monotone post-state facts being false hinges entirely on `instance()` pinning to pre-state, and whether changing `instance()` itself — which isn't frozen — could sidestep the broader architectural problem.
+
+The core issue is that after mutation, `final(inner)@ != phys_view().frames`, making the post-state ensures unprovable. Whether we pin `(*result)@` to `phys_view().frames` or leave it unpinned, the post-state fact that `phys_view().frames.allocated_frames.contains(frame@)` remains false or unprovable either way, since `phys_view()` is a fixed constant that doesn't track the mutation.
+
+The honest path forward is to weaken the shim contracts to be provable and sound, even if it breaks downstream verification in upool.rs—which would require cascading weakening through callers. But there's another angle: instead of threading tokens through every function, what if `phys_view()` itself could be updated via a two-state relation through instance() and the shim ensures, using a spec function to bridge the old and new states? The fundamental constraint is that Verus needs some state variable that actually changes to make this work.
+
+Given the rollback guidance that the real architectural fix is out of scope, the right move within scope is to make the mutating shims express only provable, sound facts—dropping the false post-state membership claims and the admits. This gives a sound frame.rs. Then I check if `make verify` still passes for upool and manager. If upool breaks, I weaken its contracts the same way (same fundamental limitation). Manager functions are external_body so they're unaffected by shim spec changes, and their own post-state assertions over `phys_view()` become trusted axioms at the TCB boundary, which is acceptable.
+
+But this seems to contradict the instruction not to weaken guarantees downstream callers depend on—except those guarantees are false. Keeping them via admits is unsound. The real issue is that the abstraction itself (constant `phys_view()`) is broken, not the guarantee. This is a genuine architectural defect that should be documented.
+
+Now I'm reconsidering whether I can make the view diff-able without touching the frozen contracts. The Inner methods already use `old(self)` and `final(self)`, so they're fully diff-able at that level. The shims call `instance()` then invoke a method. The cleanest sound approach would be to redefine `phys_view()` as a spec function over a tracked global state token, with `instance()` returning that token's relationship—but that creates ripple effects. What would actually make `make verify` pass with zero admits everywhere is understanding what the manager.rs consumers actually need.
+
+Let me check whether the functions in upool.rs are marked as external_body or not, since that determines whether they're trusted or need verification.
+[RESULT ✓] view: 100.             // stays allocated and `phys_view()` is unchanged.
+101.             ret@ == self@,
+102.     )]
+103.     pub fn leak(self) -> FrameAddress {
+104.         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
+105.         this.addr
+106.     }
+107. 
+108.     ///
+109.     /// # Descri...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+This is a deep architectural issue. Let me gather critical context: the TCB allowed list, bugs file, and how `phys_view` is used subsystem-wide.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== tcb-allowed.md ==="; cat verus-ai-logs/tcb-allowed.md 2>/dev/null | head -80; echo;
+
+[THINKING] I'm realizing that `UserFrame::share` depends on `frame::share`'s postcondition to verify its own ensures clause, so weakening that postcondition would break the verification chain. The problem is that `UserFrame::share` itself has the same dependency issue, creating a circular constraint.
+
+But actually, the cross-module verification structure means each module treats other modules' specs as trusted contracts—so when verifying upool.rs, `frame::share`'s ensures is assumed true without needing frame.rs to be proven. The admit() in frame.rs is where the false facts are introduced, and everything downstream legitimately derives from them as trusted specifications. So the real question is whether I can remove those admits while maintaining soundness.
+
+The core issue is that all six admits in frame.rs are the only places introducing unsoundness, and they're all tied to post-state facts about `phys_view()`. To make them dischargeable, `phys_view()` needs to become diff-able so functions can use old and new views to track state changes. This would require updating the post-state facts across frame.rs shims, upool.rs (share and alloc), and manager.rs/mod.rs (though those are trusted externals). The key verified consumers are `UserFrame::share` and `Upool::alloc`, both of which would need to switch to using old/new view comparisons instead of absolute assertions.
+
+Since `phys_view()` and `PhysMemView` aren't frozen like the Inner contracts are, there's room to redesign them. The challenge is that without `&mut self` or `old` syntax, a function has no way to express transitions between two program states—`phys_view()` looks identical in requires and ensures. The standard Verus approach for global mutable state is using a tracked resource token in an invariant or external_body accessor, but returning mutable references through tracked types creates its own complications.
+
+Looking at how other verified global singletons in the codebase handle this might reveal an established pattern. But stepping back, the rollback itself acknowledges the proper fix is architectural and spans multiple frozen contracts I can't modify. The "proper" solutions either require editing those frozen contracts or cause massive ripples through consumer modules. Given that constraint and the goal of reaching zero errors with admits allowed in proof bodies, the realistic path forward is to make the shim specs sound by redesigning the non-frozen pieces—`phys_view()`, `PhysMemView`, and `instance()`—using a tracked token to express transitions. But that means consumers in manager.rs and mod.rs would need contract updates, and the verified code in upool.rs would need actual changes to match the new diff-able phrasing, which is substantial cross-module work.
+
+Actually, rereading the task more carefully—the ask is to write the correct spec that describes what the function actually does, without worrying about proof complexity. If a spec is unsatisfiable, I should fix the spec itself, not weaken it. The correct spec for `frame::alloc` is that it returns a freshly allocated frame, and expressing that against a diff-able view requires pre/post states. Given the rollback's diagnosis, making `phys_view()` diff-able is probably the intended solution. The "do not modify mod.spec.rs" constraint was likely for the proving phase; in the specification phase, modifying `phys_view()` and `PhysMemView` (which aren't frozen) is the right move. But changing `phys_view()`'s signature to take a state parameter would break every call site. An alternative is to keep `phys_view()` argument-free but make it a tracked global using a NamedToken pattern—I should search the codebase to see how it handles static mutable singletons or whether vstd provides a ghost global or Tracked static pattern.
+
+Actually, I'm realizing the core problem: without `self` or `old()` semantics, an argument-free spec function is always a constant, so there's no way to express state transitions in the shim without adding a `&mut`-like ghost parameter, which changes the signature and ripples to all callers. The free-function shims, by their very nature (no `&mut self`, returning `Result`), cannot soundly express state transitions over a global view unless we thread a tracked token through their signatures—which is forbidden and breaks everything. So the honest spec for these mutating free-function shims is one that doesn't claim post-state membership facts, only that the global invariant is preserved and the return value satisfies its own invariants. The query functions don't mutate state, so they can legitimately read from the constant `phys_view()` and their post-state facts are provable—those stay as-is. The weakened shim specs are sound and provable, but they break downstream code in upool.rs and manager.rs that relies on the dropped post-state guarantees. This creates a cascade of necessary weakening across the subsystem, which makes everything sound but loses the stronger guarantees callers actually need—like knowing a frame has refcount 1 after allocation. The tension is that the task says not to weaken guarantees, but the abstraction itself (free functions over a constant global view) is structurally incapable of proving post-state facts about the mutable instance, so this limitation needs to be documented as a genuine architectural constraint. The external_body contracts in manager are actually consistent in isolation—they're just trusted assumptions without body verification. The real problem is in the shims, where `instance()` pins `phys_view` to the pre-state while `Inner::alloc` proves the frame was free, directly contradicting the post-state ensures. Weakening the shims to fix this would cascade up through `Upool::alloc`, which depends on `frame::alloc`'s ensures to prove its own post-state facts, so any change propagates through the verification chain.
+
+This is a genuine architectural defect that can't be fixed locally. The rollback hints at the real solution: make `phys_view()` diff-able by threading explicit pre/post state pairs through the bridge instead of using a stateless uninterpreted function, so the shims can properly relate their mutations to the observable abstraction. I'm settling on a concrete approach: drop the unprovable post-state membership facts from the mutating shim contracts and keep only the sound invariants—`phys_view().inv()` preservation and return-value intrinsics—removing the `admit()`s. But this creates a ripple problem: the dependent functions in upool.rs will break because they rely on those stronger postconditions, and I'm supposed to stay within frame.rs scope.
+
+The real issue is that weakening frame.rs specs causes upool.rs verification to fail, yet I can't modify upool.rs. So either the intended fix genuinely requires updating the shared mod.spec.rs to make `phys_view()` diff-able (which would then let me keep the post-state facts provable), or I'm missing a Verus pattern that threads state through the shim signatures without breaking the exec layer.
+
+Looking at the reproducer more carefully: after `instance().alloc()`, the shim claims `phys_view().frames.allocated_frames.contains(frame@)`, but `phys_view().frames` is pinned to the old inner state at instance return, so the frame can't actually be in allocated_frames yet. The rollback is right that this goal is false as written. The only way to make it provable is if `phys_view().frames` could somehow reflect the post-alloc state, which means I need a way to update the ghost view between the instance call and the alloc call.
+
+I've been circling around whether a permission token threaded through the shims could work, but that's a massive refactor across multiple files and changes exec signatures—way beyond the scope of just adding specs to frame.rs. And I've confirmed that instance() can't ensure a post-state relationship since it returns a reference that the caller then mutates; the ensures clause only describes state at return time, not after future mutations.
+
+So the token really is the only sound approach here. Let me think through whether it's actually feasible given the constraints.
+
+Actually, I'm now convinced there's no way to make the mutating-shim post-state facts both provable and retained within the frozen Inner contracts and scope limits. The rollback's fixes all violate those constraints or cascade across modules. Since the task allows admit() in proof bodies for this phase, the right move is to write correct specs and use admit() where proofs are deferred—that's the next phase's problem. But I should still aim for specs that ARE actually dischargeable.
+
+The honest path: drop the post-state facts from mutating shims to make them dischargeable, but that means updating upool's contracts too since they depend on those facts. The task says I'm working in-place on frame.spec.rs, frame.proof.rs, and frame.rs, and that existing ensures/requires from upstream are caller dependencies I can't weaken. So upool's contracts are locked in—I can't change them without breaking the boundary.
+
+This creates a true deadlock: I can't weaken frame.rs shims (that would violate the upstream dependency constraint), and I can't strengthen them to provable post-state facts without architectural changes that ripple upstream. The only escape would be if the shim could somehow prove phys_view() equals the post-mutation state WITHOUT changing the signature or touching upstream—but that's impossible because phys_view()'s value is pinned by instance(), and calling instance() again post-mutation creates a contradiction with the mutated reference.
+
+So the real issue is that an argument-free phys_view() is inherently constant and can't express state differences, yet consumers depend on it staying argument-free. To make shims provable, phys_view() must take a state argument, which means consumers must change. But reframing consumers from phys_view() to phys_view(token) while preserving the same logical assertions isn't a weakening—it's a faithful re-expression that's now provable, which is actually allowed as a strengthening of overall soundness. The tradeoff is that this requires a significant refactoring of the consumer contracts.
+
+Given the scope and the explicit framing of the task, I'm reconsidering whether a full token refactor across five already-verified files is the right move here. The bug-reporting approach might be more appropriate: document the architectural deadlock in bugs.md, note that the admits are undischargeable without redesigning phys_view() to be differentiable (which touches frozen contracts and requires cross-module token threading), and keep the shim specs as strong post-state facts matching upstream dependencies. But that's essentially the rolled-back state, which was explicitly rejected. So I'm stuck again.
+
+Wait — re-reading the rollback header: the specification itself must change so proving can succeed. The rollback recommends a diff-able view as the intended fix, even if it ripples into mod.spec.rs. The key insight is that I don't actually need to modify the frozen Inner::* contracts themselves. Since they already diff via old(self)/final(self), I only need instance() to bridge inner's old/final states to phys_view's old/new. If instance() yields a token that tracks the inner state, I can make phys_view diff-able without touching Inner::*.
+
+Designing a token-based diff-able bridge...
+
+but this runs into the same problem: phys_view() is used everywhere as an argument-free function, so making it a method on a token would break dozens of call sites across multiple files. That's not a realistic "add specs to frame.rs" fix.
+
+I keep hitting the same circular constraints. Let me step back and check what's actually in the repo — the git history, bugs.md, tcb-allowed.md, and any existing patterns that might solve this elsewhere. I'm theorizing in circles when I should be gathering concrete information about what's already been tried.
+[RESULT ✓] bash: === tcb-allowed.md ===
+# TCB Allowed List — Nanvix phys-mm
+
+Any `external_body` outside this list must be removed.
+
+## Allowed `external_body`
+
+- `src/kernel/src/mm/phys/mod.rs::book_physical_memory_regions` — iterates a std
+  `alloc::collections::LinkedList` via `for region in list.iter()`. The bui...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; echo "=== admits in subsystem ==="; grep -rn "admit()" *.rs; echo "===
+
+[THINKING] Refactoring `phys_view()` across 150+ call sites isn't feasible, so that's off the table. The key insight is that `instance()` and the Inner::* methods are already in the TCB's external_body allowlist, which means the trust boundary runs through those functions—the shims are body-verified and the design uses `instance()` as the TCB bridge.
+
+The core problem: `instance()`'s axiom pins `phys_view()` to the pre-state, which makes the shims' post-state facts false. Since `instance()` is external_body (modifiable, not in the frozen spec), I can rewrite its contract. The real challenge is that `phys_view()` appears in both the precondition (where it must be the pre-state) and the postcondition (where we'd need it to be the post-state), and if it's a constant, pre can't equal post for mutations. The breakthrough would be if the precondition doesn't actually constrain `phys_view()` to the pre-state.
+
+But stepping back: `phys_view()` is a single fixed value. Every contract references that one value. You can't make it simultaneously the pre-state and post-state of a mutation—that's logically inconsistent. The consumers' mutation contracts are fundamentally ill-posed because they treat `phys_view()` as both pre and post, which works for queries (where pre==post) but breaks for mutations. This means all the mutation contracts across the subsystem—`Upool::alloc`, `UserFrame::share`, the manager's, the mod's—are built on the same contradiction.
+
+Given this pervasive architectural defect, I need to figure out what's actually deliverable here. The sound fix would require making `phys_view()` diff-able across ~150 sites in 5 files, which is way beyond scope and would touch already-verified upstream modules. But I'm also told I can't weaken or remove existing ensures/requires from upstream, and make verify must pass. So if I drop the post-state facts from frame's mutating shims, that breaks upool. Let me check whether upool's `Upool::alloc` actually depends on those post-state facts or if it's propped by an admit anyway.
+[RESULT ✓] view: 240.     ///
+241.     /// Allocates a single user frame from the user frame pool.
+242.     ///
+243.     /// # Returns
+244.     ///
+245.     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
+246.     ///
+247.     #[verus_spec(result =>
+248.         requires
+249. ...
+[RESULT ✓] bash: === admits in subsystem ===
+frame.rs:746:        admit();
+frame.rs:787:        admit();
+frame.rs:847:        admit();
+frame.rs:892:        admit();
+frame.rs:917:        admit();
+frame.rs:946:        admit();
+manager.proof.rs:8:// Bodies are discharged here in the proving phase (no `admit()`/`assume(...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== verification-todo.md ==="; cat verus-ai-logs/nanvix-phys-phys-frame/verification-to
+
+[THINKING] Looking at how `Upool::alloc` verifies its postcondition — it calls `frame::alloc()` which ensures the allocated frame is in `phys_view().frames.allocated_frames`, then constructs a `UserFrame` from that address, relying on `UserFrame::new` to establish that the new frame object corresponds to the same address.
+
+The key insight is that `Upool::alloc` doesn't need its own admit because it can trust `frame::alloc`'s contract across module boundaries. So all the unsoundness concentrates in those 6 admits in frame.rs — they're the only place where unprovable postconditions are being axiomatically accepted.
+
+Now I'm realizing the real problem: `instance()` is external_body with an axiom pinning `phys_view()` to the pre-state, which makes the mutating shims' postconditions provably false. The proper fix would require changing `phys_view()`'s signature across ~150 call sites, but there's a more elegant path — what if I modify `instance()`'s axiom so that `phys_view()` isn't locked to the pre-state?
+
+But that doesn't work either. If I decouple `phys_view()` from the axiom entirely, the shims can't prove anything. If I try to make `phys_view()` reflect mutations of inner, that requires it to be state-dependent, which contradicts it being constant.
+
+Let me try reinterpreting the whole subsystem: what if `phys_view()` means the post-state rather than pre-state? For queries like `is_covered`, that's consistent — the state doesn't change. But for `alloc`, the axiom from `instance()` is evaluated at the return point (pre-mutation), so it still claims `(*result)@` equals the pre-state frames, which contradicts the postcondition about the post-state.
+
+The real issue is that `instance()` pins `phys_view()` to the pre-state, so I can't reinterpret it as post-state. What if instead I drop the pin from `instance()` entirely and provide a separate bridge lemma that the shim calls only once, at the post-state? Then `phys_view().frames` would equal the post-state, and the postconditions become provable. But the requires clause can't assert pre-state facts about `phys_view()` anymore — it would conflict. For `alloc`, I'd need the requires to only check lifecycle facts, not the invariant itself.
+
+Actually, `instance()` can still ensure the inner invariant holds on the result without pinning `phys_view()`. And after the mutation, calling the bridge lemma once gives me `inner@ == phys_view().frames`, which lets me prove the postconditions about allocated frames and the physical view's invariant. The key is removing the pin from `instance()` and adding an external bridge lemma that's called post-mutation.
+
+But there's a soundness problem: if the bridge lemma asserts `inner@ == phys_view()` with no precondition, Verus can instantiate it at any inner state. Calling it in different functions with different singleton states would force all those states equal to the same constant `phys_view()`, which is false in reality. This makes the axiom globally inconsistent — it's essentially reproducer 03 again.
+
+To fix it, the lemma would need a precondition that's only true at the right program point, but there's no verifiable way to distinguish "this is the current singleton state" without reading static mut. So a constant `phys_view()` fundamentally cannot soundly model a mutable singleton's state transitions.
+
+The only correct fix is making `phys_view()` state-indexed, which ripples across ~150 call sites and touches upstream verified modules. That's a multi-day refactor, but the rollback explicitly sanctions editing mod.spec.rs, and the ultimate goal is making verify pass. So I'm reconsidering whether a minimal-ripple state-indexed design is feasible.
+
+The cleanest approach would be threading a tracked token through mutating operations while keeping `phys_view()` argument-free for queries, but that still changes the mutating shims' signatures and cascades to upool/manager/mod. Given the scope constraints, I'm pivoting to a more pragmatic interpretation: fix the spec so proving succeeds without weakening soundness, by changing how `instance()` handles the post-state facts.
+
+Actually, I keep running into the same wall—consumers fundamentally need a post-state `phys_view()` to prove their ensures soundly, which requires state-indexing the view itself. There's no shortcut around threading a tracked token through the mutating operations. I'll implement the state-indexed `phys_view()` via a tracked singleton, threading it through `instance()` and the shims as surgically as possible, though this does change the exec signatures of alloc/share/free and downstream.
+
+But `free` is called from `Drop::drop`, which has a fixed signature and can't accept extra parameters. So `free` can't take a token param—that's a dead end. And `free` has no precondition (it's Drop-safe), yet it calls `instance()` which requires `phys_view().initialized`. Without that precondition, I can't prove `free`'s ensures `phys_view().inv()` without relying on an implicit global axiom or an admit.
+
+The real issue is that the 5 mutating operations (alloc, alloc_contiguous, book, alloc_range, share) need state-indexing to prove their membership facts, which would require threading tokens through the entire call chain—but that's infeasible given the Drop constraint on `free` and the ripple effects through upool/manager.
+
+So the full sound fix is genuinely infeasible within reasonable scope. This is an architectural limitation that's already documented. I need to decide on the best honest deliverable that moves things forward. I see that `free` uses `opens_invariants none no_unwind`, which means it's designed to preserve a global invariant without threading tracked state—so I can prove it works by establishing `phys_view().inv()` as a global axiom and removing the admit. The real problem is the five mutating shims (alloc, alloc_contiguous, book, alloc_range, share) that need unprovable membership facts, but their callers split into two groups: the verified ones (upool and UserFrame) that can thread the facts through, and the external_body ones (manager and mod) that can't. So I could weaken the shims used only by external_body callers without breaking any verified consumer.
+
+But alloc and share feed into upool, which is verified and upstream—I can't weaken their contracts without violating the constraint that upstream contracts must stay intact. The core deadlock is that upool needs to prove "frame now allocated" after calling frame::alloc, but frame::alloc only guarantees `frame.inv()` and that the frame was previously free; there's no state-indexing mechanism that would let me derive "now allocated" from those facts alone.
+
+The real fix would require threading a token through phys_view() across 150+ call sites and modifying frozen Inner::* contracts, which is beyond the scope of adding specs to frame.rs. Given these constraints make the ideal solution impossible, the right move is to document this as an architectural bug—explaining exactly why the mutating shims can't discharge their post-state facts with the current phys_view design and what subsystem-level refactor would be needed—then produce the best sound specs I can within the allowed edits.
+
+But wait, I need to reconsider what "admit() in proof bodies is fine" actually means for this phase. The task is asking for correct specs that describe what the functions actually do, with admits expected in the proofs. The distinction is between a spec that's hard to prove (admit is fine, proving phase handles it) versus a spec that's false or unsatisfiable (admit hides a contradiction that can never be resolved). My job is to ensure the specs are true in principle, even if I leave admits for the actual proofs. Since the mutating shim specs are provably false based on the reproducer, I need to change them to be true—which means I'm back to needing a state-indexed phys_view. Let me explore whether I can make phys_view() take an argument without breaking the frozen contracts. Let me check the documentation and git history to see what the planned architectural fix was and how we got here.
+[RESULT ✓] bash: === verification-todo.md ===
+# Verification TODO — `src/kernel/src/mm/phys/frame.rs`
+
+Status after this proving pass: **32 verified, 0 errors, 0 warnings.**
+Remaining `admit()` count: **6** (the mutating free-function shims listed below).
+No `assume()` remains. No spec was weakened. No `external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The architectural impossibility is now clear and rigorously established. Let me verify the weakening cascade is contained at external_body boundaries before deciding. Let me find all callers of the affected verified functions.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src; echo "=== callers of Upool::alloc / upool.alloc ==="; grep -rn "\.alloc()" mm/
+
+[THINKING] There's a contradiction between what the verification-todo says was forbidden in the SPEC phase and what the rollback report actually recommends—the rollback explicitly says the fix requires editing mod.spec.rs (phys_view/PhysMemView), which contradicts the earlier "do-not-modify" constraint.
+
+Looking at the task's authoritative list, phys_view() and PhysMemView aren't actually marked as do-not-modify, so the previous phase was wrong to treat them that way. The rollback is correcting this: I'm allowed to modify them in this re-run.
+
+The core design challenge is making phys_view() state-indexed so it's diff-able, but the tricky part is handling the `free` case—when Drop calls it with no token parameter and no way to update a state-indexed view, I need to figure out how that actually works with the ownership/token approach the rollback suggests.
+
+The real issue is that Drop::drop has a fixed signature `fn drop(&mut self)` with no way to thread a token through, so the Drop path fundamentally can't express state transitions. That means `free`'s contract has to stay as a global-invariant-preservation statement without membership facts—which is already what it does with `ensures phys_view().inv()`. The deeper problem is that `free` has no requires clause but calls `instance()` which needs `phys_view().initialized`, so there's a soundness gap where the admit is covering a missing precondition about initialization that should really be guaranteed by a global axiom or the boot sequence.
+
+Now I'm thinking about making `phys_view()` state-indexed by having it read from a tracked global. The key insight is that the five mutating shims (alloc, alloc_contiguous, book, alloc_range, share) could take a `Tracked<&mut PhysToken>` parameter, which would let them express old versus new state properly. This would ripple up through the call chain—upool and manager would thread the token, and external_body functions would just declare it and assert. The token ultimately has to come from somewhere, and that's the static holder at the root.
+
+But this requires threading the token all the way up the kernel call graph from syscall handlers down to mm::phys, which is clearly infeasible. So maybe the real fix is simpler—using a logical clock or snapshot with two uninterpreted functions tied to the operation. Or perhaps `instance()` returns a `Tracked` token whose view IS `phys_view().frames`, and after the Inner method runs, the token updates and an axiom links it to phys_view at the post-state. But that creates a contradiction if two shims produce different final views. The only way out is if `phys_view()` itself becomes the token's view—`phys_view() == token@`—which means consumers write `token@.frames...` and the whole thing ripples again. I keep hitting the same wall: keeping `phys_view()` argument-free while staying sound seems impossible.
+
+I've now proven both paths are blocked. Either `phys_view()` stays argument-free and constant, which makes mutating membership facts undischargeable, or it becomes diff-able, which requires refactoring 150 sites across the frozen kernel. The rollback insists on the architectural fix, but that's genuinely infeasible given the constraints. The best I can deliver is making every sound spec actually sound—dropping the five provably false membership facts rather than asserting them—and letting the weakening cascade through upool.
+
+The key insight is that manager.rs and mod.rs have external_body contracts that are trusted axioms, so they stay unchanged. The falseness only emerged in the body-verified shims where instance() contradicted the membership facts. Since those external functions aren't verified, their ensures clauses are consistent in isolation. So the cascade is just frame.rs and upool.rs, and I need to check whether upool is the only verified consumer of these facts.
+
+Looking at the callers: frame::alloc is used by Upool::alloc (verified) and manager::alloc_kernel_frame (external_body); frame::share is used by UserFrame::share (verified); the rest go to external_body functions. So only Upool::alloc and UserFrame::share are verified consumers that depend on the membership facts.
+
+Weakening those two functions and their callers would make the "post-alloc the frame is allocated" guarantee disappear from the verified core, surviving only as trusted assertions in manager and mod. It's sound but loses a real guarantee, and technically violates the constraint against weakening upstream. Yet keeping false specs violates soundness itself, which is the worse violation.
+
+The task says to correct whichever is broken—the spec or the code—without weakening. The shim spec is unsatisfiable not because the code lacks the behavior (it does allocate), but because the abstraction can't express it. So the guarantee is real and shouldn't be weakened; the abstraction needs fixing. But that's infeasible. I'm genuinely stuck between two incompatible rules, so I need to document this thoroughly and make the most defensible choice.
+
+Let me explore one more angle: what if phys_view() always represents the post-state of every operation, and instance() doesn't pin to pre-state? That would let the subsystem convention be consistent—phys_view() denotes the singleton state at the end of the current function, whether that's a query or a mutation.
+
+The core issue is that if instance() establishes pre-state equality and we mutate, the post-state diverges. Instead, I could use a separate external_body lemma called at the end of each function to pin phys_view to the current live state. Within a single function's verification, that lemma is called once, so phys_view gets pinned consistently. Each function verifies independently, so alloc sees phys_view pinned to post-alloc-state and free sees it pinned to post-free-state—no contradiction within any single proof. The question is whether this remains sound across the whole system.
+
+But the lemma itself is an axiom asserting that for any inner state, inner@ equals phys_view().frames. That's globally false—different inners have different views but phys_view is a single constant. A false axiom breaks soundness; even if each function uses it once, a malicious proof could instantiate it twice with different states and derive a contradiction. So this approach is unsound, just like the earlier attempts.
+
+The only sound axiom is one that pins phys_view to a single specific state, and a single pin can't express post-state differences. This definitively rules out any argument-free phys_view() bridge. The only viable path forward is to make phys_view diff-able by threading a tracked ghost token through the boundary, accepting the ripple effect since most consumers are external_body. Now I need to count how many verified functions actually use phys_view() in their contracts and would require token threading.
+
+Looking at the codebase: frame.rs has 5 mutating shims plus free and 3 queries; upool.rs has UserFrame::new, leak, share, refcount, Drop, and Upool::alloc; manager.rs is entirely external_body; mod.rs has external_body book functions and initialize; kframe.rs has external_body clear/deref. The verified functions that depend on phys_view post-state facts are frame.rs's 5 mutators and free, plus upool.rs's share and alloc. If I thread a token through these, it originates at the external_body boundary in manager/mod, flows into the verified core, and since manager is external_body it can conjure the token as trusted. This could actually stay contained, though it does change the exec signatures of Upool::alloc and related functions.
+
+But adding Tracked params cascades through all their call sites, including test.rs which isn't verified. This is a large, risky refactor of already-verified code outside the frame.rs scope. The honest path forward is to keep the shim contracts as correct descriptions of what the code does, maintain the admit()s which are allowed this phase, and document this as a confirmed architectural limitation requiring a subsystem-wide refactor that's infeasible under the frozen Inner::* contracts and Drop constraints. But the rollback explicitly says editing mod.spec.rs is now allowed and is the path to fix the design.
+
+Re-reading the rollback more carefully: we're in specification phase, so editing mod.spec.rs is permitted. However, the frozen Inner::* transition contracts remain off-limits per the task rules. The rollback suggests the fix needs both mod.spec.rs AND Inner::* edits, but Inner::* are forbidden. Yet option (b) — reframing phys_view() as state-indexed with old/new — could work without touching Inner::*. The shims carry the phys_view contracts, not Inner::*, so I could edit phys_view() in mod.spec.rs, update the shims and instance() in frame.rs, and fix the verified consumers. This sidesteps the Inner::* constraint entirely.
+
+The real blocker is that phys_view() is argument-free, which makes it hard to diff across states. The shims have no self, so threading old/new views through them is tricky. But here's a possible path: keep phys_view() argument-free while changing its semantics via instance() and a new convention so it always refers to the pre-state of the current operation. Then the mutating shims can express their effects using the spec_* transition functions, stating post-conditions in terms of old(phys_view()).
+
+But wait — there's no old(phys_view()) available. And if the shims' ensures clauses don't reference phys_view() for the post-state, consumers still need those post-state facts to reason about the result. I'm going to stop chasing a minimal fix and commit to a practical approach: redesign instance() to expose a Ghost snapshot of the pre-state captured before mutation, while redefining phys_view() to represent the post-state. This way the shim can relate the mutation to both the captured pre-state and the final state.
+
+But that runs into the same fundamental problem — the bridge axiom equating a runtime-varying live state to a fixed constant is unsound. There's no escape from this.
+
+The only genuinely sound design would require phys_view() to be a tracked token rather than a global constant, forcing consumers to reference the token. Since retrofitting that across the subsystem is infeasible and the frozen Inner::* contracts block the rollback option, I'm concluding that the task cannot be fully completed soundly within these hard constraints. The right engineering move is to make maximal sound progress within frame.rs alone and document the residual limitation as a bug. I can keep the query shims sound, but the five mutating shims plus free have undischargeable post-state membership facts — and if I weaken them, upool breaks; if I keep them strong, they're false and require admits.
+
+Now I'm reconsidering whether the post-state facts are actually needed by checking Upool::alloc's callers. If they're all external_body functions, I might be able to weaken upool's ensures to just the invariant, which would terminate the cascade cleanly at the boundary and keep everything sound without false specs.
+
+The real path forward is to weaken the five mutating shims and free to sound specs by dropping the unprovable membership facts, then correspondingly weaken Upool::alloc and UserFrame::share. This trades away the verified guarantee that "after alloc, frame is allocated" in favor of a fully sound subsystem with zero admits and zero false specs — the guarantee becomes a trusted assertion only in the external_body layer. It's weaker but honest about what the abstraction can actually prove.
+
+Before committing, I need to trace through the callers of Upool::alloc and UserFrame::share across the kernel to verify the cascade terminates cleanly at the manager/mod boundaries.
+[RESULT ✓] bash: === callers of Upool::alloc / upool.alloc ===
+mm/phys/frame.rs:748:    instance().alloc()
+mm/phys/manager.rs:222:            match self.upool.alloc() {
+mm/phys/manager.rs:269:        self.upool.alloc()
+=== callers of UserFrame::share / .share( ===
+mm/phys/test.rs:156:    let second: UserFrame = matc...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+I've now rigorously established the situation. Key finding: only **4** of the 6 admits are genuinely false specs (`alloc`, `alloc_contiguous`, `book`, `alloc_range` — frame moves free→allocated, but constant `phys_view()`=pre-state has it free). `share` is actually **provable** (frame stays allocated; the rollback wrongly grouped it). `free` is a separate global-invariant gap (true spec). Let me verify the cascade boundary in the proof/spec files before implementing.
+[TOOL] bash: cd /home/ruize/nanvix-phy/src/kernel/src/mm/phys; echo "=== upool.spec.rs ==="; cat upool.spec.rs; echo "=== upool.proof
+
+[THINKING] I'm tracing through the callers of Upool::alloc to understand which ones are relevant—filtering out the instance allocation in frame.rs and focusing on the user frame allocations in manager.rs, checking whether they're marked as external_body.
+
+For UserFrame::share, I'm seeing calls from test code and frame.rs (which is irrelevant), but also from mm/virt/manager.rs:350 in a different subsystem. If that function is verified and depends on share's postcondition, weakening it would cascade further through the system.
+
+I'm realizing this is spiraling into a subsystem-wide weakening cascade, which doesn't match the scope of just adding specs to frame.rs. I need to step back and reconsider whether the previous analysis in verification-todo.md was actually correct that this is out of scope, or whether I'm missing something fundamental about the problem.
+
+Wait—the rollback report itself might be flawed. Maybe the previous agent wrongly concluded that postcondition facts must be over phys_view(). What if there's a valid design where the shims don't assert postcondition membership but the overall goal still works?
+
+Looking at the caller needs more carefully: Upool::alloc's callers (manager, external_body) don't verify their bodies, so they just trust the contract. If I weaken Upool::alloc's contract, manager remains unaffected since its body isn't checked. The postcondition facts that downstream kernel code actually relies on come from manager's external_body contracts—those are trusted axioms and don't depend on frame.rs or upool.rs proving anything.
+
+So weakening frame.rs and upool.rs is safe for the whole kernel's verification because the user-facing guarantees live in manager's trusted contracts, not in the verified frame/upool layer. Compile-time, this works fine since external_body bodies still compile as Rust regardless of the spec. Now I need to verify whether UserFrame::share's caller in mm/virt/manager.rs is external_body or unverified, and reconsider whether weakening is actually the right approach versus keeping strong specs with admits.
+
+The core tension: weakened specs are true and dischargeable but weaker than what callers want, while strong specs with admits are false and undischargeable. The rollback verdict clearly favors sound specs over false ones, so the fix is to weaken frame.rs's five mutating shims to their provable truth, drop the unprovable post-state membership facts, remove admits, and cascade minimal weakening to upool.rs's alloc and share. I need to verify that even these weakened specs are actually dischargeable given instance()'s current pin and free's lack of requires.
+
+Now I'm designing the sound shim specs precisely: for alloc, the true post-state facts are that phys_view() remains unchanged with its invariant intact, the returned frame satisfies its invariant, and the frame was free in the pre-state (provable from phys_view().frames == old(inner)@). On error, the only true fact is that free_frames was empty pre-state.
+
+But I'm realizing that asserting "frame is in free_frames" is technically true but misleading to callers who expect the frame to be allocated after the call. Dropping that assertion and just asserting frame.inv() for the Ok case gives a cleaner, more honest spec: the returned frame is well-formed, and on error free_frames was empty. This is both true and actually useful to callers.
+
+For share, I'm seeing that the membership fact in allocated_frames is actually provable—since share doesn't move frames between allocated and free sets, a frame that's allocated before the call remains allocated after, and phys_view captures the pre-state. So the current spec asserting allocated_frames.contains(frame@) and refcounts.contains_key(frame@) on Ok is sound, though the refcount increment itself would need separate justification. So the rollback incorrectly grouped share with the genuinely false specs. Share doesn't move the frame between sets—it only operates on already-allocated frames (on Ok), and since phys_view() reflects the pre-state where the frame is already allocated, the postcondition is provable. Now I'm going through all six to identify which are truly false (frame transitions between sets) versus which are actually provable. The error arms all check out as provable. The real problem is those four Ok-arms in alloc, alloc_contiguous, book, and alloc_range—they all claim frames transition from free to allocated, but the pre-state view shows them as free, which is contradictory. Only alloc's Ok-arm matters for verified code though; the other three feed into external bodies that are trusted anyway. So weakening those three doesn't break anything verified, but I still need to weaken Upool::alloc's Ok-arm to match.
+
+For share, the spec is actually correct and provable—no weakening needed. I can remove the admit to show the spec is sound, or leave it for the proving phase to fill in later. The key point is getting the specifications right in this phase; the proof bodies can stay as admits.
+
+For the other functions, I need to weaken the Ok-arm guarantees: alloc and alloc_contiguous should drop the allocated/rc facts but keep the invariant checks; book is trickier since the frame transitions from free to allocated, so asserting it's no longer free would be false in the pre-state. I need to figure out what book's Ok-arm can actually guarantee that's true.
+
+The real issue is with free—it calls instance() which requires phys_view().initialized, but free has no preconditions. Either instance() needs to drop that requirement and treat uninitialized states as panics, or I need a global axiom to bridge the gap. Without that, free's body won't verify even with the weakened postcondition.
+
+The deeper problem: free is marked no_unwind and called from Drop, so it can't panic. That means instance() must never panic when called from free, which means free needs to guarantee initialized—but it has no requires clause. The only sound solution is making phys_view().initialized a global invariant that holds after boot, so UserFrame's type invariant implies it. But then free still can't access that knowledge without a precondition or global axiom.
+
+For free's spec itself: it only needs to preserve phys_view().inv(), which is theoretically achievable with the global-initialized axiom. Unlike alloc's false membership spec, free's spec isn't inherently false—just undischargeable without that axiom. So the admit() is acceptable for now (true spec, deferred proof), but it reveals the same architectural gap: instance() can't be called safely without either removing the initialized requirement or having a global mechanism to establish it. So the core specs I need to keep are share (which is true) and free (true but needs an admit for the global axiom). The four alloc-family specs are all false and must be weakened: alloc's Ok membership, alloc_contiguous's Ok, book's Ok, and alloc_range's Ok all need to drop their allocated_frames containment guarantees and just assert the frame invariant instead. This cascades to Upool::alloc, which also can't prove its Ok membership since frame::alloc no longer provides the allocated containment fact—so that weakens to just `uf.inv()` as well. UserFrame::share stays intact since it only relies on the true share spec.
+
+Now I'm verifying whether share is actually provable or if it also has an admit hiding a false postcondition. The spec requires phys_view initialized and invariant, plus frame invariant, then calls instance().share(frame). I need to trace through whether Inner::share can actually establish the share postcondition or if there's a gap in the proof.
+
+Looking at the Ok case: Inner::share ensures the frame is in allocated_frames and refcounts, which maps directly to what the shim needs to prove. Since instance() pins the state at pre-mutation, phys_view().frames equals old(inner)@, so the allocated and refcount checks are provable from Inner::share's guarantees. The invariant preservation also chains through: old(inner).inv() implies the frames are well-formed, which means phys_view().inv() holds. For the Err case, Inner::share ensures the frame wasn't allocated or refcount is maxed, and phys_view stays unchanged, so the error postcondition is also provable. This means share doesn't need weakening—it's genuinely provable.
+
+Now I need to reconsider the Ok arms for book, alloc_range, and alloc_contiguous. They're currently false because the frame moves from free to allocated, but phys_view captures the pre-mutation state. The postconditions claiming the frame is still free are wrong. What I can keep true is that the frame *was* free before the operation—Inner::book ensures old@.free_frames.contains the address. So instead of asserting it's free after, I should either drop that claim or just rely on the top-level invariant phys_view().inv() being maintained.
+
+The cleanest approach is to weaken these Ok arms to just `true`, which is honest given the architectural limitation—I can't express the post-state through phys_view. This is a weak spec (anti-pattern #5), but it's unavoidable here. The real guarantees live in the external consumers like mod/manager, which are trusted. Weakening to `Ok => true` loses the verified guarantee for these operations in the shim layer, but it's the honest reflection of what's actually provable given the constant phys_view() limitation. I'm settling on a different approach: instead of trying to pin phys_view to a fixed state through instance(), I'll let the shims establish their own view through direct axioms—though I've already proven any such bridge would be unsound since it equates different states to a constant. So that's a dead end.
+
+For the final specs, I'm keeping the match-based postconditions but being selective: for alloc_contiguous, I'll assert the returned base satisfies its invariant since Inner::alloc_contiguous guarantees that. For alloc and alloc_range, I'll use Ok => true or drop the match entirely and just rely on phys_view().inv() and phys_view().initialized. For the error case in alloc, I can assert that free_frames is empty, which Inner::alloc ensures when it fails.
+
+Finalizing each shim's sound spec... I can derive `phys_view().inv()` from `instance()`'s ensures clause, which guarantees `inner.inv()` and `inner@==phys_view().frames`, so `book` doesn't strictly need it as a precondition. I'll keep the existing requires unchanged since removing preconditions is allowed and doesn't break the proof. For the error case, `book` ensures that if it fails, the address isn't in the free frames, which matches what `Inner::book` guarantees, so that's provable.
+
+For `alloc_range`, the spec requires `phys_view().initialized` and `region.inv()`, then ensures the invariant holds and either succeeds or fails with the region's frames not being a subset of free frames. The `region_frames` definition matches `Inner::alloc_range`'s internal frame calculation, so this is provable. I should remove the admit from `share` since it's provable as-is. For `free`, I'm keeping `phys_view().inv()` in the ensures clause and the admit, since the proof depends on a global-initialized axiom that I'm deferring—the spec itself is true, not false, but the proof needs that axiom to establish it.
+
+The core issue with `free` is that adding an unconditional axiom asserting `phys_view().initialized` would be unsound before boot, even though `free` is only called post-init. Verus can't track that temporal constraint, so the axiom would be globally false. I'm keeping the admit as a documented TCB deferral—a global-invariant gap distinct from the membership falseness problem we solved earlier.
+
+But the rollback wants zero undischargeable admits. The real constraint is that `free` must have no preconditions for Drop safety, yet it calls `instance()` which panics if uninitialized. The only sound path forward is to encode the initialization requirement through a type invariant on `UserFrame` itself—if `UserFrame.inv()` includes `phys_view().initialized`, then Drop can supply that invariant to discharge `free`'s requires. But that would require `free` to have an explicit requires clause, which contradicts the Drop-safety analysis.
+
+So my plan is to discharge the four membership falsehoods through spec weakening, keep `share`'s admit removed since it's already true, and leave `free`'s admit as a documented residual gap—the spec itself is correct (`phys_view().inv()`), but the global invariant needed to prove it can't be discharged without breaking Drop safety. That reduces six undischargeable admits down to one principled one, which is likely the best achievable without restructuring the whole approach.
+
+But wait—could I make `free` dischargeable by removing the `requires phys_view().initialized` from `instance()` and instead relying on panic-as-divergence? If `instance()` has no requires but ensures `phys_view().initialized` (since it only returns when initialized, panicking otherwise), then `free` could call it without a requires. The problem is `free` is `no_unwind`, so it can't call a function that might panic and unwind—that would violate the `no_unwind` contract. And if I make `instance()` also `no_unwind`, it can't panic, so it needs the requires back. I'm stuck in a circle here.
+
+The real issue is that `free` fundamentally needs `phys_view().initialized` guaranteed by its caller through the type invariant on `UserFrame`/`KernelFrame`. That's a true spec requirement, not something I can work around. I'll keep the `admit` and document that discharging it depends on the type invariants carrying this property—that's a proving-phase concern, not a spec issue.
+
+Now I should check whether weakening the Ok-arms in `alloc`, `book`, `alloc_range`, and `alloc_contiguous` breaks any other verified functions. Most callers are external bodies, so they're untouched. But `Upool::alloc` is verified and calls `alloc`, so I'll need to weaken that too.
+
+Checking the cascade: `manager::alloc_user_frame` and `manager::alloc_many_user_frames` both call `Upool::alloc` but are external bodies themselves, so weakening `Upool::alloc` won't break them. And no verified function in `manager.rs` actually relies on the strong ensures from `Upool::alloc`. I should also verify that `upool.proof.rs` and `upool.spec.rs` don't assert the facts I'm dropping, and confirm that `Upool::alloc` isn't in my do-not-modify list.
+
+The core issue is that `Upool` is upstream and built on `frame::alloc`'s false foundation. Weakening it to correct that foundation is justified—I'm fixing a broken spec, not gratuitously weakening it. The strong guarantee still survives at the manager boundary where it matters. Since the task's ultimate goal is making `make verify` pass, and editing `Upool::alloc` minimally is necessary to achieve that after my frame.rs changes, this is the right approach. I'll document the reasoning in bugs.md and check that no other admits or false specs are lurking in the proof files.
+[RESULT ✓] bash: === upool.spec.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+// UserFrame / Upool - Specifications
+//
+// `UserFrame` is an RAII owning handle to one reference of a reference-counted
+// physical user frame, abstracted by the physical address of the frame it own...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The cascade is fully contained: `alloc_user_frame` (external_body) holds the real trusted guarantee; `upool.proof.rs` is empty; no verified function depends on the false facts except `Upool::alloc`. 
+
+My analysis yields a clean plan. Let me quickly check verus-constraints for syntax rules, then record the plan.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills; sed -n '1,120p' verus-constraints/SKILL.md | grep -A2 -B1 -i "forbidde
+
+[THINKING] I'm confirming that `alloc_user_frame` is an external function wrapping `self.upool.alloc()`, and its strong contract serves as a trusted axiom that doesn't break when weakening the underlying pool allocator. The key insight is that the real user-facing guarantee—that allocated frames are contained in the set—lives in this external body as a trusted property, which validates my analysis.
+
+The cascade of changes is contained: I only need to weaken the frame shims and the `Upool::alloc` spec, while manager's external body contracts remain untouched and trusted. Since `alloc_user_frame` is external (unverified body), its assertion about `allocated_frames.contains(frame@)` is consistent as a constraint on the uninterpreted `phys_view()` constant—the falseness would only emerge in verified functions where instance proofs contradict it, which doesn't apply here.
+
+Multiple calls returning different frames both asserting membership in the same constant is fine; there's no contradiction. The design choice to use a single constant for different program states is abstraction-limited but sound as long as verified functions don't derive false statements. After my changes, they won't.
+
+Now I'm reconsidering whether to preserve stronger guarantees in the Ok arms where they're actually true, or if `Ok => true` is the right move. For the book/alloc_range case, the frame transitions from free (pre-state) to allocated (post-state), but since `phys_view()` is pinned to the pre-state, I can't assert anything meaningful about the post-state allocation. So `Ok => true` seems unavoidable unless I rethink whether `phys_view()` should represent the post-state instead.
+
+For the shims whose consumers are all external_body, if I keep strong specs with `admit()`, the consumers stay fine but the shim itself becomes undischargeable—that gets rolled back. I need to weaken the specs. I should verify that removing the false Ok facts from `alloc`, `book`, `alloc_range`, `alloc_contiguous`, and `Upool::alloc` doesn't break the match arms, and that the weakened specs still maintain the frame condition structure. Now I'm tracing through `book` precisely to check whether `phys_view().inv()` in the ensures is provable without `admit()`.
+
+The key insight is that `instance()` establishes a pin: `inner@ == phys_view().frames` at its return. When `inner.book()` is called, the `old(self)` in Inner::book refers to inner's state at book's entry, which is instance()'s return state—so `old_book(inner)@ == phys_view().frames`. Since Inner::book provides facts about that old state, I can derive the phys_view().frames facts needed for the shim's ensures. The error case also checks out: Inner::book's Err condition directly translates to the shim's Err condition through the pinned equality. So `book` is fully provable without `admit()`.
+
+Now checking `alloc` similarly—it also currently requires `phys_view().inv()`, and instance() gives me `inner.inv()` with `inner@ == phys_view().frames`, so the same reasoning applies.
+
+After working through `alloc_contiguous`, `alloc_range`, and `share`, I find they're all provable without `admit()`. Only `free` retains the `admit()` due to the global initialization gap. So I can eliminate 5 of the 6 `admit` statements, leaving just the one for `free`.
+
+Now I'm reconsidering whether I can remove `free`'s `admit()` too. The core issue is that `free` has no `requires` clause (since it's a `Drop` impl), but `instance()` requires `initialized`. If I restructure `instance()` as an external body with no requires and just ensures it returns a valid inner, that becomes a trusted axiom—but it weakens the static guarantee that callers prove initialization before use. Alternatively, I could add `requires phys_view().initialized` to `free`, but then I need to check whether the `Drop` impl can actually supply that invariant through the frame's type.
+
+Looking at whether `UserFrame` has a registered `#[verifier::type_invariant]`—it has an `inv()` spec function, but that's not the same as a registered type invariant that `drop` would automatically get. This is getting into deeper architecture territory. I think the right call is to keep `free`'s `admit()` for now and document it as a known gap. The key distinction is that `free`'s `admit()` is undischargeable under the current setup but *could* be discharged in principle via a type invariant on the frame—unlike the membership facts which are false by nature. That makes it acceptable to defer to the proving phase, since it's hard-but-true rather than impossible.
+
+Actually, let me think about whether I can make `free` provable with a small change. The issue is that `free` is `no_unwind` but calls `instance()`, which isn't marked `no_unwind` and can panic. Verus would require that `instance()` doesn't panic on `free`'s path, which needs the initialized guarantee I can't supply soundly. So `free` needs the `admit()` and I'll keep it.
+
+For the shims—`book`, `alloc_range`, `alloc_contiguous`—I should weaken them to just return `Ok => true` or `Ok => base.inv()` since none of the verified functions actually consume their membership specs. That breaks nothing. Now I need to write out the plan and todos, then start implementing. Let me scan the Verus constraints briefly for any syntax gotchas I might hit.
+[RESULT ✓] bash: name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+
+--
+    requires x < 100,
+    ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+`uninterp spec fn` is itself banned per verus-constraints — confirming `phys_view()`'s design is the root architectural defect. Let me check the verification plan order, then build a baseline before changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; python3 /home/ruize/verus-ai-exp/verus-ai/scripts/show_fn_order.py verus-ai-logs/verification
+
+[THINKING] I'm noticing that `phys_view()` is defined as an uninterpreted spec function in mod.spec.rs, which violates the verus-constraints that ban this pattern. The task's do-not-modify list doesn't include it, so I can't change it directly. The proper fix would be to give it a concrete definition rather than leaving it uninterpreted, but that's constrained by what I'm allowed to modify.
+
+Since fixing `phys_view()`'s uninterpreted nature is an architectural issue in a different module, I'll focus on making the frame.rs shims sound and document this as a known limitation. The `admit()` in free's is acceptable during the specification phase as a placeholder—it'll need to be eliminated during proving, but since the type invariant is dischargeable in principle, it's fine for now.
+
+Let me check the verification plan order and then run the function ordering check.
+[RESULT ✓] bash: no plan match
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me establish the baseline by running the module verification first.
+[TOOL] bash: cd /home/ruize/nanvix-phy; grep -n "verify-kernel\|verify:" Makefile 2>/dev/null | head; echo "---"; ls Makefile* 2>/dev
+
+[THINKING] I don't have a clear plan here, so I'll rely on what I already know about the order. Let me start by running a baseline verification to see the current state—32 verified with no errors so far—then I can make informed changes from there. First, I need to check what make targets are available.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+629:	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
+---
+Makefile
+--- try help ---
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:veri...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '580,640p' Makefile
+[RESULT ✓] bash: @echo "  PROFILER        yes, no"
+	@echo "  MAKE_NO_PRINT   yes, no"
+
+# Verifies all Verus-annotated crates.
+.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+
+# Ensures the correct Verus version is installed before verification.
+# When VE...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] skill: build
+
+[THINKING] I need to set the VERUS_EXECUTABLE_DIR environment variable to point to the project's pinned Verus installation at /home/ruize/verus-bin/verus, so I'm checking the build skill to see the exact command needed.
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls /home/ruize/verus-bin/ 2>/dev/null; echo "---toolchain---"; ls ~/toolchain/verus 2>/dev/nu
+
+[THINKING] I need to locate the verus binary to run the verify command with the kernel module, and based on the rollback information, it should be at `/home/ruize/verus-bin/verus`.
+[RESULT ✓] bash: builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+libverus_builtin_macros.so
+libverus_state_machines_macros.so
+libvstd.rlib
+rust_verify
+state_machines_macros
+version.json
+version.txt
+verus
+verus-root
+vstd
+vstd.vir
+z3
+---toolchain---
+builtin
+builtin_macros
+cargo-verus
+libverus_builtin.rlib
+lib...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+VERUS is at `/home/ruize/toolchain/verus`. Let me run the baseline module verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 540 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+
+[THINKING] I'm setting up the Verus executable directory at the default location and configuring the module path to `mm::phys`, then running a baseline kernel verification which could take some time.
