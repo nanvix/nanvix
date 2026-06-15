@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("manager.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("manager.proof.rs");
+
 use crate::{
     hal::{
         arch::x86::mem::mmu::page_table::PageTable,

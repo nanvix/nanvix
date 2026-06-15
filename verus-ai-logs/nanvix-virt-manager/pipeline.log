@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs
+[PIPELINE] NOTE: added cfg-gated include!(manager.spec.rs, manager.proof.rs) to /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs
+[2026-06-15 19:18:33] [BRANCH] Staying on current branch: virt-mm-ai-spec
+[2026-06-15 19:18:33] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-virt/verus-ai-logs/nanvix-virt-manager/body_removed_source.rs (32908 -> 16081 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: manager
+Source: /home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs
+Crate:  kernel
+Branch: virt-mm-ai-spec (base: virt-mm-ai-spec)
+Phases: caller-analysis → specification
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: manager
+============================================================
