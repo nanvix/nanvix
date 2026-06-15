@@ -316,3 +316,13 @@ Let me run the full `make verify` to confirm no regressions elsewhere.
 [THINKING] The external_body declarations are all in other files outside the scope of region.rs, and the target module itself has no admit, assume, or external_body statements. All four target functions are already verified successfully with no errors, and since the proof file is empty, the accessor functions verify automatically through the closed-view-visible-in-module congruence. There's actually nothing left to implement—the task is already complete.
 
 Let me double-check that the contracts aren't somehow trivially passing by confirming the ensures clauses are the original ones from the source and haven't been weakened. The coverage report shows exactly 4 functions have contracts, which matches our targets, and Verus is counting 5 verified items total. I should run the full `make verify` to confirm there are no regressions across the entire codebase and that everything passes with zero errors.
+[RESULT ✓] bash: VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json" \
+/home/ruize/nanvix-p...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && make verify 2>&1 | grep -iE "verified|erro
+
+[THINKING] The "CHEATING_DETECTED" status stems from 25 pre-existing external_body references scattered across other modules like frame.rs and manager.rs—these were already there before my changes. The full verification run on the kernel crate completed successfully with exit code 0 and no errors, so I'm checking the output headers for other crates to confirm the overall status is clean.
