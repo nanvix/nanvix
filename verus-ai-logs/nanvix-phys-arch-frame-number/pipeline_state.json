@@ -2,11 +2,12 @@
   "module_name": "arch-frame-number",
   "log_name": "nanvix-phys-arch-frame-number",
   "source_path": "/home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs",
-  "current_phase": "specification",
-  "current_phase_idx": 2,
+  "current_phase": "proving",
+  "current_phase_idx": 3,
   "completed_phases": [
     "caller-analysis",
-    "view-design"
+    "view-design",
+    "specification"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -55,7 +56,8 @@
   "phase_start_shas": {
     "caller-analysis": "7ec15f58a1f13c1d6f93e36287918dc243a288e3",
     "view-design": "f01a3a9a114f45bd8a011d8ae29175d1378c68a8",
-    "specification": "33c9db43ad2071f0dff40fc628e868e970ed77a9"
+    "specification": "33c9db43ad2071f0dff40fc628e868e970ed77a9",
+    "proving": "f7c66d6e56e8b244c9487f95c09fcb5208416f2b"
   },
   "phase_history": [
     {
@@ -92,6 +94,12 @@
       "phase": "specification",
       "event": "end",
       "sha": "3cf88a9500e8ffddd913ac4244859dbdb5c1b1d1",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "proving",
+      "event": "start",
+      "sha": "f7c66d6e56e8b244c9487f95c09fcb5208416f2b",
       "rollback_iter": 0
     }
   ],
