@@ -67,8 +67,27 @@ contract must restrict to already-present kernel pages. The dry-run branch also 
 success for an absent PTE while the real run performs a *create*, so the two passes do not
 validate the same operation (couples with SB-3 / MOD-7).
 
+### Fix applied (specification phase)
+The MMIO identity-map create branch is a genuine caller-relied path: `kctrl` is invoked by
+`VirtMemoryManager::mmio_alloc` to map MMIO regions, whose vaddrs are high (≥ `user_end()`)
+and identity-mapped (`frame == vaddr`), legitimately outside RAM. The spec was corrected to
+describe what the code actually does rather than restrict the contract and break that path:
+
+1. **TYPE-5 relaxed** (`VmemView::inv`, `vmem.spec.rs`): a kernel frame must be page-aligned
+   and either lie in physical memory **or** be identity-mapped (`self.kernel[v].frame == v`).
+   This is faithful to the code and weakens no caller-relied guarantee (no caller assumes
+   kernel frames lie in RAM).
+2. **New transition `spec_kctrl_create(v, perms)`** inserts `KernelPageView { frame: v, perms }`,
+   modeling the identity-map create branch (vs. `spec_kctrl`, which assumes the key present).
+3. **`kctrl` ensures split** (`vmem.rs`): on the real run, the already-present case uses
+   `spec_kctrl` and the absent case uses `spec_kctrl_create`; `final(self).inv()` now holds on
+   both branches.
+
 ### Status
-**RECORDED** — proving phase to decide between View relaxation vs. contract restriction.
+**FIXED** (specification phase): TYPE-5 relaxed; `spec_kctrl_create` added; `kctrl` contract
+split so `final(self).inv()` is no longer provably violated on the MMIO path. The proving
+phase still must discharge the bodies (the dry-run⇒commit asymmetry for the *absent* case,
+shared with SB-3a, remains a code-side note).
 
 ---
 
@@ -120,5 +139,14 @@ record because the correct contract depends on whether callers guarantee the des
 pre-mapped and CoW-resolved (a deliberate design choice per the property analysis).
 
 ### Status
-**RECORDED** — proving phase to tighten the dry-run validation (SB-3a) and replace the
-`self@ == old@` ensures with CoW-resolution semantics on the destination range (SB-3b).
+**SB-3a RECORDED** — proving phase to tighten the dry-run validation.
+**SB-3b FIXED** (specification phase) — the `self@ == old@` ensures on
+`copy_to_user_unaligned_unchecked` (and the checked wrapper `copy_to_user_unaligned`) was
+provably violated by the real run's `resolve_cow_for_region(dst, size)` call. Corrected to:
+- `copy_to_user_unaligned_unchecked`: `dry_run ==> final(self)@ == old(self)@`; on the real
+  run, `Ok ==> final(self)@.region_cow_resolved(dst, size)`; `Err ==> final(self)@ == old(self)@`
+  (validation precedes any mutation); `final(self).inv()` in all cases.
+- `copy_to_user_unaligned`: `Ok ==> final(self)@.region_cow_resolved(dst, size)`;
+  `Err ==> final(self)@ == old(self)@`.
+This matches FN-15's CoW-resolution semantics on the destination range. The destination
+dry-run validation gap (SB-3a) is a separate, code-side concern left for the proving phase.

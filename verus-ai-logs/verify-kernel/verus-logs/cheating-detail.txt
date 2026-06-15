@@ -36,14 +36,14 @@
     - mm/virt/vmem.rs:1284 resolve_cow_for_region: external_body
     - mm/virt/vmem.rs:1352 user_vaddr_to_paddr: external_body
     - mm/virt/vmem.rs:1395 copy_from_user_unaligned: external_body
-    - mm/virt/vmem.rs:1515 copy_to_user_unaligned_unchecked: external_body
-    - mm/virt/vmem.rs:1680 copy_to_user_unaligned: external_body
-    - mm/virt/vmem.rs:1733 copy_user_to_user: external_body
-    - mm/virt/vmem.rs:1841 memset: external_body
-    - mm/virt/vmem.rs:1890 unmap: external_body
-    - mm/virt/vmem.rs:1985 uctrl: external_body
-    - mm/virt/vmem.rs:2072 kctrl: external_body
-    - mm/virt/vmem.rs:2157 drop: external_body
+    - mm/virt/vmem.rs:1525 copy_to_user_unaligned_unchecked: external_body
+    - mm/virt/vmem.rs:1697 copy_to_user_unaligned: external_body
+    - mm/virt/vmem.rs:1750 copy_user_to_user: external_body
+    - mm/virt/vmem.rs:1858 memset: external_body
+    - mm/virt/vmem.rs:1907 unmap: external_body
+    - mm/virt/vmem.rs:2002 uctrl: external_body
+    - mm/virt/vmem.rs:2096 kctrl: external_body
+    - mm/virt/vmem.rs:2181 drop: external_body
     - mm/virt/vmem.spec.rs:25 ExVirtualAddress (struct): external_type_spec
     - mm/virt/vmem.spec.rs:35 ExPageAligned (struct): external_type_spec
     - mm/virt/vmem.spec.rs:39 ExAccessPermission (struct): external_type_spec

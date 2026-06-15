@@ -146,7 +146,8 @@ impl VmemView {
         &&& forall|v: nat| #[trigger] self.kernel.contains_key(v) ==> {
                 let p = self.kernel[v];
                 &&& is_page_aligned(p.frame)
-                &&& spec_is_physical_region(p.frame, PAGE_SIZE)
+                // In physical memory, OR an identity-mapped MMIO frame (frame == v).
+                &&& (spec_is_physical_region(p.frame, PAGE_SIZE) || p.frame == v)
             }
         // The page directory has a valid, page-aligned physical base.
         &&& is_page_aligned(self.pgdir)
@@ -229,6 +230,12 @@ impl VmemView {
         VmemView { kernel: self.kernel.insert(v, KernelPageView { perms, ..p }), ..self }
     }
 
+    // `kctrl` on an *absent* kernel page identity-maps it (frame == v) with `perms`
+    // (the MMIO mapping-creation branch; see SB-1). `spec_kctrl` assumes the key present.
+    pub open spec fn spec_kctrl_create(self, v: nat, perms: PagePerms) -> VmemView {
+        VmemView { kernel: self.kernel.insert(v, KernelPageView { frame: v, perms }), ..self }
+    }
+
     /// Every CoW user page overlapping `[start, start+size)` is privatized.
     pub open spec fn region_cow_resolved(self, start: nat, size: nat) -> bool {
         forall|v: nat| #[trigger] self.user.contains_key(v)
@@ -286,11 +293,13 @@ onto the View, demonstrating every field is used.)
   `!spec_is_user_region(src, size)` / `!spec_is_kernel_region(dst, size)` /
   `size == 0`. `self@ == old@`.
 - **`copy_to_user_unaligned_unchecked`** → error predicate is a pure function of
-  `(self@, dst, src, size)` (user/kernel/physical-region + size==0), so a `Ok`
-  dry run guarantees the matching real run passes validation.
-  `self@ == old@` (structure unchanged; data write is content-only).
-- **`copy_to_user_unaligned`** → all-or-nothing: same error predicate; on `Err`
-  no observable change, `self@ == old@`; never panics.
+  `(self@, dst, src, size)` (user/kernel/physical-region + size==0). A dry run does
+  not mutate (`dry_run ==> self@ == old@`); the real run eagerly resolves CoW in the
+  destination range, so `Ok && !dry_run ==> self@.region_cow_resolved(dst, size)`
+  (SB-3b); `Err ==> self@ == old@`. `inv()` preserved.
+- **`copy_to_user_unaligned`** → all-or-nothing checked copy: `Ok ==>
+  self@.region_cow_resolved(dst, size)` (SB-3b); on `Err` no observable change,
+  `self@ == old@`; never panics.
 - **`copy_user_to_user`** → both ranges user-mapped; errors:
   `size==0`/`!user_region`/page-not-mapped (`NoSuchEntry`). Neither `self@` changes.
 - **`memset`** → req. `self@.user.contains_key(dst)`; `self@ == old@`
@@ -301,9 +310,10 @@ onto the View, demonstrating every field is used.)
 - **`uctrl`** → req. `self@.user.contains_key(v)`; `Ok` ⟹
   `self@ == old@.spec_uctrl(v, access_perms(access))`.
 - **`kctrl`** → req. `spec_is_kernel_addr(v)`; `dry_run == true` ⟹ validates,
-  `self@ == old@`; `dry_run == false && Ok` ⟹
-  `self@ == old@.spec_kctrl(v, access_perms(access))`. Dry-run error predicate is
-  a pure function of `self@`, guaranteeing a later real run passes validation.
+  `self@ == old@`; `dry_run == false && Ok` ⟹ if the page is present,
+  `self@ == old@.spec_kctrl(v, access_perms(access))`, else (absent PTE, MMIO create)
+  `self@ == old@.spec_kctrl_create(v, access_perms(access))` (SB-1). `inv()` preserved
+  (TYPE-5 admits identity-mapped MMIO frames).
 
 (`access_perms(access: AccessPermission) -> PagePerms` is a small spec mapping
 from the exec permission type to the abstract triple.)

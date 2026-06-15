@@ -307,10 +307,15 @@ impl VmemView {
                 &&& spec_is_physical_region(self.user[v].frame, page_size())
                 &&& (self.user[v].cow ==> !self.user[v].perms.write)
             }
-        // Kernel frames are valid and page-aligned.
+        // Kernel frames are page-aligned. They lie within guest physical memory, *unless*
+        // they are identity-mapped MMIO frames (frame == vaddr), which legitimately fall
+        // outside RAM (see `kctrl`'s MMIO mapping-creation branch / SB-1). This relaxation
+        // is faithful to the code and does not weaken any caller-relied guarantee: callers
+        // never assume kernel frames lie in RAM.
         &&& forall|v: nat| #[trigger] self.kernel.contains_key(v) ==> {
                 &&& is_page_aligned(self.kernel[v].frame)
-                &&& spec_is_physical_region(self.kernel[v].frame, page_size())
+                &&& (spec_is_physical_region(self.kernel[v].frame, page_size())
+                        || self.kernel[v].frame == v)
             }
         // The page directory has a valid, page-aligned physical base.
         &&& is_page_aligned(self.pgdir)
@@ -408,6 +413,17 @@ impl VmemView {
     pub open spec fn spec_kctrl(self, v: nat, perms: PagePerms) -> VmemView {
         VmemView {
             kernel: self.kernel.insert(v, KernelPageView { perms, ..self.kernel[v] }),
+            ..self
+        }
+    }
+
+    /// `kctrl` on an *absent* kernel page: the implementation creates a fresh
+    /// identity-mapped entry (`frame == v`) carrying `perms` (the MMIO
+    /// mapping-creation branch). Modeled separately from `spec_kctrl`, which
+    /// assumes the key is already present. See SB-1.
+    pub open spec fn spec_kctrl_create(self, v: nat, perms: PagePerms) -> VmemView {
+        VmemView {
+            kernel: self.kernel.insert(v, KernelPageView { frame: v, perms }),
             ..self
         }
     }
