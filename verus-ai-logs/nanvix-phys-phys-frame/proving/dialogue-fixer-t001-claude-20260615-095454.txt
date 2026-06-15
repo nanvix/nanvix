@@ -320,3 +320,17 @@ Now let me run the module verification.
 For the `alloc` method around lines 176-179, I need to verify that the invariant still holds after the bitmap modification. Since `old_self.internal_inv()` is guaranteed by the precondition `old(self).inv()`, and the bitmap's `num_bits` field doesn't change (asserted at line 164), the bound `self.bitmap@.num_bits <= spec_max()+1` carries forward from the old state's invariant.
 
 The key question is whether Verus automatically exposes the internal_inv conjuncts within the module scope. Since internal_inv is closed, the SMT encoding should include its definition, making those conjuncts available. Let me run the verification to confirm this works.
+[RESULT ✓] bash: - frame.rs:1459 alloc_range: external_body
+    - kframe.rs:94 new: external_body
+    - manager.proof.rs:12 lemma_manager_attached: admit
+    - manager.proof.rs:21 lemma_free_count_bounded: admit
+    - manager.proof.rs:36 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:49 lemma_kernel_alloc_cont...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Verification passes with exit 0 and no E0080. Now the full `make verify-kernel` (default TARGET=x86) and then TARGET=x86_64, as the reviewer requested.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== TARGET=x86 (default) ==="; make verify-kernel 2>&1 | tail -8; echo 
+
+[THINKING] The verification passed with 82 verified entries and no errors, and crucially the E0080 error is gone now that I removed the directive. The "CHEATING_DETECTED" warnings are from other modules outside my scope, so within the frame I'm working on, there are zero admits. Now I'm running the full kernel verification to make sure everything still works.
