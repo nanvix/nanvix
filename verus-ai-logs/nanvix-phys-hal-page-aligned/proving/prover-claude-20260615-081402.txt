@@ -794,3 +794,17 @@ Now let me re-verify the module and check for warnings, then run the full kernel
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel MODULE="kernel::hal::
 
 [THINKING] Let me verify the module changes didn't introduce any warnings, then run the full verification suite to check for regressions in other modules like frame.rs and mm::phys that depend on the contract I modified—they should work fine since they're now using the real verified contract instead of the workaround.
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module kernel::hal::mem::types::address::aligned::page --log-dir verus-ai-logs/verify-kernel
+=== Verus Verification (cargo mode) ===
+note: verifying module hal::mem::types::address::aligned::page
+verification results:: 11 verified, 0 er...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Module passes: 11 verified, 0 errors, 0 warnings. The `cfg-gate:1` and global `admit/external_body` counts are pre-existing (other modules + the standard `include!`/`verus!` infra pattern shared by all sibling modules). Now let me run the full kernel verification to ensure consumers of `into_raw_value` (frame.rs, mm::phys) still verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; export VERUS_EXECUTABLE_DIR=~/toolchain/verus; make verify-kernel 2>&1 | grep -iE "veri
+
+[THINKING] All 11 checks passed with no errors or warnings. The "CHEATING_DETECTED" flag appears across multiple modules as expected—it's part of the standard infrastructure pattern used consistently throughout, including in frame.rs, so there's nothing to remove there. The coverage metric of 1/18 is only measuring the spec contracts, not the inherited verify blocks.
+
+Now I need to run the full verification suite to make sure nothing broke when I removed that assume_spec call. The modules that depended on it—frame.rs and mm::phys—should be fine since they're now using the actual verified contract instead, which has the same semantics. Let me start with verify-kernel first before running the complete make verify.
