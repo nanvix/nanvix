@@ -832,3 +832,150 @@ No markers remain; structure is clean. Now run verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch 2>&1 | tail -28
 
 [THINKING] I'm reviewing the structure of the Rust code to verify the organization of the PageDirectoryEntry and PageDirectoryEntryFlags implementations, checking where the verification attributes are placed and which methods belong to each block.
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy-specs/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_14-25-41
+
+    Checking arch v0.16.17 (/home/ruize/nanvix...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Excellent! 48 verified, 0 errors. The pde cfg gates are gone (cfg_gate 4→2; remaining 2 are in pte.rs). Let me confirm the remaining cheating is all out-of-scope.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating detail ==="; cat verus-ai-logs/verify-arch/verus-logs/cheating-det
+
+[THINKING] I'm seeing 48 verified items with no errors, and the cfg_gate count dropped from 4 to 2 since the remaining ones in pte.rs are out of scope. The pde cfg gates are gone, and the three external_body instances are all out-of-scope and TCB-allowed. But I'm noticing a discrepancy—the earlier cheating-detail.txt mentioned an assume annotation in table.proof.rs that I need to reconcile.
+
+Actually, that's irrelevant since it's out of scope anyway. Looking at the pde module specifically, all cheating has been eliminated: zero assumes, zero admits, zero external_body, zero cfg_gates. The remaining crate-wide cheating (three external_body, two cfg_gates) is entirely in out-of-scope files like table.rs, mod.rs, and pte.rs, which are either TCB-allowed or outside the scope. Let me verify those two remaining cfg_gates are actually in pte.rs and not pde.
+[RESULT ✓] bash: === cheating detail ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+
+=== remaining cfg gates location ===
+src/lib...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+All remaining cheating is out-of-scope (pte.rs cfg-gates, table/mod TCB-allowed external_body, table assume). The pde module is fully clean. Now let me run the AST consistency check per the skill.
+[TOOL] skill: ast-consistency
+
+[THINKING] I've confirmed that pde.rs/spec/proof has zero cheating items across all categories, and the remaining issues are either out of scope (two cfg gates in pte.rs, one assume in table.proof.rs) or TCB-allowed external_body calls in mod.rs and table.rs. Everything left falls outside the architecture scope.
+
+Now I'm checking AST consistency — the skill requires that cfg gate workarounds preserve semantics and complexity. My changes only removed verus-specific attributes and reorganized impl blocks with `#[verus_verify]` markers, but the actual executable code (function bodies and signatures) remains byte-identical to the original. Splitting impl blocks is semantically equivalent in Rust with no runtime effect, and the `#[verus_verify]` attribute is purely for verification and gets erased during normal compilation. I need to run the ast-consistency check to confirm this formally.
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -iname "*ast-consistency*" -o -iname "*ast_consistency*" 2>/dev/null | grep -v
+[RESULT ✓] bash: ---verus-constraints---
+---skills dir---
+benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/ 2>/dev/null; echo "---"; find . -ipath "*ast*consist*" -o -ipath "*
+[RESULT ✓] bash: approved-trust-boundaries.json
+arch-frame-number
+arch-paging-mod
+arch-paging-table
+arch-x86-pde
+arch-x86-pte
+bump-allocator
+hal-frame-address
+hal-memory-region
+hal-page-aligned
+hal-phys-address
+hal-platform-microvm
+nanvix-phys-arch-frame-number
+nanvix-phys-arch-paging-mod
+nanvix-phys-arch-paging-tab...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/; echo "===="; sed -n '1,120p' /home/ruize/verus-ai-exp
+[RESULT ✓] bash: SKILL.md
+====
+---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+f...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+Let me run the AST consistency checker against the base ref `verus-ai-prove`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls scripts/ast_consistency.py 2>/dev/null || find . -name "ast_consistency.py" 2>/dev
+
+[THINKING] I'm running the AST consistency checker against the base version from verus-ai-prove to examine the pde.rs file, using the `--base-ref` flag to pull the original. The key insight is that the base version had `#[verus_verify]` attributes on impl blocks—the pattern that was later changed to markers starting from commit 3e590bcac. The actual execution code remains consistent across versions; only the Verus attributes and impl block structure differ, which is what the AST checker needs to analyze.
+[RESULT ✓] bash: 
+<shellId: 35 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] bash: find /home/ruize/verus-ai-exp/verus-ai -name "ast_consistency.py" 2>/dev/null | head; echo "---mcp?---"; which verus-ast
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+---mcp?---
+ast_consistency.py
+scan_ast_limitations.py
+<shellId: 36 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git show verus-ai-prove:src/libs/arch/src/x86/mem/paging/pde.rs > /tmp/pde_base.rs 2>
+[RESULT ✓] bash: ✅ Consistent: 23 functions, 2 structs match.
+<shellId: 37 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+AST consistency: **0 mismatches** (23 functions, 2 structs match base). Now let me check what `make verify` does and run it for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^verify\b\|^verify:\|^verify-arch:\|^verify ::\|verify:" Makefile | head
+
+[THINKING] The AST consistency check confirms all 23 functions and 2 structs match the base implementation with no mismatches, so the structural changes haven't affected the executable code. Now I need to run the full crate verification to check for any regressions across the entire codebase, though that might take some time depending on what `make verify` covers.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+<shellId: 38 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "VERUS_CRATES" Makefile | head
+[RESULT ✓] bash: 301:VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
+584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+`make verify` covers bitmap, sys, nanvix-slab, bump-allocator, arch, kernel. Let me run it to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tail -60
+
+[THINKING] `make verify` runs checks across bitmap, sys, nanvix-slab, bump-allocator, arch, and kernel, which takes a while, but my changes are confined to pde.rs in the arch crate—just reorganizing impl blocks and removing verus-only attributes without touching the actual executable code, so the AST verification should still pass.
+
+I'll run `make verify` to confirm everything builds cleanly, even though it'll take a few minutes.
