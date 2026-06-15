@@ -750,3 +750,193 @@ fn_coverage.py: error: the following arguments are required: verus_exec_file
 ────────────────────────────────────────────────────────────
 Turn 11
 ────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== spec_drift ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scri
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== ast count ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scrip
+[RESULT ✓] bash: === ast count ===
+⚠️  1 mismatched (7 functions match)
+EXIT=0
+<shellId: 16 completed with exit code 0>
+[TOOL] report_intent: Running verification checks
+[TOOL] skill: build
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] skill: Skill "build" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 1...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+AST consistency reports 1 mismatch. Let me investigate.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Upool::alloc                             MATCH                UNVERIFIED      
+Upool::new                               MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[RESULT ✓] bash: ## UserFrame::drop (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,5 +1,6 @@
+     fn drop(&mut self) {
+         if let Err(e) = frame::free(self.addr) {
++            
+             error!("failed to free user frame: {:?}", e);
+         }
+     }
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The mismatch is cosmetic: a `#[cfg(not(verus_keep_ghost))]` on the `error!` logging macro. Let me confirm against the base ref and check the git diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== git diff stat upool.rs vs HEAD ===" && git --no-pager diff HEAD -
+[RESULT ✓] bash: === git diff stat upool.rs vs HEAD ===
+=== working tree vs base branch? check git status ===
+=== Show how error! is gated in original (first verus commit) ===
+84bfae2f0 [verus] verify PASS (cheating detected): bitmap::all (cached (no recompilation), —, cfg_gate=5)
+363553c54 [verus] verify PASS (chea...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Collecting compliance evidence
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/m
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff /home/ruize/nanvix-phy-specs-bottom-up/src/kern
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref HEAD /home/ruize/nanvix-phy-specs-bottom
+[TOOL] bash: python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base-ref HEAD /home/ruize/nanvix-phy-specs-bottom
+[TOOL] bash: rg -n "VERUS REWRITE|admit\s*\(|assume\s*\(|assume_specification|verus_verify\(external_body\)|#\[cfg\(" /home/ruize/nan
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs:11:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs:37:#[cfg(verus_keep_ghost)]
+/hom...
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+<shellId: 20 completed with exit code 2>
+[RESULT ✓] bash: ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs' exists on disk, but not in 'HEAD'
+<shellId: 22 completed with exit code 2>
+[RESULT ✓] bash: ERROR: Cannot get original from git: fatal: path '/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs' exists on disk, but not in 'HEAD'
+<shellId: 23 completed with exit code 2>
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 21 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py --base
+[TOOL] bash: rg -n "upool\.rs::Upool::(new|alloc)|mm::phys::upool" /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.m
+[RESULT ✓] bash: 91:## `external_body` thin-facade trust boundaries in `mm::phys::upool` (permanent until the frame free-function layer is verified)
+106:- `src/kernel/src/mm/phys/upool.rs::Upool::new` — carries the **real** contract
+118:- `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — delegates to `frame::alloc` ...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/phys/upool.rs`
+- **Verus file:** `src/kernel/src/mm/phys/upool.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec fns...
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Upool::alloc                             MATCH                UNVERIFIED      
+Upool::new                               MATCH   ...
+[RESULT ✓] bash: ✅ Consistent: 8 functions, 2 structs match.
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing guardrail counts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && for p in "admit\\s*\\(" "assume\\s*\\(" "assume_specification" "verus_verif
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === pattern: admit\s*\(
+
+=== pattern: assume\s*\(
+
+=== pattern: assume_specification
+
+=== pattern: verus_verify\(external_body\)
+src/kernel/src/mm/phys/upool.rs:250:    #[verus_verify(external_body)]
+src/kernel/src/mm/phys/upool.rs:271:    #[verus_verify(external_body)]
+
+=== pattern: #\[cfg\(
+src/ke...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The MISMATCH is solely a `#[cfg(not(verus_keep_ghost))]` on the `error!` logging macro — a pre-approved deviation (cfg-gating logging macros is explicitly allowed). The `error!` call is preserved identically; no `// VERUS REWRITE`. Now let me count cheating dimensions and check verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys && echo "=== admit() ===" && grep -rn "admit()" upool.r
+[RESULT ✓] bash: === admit() ===
+=== assume( ===
+=== external_body ===
+upool.rs:58:/// frame free-function layer. The `Upool` *type* itself is verified (not `external_body`):
+upool.rs:242:    // allocator. `external_body` because `result@.wf()` is stated over the pool's *uninterpreted*
+upool.rs:250:    #[verus_verif...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys
+[RESULT ✓] report_intent: Intent logged
