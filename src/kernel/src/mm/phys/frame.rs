@@ -134,10 +134,16 @@ impl Inner {
             },
     )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
-        proof! { admit(); }
+        proof_decl! { let ghost old_self = *self; }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
+                proof! {
+                    // `alloc` failed: the bitmap is full and its view is unchanged, so the whole
+                    // allocator view is unchanged and there are no free frames.
+                    lemma_view_determined(self, &old_self);
+                    lemma_full_no_free(self);
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 return Err(error);
@@ -146,10 +152,42 @@ impl Inner {
         // Newly allocated frames have a single owner.
         #[cfg(not(verus_keep_ghost))]
         debug_assert_eq!(self.refcount[frame_number], 0);
+        // Bound the index well below the largest representable frame number, so the conversions
+        // below cannot fail. `num_bits < u32::MAX` (a bitmap invariant) and the index is in range.
+        let nbits: usize = self.bitmap.number_of_bits();
+        proof_decl! { let ghost pa: int = frame_number as int * spec_page_size(); }
+        proof! {
+            let idx = frame_number as int;
+            assert(0 <= idx < old_self.bitmap@.num_bits);
+            assert(!old_self.bitmap@.set_bits.contains(idx));
+            assert(self.bitmap@.set_bits == old_self.bitmap@.set_bits.insert(idx));
+            assert(self.bitmap@.num_bits == old_self.bitmap@.num_bits);
+            // The freshly allocated slot was zero before this call.
+            assert(old_self.refcount@[idx] == 0);
+            // `pa` is the frame's base address.
+            assert(pa == frame_addr_of(idx));
+            vstd::arithmetic::div_mod::lemma_mod_multiples_basic(idx, spec_page_size());
+            assert(pa % spec_page_size() == 0);
+            assert(pa >= 0) by (nonlinear_arith) requires idx >= 0, spec_page_size() > 0, pa == idx * spec_page_size();
+            lemma_frame_facts(&old_self, pa, idx);
+            assert(old_self@.free_frames.contains(pa));
+            // The index is below `u32::MAX`, hence representable as a frame number.
+            assert(nbits as int == self.bitmap@.num_bits);
+            assert(idx < nbits as int);
+            assert((u32::MAX as int) <= FrameNumber::spec_max()) by (compute);
+            assert(idx <= FrameNumber::spec_max());
+        }
         self.refcount[frame_number] = 1;
+        proof! {
+            let idx = frame_number as int;
+            assert(self.refcount@ == old_self.refcount@.update(idx, 1));
+            lemma_refcount_book(&old_self, self, idx, pa);
+            lemma_internal_inv_implies_wf(self);
+        }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
+                proof! { assert(false); }
                 let reason: &str = "frame number is out of bounds";
                 #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
@@ -159,7 +197,12 @@ impl Inner {
 
         // Attempt to convert the frame number to a frame address.
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+                proof! {
+                    assert(frame_address@ == pa);
+                }
+                Ok(frame_address)
+            },
             Err(error) => {
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");

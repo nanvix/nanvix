@@ -3,6 +3,7 @@ verus! {
 use super::FrameAllocView;
 use crate::hal::mem::spec_page_size;
 use vstd::map::*;
+use vstd::set::*;
 
 /// Helper: convert a bitmap index to a frame (physical) address.
 pub open spec fn frame_addr_of(i: int) -> int {
@@ -639,6 +640,51 @@ proof fn lemma_refcount_book(old_inner: &Inner, new_inner: &Inner, fnn: int, pa:
                 assert(i != fnn);
                 assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
             }
+        }
+    };
+}
+
+// The allocator view is a deterministic function of the bitmap's abstract bits and the refcount
+// slice. Two inner states that agree on those agree on their abstract views. Used by transitions
+// whose failure path leaves the bitmap view and the refcount slice unchanged (e.g. `alloc`'s
+// out-of-memory branch).
+proof fn lemma_view_determined(a: &Inner, b: &Inner)
+    requires
+        a.bitmap@.set_bits == b.bitmap@.set_bits,
+        a.bitmap@.num_bits == b.bitmap@.num_bits,
+        a.refcount@ == b.refcount@,
+    ensures
+        a@ == b@,
+{
+    let ps: int = spec_page_size();
+    assert(a@.allocated_frames =~= b@.allocated_frames);
+    assert(a@.free_frames =~= b@.free_frames);
+    assert(a@.refcounts =~= b@.refcounts) by {
+        assert forall|addr: int| #[trigger] a@.refcounts.contains_key(addr) implies
+            b@.refcounts.contains_key(addr) by {}
+        assert forall|addr: int| #[trigger] b@.refcounts.contains_key(addr) implies
+            a@.refcounts.contains_key(addr) by {}
+        assert forall|addr: int| a@.refcounts.contains_key(addr) implies
+            #[trigger] a@.refcounts[addr] == b@.refcounts[addr] by {}
+    };
+    assert(a@ == b@);
+}
+
+// A full bitmap has no free frames. Used by `alloc`'s out-of-memory branch to discharge the
+// `free_frames.is_empty()` postcondition.
+proof fn lemma_full_no_free(inner: &Inner)
+    requires
+        inner.bitmap@.is_full(),
+    ensures
+        inner@.free_frames =~= Set::<int>::empty(),
+{
+    assert forall|addr: int| !inner@.free_frames.contains(addr) by {
+        if inner@.free_frames.contains(addr) {
+            let i = choose|i: int|
+                0 <= i < inner.bitmap@.num_bits && !(#[trigger] inner.bitmap@.set_bits.contains(i))
+                    && addr == frame_addr_of(i);
+            assert(inner.bitmap@.set_bits.contains(i));
+            assert(false);
         }
     };
 }
