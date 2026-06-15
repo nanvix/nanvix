@@ -58,12 +58,13 @@ impl PhysicalAddress {
 // (`result@ == value as int`), so its placeholder `assume_specification` was removed — the real
 // specification supersedes it.
 
-pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::into_raw_value ](
-    addr: VirtualAddress,
-) -> (result: usize)
-    ensures
-        result as int == addr@,
-;
+// EXPERIMENT: temporarily commented out for review
+// pub assume_specification[ <::sys::mm::VirtualAddress as ::sys::mm::Address>::into_raw_value ](
+//     addr: VirtualAddress,
+// ) -> (result: usize)
+//     ensures
+//         result as int == addr@,
+// ;
 
 // Note: `arch::mem::FRAME_SHIFT` now carries its own verified modeling in the `arch` crate
 // (`#[verus_verify]` on the constant, transparently `PAGE_SHIFT`), so its placeholder
