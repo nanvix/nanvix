@@ -1,0 +1,20 @@
+[PIPELINE] NOTE: spec file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.spec.rs
+[PIPELINE] NOTE: proof file missing, creating empty stub: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.proof.rs
+[PIPELINE] NOTE: added 'use vstd::prelude::*;' to /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[PIPELINE] NOTE: added cfg-gated include!(identity_map.spec.rs, identity_map.proof.rs) to /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+[2026-06-15 20:40:39] [BRANCH] Base: verus-ai/arch-frame-number → Verus: verus-ai/virt-identity-map
+[2026-06-15 20:40:39] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/body_removed_source.rs (29695 -> 13621 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: virt-identity-map
+Source: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.rs
+Crate:  kernel
+Branch: verus-ai/virt-identity-map (base: verus-ai/arch-frame-number)
+Phases: caller-analysis → cheating-elimination + final-review
+############################################################
+
+============================================================
+PHASE: caller-analysis
+Module: virt-identity-map
+============================================================
