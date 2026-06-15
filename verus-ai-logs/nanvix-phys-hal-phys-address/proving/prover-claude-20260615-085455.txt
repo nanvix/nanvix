@@ -715,3 +715,18 @@ Turn 44
 Turn 45
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E 
+[RESULT ✓] bash: error: assertion failed
+error: precondition not satisfied
+verification results:: 4 verified, 2 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
+  4 verified
+  2 errors
+  verification: 4 verified, 2 errors (exit 101)
+  status: V...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B3
+
+[THINKING] Verus is running now with 4 passing checks, but I'm seeing 2 failures—one from a failed assertion and another from an unsatisfied precondition. Let me dig into what's causing these.
