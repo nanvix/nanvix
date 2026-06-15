@@ -1191,3 +1191,286 @@ Turn 66
 [THINKING] The cfg-gate count in the summary isn't broken down as a specific phys.rs issue in the details—only the two admits are flagged there. That single cfg-gated exec code reference is likely the legitimate `#[cfg(verus_keep_ghost)]` annotation on the include/verus block, which the detector counts but doesn't itemize as a function-level problem. This was already present in the original file, so it's not a new issue.
 
 With 3 verified and 0 errors, the phys.rs module satisfies the requirement. Now I need to run the full `make verify` to check for regressions across all modules and then `make build` to confirm dual compilation works. Before that, I'm double-checking that the cfg-gate count isn't something I introduced—the original had those same cfg-gated includes and verus block, which are legitimate and allowed. The real concern is whether adding `requires` clauses to `from_mmio_address` or `into_frame_number` broke any verified callers in other modules, and whether the external_type_specification for FrameNumber might conflict with how other modules like mm/phys/frame.rs use it.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/6 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompi...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== per-crate verus summaries (exit codes / verified / errors) ==="; for d in verus-a
+
+[THINKING] The full verification run completed successfully with exit code 0 across all crates. The "CHEATING_DETECTED" status is only flagged on the two admit() calls that were already sanctioned, and the external_body trust boundaries were pre-existing. There are no actual verification errors anywhere in the system.
+[RESULT ✓] bash: === per-crate verus summaries (exit codes / verified / errors) ===
+--- verus-ai-logs/verify-bitmap/verus-logs
+Exit code: 0
+--- verus-ai-logs/verify-bump-allocator-fresh/verus-logs
+Exit code: 0
+10 verified
+0 errors
+verification results:: 1523 verified, 0 errors
+--- verus-ai-logs/verify-bump-allocator...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+All crates exit 0, no errors. Now verify the normal build (dual compilation) still works:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 make build 2>&1 | tail -25
+
+[THINKING] All the crates are exiting with status 0, which is good. The kernel log from the cached run confirms this, and the earlier non-cached run showed 3 verified with 0 errors. Now I'm checking whether the bitmap and other crates also have their verified and error counts logged, though it looks like only the bump-allocator-fresh crate showed up in the grep results so far.
+
+Let me verify the kernel log doesn't contain any error messages, then I'll run the build command to test that the normal compilation works with Verus code erased.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+`make build` is a no-op target. Let me find the correct build invocation:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^[a-zA-Z0-9_-]+:" Makefile 2>/dev/null | head -40
+
+[THINKING] The `make build` target isn't producing output, so I should check what build targets are actually available in the Makefile or look for alternative build commands like `make all` or a standalone build script.
+[RESULT ✓] bash: 378:update-sysroot-link:
+393:dump-sccache-stats:
+411:all: all-nanvix
+416:all-nanvix: \
+424:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+427:all-nanvix: all-nanvix-shim
+431:all-nanvix: standalone-images
+436:all-nanvix: all-nanvix-bench
+440:init: init-repo...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && ls z* 2>/dev/null; echo "---"; sed -n '1,30p' .github/skills/build/SKILL.md 2>/dev/null
+
+[THINKING] I see the issue—there's no `make build` target in the Makefile, so that command would be a no-op. The actual build happens through `./z build` or `make all`. I should use the build skill's recommended command to properly verify the dual compilation works.
+[RESULT ✓] bash: z
+z.bat
+z.ps1
+z.py
+---
+---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '30,70p' .github/skills/build/SKILL.md 2>/dev/null
+[RESULT ✓] bash: ### Preferred Build Commands (using `z` utility)
+
+```bash
+# Build everything with the local toolchain.
+./z build -- all
+```
+
+### Building Individual Components
+
+```bash
+# Kernel only.
+./z build -- kernel
+# Nanvixd only.
+./z build -- all-nanvixd
+# UserVM only.
+./z build -- all-uservm
+```
+
+### Build P...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+Build the kernel to confirm dual compilation (Verus erased) works:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 ./z build -- kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "test-kernel|all-test-kernel|kernel:" Makefile | head; echo "---try all-test-kerne
+[RESULT ✓] bash: 345:ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test
+424:all-nanvix: all-host-bin...
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+The kernel builds as part of the full build. Let me run the documented full build to confirm dual compilation:
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 ./z build -- all 2>&1 | tail -30
+
+[THINKING] The kernel doesn't have a standalone build target—it's compiled as part of the full system build or through test-kernel. A full `./z build -- all` would verify everything but is resource-intensive, so I could instead run a plain cargo check on the kernel crate without Verus to confirm the source itself compiles. The real concern is whether phys.rs actually compiles when the `verus_keep_ghost` cfg flag isn't set.
+[RESULT ✓] bash: [INFO]  Build parameters: all
+mkdir -p /home/ruize/nanvix-phy/bin
+mkdir -p /home/ruize/nanvix-phy/lib
+mkdir -p /home/ruize/nanvix-phy/logs
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked -Zbuild-std=core,alloc -Zjson-target-spec  --target /home...
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+Dual-compilation error: the `vstd` import is unused in the normal build. Let me check how siblings gate it:
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '20,45p' src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] There's a dual-compilation issue where `use ::vstd::prelude::*;` is flagged as unused in the normal build since the Verus macros get stripped out when `verus_keep_ghost` is disabled. I should check how other files in the same directory handle this—they probably gate the import with a `#[cfg(verus_keep_ghost)]` attribute.
+[RESULT ✓] bash: self,
+    paging::FrameNumber,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    mm::Alignment,
+};
+use ::vstd::prelude::*;
+
+//==================================================================================================
+// Structures
+//===================================...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "vstd::prelude" src/kernel/src/hal/mem/types/address/frame.rs src/kernel/src/hal/me
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/frame.rs:16:use ::vstd::prelude::*;
+src/kernel/src/mm/phys/frame.rs:47:use ::vstd::prelude::*;
+<shellId: 51 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '12,20p' src/kernel/src/hal/mem/types/address/frame.rs; echo "=== mm/phys/frame.rs =
+[RESULT ✓] bash: PhysicalAddress,
+};
+use ::arch::mem::paging::FrameNumber;
+use ::sys::error::Error;
+use ::vstd::prelude::*;
+
+//==================================================================================================
+// Structures
+//===========================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Siblings don't gate it, so they must use `vstd` in non-ghost code. Let me check what `frame.rs` uses from vstd outside verus blocks:
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "View|@|Tracked|Ghost|vstd|verus_spec|verus_verify" src/kernel/src/hal/mem/types/a
+
+[THINKING] The key difference is whether the import is actually used in the non-Verus code path during the erased build—the siblings don't trigger warnings because they genuinely reference something from vstd::prelude, whereas this case might not. The most straightforward fix is to add `#[allow(unused_imports)]` to the vstd import or gate it behind cfg, but since frame.rs compiles without warnings using the same import pattern, it must actually be using vstd somewhere in the normal build. I need to find where frame.rs references it to understand why phys.rs is different.
+[RESULT ✓] bash: 16:use ::vstd::prelude::*;
+27:#[verus_verify(external_derive)]
+41:impl View for FrameAddress
+47:        self.0@
+54:        self@ % spec_page_size() == 0
+102:    #[verus_verify(external_body)]
+103:    #[verus_spec(result =>
+105:            result as int == self@,
+<shellId: 53 completed with exit code...
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '36,60p' src/kernel/src/hal/mem/types/address/frame.rs
+[RESULT ✓] bash: pub assume_specification[ ::arch::mem::PAGE_SIZE ] -> (result: usize)
+    ensures
+        result == spec_page_size(),
+;
+
+impl View for FrameAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+impl FrameAddress {
+    pub open spec fn inv(&self) -> bool
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '18,35p' src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm noticing that the `impl View for FrameAddress` block in frame.rs isn't wrapped in a `#[cfg(verus_keep_ghost)]` guard at the top level, so I need to trace back and see where the `verus!{}` block actually starts and whether it has any cfg attributes applied to it.
+[RESULT ✓] bash: //==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A type that represents a frame address.
+///
+#[verus_v...
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn -B1 "use ::vstd::prelude" src/kernel/src | grep -i "cfg" | head; echo "=== git dif
+
+[THINKING] I'm realizing that frame.rs's View implementation is wrapped in the `#[cfg(verus_keep_ghost)]` block, so it should also be unused in normal builds, yet the file still compiles. The key difference must be how the `#[verus_verify(external_derive)]` and `#[verus_spec]` macros expand when `verus_keep_ghost` is disabled—they might be stripping out or transforming the code in a way that allows compilation even without vstd being available. I should check what vstd is actually being used for in phys.rs versus frame.rs, and whether there's a pattern in the codebase for conditionally gating vstd imports based on verification mode. Let me search through the kernel to see how other files handle this.
+[RESULT ✓] bash: src/kernel/src/mm/phys/kframe.rs-32-#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/upool.rs-20-#[cfg(verus_keep_ghost)]
+src/kernel/src/mm/phys/mod.rs-36-#[cfg(verus_keep_ghost)]
+=== git diff: was vstd import added by me? ===
+<shellId: 56 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+The vstd import was pre-existing (not added by me). Some files cfg-gate it. Let me see what the original phys.rs used vs. now — check the git diff structure:
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== ORIGINAL phys.rs: any non-ghost vstd usage? grep for View/@ outside cfg ==="; git
+
+[THINKING] Looking at the git diff, I notice that some files like `kframe.rs`, `upool.rs`, and `mod.rs` do gate the vstd import behind a cfg flag, but the vstd import in `phys.rs` wasn't added by me—it was already there in the original file. This means `phys.rs` originally had an ungated `use ::vstd::prelude::*;`, which suggests either the original code actually used vstd in non-ghost sections or the build was already failing.
+
+But wait, the original `phys.rs` had `#[verus_verify(external_derive)]` on the struct and the View impl, so it compiled fine with that ungated vstd import. Something must have been using vstd in the normal build path. The real question is what changed—I added `#[verus_verify]` on a new impl block and `#[verus_spec]` on functions with `proof!{admit();}` inside exec fn bodies, but in normal builds those proof blocks expand to nothing. So why is vstd now unused when it wasn't before? I should check whether I accidentally removed whatever was originally using vstd, or if the issue is something else entirely. The simplest approach is probably to just look at what the original phys.rs actually contained and compare it directly.
+[RESULT ✓] bash: === ORIGINAL phys.rs: any non-ghost vstd usage? grep for View/@ outside cfg ===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+41:#[verus_verify(external_derive)]
+90:// Verification-target methods. They live in a dedicated `#[verus_verify]` impl
+93:// `#[verus_verify]` impl to resolve), whil...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+The vstd import is unused in the normal build for phys.rs (all verus content is cfg-gated). Several files (`kframe.rs`, `upool.rs`, `mod.rs`) handle this by cfg-gating the import. I'll apply the same pattern:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm realizing my changes are already committed in HEAD based on the verus annotations showing up, so the baseline must be further back. The real problem I need to focus on is that the vstd import isn't being used in the normal build.
+
+Let me trace through this: in a non-ghost build, all the verus content is either cfg-gated or stripped by macros like `verus_spec` and `verus_verify`, so vstd genuinely isn't needed. I'm wondering why frame.rs doesn't trigger the same warning when it has an identical structure. Maybe the `#[verus_verify(external_derive)]` macro generates vstd references in both cases, or maybe I'm missing something about how the macros expand. Rather than keep speculating, the straightforward fix that matches the pattern used elsewhere in the codebase is to cfg-gate the vstd import with `#[cfg(verus_keep_ghost)]`, just like kframe.rs and other modules do. 't break the verify build since verus_keep_ghost will be enabled there, so the import will be present. Let me apply this fix and test both the normal build and verify-kernel to confirm it works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 900 ./z build -- all 2>&1 | tail -20
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.15s
+cp -f --preserve /home/ruize/nanvix-phy/target/debug/nanvix-test /home/ruize/nanvix-phy/bin/nanvix-test.elf
+/home/ruize/nanvix-phy/bin/mkramfs.elf -o /home/ruize/nanvix-phy/bin/test-kernel-ramfs.img /home/ruize/nanvix-phy/bin/test-ker...
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+Build succeeds now. Let me re-confirm verify-kernel still passes (the gating shouldn't affect the ghost build):
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "verifi
