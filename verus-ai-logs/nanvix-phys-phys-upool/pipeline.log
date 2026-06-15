@@ -169,3 +169,9 @@ Module: phys-upool
 [2026-06-15 13:13:28] ✅ proving: PASS (0/0)
 [2026-06-15 13:13:28] [GATE] Running build: make build
 [2026-06-15 13:13:28] [GATE] Running verify: make verify
+[2026-06-15 13:13:36] [GATE] ✅ Build + Verify passed after proving
+
+============================================================
+PHASE: cheating-elimination
+Module: phys-upool
+============================================================

@@ -2,9 +2,11 @@
   "module_name": "phys-upool",
   "log_name": "nanvix-phys-phys-upool",
   "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
-  "completed_phases": [],
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
+  "completed_phases": [
+    "proving"
+  ],
   "phase_results": {
     "proving": {
       "phase": "proving",
@@ -26,7 +28,8 @@
     "proving": "2638ab15a53b6f638cd30f4ba8ebca04fea7c396"
   },
   "phase_start_shas": {
-    "proving": "86bfdb518f74f7d24a9547ae1b7233a3e63b949c"
+    "proving": "86bfdb518f74f7d24a9547ae1b7233a3e63b949c",
+    "cheating-elimination": "5fe99280f1aa96c34311da318815d3f9f4ba2921"
   },
   "phase_history": [
     {
@@ -39,6 +42,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "2638ab15a53b6f638cd30f4ba8ebca04fea7c396",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "5fe99280f1aa96c34311da318815d3f9f4ba2921",
       "rollback_iter": 0
     }
   ],
