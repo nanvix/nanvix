@@ -305,3 +305,83 @@ Now running the verification:
 [TOOL] report_intent: Running make verify-arch
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch MODULE=x86::mem::paging 2>&1 | tail -60
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: - from_raw_value
+    - into_raw_value
+    - from_raw_value
+    - into_raw_value
+    - from_raw_value
+    - into_raw_value
+    - from_raw_value
+    - into_raw_value
+    - from_raw_value
+    - into_raw_value
+    - from_raw_value
+    - into_raw_value
+    - from_raw_value
+    - into_raw_value
+    - invl...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "cfg_gate|cfg-gate|external_body|paging/mod.rs|invlpg|CHEAT" verus-ai-logs/v
+
+[THINKING] The verification is running at the crate level for the arch crate and finding cheating violations across the board: three instances of external_body (table::read, table::write, and invlpg—all TCB-listed functions) and two cfg_gate violations from the `#[cfg(verus_keep_ghost)]` include! directives in mod.rs. I'm noticing the checklist requirement about zero cfg-gated executable code, which seems to be getting cut off mid-thought.
+
+Let me clarify what's happening here: those two cfg_gate violations are spec/proof file includes, which should be allowed under the standard pattern. The real question is whether the verification is reporting crate-wide stats when I actually need the module-scoped breakdown for the specific module being checked. I need to dig into the full verification log to understand the cfg_gate details and confirm the actual scope of what's being reported.
+[RESULT ✓] bash: 12:  external_body=3
+16:  cfg_gate=2
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_15-24-33.log
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat scripts/verify.sh | grep -nE "cfg_gate|cfg-gate|external_body|grep|count" | head 
+[RESULT ✓] bash: 229:VERIFIED="$(grep -oP '\d+ verified' "$TMPFILE" | tail -1)"
+230:ERRORS="$(grep -oP '\d+ errors' "$TMPFILE" | tail -1)"
+301:combined = {"assume": 0, "external_body": 0, "admit": 0, "trusted": 0, "no_decreases": 0}
+304:    combined["assume"] += r.assume_count
+305:    combined["external_body"] += r....
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_15-24-33
+2. Mode: cargo
+3. Crate: arch
+4. Directory: N/A
+5. Module: x86::mem::paging
+6. Exit code: 0
+7. cached (no recompilation)
+8. —
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=3
+13.   admit=0
+14.   trusted=0
+15.   no_decreases=0
+16.   cfg_gate=2
+17. 
+18....
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+
+[THINKING] I'm seeing that those reported counts are global across the entire crate, so I need to check the count_cfg_gates function to understand what qualifies as a cfg gate and whether the module-level counts differ from the global summary. Let me look at the relevant section of the verification script to see how module-scoped logic works and which cfg gates are being flagged.
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch MODULE=x86::mem::paging 2>&1 | grep -nE "Module|module|cheating|exte
+
+[THINKING] I need to get the full output from the analysis to see the module-level findings, particularly looking for the x86::mem::paging module results or confirmation that no cheating was detected there.
