@@ -18,7 +18,6 @@
 // canonical frame size, re-exported from `crate::hal::mem` (defined alongside
 // `FrameAddress`); `FRAME_SIZE == PAGE_SIZE == spec_page_size()`.
 
-#[cfg(verus_keep_ghost)]
 verus! {
 
 use crate::hal::mem::spec_page_size;

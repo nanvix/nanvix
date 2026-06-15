@@ -232,3 +232,39 @@ is verified.
 - `<crate::hal::mem::PageAligned<T> as crate::hal::mem::Address>::into_raw_value`
   (declared in `src/kernel/src/hal/mem/types/address/aligned/page.spec.rs`).
   `ensures result as int == addr@`.
+
+## Allowed `external_type_specification` — `hal::mem::types::address::phys` (proof target)
+
+`PhysicalAddress` is the proof target of the `hal::mem::types::address::phys`
+module. It projects to / from the `arch` crate's `FrameNumber`, a foreign type
+from a non-Verus-enabled crate with no `View`/datatype registration reachable
+here (orphan rule). To let `FrameNumber` appear in spec-fn parameters and the
+library-edge `assume_specification`s, it is registered as an opaque external
+datatype via `external_type_specification` + `external_body` — the exact idiom
+already approved for `ExLinkedList` (`mm/phys/mod.spec.rs`). Its internals are not
+modeled; its abstract index is projected by the uninterpreted
+`spec_frame_raw_value`.
+
+- `src/kernel/src/hal/mem/types/address/phys.spec.rs::ExFrameNumber` —
+  `external_type_specification` wrapper registering the foreign `arch::FrameNumber`
+  as opaque. No body verified; carries no abstract guarantee beyond opacity.
+
+## Allowed `assume_specification` — `hal::mem::types::address::phys` library edge
+
+`PhysicalAddress`'s verified constructors/projections call `arch`/`sys`
+library-edge items whose home crates are not yet Verus-enabled. Each is specced
+with `assume_specification` in `phys.spec.rs`, mirroring the existing
+`::arch::mem::PAGE_SIZE` (`frame.rs`) and `sys::mm::Address`
+(`kframe.spec.rs` / `page.spec.rs`) boundaries the codebase already draws. The
+contracts state only the load-bearing newtype-identity / positivity / range facts
+the proofs rely on; they introduce no new observable guarantee and are removed
+when `arch`/`sys` are verified.
+
+- `::arch::mem::FRAME_SIZE` — `result == spec_page_size() && spec_page_size() > 0`.
+- `::arch::mem::FRAME_SHIFT` — `result < usize::BITS && pow2(result) == spec_page_size()`.
+- `VirtualAddress::new` — `result@ == value as int` (newtype constructor).
+- `<VirtualAddress as Address>::into_raw_value` — `result as int == addr@`.
+- `FrameNumber::into_raw_value` — projects index in `0 ..= spec_max_frame_number()`.
+- `FrameNumber::from_raw_value` — `Some` iff `value <= spec_max_frame_number()`,
+  preserving the index; `None` otherwise.
+  (all declared in `src/kernel/src/hal/mem/types/address/phys.spec.rs`.)
