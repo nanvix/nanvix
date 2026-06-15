@@ -2,23 +2,52 @@
   "module_name": "manager",
   "log_name": "nanvix-virt-manager",
   "source_path": "/home/ruize/nanvix-virt/src/kernel/src/mm/virt/manager.rs",
-  "current_phase": "property-analysis",
-  "current_phase_idx": 2,
-  "completed_phases": [],
-  "phase_results": {},
+  "current_phase": "specification",
+  "current_phase_idx": 3,
+  "completed_phases": [
+    "property-analysis"
+  ],
+  "phase_results": {
+    "property-analysis": {
+      "phase": "property-analysis",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 414.5,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "337c19db-956f-4ab8-8333-4cf8a6a414af",
   "completed": false,
   "base_branch": "virt-mm-ai-spec-property-analysis",
   "verus_branch": "virt-mm-ai-spec-property-analysis",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "property-analysis": "453128e6b3ca63dd830aa7246d39f8268cd61da7"
+  },
   "phase_start_shas": {
-    "property-analysis": "2db9e485128c2c986ea90959c7ab9b8d9012d483"
+    "property-analysis": "2db9e485128c2c986ea90959c7ab9b8d9012d483",
+    "specification": "453128e6b3ca63dd830aa7246d39f8268cd61da7"
   },
   "phase_history": [
     {
       "phase": "property-analysis",
       "event": "start",
       "sha": "2db9e485128c2c986ea90959c7ab9b8d9012d483",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "property-analysis",
+      "event": "end",
+      "sha": "453128e6b3ca63dd830aa7246d39f8268cd61da7",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "start",
+      "sha": "453128e6b3ca63dd830aa7246d39f8268cd61da7",
       "rollback_iter": 0
     }
   ],
