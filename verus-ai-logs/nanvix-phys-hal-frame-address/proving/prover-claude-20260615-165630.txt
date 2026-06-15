@@ -634,3 +634,21 @@ Full kernel: 0 errors, `admit=0`, `assume=0`. The `CHEATING_DETECTED` status is 
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 3000 make verify 2>&1 | tail -60
 
 [THINKING] The kernel verification shows zero errors with the external_body count unchanged at 24, which means my change didn't introduce any new issues. Now I'm running the full verification suite across all crates to check for regressions, though it looks like most of it is cached from previous runs.
+[RESULT ✓] bash: Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  Detail: verus-ai-logs/verify-bump-allocator/verus-logs...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+All crates pass with 0 errors and `admit=0`/`assume=0`. Let me confirm no error appeared anywhere in the full run.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify 2>&1 | grep -E "errors|Exit code|status:|Crate " | grep -v "0 error
+
+[THINKING] All the crates are passing with zero errors, and my changes didn't introduce any new admit, assume, or external_body entries—the only pre-existing ones are the TCB-listed ones in bump-allocator and kernel. Let me verify the full run completed successfully with exit code 0 across the board.
