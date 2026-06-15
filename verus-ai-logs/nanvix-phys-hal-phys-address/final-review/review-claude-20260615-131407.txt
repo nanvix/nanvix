@@ -335,3 +335,107 @@ Now let me kick off the baseline verification and read the view design + relevan
 >
 > In-scope (verification-order) targets: the type `PhysicalAddress` (its `View`
 > and `in...
+[RESULT ✓] bash: Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kernel.json
+  Timestamp : 2026-06-15_13-15-01
+
+    Finished `dev` profile ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification is CLEAN (admit=0, assume=0, module external_body in TCB). Let me run the shared analysis scripts and the full cross-module regression once, to feed both sub-agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== fn_coverage ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.p
+
+[THINKING] The verification shows clean results with external_body and cfg_gate counts at the global level, but I'm noticing a discrepancy—the module-level check reports no cheating detected, so I need to reconcile what those global counts actually represent within the module's scope.
+
+Looking at the phys module specifically, the 8 cfg_gate items are just the `#[cfg(verus_keep_ghost)]` imports which are allowed, and the single external_body is ExFrameNumber which is in the TCB-allowed list. Now I'm getting clarity on the audit.
+
+I see there are existing review files from a prior run, and my task is to produce final_review.claude.md and final_review.<gpt> then consolidate them. Rather than running all the verification scripts myself, I should have the sub-agents handle spec_drift, ast_consistency, and fn_coverage independently so they can work in parallel, while I focus on coordinating their efforts with clear instructions.
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+=== EXIT 0 ===
+<shellId: 6 completed with exit code 0>
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+=== EXIT 0 ===
+<sh...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== ast_consistency ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_con
+
+[THINKING] I need to figure out what arguments `fn_coverage` expects — it looks like it takes a source file and a verus exec file. The source file is probably the body-removed version while the exec file is the actual phys.rs, so I should test with those parameters or check the help documentation to confirm.
+
+The verify-kernel already gave me coverage of 3/16, which is good enough. Now I need to run the ast_consistency script to check for spec drift.
+[RESULT ✓] bash: === ast_consistency ===
+
+**Source:** `/tmp/ast_orig_58ol2m3_.rs`
+**Verus:** `src/kernel/src/hal/mem/types/address/phys.rs`
+
+## Summary
+
+- Functions matched: 14/16
+- Functions mismatched: 2
+- Missing in Verus: 0
+- Extra in Verus: 0
+- **Consistent: NO**
+
+## Inconsistent Functions
+
+| Function | Status ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && D=$(ls -d /tmp/ast_consistency* 2>/dev/null | head -1); find /tmp -name "PhysicalAddress__f
+
+[THINKING] The AST consistency check is flagging two mismatches in from_number and into_frame_number, but these are expected since they involve proof blocks and let-binding transformations that change the structure while preserving semantics. I need to manually verify that these rewrites are actually equivalent according to the skill requirements by examining the diffs.
+[RESULT ✓] bash: /tmp/astrep/exec-only/PhysicalAddress__from_number.diff
+/tmp/astrep/full/PhysicalAddress__from_number.diff
+/tmp/astrep/full/PhysicalAddress__from_number_source.rs
+/tmp/astrep/full/PhysicalAddress__from_number_verus.rs
+/tmp/astrep/full/PhysicalAddress__from_number.diff
+---try report dir---
+/tmp/astre...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== from_number exec-only diff ===" && cat /tmp/astrep/exec-only/PhysicalAddress__fro
+[RESULT ✓] bash: === from_number exec-only diff ===
+--- source:PhysicalAddress::from_number
++++ verus:PhysicalAddress::from_number
+@@ -1,4 +1,6 @@
+     pub fn from_number(frame: FrameNumber) -> Self {
+-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
++        let addr_raw: usize = frame.into_raw_v...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+AST mismatches are the 2 pre-approved `f(complex_expr)` → `let x = complex_expr; f(x)` deviations (semantically equivalent). Now running the full cross-module regression and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 2000 make verify 2>&1 | tail -25; echo "=== VERIFY EXIT ${PIPESTATUS[0]} ==="
+
+[THINKING] Looking at the execution-only diffs after removing proof blocks, I'm seeing two instances of the pre-approved refactoring pattern where a complex expression gets extracted into an intermediate variable. The first one in `from_number` breaks down the frame conversion and multiplication into separate steps for clarity, which is semantically identical but improves readability by isolating the subexpression.
+
+The second in `into_frame_number` similarly extracts the frame shift constant into a binding before using it in the bitwise operation — again, functionally equivalent but more explicit. Both changes have the VERUS DEVIATION comments marking them as approved rewrites, and after manual review, the AST consistency check passes since they're semantically equivalent transformations that the skill permits.
+
+Now I need to run the full cross-module verification and build to confirm there are no regressions, though these are expensive operations. Rather than have the sub-agents run them independently multiple times, I'll execute them once and share the results to keep things efficient while still maintaining their independence for the final review.
