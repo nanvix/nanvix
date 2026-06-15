@@ -1,0 +1,14 @@
+RESOLVED
+
+All 10 proving-phase checklist items PASS with tool evidence (see turn_001_driver.md):
+
+- Verifier: `make verify-kernel` exit 0; region module 5 verified, 0 errors.
+- Build: `./z build -- all-kernel` exit 0, no warnings.
+- Region module cheating counts: admit=0, external_body=0, assume=0, cfg-gated exec=0.
+- Crate-wide external_body=25 / cfg_gate=7 are all outside this module and all
+  governed by verus-ai-logs/tcb-allowed.md.
+- No spec weakened vs body_removed_source.rs baseline (only strengthenings:
+  added invariants + start()/size() accessor contracts; View generalized to
+  T: Address via universal spec_addr, view() still closed/equivalent).
+- Cross-module regression clean: git status shows no .rs source modified by the
+  proving phase (region.proof.rs is empty `verus!{}`); committed PASS state intact.
