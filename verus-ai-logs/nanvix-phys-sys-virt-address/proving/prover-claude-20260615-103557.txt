@@ -192,3 +192,28 @@ Turn 5
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-sys 2>&1 | tail -40
 
 [THINKING] The trait implementation for `into_raw_value` inherits its spec from the trait declaration, so I don't need to repeat the `#[verus_spec]` attribute. Let me run the verification to see where things stand.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===CHEATING DETAIL===" && cat verus-ai-logs/verify-sys/verus-logs/cheating-deta
+
+[THINKING] The verification is passing and showing cached results, which is expected. I'm seeing that two of the 255 exec functions have contracts defined—the `new` and `from_raw_value` functions—but I need to check whether `into_raw_value` is also being verified.
+
+The trait specifies an `ensures` clause for `into_raw_value` that the result should equal `self@`, and the implementation returns `self.0` where `self@` equals `self.0 as int`. Since the view is marked as closed, the implementation in the same file should be able to prove this. Let me verify this isn't just a cached result by checking if `into_raw_value` appears in the unverified list.
+[RESULT ✓] bash: ===CHEATING DETAIL===
+===virt unverified?===
+<shellId: 7 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Verification passes but it was cached. Let me force a clean re-verification to confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/virt.rs && timeout 600 make verify-sys 2>&1 | g
+
+[THINKING] The cheating detail turns out to be empty—that cfg gate is just a configuration flag, not actual cheating behavior. There are no virtual functions in the unverified list either. I should force a non-cached run to verify this is working correctly, so I'll touch the virt.rs file and re-run the check.
