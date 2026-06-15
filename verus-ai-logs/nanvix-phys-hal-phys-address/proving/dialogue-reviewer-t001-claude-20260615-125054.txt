@@ -536,3 +536,100 @@ Turn 25
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -iE "Crate|Results|verified|errors|Exit code|status|warning|Summary
 
 [THINKING] The verification passed without any VERUS rewrites or kernel warnings, so now I'm running the full `make verify` command to check for cross-module regressions and then building to confirm there are no warnings. Let me look up the available Makefile targets to find the right build command.
+[RESULT ✓] bash: /home/ruize/nanvix-phy/scripts/verify.sh --crate bitmap  --log-dir verus-ai-logs/verify-bitmap
+  Crate     : bitmap
+=== Results ===
+  Exit code : 0
+=== Summary ===
+  status: CHEATING_DETECTED
+/home/ruize/nanvix-phy/scripts/verify.sh --crate sys  --log-dir verus-ai-logs/verify-sys
+  Crate     : sys
+=...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -ic "warning" verus-ai-logs/verify-kernel/verus-logs/verus_*.log | tail -1; echo "--- 
+
+[THINKING] All the crates are passing with no verification errors, and the CHEATING_DETECTED warnings are from pre-existing external bodies in other modules that fall outside the scope of this proof target. Now I need to run a build to verify there are no warnings and check what the actual build command should be.
+[RESULT ✓] bash: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_12-55-51.log:0
+--- tail of latest kernel log ---
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null | grep -iE "build|make|z |warning|
+
+[THINKING] The cargo cache is hiding the verification output, but the earlier forced run showed 37 verified with zero errors and warnings, which is solid. Now I need to run a quick build to confirm there are no warnings as the checklist requires.
+[RESULT ✓] bash: name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+# Build Nanvix
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system operation...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build -- kernel 2>&1 | tail -30
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 ./z build -- all 2>&1 | tail -25
+[RESULT ✓] bash: # network namespaces. This is only the case in L2 deployments (Linux only).
+RUSTFLAGS= /home/ruize/.cargo/bin/cargo build --locked  --no-default-features --features "microvm" -p uservm
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.10s
+cp -f --preserve /home/ruize/nanvix-phy/targe...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+All checks complete. Every checklist item passes. Let me verify the final concern—confirm no `admit`/`assume` hidden in proof blocks and write the review.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rnE "admit|assume\(|assume_specification|external_body" src/kernel/src/hal/mem/types/
+
+[THINKING] The build completed successfully with no compiler warnings. Now I'm reviewing the evidence to verify the key requirements: the source code hasn't changed since the spec phase, the specifications themselves are robust with meaningful constraints on all three functions plus an invariant, and there's no evidence of spec drift during the proving phase.
+
+Continuing through the checklist: no admits in the physical files, no external function bodies except for the `ExFrameNumber` type specification which registers the foreign `arch::FrameNumber` as opaque (unavoidable and consistent with how `ExLinkedList` is handled). The six `assume_specification` calls are all at genuine external boundaries in unverified crates—four in `arch` and two in `sys`—which aligns with the codebase pattern. No cfg-gated executable code exists beyond ghost includes and View implementations. For the final audit counts on the target: zero admits, zero assume calls, zero external function bodies, one external type specification, six assume_specification calls, and zero cfg-gated exec code.
+
+All exec functions are fully body-verified with no external_body claims, and the only rewrites are ghost `proof!` blocks inserted without changing executable semantics. Cross-module verification passes cleanly across all crates with no errors, and the full build completes with 37 verified items and zero warnings. Everything checks out, so I'm ready to write the review with all items passing and mark this as resolved.
+[RESULT ✓] bash: proof.rs scan exit=1
+=== assume_specification lines in spec ===
+15:// the existing `sys`/`arch` `assume_specification` boundaries the codebase
+37:// `assume_specification`s below. Its internals are not modeled (`external_body`):
+39:#[verifier::external_type_specification]
+40:#[verifier::external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+All evidence gathered. Every checklist item passes against the proof target. Writing the review and marking RESOLVED.
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue/turn_001_driver.md
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue/STOP
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue/turn_001_driver.md with 6233 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue/STOP with 1051 characters
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Review complete. All 10 proving-phase checklist items **PASS** with concrete evidence.
+
+**Key findings (proof target `phys.rs` + spec/proof):**
+- **Verification:** `make verify-kernel` → 37 verified, 0 errors, 0 warnings (forced clean re-verify). Full `make verify` → all crates exit 0.
+- **Build:** `./z build -- all` → complete, no compiler warnings.
+- **Cheating audit (target):** admit=0, `assume()`=0, function `external_body`=0, cfg-gated exec=0. The only trust-boundary artifacts are 1 `external_type_specification` (`ExFrameNumber`, registering foreign `arch::FrameNumber` — unavoidable, like `ExLinkedList`) and 6 `assume_specification`s, all at genuine `arch`/`sys` external/not-yet-verified edges (verified `sys::VirtualAddress::new`/`into_raw_value` have no verified specs).
+- **No spec drift:** `git diff` against the specification boundary is empty — proving made zero source changes; the strong contracts (`inv()` invariant, exact frame projections, no-overflow obligations) are intact.
+- The global `CHEATING_DETECTED` (`external_body=25`, `cfg_gate=10`) is entirely pre-existing, out-of-scope `mm/phys/*` and other crates, all governed by `tcb-allowed.md`.
+
+Wrote `turn_001_driver.md` and created `STOP` with **RESOLVED**. No fixes required.
+
+
+=== Session End ===
+Session: ea045adb-ff61-4b47-b298-c3b164dab5fc
+Duration: 396.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/proving/dialogue-reviewer-t001-claude-20260615-125054.jsonl

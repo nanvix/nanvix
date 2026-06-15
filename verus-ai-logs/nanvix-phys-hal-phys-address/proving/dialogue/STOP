@@ -1,0 +1,18 @@
+RESOLVED
+
+All proving-phase checklist items PASS with evidence (see turn_001_driver.md):
+
+1. No specs weakened — source unchanged since spec boundary (git diff empty);
+   strong non-trivial requires/ensures + inv invariant on all 3 functions.
+2. Zero admit — 0 in target; global admit=0.
+3. Zero external_body (functions) — only ExFrameNumber external_type_specification
+   (opaque arch::FrameNumber registration), not a function-body bypass.
+4. Zero assume/assume_specification beyond external-bottom — 0 assume(); 6
+   assume_specification all at arch/sys external/not-yet-verified edges.
+5. No cfg-gated exec code — cfg only gates ghost includes + View impl.
+6. Cheating audit reported with exact counts/locations.
+7. No Verus-limitation external_body in target → no reproducer owed.
+8. No // VERUS REWRITE; exec bodies original + ghost proof! blocks only.
+9. Full `make verify` — all crates exit 0, 0 verification errors.
+10. `make verify-kernel` = 37 verified, 0 errors, 0 warnings;
+    `./z build -- all` = Build complete, no compiler warnings.
