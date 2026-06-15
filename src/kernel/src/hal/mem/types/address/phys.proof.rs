@@ -15,7 +15,7 @@ pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
         spec_frame_raw_value(frame) * spec_page_size() <= usize::MAX as int,
 {
     // The frame index is bounded by `FrameNumber::spec_max()` (its type invariant).
-    use_type_invariant(&frame);
+    use_type_invariant(frame);
 
     let raw: int = frame@;
     let s: int = spec_page_size();

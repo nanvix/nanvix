@@ -546,3 +546,59 @@ error: could not compile `kernel` (bin "kernel") due to 1 previous error
 Turn 31
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B8
+[RESULT ✓] bash: Module    : hal::mem::types::address::phys
+  Source dir : /home/ruize/nanvix-phy-specs/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rn "fn use_type_invariant" vstd/ ; echo "---"; grep -rn "use_type_invarian
+
+[THINKING] I'm trying to figure out why `use_type_invariant(&frame)` is failing with a mode mismatch error when `frame` is a proof-mode parameter. Looking at how it's used in the arch crate, they pass `frame` by value rather than by reference, so I should check the actual usage patterns in files like pte.rs to understand the correct calling convention.
+[RESULT ✓] bash: ---
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rln "fn use_type_invariant\|use_type_invariant" --include=*.rs . | grep -v
+[RESULT ✓] bash: ./verus/examples/guide/bst_map_generic.rs
+./verus/examples/guide/bst_map_type_invariant.rs
+./verus/source/builtin/src/lib.rs
+./verus/source/rust_verify/src/fn_call_to_vir.rs
+./verus/source/rust_verify/src/trait_check.rs
+./verus/source/rust_verify/src/verus_items.rs
+./verus/source/rust_verify_test/te...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '378,390p' verus/source/builtin/src/lib.rs
+[RESULT ✓] bash: }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::use_type_invariant"]
+#[verifier::proof]
+pub fn use_type_invariant<A>(_a: A) {
+    unimplemented!();
+}
+
+//
+// Ghost, Tracked
+//
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm trying to figure out how `use_type_invariant` works with proof-mode values—it takes by value, but the examples show different patterns like `use_type_invariant(&*self)` in the bst code versus `use_type_invariant(frame)` directly in pte.rs, so I need to check whether frame is passed as a reference parameter there.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -45
