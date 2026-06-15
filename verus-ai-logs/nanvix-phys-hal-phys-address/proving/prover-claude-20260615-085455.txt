@@ -677,3 +677,20 @@ Turn 41
 Turn 42
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E 
+[RESULT ✓] bash: error: Verus Internal Error: missing type invariant function
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED ...
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -B2
+
+[THINKING] I'm running into a visibility issue with the type invariant for FrameNumber. The invariant is defined in the arch crate with the `#[verifier::type_invariant]` attribute, but when I try to use `use_type_invariant(frame)` in the kernel module's `from_number` function, Verus can't find it. It looks like the type invariant might not be properly exported across crate boundaries.
+
+Actually, I realize `into_raw_value()` already calls `use_type_invariant` internally and guarantees `0 <= self@ <= spec_max()` in its postcondition. So instead of calling it directly, I can restructure `from_number` to call `into_raw_value()` first, bind the result to a variable, then invoke the lemma — that way the bound is already established in the context when the lemma needs it.
+
+The original code structure keeps `into_raw_value()` inline in the multiplication, which is semantically identical since it has no side effects. But I'm wondering if I can avoid reordering the exec code and instead fix the lemma to derive the bound differently. The real blocker might be that `use_type_invariant(frame)` fails with a cross-crate visibility error, not the proof logic itself.
