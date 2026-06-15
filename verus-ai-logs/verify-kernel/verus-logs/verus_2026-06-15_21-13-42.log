@@ -1,0 +1,324 @@
+Timestamp: 2026-06-15_21-13-42
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=26
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use function `arch::x86::mem::paging::pde::impl&%1::is_present` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:527:8
+    |
+527 |     if pde.is_present() {
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageDirectoryEntry::is_present] (_0: &arch::mem::paging::PageDirectoryEntry) -> bool;
+
+error: cannot use function `arch::x86::mem::paging::pde::impl&%1::frame_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:528:19
+    |
+528 |         return Ok(pde.frame_address());
+    |                   ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageDirectoryEntry::frame_address] (_0: &arch::mem::paging::PageDirectoryEntry) -> usize;
+
+error: cannot use type `kernel::mm::virt::page_table_allocator::PageTableBss` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:535:9
+    |
+535 |           PAGE_TABLE_ALLOCATOR
+    |  _________^-------------------
+536 | |             .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+    | |_______________________________________________________^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageTableBss(crate::mm::virt::page_table_allocator::PageTableBss);
+
+error: `core::slice::impl&%0::as_ptr` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/identity_map.rs:543:27
+    |
+543 |     let pt_paddr: usize = slot.as_ptr() as usize;
+    |                           ^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [core::slice::<impl [T]>::as_ptr] (_0: &[T]) -> *const T;
+
+error: cannot use function `arch::x86::mem::paging::pde::impl&%1::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:552:39
+    |
+552 |       let new_pde: PageDirectoryEntry = PageDirectoryEntry::new(
+    |  _______________________________________^
+553 | |         PageDirectoryEntryFlags::new(
+554 | |             PresentFlag::Present,
+555 | |             ReadWriteFlag::ReadWrite,
+...   |
+563 | |         pt_frame,
+564 | |     );
+    | |_____^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageDirectoryEntry::new] (_0: arch::mem::paging::PageDirectoryEntryFlags, _1: arch::mem::paging::FrameNumber) -> arch::mem::paging::PageDirectoryEntry;
+
+error: cannot use function `arch::x86::mem::paging::pde::impl&%0::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:553:9
+    |
+553 | /         PageDirectoryEntryFlags::new(
+554 | |             PresentFlag::Present,
+555 | |             ReadWriteFlag::ReadWrite,
+556 | |             UserSupervisorFlag::Supervisor,
+...   |
+561 | |             PageSizeFlag::Standard,
+562 | |         ),
+    | |_________^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageDirectoryEntryFlags::new] (_0: arch::mem::paging::PresentFlag, _1: arch::mem::paging::ReadWriteFlag, _2: arch::mem::paging::UserSupervisorFlag, _3: arch::mem::paging::PageWriteThroughFlag, _4: arch::mem::paging::PageCacheDisableFlag, _5: arch::mem::paging::AccessedFlag, _6: arch::mem::paging::DirtyFlag, _7: arch::mem::paging::PageSizeFlag) -> arch::mem::paging::PageDirectoryEntryFlags;
+
+error: cannot use type `arch::x86::mem::paging::pde::PageDirectoryEntryFlags` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:553:9
+    |
+553 | /         PageDirectoryEntryFlags::new(
+554 | |             PresentFlag::Present,
+555 | |             ReadWriteFlag::ReadWrite,
+556 | |             UserSupervisorFlag::Supervisor,
+...   |
+561 | |             PageSizeFlag::Standard,
+562 | |         ),
+    | |_________^
+
+error: cannot use type `arch::x86::mem::paging::flags::PresentFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:554:13
+    |
+554 |             PresentFlag::Present,
+    |             ^^^^^^^^^^^^^^^^^^^^
+...
+632 |             PresentFlag::Present,
+    |             --------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPresentFlag(arch::mem::paging::PresentFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::ReadWriteFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:555:13
+    |
+555 |             ReadWriteFlag::ReadWrite,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+633 |             ReadWriteFlag::ReadWrite,
+    |             ------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExReadWriteFlag(arch::mem::paging::ReadWriteFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::UserSupervisorFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:556:13
+    |
+556 |             UserSupervisorFlag::Supervisor,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+634 |             UserSupervisorFlag::Supervisor,
+    |             ------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExUserSupervisorFlag(arch::mem::paging::UserSupervisorFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::PageWriteThroughFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:557:13
+    |
+557 |             PageWriteThroughFlag::NotWriteThrough,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+635 |             PageWriteThroughFlag::NotWriteThrough,
+    |             -------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageWriteThroughFlag(arch::mem::paging::PageWriteThroughFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::PageCacheDisableFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:558:13
+    |
+558 |             PageCacheDisableFlag::CacheEnabled,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+636 |             PageCacheDisableFlag::CacheEnabled,
+    |             ----------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageCacheDisableFlag(arch::mem::paging::PageCacheDisableFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::AccessedFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:559:13
+    |
+559 |             AccessedFlag::NotAccessed,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+637 |             AccessedFlag::NotAccessed,
+    |             -------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExAccessedFlag(arch::mem::paging::AccessedFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::DirtyFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:560:13
+    |
+560 |             DirtyFlag::NotDirty,
+    |             ^^^^^^^^^^^^^^^^^^^
+...
+638 |             DirtyFlag::NotDirty,
+    |             -------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExDirtyFlag(arch::mem::paging::DirtyFlag);
+
+error: cannot use type `arch::x86::mem::paging::flags::PageSizeFlag` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:561:13
+    |
+561 |             PageSizeFlag::Standard,
+    |             ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageSizeFlag(arch::mem::paging::PageSizeFlag);
+
+error: cannot use function `arch::x86::mem::paging::table::impl&%1::write` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:566:14
+    |
+566 |     unsafe { pd.write(pde_idx, new_pde) };
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+643 |     unsafe { pt.write(pte_idx, new_pte) };
+    |              --------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<E> [arch::mem::paging::Table::<E>::write] (_0: &arch::mem::paging::Table<E>, _1: arch::mem::paging::TableIndex, _2: E)
+            where
+            E: arch::mem::paging::TableEntry,;
+
+error: cannot use function `arch::x86::mem::paging::pte::impl&%1::is_present` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:619:8
+    |
+619 |     if pte.is_present() {
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageTableEntry::is_present] (_0: &arch::mem::paging::PageTableEntry) -> bool;
+
+error: cannot use function `arch::x86::mem::paging::pte::impl&%1::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:630:35
+    |
+630 |       let new_pte: PageTableEntry = PageTableEntry::new(
+    |  ___________________________________^
+631 | |         PageTableEntryFlags::new(
+632 | |             PresentFlag::Present,
+633 | |             ReadWriteFlag::ReadWrite,
+...   |
+640 | |         frame,
+641 | |     );
+    | |_____^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageTableEntry::new] (_0: arch::mem::paging::PageTableEntryFlags, _1: arch::mem::paging::FrameNumber) -> arch::mem::paging::PageTableEntry;
+
+error: cannot use function `arch::x86::mem::paging::pte::impl&%0::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:631:9
+    |
+631 | /         PageTableEntryFlags::new(
+632 | |             PresentFlag::Present,
+633 | |             ReadWriteFlag::ReadWrite,
+634 | |             UserSupervisorFlag::Supervisor,
+...   |
+638 | |             DirtyFlag::NotDirty,
+639 | |         ),
+    | |_________^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageTableEntryFlags::new] (_0: arch::mem::paging::PresentFlag, _1: arch::mem::paging::ReadWriteFlag, _2: arch::mem::paging::UserSupervisorFlag, _3: arch::mem::paging::PageWriteThroughFlag, _4: arch::mem::paging::PageCacheDisableFlag, _5: arch::mem::paging::AccessedFlag, _6: arch::mem::paging::DirtyFlag) -> arch::mem::paging::PageTableEntryFlags;
+
+error: cannot use type `arch::x86::mem::paging::pte::PageTableEntryFlags` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:631:9
+    |
+631 | /         PageTableEntryFlags::new(
+632 | |             PresentFlag::Present,
+633 | |             ReadWriteFlag::ReadWrite,
+634 | |             UserSupervisorFlag::Supervisor,
+...   |
+638 | |             DirtyFlag::NotDirty,
+639 | |         ),
+    | |_________^
+
+error: cannot use function `arch::x86::mem::paging::invlpg` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:646:14
+    |
+646 |     unsafe { paging::invlpg(phys_addr) };
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::invlpg] (_0: usize);
+
+error: cannot use function `arch::x86::mem::paging::table::pd_index` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:704:31
+    |
+704 |     let pde_idx: TableIndex = paging::pd_index(phys_addr);
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::pd_index] (_0: usize) -> arch::mem::paging::TableIndex;
+
+error: cannot use function `arch::x86::mem::paging::table::pt_index` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:705:31
+    |
+705 |     let pte_idx: TableIndex = paging::pt_index(phys_addr);
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::pt_index] (_0: usize) -> arch::mem::paging::TableIndex;
+
+error: cannot use function `arch::x86::mem::paging::table::impl&%1::from_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:708:50
+    |
+708 |     let pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(pd_paddr) };
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+712 |     let pt: Table<PageTableEntry> = unsafe { Table::from_address(pt_paddr) };
+    |                                              -----------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<E> [arch::mem::paging::Table::<E>::from_address] (_0: usize) -> arch::mem::paging::Table<E>
+            where
+            E: arch::mem::paging::TableEntry,;
+
+error: cannot use function `arch::x86::mem::paging::table::impl&%1::read` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:521:44
+    |
+521 |     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
+    |                                            ^^^^^^^^^^^^^^^^
+...
+613 |     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
+    |                                        ----------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<E> [arch::mem::paging::Table::<E>::read] (_0: &arch::mem::paging::Table<E>, _1: arch::mem::paging::TableIndex) -> core::option::Option<E>
+            where
+            E: arch::mem::paging::TableEntry,;
+
+error: could not compile `kernel` (bin "kernel") due to 25 previous errors
