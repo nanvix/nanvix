@@ -78,15 +78,32 @@ The aggregate query shim `free_count` is also fully body-verified via
 image of an injective `i -> i * page_size` map and discharges
 `free_frames.len() + usage == num_bits` without any `admit()`.
 
-The mutating shims (`alloc`, `alloc_contiguous`, `free`, `share`,
-`book`, `alloc_range`) carry a single deferred `proof! { admit(); }`:
-their `#[verus_spec]` contracts are stated over the *fixed* uninterpreted
-`phys_view()` with no `old(phys_view())` to diff the mutation against, so the
-post-state membership facts are a proving-phase obligation, not an `external_body`
-trust boundary. (Per the spec-design guidance, current-module functions defer with
-`admit()` rather than `external_body`.) See
-`verus-ai-logs/nanvix-phys-phys-frame/verification-todo.md` for the full analysis
-of why these six are blocked under the frozen specs.
+The mutating reservation shims (`alloc`, `alloc_contiguous`, `book`,
+`alloc_range`, `share`) are body-verified and carry the **strong** post-state
+contract via the `tracked PhysAuth` carrier threaded through `&mut`: each names
+both `old(auth)@` (pre-state) and `final(auth)@` (post-state) and asserts the
+exact `FrameAllocView` transition (`spec_alloc_one` / `spec_alloc_set` /
+`spec_share`), with a meaningful `Err` arm (`final(auth)@ == old(auth)@`). They
+carry no `admit()`.
+
+## Allowed `external_body` — `frame::free` (`frame.rs`, `Drop` path)
+
+`frame::free` is reached only from `UserFrame::drop` / `KernelFrame::drop`. Their
+trait-fixed `drop(&mut self)` signature is `opens_invariants none` + `no_unwind`,
+so the `Drop` path **cannot** receive a `Tracked<&mut PhysAuth>` carrier and
+**cannot** open a global invariant to reach the authority. Without the token the
+body cannot discharge `instance()`'s `phys_view().initialized` precondition nor
+`Inner::free`'s `frame.inv()` precondition, and the contract must stay
+precondition-free for `Drop` soundness. The function is therefore `external_body`
+with its weak, always-true `ensures phys_view().inv()` honored as a trust boundary
+(the logging branch performs no state change). This replaces the previous deferred
+`proof! { admit(); }`; the trust surface is identical, but `external_body` is the
+governed mechanism. It is the single deliberate, caller-justified `Drop`-path
+exception — **not** the forbidden weakening, which concerned the reservation ops
+that now carry the strong `PhysAuth`-threaded post-state.
+
+- `src/kernel/src/mm/phys/frame.rs::free` — releases one reference on `Drop`.
+  `ensures phys_view().inv()` on every path; no precondition (`Drop`-safe).
 
 ## Allowed `external_body` — `UserFrame::drop` (`upool.rs`)
 

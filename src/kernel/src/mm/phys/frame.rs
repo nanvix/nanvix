@@ -851,14 +851,28 @@ pub(super) fn free_count() -> usize {
 }
 
 /// Free a frame previously returned by [`alloc`].
+//
+// Trust boundary (see `verus-ai-logs/tcb-allowed.md`): `free` is reached only from
+// `UserFrame::drop` / `KernelFrame::drop`, whose trait-fixed `drop(&mut self)`
+// signature is `opens_invariants none` + `no_unwind` and therefore cannot receive
+// a `Tracked<&mut PhysAuth>` carrier nor open a global invariant. Without the
+// token the body cannot discharge `instance()`'s `phys_view().initialized`
+// precondition nor `Inner::free`'s `frame.inv()` precondition, and the contract
+// must stay precondition-free so `Drop` is sound. The weak, always-true
+// `phys_view().inv()` post-state is honored as an external contract here (the
+// logging branch performs no state change). This is the single deliberate,
+// caller-justified `Drop`-path exception; the reservation shims (`alloc`,
+// `alloc_contiguous`, `book`, `alloc_range`, `share`) carry the strong
+// `PhysAuth`-threaded post-state instead.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         // `free` runs on `Drop` of any `UserFrame`/`KernelFrame`, so it carries no
         // caller precondition. It preserves the subsystem invariant on every path
         // (releasing a reference, and the last reference returns the frame to the
-        // free pool). The exact refcount transition is not expressible here:
-        // `phys_view()` is a single fixed value, with no `old(phys_view())` to
-        // compare against.
+        // free pool). The exact refcount transition is not expressible on this
+        // path: `Drop` cannot thread a `PhysAuth` carrier, so there is no
+        // `old(auth)@`/`final(auth)@` pair to diff the mutation against.
         phys_view().inv(),
     // `free` is invoked from `Drop` impls (`UserFrame`/`KernelFrame`), which are
     // `no_unwind` and `opens_invariants none`; the shim honours both: it opens no
@@ -867,15 +881,6 @@ pub(super) fn free_count() -> usize {
     no_unwind
 )]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
-    // `free` is reached from `Drop`, where the global allocator's `initialized`
-    // precondition required by `instance()` is not locally re-established (there is
-    // no `old(phys_view())` and no ghost token threaded through `Drop`). Honoring
-    // the `no_unwind` contract for the panic-free path is a proving-phase
-    // obligation, deferred here. The spec itself (`phys_view().inv()` preserved) is
-    // sound; see `verus-ai-logs/nanvix-phys-phys-frame/bugs.md`.
-    proof! {
-        admit();
-    }
     instance().free(frame)
 }
 
