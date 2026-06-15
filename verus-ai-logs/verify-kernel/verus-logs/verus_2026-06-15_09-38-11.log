@@ -1,0 +1,127 @@
+Timestamp: 2026-06-15_09-38-11
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+78 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=17
+  admit=13
+  trusted=0
+  no_decreases=0
+  cfg_gate=13
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs-bottom-up/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:919:13
+     |
+ 919 | /             ({
+ 920 | |                 let start_frame_number = region@.start / spec_page_size();
+ 921 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+ 922 | |                 let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+...    |
+ 940 | |             }),
+     | |______________^ failed this postcondition
+...
+1087 |                       return Err(Error::new(ErrorCode::OutOfMemory, reason));
+     |                       ------------------------------------------------------ at this exit
+
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:919:13
+     |
+ 919 | /             ({
+ 920 | |                 let start_frame_number = region@.start / spec_page_size();
+ 921 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+ 922 | |                 let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+...    |
+ 940 | |             }),
+     | |______________^ failed this postcondition
+...
+1176 |           Ok(())
+     |           ------ at the end of the function body
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+    |
+317 | /                 forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < i)
+318 | |                     ==> self.refcount@[k] == old_self.refcount@[k],
+    | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:318:46
+    |
+318 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+    |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:333:13
+    |
+333 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:334:38
+    |
+334 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+    |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1122:17
+     |
+1122 | /                 forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < index)
+1123 | |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1123:46
+     |
+1123 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     |                                              ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1167:13
+     |
+1167 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1168:38
+     |
+1168 |                 self.refcount@[k] == old_self.refcount@[k] by {}
+     |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1167:13
+     |
+1167 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+verification results:: 78 verified, 2 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

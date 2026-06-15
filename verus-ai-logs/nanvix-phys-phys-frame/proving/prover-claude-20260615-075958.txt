@@ -4663,3 +4663,397 @@ Now I'm adding this subset assertion to the proof block after establishing the f
 Turn 306
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.rs:317:17
+   --> src/kernel/src/mm/phys/frame.rs:318:46
+   --> src/kernel/src/mm/phys/frame.rs:333:13
+   --> src/kernel/src/mm/phys/frame.rs:334:38
+   --> src/kernel/src/mm/phys/frame.rs:333:13
+verification results:: 72 verified, 0 errors (partial verification with `...
+
+────────────────────────────────────────────────────────────
+Turn 307
+────────────────────────────────────────────────────────────
+`alloc_contiguous` verifies (72 verified, 0 errors)! The remaining "error" is the documented codegen const-eval from the directive. Now let me tackle `Inner::alloc_range`:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Good news on `alloc_contiguous` — it's fully verified with 72 checks passing and no errors, aside from the expected codegen panic from the const-eval directive. The remaining work is on `Inner::alloc_range`, which still has an `admit()` call at frame.rs:942 that needs addressing.
+[RESULT ✓] view: 850.                     // way the frame is not free, and the allocator state is unchanged.
+851.                     assert(!self@.free_frames.contains(pa));
+852.                 }
+853.                 #[cfg(not(verus_keep_ghost))]
+854.                 error!("{error:?} (phys_addr={phys_addr:?})");...
+
+────────────────────────────────────────────────────────────
+Turn 308
+────────────────────────────────────────────────────────────
+This is the most complex function. Let me check the `region` spec guarantees and the bitmap `set`/`test` specs:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rln "TruncatedMemoryRegion" src/ | head; echo ---; grep -rn "struct Tru
+
+[THINKING] I'm noticing the key difference here: this function uses a specific range booking approach rather than searching for free space like `alloc_contiguous` does. It validates that a particular region is available, then reserves it directly—this is a boot-time allocation strategy where the range must already be free. The implementation appears to be checking coverage and then performing the booking, though the thought cuts off mid-explanation. I need to verify that the region invariant guarantees the size is at least one frame and properly aligned, otherwise there's an underflow risk when computing `end_frame_number = start + size/FS - 1`. The real challenge here is establishing the loop invariants for both the coverage check and bitmap-setting loops, then connecting everything to the lemma about booking ranges. For the error cases, I need to prove that when coverage fails or a frame is already allocated, the frames aren't a subset of the free frames, which should follow from the definitions but requires careful reasoning about what each error condition means.
+[RESULT ✓] bash: src/kernel/src/hal/io/mmio/allocator.rs
+src/kernel/src/hal/io/mmio/region.rs
+src/kernel/src/hal/mem/types/region.rs
+src/kernel/src/hal/mem/types/region.spec.rs
+src/kernel/src/hal/platform/microvm/mod.rs
+src/kernel/src/hal/platform/bootinfo.rs
+src/kernel/src/hal/mod.rs
+src/kernel/src/mm/phys/mod.rs
+s...
+
+────────────────────────────────────────────────────────────
+Turn 309
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; sed -n '1,120p' src/kernel/src/hal/mem/types/region.spec.rs
+[RESULT ✓] bash: verus! {
+
+use crate::hal::mem::spec_page_size;
+
+//==================================================================================================
+// View
+//==================================================================================================
+
+/// Abstract state of a memory region: th...
+
+────────────────────────────────────────────────────────────
+Turn 310
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== region start()/size() ==="; grep -rn "fn start\|fn size\|verus_spec
+
+[THINKING] The `TruncatedMemoryRegion::inv()` function establishes that the memory region has a positive size and is page-aligned, which means the end frame number calculation won't underflow since the size is guaranteed to be at least one page.
+
+Now I need to verify the frame number conversion chain: `region.start().into_frame_number().into_raw_value()`. The `PageAligned<PhysicalAddress>` needs to convert to a `FrameNumber`, which requires checking whether the address can be properly represented as a frame number—this is where the top-frame issue comes in. Before diving deeper into the proof, I should gather the specifications for `PageAligned::into_frame_number`, `FrameNumber::into_raw_value`, the bitmap `test` and `set` operations, and the region's `start()` and `size()` methods to understand all the preconditions and guarantees involved.
+[RESULT ✓] bash: === region start()/size() ===
+210:    #[verus_spec(result =>
+214:    pub fn start(&self) -> T {
+219:    #[verus_spec(result =>
+223:    pub fn size(&self) -> usize {
+370:    #[verus_spec(result =>
+374:    pub fn start(&self) -> PageAligned<T> {
+379:    #[verus_spec(result =>
+383:    pub fn size(&self...
+
+────────────────────────────────────────────────────────────
+Turn 311
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] view: 368. 
+369.     /// Returns the first valid address that lies in the target memory region.
+370.     #[verus_spec(result =>
+371.         ensures
+372.             result@ == self@.start,
+373.     )]
+374.     pub fn start(&self) -> PageAligned<T> {
+375.         self.0.start()
+376.     }
+377. 
+378.     /...
+
+────────────────────────────────────────────────────────────
+Turn 312
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "fn into_frame_number\|fn into_raw_value" src/libs/ src/kernel/ 2>/d
+
+[THINKING] I'm checking the return types and specifications for these methods — `region.start()` gives back a page-aligned physical address, and `region.size()` returns the size as a usize. When I call `into_frame_number()` on that page-aligned address, there's a potential panic issue with the top frame that I need to investigate.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.rs:84:    pub fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/pgtab.rs:40:    fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/page.rs:64:    fn into_raw_value(self) -> usize {
+src/kernel/src...
+
+────────────────────────────────────────────────────────────
+Turn 313
+────────────────────────────────────────────────────────────
+Let me rewrite `alloc_range` to use division (matching the established pattern) and gather remaining specs. First, the bitmap `test` spec and PageAligned `into_raw_value`:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== bitmap test ==="; grep -n "fn test" src/libs/bitmap/src/lib.rs; ech
+
+[THINKING] I'm tracing through the type chain here — `region.start()` gives me a `PageAligned<PhysicalAddress>`, and I need to figure out which `into_frame_number()` method applies. There's one defined in `phys.rs` at line 165 for `PhysicalAddress` and another in `frame.rs` at line 147, so I need to determine which one the wrapper type uses.
+
+Actually, looking at the pattern used elsewhere in the codebase — `is_covered`, `book`, and similar methods were refactored to use division instead of `into_frame_number()` to avoid panic conditions. I should follow that same approach here and convert line 947 to use division: instead of calling `into_frame_number().into_raw_value()`, I'll divide the raw value directly by `mem::FRAME_SIZE`. Before I make that change, I need to verify the spec for `PageAligned<PhysicalAddress>::into_raw_value()` to make sure this works correctly.
+
+Given how intricate this is with multiple loops, invariants, and error cases, I think I should work through this carefully myself since I have the full context rather than delegating it.
+[RESULT ✓] bash: === bitmap test ===
+659:    pub fn test(&self, index: usize) -> Result<bool, Error> {
+=== aligned page into_raw_value ===
+        // Check if `addr` is not aligned to a page boundary.
+        if !addr.is_aligned(PAGE_ALIGNMENT)? {
+            return Err(Error::new(ErrorCode::BadAddress, "unaligned v...
+
+────────────────────────────────────────────────────────────
+Turn 314
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/libs/bitmap/src/lib.rs
+[RESULT ✓] view: 630.         Ok(())
+631.     }
+632. 
+633.     ///
+634.     /// # Description
+635.     ///
+636.     /// Tests a bit at a given index in the bitmap.
+637.     ///
+638.     /// # Parameters
+639.     ///
+640.     /// - `index`: Index of the bit to test.
+641.     ///
+642.     /// # Returns
+643.     ///
+64...
+
+────────────────────────────────────────────────────────────
+Turn 315
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "into_raw_value\|verus_spec\|ensures" src/kernel/src/hal/mem/types/a
+
+[THINKING] I'm looking for the Verus specification for the PageAligned Address::into_raw_value method to understand how it relates to the self reference.
+[RESULT ✓] bash: === try .rs spec attrs near into_raw_value ===
+impl<T: Address> PageAligned<T> {
+    /// Constructs a page address from an aligned virtual address.
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+                ...
+
+────────────────────────────────────────────────────────────
+Turn 316
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "into_raw_value\|trait Address\|ensures\|verus_spec" src/kernel/src/h
+[RESULT ✓] bash: === Address trait into_raw_value spec ===
+src/kernel/src/hal/mem/types/address/frame.rs:118:    pub fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/page.rs:24:    pub fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/page.rs:53:    pub fn into_raw_value(...
+
+────────────────────────────────────────────────────────────
+Turn 317
+────────────────────────────────────────────────────────────
+Let me look at how the already-verified `book` handles address→index, to mirror its division pattern:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn book\b" src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm checking how the `book` function handles converting a page-aligned physical address to an index through division, so I can apply the same approach to `alloc_range`.
+[RESULT ✓] bash: 809:    fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+1228:pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+<shellId: 167 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 318
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 760. 
+761.         proof! {
+762.             // The slot is non-zero and within the slice, so its frame index is bitmap-managed and
+763.             // its bit is set; hence the frame is allocated and its refcount equals the slot.
+764.             let fnn = frame_number as int;
+765.             asse...
+
+────────────────────────────────────────────────────────────
+Turn 319
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "fn lemma_view_determined\|fn lemma_internal_inv_implies_wf" src/kern
+
+[THINKING] I'm working through the `book` pattern for `PageAligned<PhysicalAddress>` — when I call `into_raw_value()`, it gives me a raw integer that equals the physical address, and that address is always page-aligned. For `alloc_range`, `region.start()` returns a `PageAligned<PhysicalAddress>` where the dereferenced value matches the region's start, so calling `into_raw_value()` on it should give me the raw integer of that start position. But I'm checking whether `into_raw_value()` actually has the postcondition I'm expecting.
+
+Now I'm designing the `alloc_range` implementation with a two-loop structure. I'm setting up ghost variables to track the original state and the spec page size, then computing the start and end frame numbers by dividing the region's start and size by the frame size. The spec defines the frame range as half-open `[lo, hi)` where `lo` is the start frame and `hi` is `lo + size/page_size`. The execution uses an inclusive loop from `lo` to `hi-1`, which covers the same range. My proof strategy involves a coverage check loop that verifies all indices in the range are within bounds and currently unset, leaving the state unchanged if any check fails, then a modification loop that actually sets the bits.
+
+For the error case, I need to show that if coverage fails at some index `k`, then the frame at that index isn't in the free frames set. If `k` is out of bounds or already set, the frame address `k * page_size` is in the target frames set but not in the free frames, violating the subset requirement. The booking loop then sets all the bits and updates refcounts, applying a lemma to transition the view and verify the final state matches the contract. Both loops need careful invariant handling for the inclusive range iteration.
+
+I'm reconsidering whether to change the loop from inclusive `..=` to exclusive `..` bounds to align with the half-open spec and simplify the proof. This would be a behavior-preserving change since `[start, start + size/page_size)` is equivalent to the original inclusive range, and it's acceptable since I'm completing the proof body.
+
+I also don't need to worry about frame-number representability in the allocation function itself since it returns `Ok(())` without converting back to `FrameAddress`. The key challenge now is proving that the bitmap's `set()` calls succeed during the booking loop—I need to maintain an invariant that all indices being set are within bounds and haven't been set yet, even as earlier indices in the range get modified.
+
+The coverage loop establishes that all indices in the target range are unset and within bounds, and since the booking loop only modifies indices from `lo` to `current`, the remaining indices stay free. I'll need to carry those coverage facts forward and express the booking invariant relative to the original bitmap state. I also need to handle the subtle point that the coverage loop doesn't mutate the bitmap itself, so the state remains unchanged between the two loops—though early returns from the coverage loop must still satisfy the postcondition that the bitmap is unchanged.
+
+Now I'm working through the mathematical relationships between the region properties and frame numbers. I need to establish that the frame count equals the region size divided by the page size, and that the end frame number can be computed as the start frame plus the count. This requires proving divisibility properties and relating the specification-level frame set to the actual frame addresses.
+
+For the coverage loop, I'm setting up an invariant that tracks the loop progress through the frame range, ensuring the bitmap remains unchanged and that all frames up to the current index have been verified as unset.
+[RESULT ✓] bash: 162:proof fn lemma_internal_inv_implies_wf(inner: &Inner)
+658:proof fn lemma_view_determined(a: &Inner, b: &Inner)
+<shellId: 168 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 320
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 162. proof fn lemma_internal_inv_implies_wf(inner: &Inner)
+163.     requires
+164.         inner.internal_inv(),
+165.     ensures
+166.         inner@.wf(),
+167. {
+168.     let ps: int = spec_page_size();
+169.     let v = inner@;
+170.     let nbits: int = inner.bitmap@.num_bits;
+171.     assert(ps > 0...
+
+────────────────────────────────────────────────────────────
+Turn 321
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 658. proof fn lemma_view_determined(a: &Inner, b: &Inner)
+659.     requires
+660.         a.bitmap@.set_bits == b.bitmap@.set_bits,
+661.         a.bitmap@.num_bits == b.bitmap@.num_bits,
+662.         a.refcount@ == b.refcount@,
+663.     ensures
+664.         a@ == b@,
+665. {
+666.     let ps: int = spe...
+
+────────────────────────────────────────────────────────────
+Turn 322
+────────────────────────────────────────────────────────────
+I now have all the specs. Let me rewrite `alloc_range` with division-based conversion, half-open loops, and full proofs:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the alloc_range proof now, gathering the key specifications I need to establish about how PageAligned PhysicalAddress values convert to raw integers and how they relate to the region's start value.
+
+Writing proof code... The math checks out: since both frame number and count are bounded by usize::MAX divided by the frame size, their sum stays well within usize::MAX. I'll need to prove `start_frame_number + count <= usize::MAX` using nonlinear arithmetic or by asserting the bounds. For the relationship between lo and hi, I need to show that `(region.start + region.size) / page_size == region.start / page_size + region.size / page_size` using the fact that both the start and size are page-aligned, which means I can apply division properties from the arithmetic library. Writing the alloc_range function... Writing the proof and loop invariant... I need to prove that inserting index into the range set gives me the extended range, likely using extensionality. Then I'll set refcount[index] to 1. For the Err branch of the set() call, I can prove it's unreachable by deriving a contradiction from set's error postcondition—since I've already established that index is within bounds and the bit isn't set, both disjuncts of the Err ensures are false. Writing the proof...
+[RESULT ✓] view: 942.     fn alloc_range(
+943.         &mut self,
+944.         region: &TruncatedMemoryRegion<PhysicalAddress>,
+945.     ) -> Result<(), Error> {
+946.         proof! { admit(); }
+947.         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+948.         let end_fra...
+
+────────────────────────────────────────────────────────────
+Turn 323
+────────────────────────────────────────────────────────────
+Let me check vstd's `Set::map` spec to write the equivalence helper:
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -rn "pub open spec fn map\|spec fn map<\|fn map(\|axiom_set_map\|lemma_m
+
+[THINKING] I'm setting up a helper to verify frame set equivalence for the spec, then calculating the range of frame numbers based on the region's start position and size divided by the page size, and mapping those frame numbers to their corresponding frames.
+
+Now I need to handle the loop carefully—in a Verus for-loop over a range, the index is usize and the invariant needs to establish bounds like `lo <= index <= hi`. Early returns inside the loop body still have the invariant available at that point, so I can rely on those facts.
+
+For the overflow concern with `start_frame_number + count`, I'll compute the end frame number via ghost code to avoid potential overflow in the exec path, but the for-loop itself needs the end value as a concrete usize, so I'll need to prove the addition doesn't overflow by showing both operands are bounded by `usize::MAX / FS`. I'm setting up the proof by calling the division monotonicity lemmas to establish that both frame numbers stay within bounds, then asserting that their sum doesn't overflow using computation. The key insight is that Verus models usize division as integer division when there's no truncation, so `start_frame_number as int` equals `(start_raw as int) / (FS as int)`. I'm relying on `by (compute)` to evaluate the concrete arithmetic with `usize::MAX == 2^64-1`, though I might need a fallback approach if that doesn't work cleanly.
+
+Actually, I'm reconsidering the whole approach — maybe I don't need to precompute `end_frame_number` as a separate variable at all. The real issue is that I'm trying to prove overflow safety before I have the coverage bounds, which creates a circular dependency. But I can flip this: use the bitmap's `number_of_bits()` upfront as a guard, checking that `start_frame_number` and `count` don't exceed it before entering the loop. This way I establish the upper bound on the final frame number directly from the bitmap's size, sidestepping the overflow check entirely. So the guard ensures all indices in the range fall within the bitmap bounds, and if any index is out of bounds, I return an error with a witness frame that proves the range isn't fully covered. The original loop checked `test(index)` for each frame to detect already-allocated ones, so I still need that coverage loop, but now the per-index bounds check becomes redundant since the upfront guard guarantees all indices are within bounds. Writing the guard and loop... I think the safest approach is to just include `self.inv()` directly in the loop invariant and let Verus verify it's maintained—since the loop body only calls `test()` which takes an immutable borrow, there's no mutation to `self`, so the invariant should hold trivially. I'll also track the view equalities for the bitmap and refcount to be explicit about what's preserved.
+
+For the error case in the test branch, I can derive a contradiction: the test function ensures `index >= num_bits` on error, but the loop invariant guarantees `index < end_frame_number <= num_bits`, so that branch is unreachable and I can assert false.
+
+Now I need to set up the coverage loop invariant carefully to track what's been cleared, then move into the booking loop with its own invariant. Rather than trying to get everything perfect upfront, I'll write out the full proof and iterate with the verifier. For the `frames` set in the spec, I'll create a helper lemma that proves the contract's frames equals `frame_set(lo, hi)` once, then reuse that equivalence wherever needed in the proof.
+
+Writing helper lemma... Looking for the right Set::map lemma in vstd...
+[RESULT ✓] bash: set_lib.rs:29:    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+set_lib.rs:45:    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B>
+set_lib.rs:57:    pub open spec fn map_flatten_by<B>(
+set_lib.rs:69:    pub proof fn map_flatten_by_is_map_flatten<...
+
+────────────────────────────────────────────────────────────
+Turn 324
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs
+[RESULT ✓] view: 26.     }
+27. 
+28.     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
+29.     pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
+30.         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+31.     }
+32. 
+33.     /// `Set::map_by` is like `Set::...
+
+────────────────────────────────────────────────────────────
+Turn 325
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd; grep -n "fn set_int_range\|lemma_int_range\|set_int_range" set_lib.rs | head
+
+[THINKING] So `Set::map` applies a function to each element, meaning when I map over a range of integers multiplied by page size, I get a set where an address exists if there's some integer in that range whose product with page size equals that address. That's exactly what `frame_set` computes—it's just expressing the same thing in terms of frame addresses derived from indices.
+
+Now I need to prove these are extensionally equal. I'm writing a lemma that uses `assert_sets_equal` to show both directions: that any address in the mapped range is in the frame set, and vice versa. The proof uses the `choose` operator to extract the witness integer from the range, then verifies the frame address relationship holds.
+
+Writing the proof lemma...
+
+I'm being careful about trigger annotations and how the closure interacts with the map operation—Verus should handle the existential quantification, but I'll need to test this. I also need to verify that `set_int_range` is the right function from `vstd::set_lib` and check if there's already a lemma establishing that `set_int_range(lo,hi).contains(x)` is equivalent to `lo<=x<hi`.
+[RESULT ✓] bash: 1161:pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+1167:pub proof fn lemma_int_range(lo: int, hi: int)
+1171:        set_int_range(lo, hi).finite(),
+1172:        set_int_range(lo, hi).len() == hi - lo,
+1176:        assert(set_int_range(lo, hi) =~= Set::empty());
+1178:        lemma_in...
+
+────────────────────────────────────────────────────────────
+Turn 326
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set_lib.rs
+[RESULT ✓] view: 1161. pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+1162.     Set::new(|i: int| lo <= i && i < hi)
+1163. }
+1164. 
+1165. /// If a set solely contains integers in the range [a, b), then its size is
+1166. /// bounded by b - a.
+1167. pub proof fn lemma_int_range(lo: int, hi: int)
+
+────────────────────────────────────────────────────────────
+Turn 327
+────────────────────────────────────────────────────────────
+Let me add the map-equivalence helper lemma to `frame.proof.rs`:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm defining a helper function that creates a set containing integers in the range from `lo` to `hi` (exclusive), which unfolds directly from the specification. Now I need to add this lemma to the frame proof file and implement the `alloc_range` function body, placing it after the existing `lemma_book_range` definition.
+[RESULT ✓] view: 730.             if lo <= i < hi {
+731.                 assert(new_inner.refcount@[i] == 1);
+732.             } else {
+733.                 assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+734.             }
+735.         };
+736.         assert forall|i: int| 0 <= i < nbits implies (
+737.   ...
+
+────────────────────────────────────────────────────────────
+Turn 328
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 770.                 assert(lo <= i < hi);
+771.                 assert(fs.contains(addr));
+772.             }
+773.         }
+774.         assert forall|addr: int| old_inner@.allocated_frames.union(fs).contains(addr) implies
+775.             #[trigger] new_inner@.allocated_frames.contains(addr) by {
+...
+
+────────────────────────────────────────────────────────────
+Turn 329
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 830.                 assert(old_inner@.refcounts.contains_key(addr));
+831.             } else {
+832.                 assert(lo <= i < hi);
+833.                 assert(fs.contains(addr));
+834.             }
+835.         }
+836.         assert forall|addr: int|
+837.             old_inner@.refcounts.uni...
+
+────────────────────────────────────────────────────────────
+Turn 330
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 870.     };
+871. }
+872. 
+873. // A full bitmap has no free frames. Used by `alloc`'s out-of-memory branch to discharge the
+874. // `free_frames.is_empty()` postcondition.
+875. proof fn lemma_full_no_free(inner: &Inner)
+876.     requires
+877.         inner.bitmap@.is_full(),
+878.     ensures
+879.    ...
+
+────────────────────────────────────────────────────────────
+Turn 331
+────────────────────────────────────────────────────────────
+Now let me add the map-equivalence helper after `lemma_book_range` (line 871):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 332
+────────────────────────────────────────────────────────────
+Now let me write the full `alloc_range` body:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm implementing the alloc_range function body to replace that section of code.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 333
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(

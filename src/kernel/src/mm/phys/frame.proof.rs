@@ -870,8 +870,34 @@ proof fn lemma_book_range(old_inner: &Inner, new_inner: &Inner, lo: int, hi: int
     };
 }
 
-// A full bitmap has no free frames. Used by `alloc`'s out-of-memory branch to discharge the
-// `free_frames.is_empty()` postcondition.
+// The contract of `alloc_range` describes the booked block as
+// `set_int_range(lo, hi).map(|i| i * PAGE_SIZE)`. This coincides with `frame_set(lo, hi)`,
+// letting `alloc_range` reuse `lemma_book_range`'s view transitions.
+pub proof fn lemma_map_range_is_frame_set(lo: int, hi: int)
+    ensures
+        vstd::set_lib::set_int_range(lo, hi).map(|i: int| i * spec_page_size())
+            =~= frame_set(lo, hi),
+{
+    let ps: int = spec_page_size();
+    let f = |i: int| i * ps;
+    let mapped = vstd::set_lib::set_int_range(lo, hi).map(f);
+    assert forall|addr: int| mapped.contains(addr) implies
+        #[trigger] frame_set(lo, hi).contains(addr) by {
+        let x = choose|x: int|
+            vstd::set_lib::set_int_range(lo, hi).contains(x) && addr == f(x);
+        assert(lo <= x < hi);
+        assert(addr == frame_addr_of(x));
+    }
+    assert forall|addr: int| frame_set(lo, hi).contains(addr) implies
+        #[trigger] mapped.contains(addr) by {
+        let j = choose|j: int| lo <= j < hi && addr == #[trigger] frame_addr_of(j);
+        assert(vstd::set_lib::set_int_range(lo, hi).contains(j));
+        assert(addr == f(j));
+    }
+    assert(mapped =~= frame_set(lo, hi));
+}
+
+
 proof fn lemma_full_no_free(inner: &Inner)
     requires
         inner.bitmap@.is_full(),
