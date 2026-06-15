@@ -985,3 +985,22 @@ Turn 66
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 3000 make verify 2>&1 | grep -iE "errors|status:|verifying crate|=== |FAIL" |
 
 [THINKING] The `make verify` command only ran the kernel crate with caching, showing the phys module, and the "CHEATING_DETECTED" status refers to 14 admits in other modules outside my scope—those are pre-existing and expected. My module itself has zero admits. But I'm realizing `make verify` should be verifying all crates, not just the kernel one, so something seems off with what actually ran.
+[RESULT ✓] bash: === Verus Verification (cargo mode) ===
+=== Results ===
+=== Cheating Pattern Check ===
+=== Function Coverage ===
+=== Summary ===
+  status: CHEATING_DETECTED
+=== Verus Verification (cargo mode) ===
+=== Results ===
+=== Cheating Pattern Check ===
+=== Function Coverage ===
+=== Summary ===
+  status: CHEA...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 3000 make verify 2>&1 | grep -iE "verification:|verified,|exit [0-9]" | head 
+
+[THINKING] I'm seeing that multiple crates are flagged for cheating due to pre-existing admit counts in other modules, but what really matters is whether my change introduced any actual verification errors. Let me search through the results for error counts and see if any proofs actually failed.
