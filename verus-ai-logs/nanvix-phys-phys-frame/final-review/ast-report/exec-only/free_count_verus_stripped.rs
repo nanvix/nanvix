@@ -1,0 +1,11 @@
+pub(super) fn free_count() -> usize {
+    let inner = instance();
+    // VERUS DEVIATION (pre-approved: intermediate value). The two bitmap reads are bound to
+    // locals so the proof can observe `number_of_bits() > 0` (the bitmap's `num_bits > 0` fact
+    // lives in its crate-closed `internal_inv`) before discharging `lemma_free_count_eq`.
+    // Semantically identical to `number_of_bits() - usage()`: same calls, order, and result.
+    let nbits: usize = inner.bitmap.number_of_bits();
+    let used: usize = inner.bitmap.usage();
+    
+    nbits - used
+}

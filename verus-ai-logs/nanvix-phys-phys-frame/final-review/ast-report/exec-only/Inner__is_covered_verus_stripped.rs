@@ -1,0 +1,11 @@
+    fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+        
+        // Compute the frame index by division instead of `into_frame_number()`. Both yield
+        // `phys_addr@ / FRAME_SIZE`, but division needs no representable-frame-number precondition
+        // and cannot panic on the (reserved) top-of-memory frame.
+        let raw: usize = phys_addr.into_raw_value();
+        let frame_number: usize = raw / mem::FRAME_SIZE;
+        let nbits: usize = self.bitmap.number_of_bits();
+        
+        frame_number < nbits
+    }

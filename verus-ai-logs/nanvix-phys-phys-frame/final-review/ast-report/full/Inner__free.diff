@@ -1,0 +1,107 @@
+--- source:Inner::free
++++ verus:Inner::free
+@@ -1,31 +1,102 @@
+     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+-        let frame_number: usize = frame.into_frame_number().into_raw_value();
++        proof_decl! {
++            let ghost pa: int = frame@;
++            let ghost old_self = *self;
++        }
++        let raw: usize = frame.into_raw_value();
++        let frame_number: usize = raw / mem::FRAME_SIZE;
++        proof! {
++            assert(mem::FRAME_SIZE as int == spec_page_size());
++            assert(raw as int == pa);
++            assert(pa % spec_page_size() == 0);
++            assert(frame_number as int == pa / spec_page_size());
++            lemma_frame_facts(self, pa, frame_number as int);
++        }
+ 
+         if frame_number >= self.refcount.len() {
++            proof! {
++                assert(self.refcount@.len() >= self.bitmap@.num_bits);
++                assert(!self@.allocated_frames.contains(pa));
++            }
+             let reason: &str = "frame number out of bounds";
++            #[cfg(not(verus_keep_ghost))]
+             error!("{reason} (frame={frame:?})");
+             return Err(Error::new(ErrorCode::BadAddress, reason));
+         }
+ 
+         // Reject double-frees: the frame must currently have at least one owner.
+         if self.refcount[frame_number] == 0 {
++            proof! {
++                let fnn = frame_number as int;
++                if fnn < self.bitmap@.num_bits {
++                    assert(self.bitmap@.set_bits.contains(fnn) <==> self.refcount@[fnn] > 0);
++                }
++                assert(!self.bitmap@.set_bits.contains(fnn));
++                assert(!self@.allocated_frames.contains(pa));
++            }
+             let reason: &str = "frame is already free";
++            #[cfg(not(verus_keep_ghost))]
+             error!("{reason} (frame={frame:?})");
+             return Err(Error::new(ErrorCode::BadAddress, reason));
++        }
++
++        proof! {
++            let fnn = frame_number as int;
++            // The frame is allocated: its slot is non-zero, so its bit is set.
++            assert(self.refcount@[fnn] > 0);
++            assert(fnn < self.bitmap@.num_bits);
++            assert(self.bitmap@.set_bits.contains(fnn));
++            assert(self@.allocated_frames.contains(pa));
++            assert(self@.refcounts.contains_key(pa));
++            assert(self@.refcounts[pa] == self.refcount@[fnn]);
+         }
+ 
+         self.refcount[frame_number] -= 1;
+ 
+         // Only release the bit in the bitmap when the last owner releases the frame.
+         if self.refcount[frame_number] == 0 {
++            proof_decl! { let ghost mid_self = *self; }
+             match self.bitmap.clear(frame_number) {
+-                Ok(()) => Ok(()),
++                Ok(()) => {
++                    proof! {
++                        let fnn = frame_number as int;
++                        assert(old_self.refcount@[fnn] == 1);
++                        assert(self.refcount@ == old_self.refcount@.update(fnn, 0));
++                        assert(self.bitmap@.set_bits == old_self.bitmap@.set_bits.remove(fnn));
++                        assert(self.bitmap@.num_bits == old_self.bitmap@.num_bits);
++                        lemma_refcount_clear(&old_self, self, fnn, pa);
++                        lemma_internal_inv_implies_wf(self);
++                        assert(old_self@.refcounts[pa] == 1);
++                    }
++                    Ok(())
++                },
+                 Err(error) => {
++                    proof! {
++                        // The bit is set and in range, so clear cannot fail here.
++                        let fnn = frame_number as int;
++                        assert(fnn < mid_self.bitmap@.num_bits);
++                        assert(mid_self.bitmap@.set_bits.contains(fnn));
++                        assert(mid_self.bitmap@.is_bit_set(fnn));
++                        assert(false);
++                    }
++                    #[cfg(not(verus_keep_ghost))]
+                     error!("{error:?} (frame={frame:?})");
+                     Err(error)
+                 },
+             }
+         } else {
++            proof! {
++                let fnn = frame_number as int;
++                let new_val = self.refcount@[fnn];
++                assert(old_self.refcount@[fnn] > 1);
++                assert(self.refcount@ == old_self.refcount@.update(fnn, new_val));
++                assert(new_val as int == old_self.refcount@[fnn] - 1);
++                assert(new_val > 0);
++                lemma_refcount_bump(&old_self, self, fnn, new_val, pa);
++                lemma_internal_inv_implies_wf(self);
++                assert(old_self@.refcounts[pa] == old_self.refcount@[fnn]);
++                assert(new_val as int == old_self@.refcounts[pa] - 1);
++            }
+             Ok(())
+         }
+     }
