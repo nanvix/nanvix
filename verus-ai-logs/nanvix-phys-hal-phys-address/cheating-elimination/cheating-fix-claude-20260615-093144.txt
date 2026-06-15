@@ -241,3 +241,45 @@ Turn 17
 [TOOL] report_intent: Verifying frame module proofs
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | grep -E 
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  6 verified
+  0 errors
+  Unverified functions:
+=== Summary ===
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=19 admit=12 trusted=0 no_decreases=0 cfg_gate=19
+  status: CHEATING_DE...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c '
+import sys; sys.path.insert(0,"/mnt/shared/nanvix/verus-ai")
+from guardr
+
+[THINKING] The frame module is now verifying cleanly with 6 verified and no errors, and I've brought the admit count down from 14 to 12 by eliminating 2 problematic admits. The "CHEATING_DETECTED" flag appears to be leftover noise from other modules, so I need to verify the frame module's own cheating count is actually clean and then re-run checks on the phys module and AST to make sure everything is consistent.
+[RESULT ✓] bash: Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+AttributeError: 'CheatingReport' object has no attribute 'no_decreases_count'
+<shellId: 12 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c '
+import sys; sys.path.insert(0,"/mnt/shared/nanvix/verus-ai")
+from guardr
+[RESULT ✓] bash: frame.rs admit 0 assume 0 external_body 0 trusted 0
+frame.spec.rs admit 0 assume 0 external_body 0 trusted 0
+frame.proof.rs admit 0 assume 0 external_body 0 trusted 0
+phys.rs admit 0 assume 0 external_body 0 trusted 0
+phys.spec.rs admit 0 assume 0 external_body 0 trusted 0
+phys.proof.rs admit 0 assu...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Zero cheating in the entire address directory. Now confirm the phys module still verifies and run the full verify-kernel + build.
+[TOOL] report_intent: Final full verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== phys module ==="; timeout 600 make verify-kernel MODULE=hal::mem::types::ad
+[RESULT ✓] report_intent: Intent logged
