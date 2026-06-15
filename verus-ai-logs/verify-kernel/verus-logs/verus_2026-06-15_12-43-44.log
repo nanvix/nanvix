@@ -1,0 +1,207 @@
+Timestamp: 2026-06-15_12-43-44
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=10
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: expected identifier, found keyword `let`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:162:13
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+162 |             let p: int = spec_page_size();
+    |             ^^^ expected identifier, found keyword
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:165:43
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+165 |             lemma_fundamental_div_mod(m, p);
+    |                                           ^ expected one of `,`, `:`, or `}`
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:166:54
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+166 |             lemma_mod_division_less_than_divisor(m, p);
+    |                                                      ^ expected one of `,`, `:`, or `}`
+
+error: expected one of `,`, `:`, or `}`, found `>=`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:171:24
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+171 |                     fr >= 0,
+    |                     -- ^^ expected one of `,`, `:`, or `}`
+    |                     |
+    |                     while parsing this struct field
+    |
+help: try naming a field
+    |
+171 |                     fr: fr >= 0,
+    |                     +++
+
+error: expected one of `,`, `:`, or `}`, found `<=`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:172:24
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+172 |                     fr <= m / p - 1,
+    |                     -- ^^ expected one of `,`, `:`, or `}`
+    |                     |
+    |                     while parsing this struct field
+    |
+help: try naming a field
+    |
+172 |                     fr: fr <= m / p - 1,
+    |                     +++
+
+error: expected one of `,`, `:`, or `}`, found `*`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:173:23
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+173 |                     p * (m / p) <= m,
+    |                     - ^ expected one of `,`, `:`, or `}`
+    |                     |
+    |                     while parsing this struct field
+    |
+help: try naming a field
+    |
+173 |                     p: p * (m / p) <= m,
+    |                     ++
+
+error: expected identifier, found `;`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:174:13
+    |
+158 |         proof {
+    |         ----- while parsing this struct
+...
+174 |             ;
+    |             ^ expected identifier
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:175:10
+    |
+175 |         }
+    |          ^ help: add `;` here
+176 |         let addr: usize = frame_raw * page_size;
+    |         --- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:179:38
+    |
+177 |         proof {
+    |         ----- while parsing this struct
+178 |             // Alignment and invariant follow from `(fr * p) / p == fr <= MAX`.
+179 |             lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
+    |             -------------------------^ expected one of `,`, `:`, or `}`
+    |             |
+    |             while parsing this struct field
+    |
+help: try naming a field
+    |
+179 |             lemma_mod_multiples_basic: lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
+    |             ++++++++++++++++++++++++++
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:179:82
+    |
+177 |         proof {
+    |         ----- while parsing this struct
+178 |             // Alignment and invariant follow from `(fr * p) / p == fr <= MAX`.
+179 |             lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
+    |                                                                    --------------^ expected one of `,`, `:`, or `}`
+    |                                                                    |
+    |                                                                    while parsing this struct field
+    |
+help: try naming a field
+    |
+179 |             lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size: spec_page_size());
+    |                                                                    +++++++++++++++
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:180:78
+    |
+177 |         proof {
+    |         ----- while parsing this struct
+...
+180 |             lemma_div_by_multiple(spec_frame_raw_value(frame), spec_page_size());
+    |                                                                --------------^ expected one of `,`, `:`, or `}`
+    |                                                                |
+    |                                                                while parsing this struct field
+    |
+help: try naming a field
+    |
+180 |             lemma_div_by_multiple(spec_frame_raw_value(frame), spec_page_size: spec_page_size());
+    |                                                                +++++++++++++++
+
+error: expected `;`, found keyword `Self`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:181:10
+    |
+181 |         }
+    |          ^ help: add `;` here
+182 |         Self(VirtualAddress::new(addr))
+    |         ---- unexpected token
+
+error: expected one of `,`, `:`, or `}`, found `(`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:201:35
+    |
+197 |         proof {
+    |         ----- while parsing this struct
+...
+201 |             lemma_usize_shr_is_div(raw_addr, shift);
+    |             ----------------------^ expected one of `,`, `:`, or `}`
+    |             |
+    |             while parsing this struct field
+    |
+help: try naming a field
+    |
+201 |             lemma_usize_shr_is_div: lemma_usize_shr_is_div(raw_addr, shift);
+    |             +++++++++++++++++++++++
+
+error: expected one of `,`, `:`, or `}`, found `)`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:201:51
+    |
+197 |         proof {
+    |         ----- while parsing this struct
+...
+201 |             lemma_usize_shr_is_div(raw_addr, shift);
+    |                                                   ^ expected one of `,`, `:`, or `}`
+
+error: expected `;`, found keyword `let`
+   --> src/kernel/src/hal/mem/types/address/phys.rs:202:10
+    |
+202 |         }
+    |          ^ help: add `;` here
+203 |         let frame_number: usize = raw_addr >> shift;
+    |         --- unexpected token
+
+error: expected identifier or integer
+   --> src/kernel/src/hal/mem/types/address/phys.rs:162:13
+    |
+162 |             let p: int = spec_page_size();
+    |             ^^^
+
+error: could not compile `kernel` (bin "kernel") due to 16 previous errors

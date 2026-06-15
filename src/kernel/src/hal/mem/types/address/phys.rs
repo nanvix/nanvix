@@ -122,10 +122,8 @@ impl PhysicalAddress {
         requires
             spec_frame_number(addr@) <= spec_max_frame_number(),
         ensures
-            match result {
-                Ok(r) => r@ == addr@ && r.inv(),
-                Err(_) => true,
-            },
+            result is Ok,
+            result matches Ok(r) ==> r@ == addr@ && r.inv(),
     )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
         Ok(Self(addr))
@@ -145,15 +143,42 @@ impl PhysicalAddress {
     /// A [`PhysicalAddress`] associated with the given `frame_number`.
     ///
     // The produced address is the frame's base address (`frame * FRAME_SIZE`).
-    // Alignment (`result@ % FRAME_SIZE == 0`) and the type invariant follow from
-    // this value relation, so they are not listed separately.
+    // The result is page-aligned (`result@ % FRAME_SIZE == 0`) and carries the
+    // type invariant (`result.inv()`), so its sole caller can build a `FrameAddress`
+    // (alignment) and later project it back with `into_frame_number` (`inv()`).
     #[verus_spec(result =>
         ensures
             result@ == spec_from_number(spec_frame_raw_value(frame)),
+            result@ % spec_page_size() == 0,
+            result.inv(),
     )]
     pub fn from_number(frame: FrameNumber) -> Self {
-        proof! { admit(); }
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
+        let frame_raw: usize = frame.into_raw_value();
+        let page_size: usize = mem::FRAME_SIZE;
+        proof {
+            // No-overflow: `frame_raw * page_size <= usize::MAX`. With
+            // `frame_raw <= usize::MAX / page_size - 1` and `page_size > 0`, the
+            // product stays within `usize`.
+            let p: int = spec_page_size();
+            let fr: int = spec_frame_raw_value(frame);
+            let m: int = usize::MAX as int;
+            lemma_fundamental_div_mod(m, p);
+            lemma_mod_division_less_than_divisor(m, p);
+            assert(p * (m / p) <= m);
+            assert(fr * p <= m) by (nonlinear_arith)
+                requires
+                    p > 0,
+                    fr >= 0,
+                    fr <= m / p - 1,
+                    p * (m / p) <= m,
+            ;
+        }
+        let addr: usize = frame_raw * page_size;
+        proof {
+            // Alignment and invariant follow from `(fr * p) / p == fr <= MAX`.
+            lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
+            lemma_div_by_multiple(spec_frame_raw_value(frame), spec_page_size());
+        }
         Self(VirtualAddress::new(addr))
     }
 
@@ -167,9 +192,15 @@ impl PhysicalAddress {
             spec_frame_raw_value(result) == spec_frame_number(self@),
     )]
     pub fn into_frame_number(self) -> FrameNumber {
-        proof! { admit(); }
         let raw_addr: usize = self.0.into_raw_value();
-        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
+        let shift: usize = mem::FRAME_SHIFT;
+        proof {
+            // `raw_addr >> shift == raw_addr / 2^shift == self@ / spec_page_size()`,
+            // which `self.inv()` bounds by `spec_max_frame_number()`, so the index
+            // is representable and `from_raw_value(..).unwrap()` is total.
+            lemma_usize_shr_is_div(raw_addr, shift);
+        }
+        let frame_number: usize = raw_addr >> shift;
         // Safety: the following unwrap is safe because a physical address has a valid frame number.
         FrameNumber::from_raw_value(frame_number).unwrap()
     }

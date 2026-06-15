@@ -1,0 +1,375 @@
+=== Copilot Session ===
+Timestamp: 2026-06-15T12:36:59.098520
+Model: claude-opus-4.8
+Session: 7ef94563-e3f8-4c22-8121-34f5e65b9a6e
+Command: copilot --allow-all --model claude-opus-4.8 --output-format...
+
+=== Prompt ===
+The reviewer identified a specific issue. Read the request at
+/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/turn_001_driver.md.
+
+Your job is to FIX it — make actual code changes, not justifications.
+
+1. Read the reviewer's specific request.
+2. Make the code change.
+3. Run `make verify-kernel` and `make build` to verify.
+4. Write your response to /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/turn_001_fixer.md.
+
+If you cannot fix it, show EXACT error messages from every approach you tried.
+Do NOT just explain why it's hard — try it and show the result.
+
+Write to /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/turn_001_fixer.md:
+```markdown
+## Response to Turn 1
+
+### What I Changed
+[File paths, line numbers, description of changes]
+
+### Verification
+[Output of make verify-kernel — must pass]
+
+### Result: FIXED / NEEDS_GUIDANCE
+[If NEEDS_GUIDANCE: exact error messages from each failed attempt]
+```
+
+=== Output (streaming) ===
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/dialogue/turn_001_driver.md
+[RESULT ✓] view: 1. ## Turn 1: Full checklist walk-through (specification phase, `hal-phys-address`)
+2. 
+3. In-scope target functions (per `verus-ai.toml` / `view_design.md`):
+4. `PhysicalAddress` (type + `inv`), `from_number`, `into_frame_number`, `from_mmio_address`.
+5. 
+6. ### Progress
+7. - **PASS:** fn-coverage,...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+I'll start by examining the current state and dependencies needed for the proofs.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== target bitness ==="; grep -iE "pointer-width|arch|data-layout" build/targets/x86-
+
+[THINKING] The reviewer wants me to address three issues: remove the `admit()` calls from `from_number` and `into_frame_number` and provide actual proofs instead, strengthen `from_number`'s contract by adding postconditions about the result's inverse and alignment with page size (which needs a new axiom), and fix a tautological error pattern in the code.
+
+For FIX-3, I can replace the tautological `Err(_) => true` with a proper `result is Ok` guarantee since the function body directly returns `Ok(Self(addr))`. For FIX-2, I need to prove that the result is divisible by page size and satisfies the invariant—this requires establishing that `page_size > 0` as an axiom, then showing `(frame_raw * page_size) % page_size == 0` and that the frame number stays within bounds. For FIX-1, I need to work through the mathematical relationships between the frame raw value, page size, and the resulting frame number to eliminate the admits entirely. I need to figure out the cleanest way to handle the positivity requirement for `spec_page_size()`. The reviewer wants actual proofs rather than just local assumptions, so I'm looking at how to properly establish that `frame_number <= spec_max_frame_number()` when unwrapping the result. The key insight is relating the bit-shift operation `raw_addr >> FRAME_SHIFT` to the division `self@ / spec_page_size()` to ensure the frame number stays within bounds. I need to strengthen the `FRAME_SHIFT` specification to relate it directly to the page size — something like `2^FRAME_SHIFT == spec_page_size()` — so I can use vstd's bit-shift-to-division lemmas to connect `raw_addr >> FRAME_SHIFT` with the division by page size. The reviewer wants actual proofs instead of admits, so I need to set up the right axioms and lemmas to make this work. The reviewer is pushing back on using `admit()` for in-scope functions, so I need to actually discharge these proofs properly rather than leaving them as stubs. Let me start by gathering information about the target architecture, what bitness `usize` is, what vstd lemmas are available for bit operations, and how `spec_page_size` and the `View` implementation are defined so I can construct the actual proof.
+[RESULT ✓] bash: === target bitness ===
+	"data-layout": "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128",
+	"target-pointer-width": 32,
+	"arch": "x86",
+=== spec_page_size def ===
+src/kernel/src/hal/mem/types/address/frame.rs:34:pub uninterp spec fn spec_page_size() -> int;
+src/...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== how mm/phys proofs assume spec_page_size > 0 ==="; grep -rn "spec_page_size" src/
+
+[THINKING] The target pointer width is 32 bits, so I'm working with 32-bit usize values where FRAME_SHIFT is 12 and FRAME_SIZE is 4096. I need to use the right-shift operation on the raw address to get the frame number, and vstd provides a lemma for u32 right-shift that relates it to division. Let me trace how spec_page_size gets exported through the hal memory module.
+[RESULT ✓] bash: === how mm/phys proofs assume spec_page_size > 0 ===
+src/kernel/src/mm/phys/mod.proof.rs:40:        forall|a: int| frames.contains(a) ==> a % spec_page_size() == 0,
+src/kernel/src/mm/phys/mod.proof.rs:71:            implies x % spec_page_size() == 0 by {
+src/kernel/src/mm/phys/mod.proof.rs:79:      ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "shr_is_div\|shr_is_division\|pub.*fn.*shr\|lemma.*shr" --include=
+
+[THINKING] So `spec_page_size()` is uninterpreted without a global positivity axiom, but the memory management and physical proofs handle this by requiring `spec_page_size() > 0` locally. Now I need to figure out the cleanest way to prove these constraints. The key is that I control the assume_specifications at the architecture-system boundary, where `FRAME_SIZE`, `FRAME_SHIFT`, and `PAGE_SIZE` are concrete architecture values.
+
+My approach: strengthen the `FRAME_SIZE` assume_spec to ensure both `result == spec_page_size()` and `result > 0`. Since `from_number` calls `mem::FRAME_SIZE` and `into_frame_number` calls `mem::FRAME_SHIFT`, these call sites will automatically learn that `spec_page_size() > 0`, giving me the positivity constraint I need without introducing a free-standing axiom.
+
+For `into_frame_number`, I need to verify the chain: the invariant guarantees `spec_frame_number(self@) <= spec_max_frame_number()`, which means `self@ / spec_page_size() <= max`, so the frame number stays within bounds for the unwrap to succeed.
+
+The key challenge is proving `frame_number as int == self@ / spec_page_size()` by connecting the right-shift operation to division. I need to find the right vstd lemma for usize bit operations—there might be a `lemma_usize_shr_is_div` or I may need to work with what's available for the architecture's word size.
+[RESULT ✓] bash: bits.rs:38:macro_rules! lemma_shr_is_div {
+bits.rs:84:lemma_shr_is_div!(lemma_u128_shr_is_div, u128);
+bits.rs:85:lemma_shr_is_div!(lemma_u64_shr_is_div, u64);
+bits.rs:86:lemma_shr_is_div!(lemma_u32_shr_is_div, u32);
+bits.rs:87:lemma_shr_is_div!(lemma_u16_shr_is_div, u16);
+bits.rs:88:lemma_shr_is_div...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/bits.rs
+[RESULT ✓] view: 30.     lemma_mul_is_commutative,
+31.     lemma_mul_is_associative,
+32. };
+33. #[cfg(verus_keep_ghost)]
+34. use super::calc_macro::*;
+35. 
+36. } // verus!
+37. // Proofs that shift right is equivalent to division by power of 2.
+38. macro_rules! lemma_shr_is_div {
+39.     ($name:ident, $uN:ty) => {
+40...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== how FRAME_SHIFT / FRAME_SIZE are defined in arch ==="; grep -rn "FRAME_SHIFT\|FRA
+
+[THINKING] I need to establish that `pow2(FRAME_SHIFT as nat)` equals the spec page size, so I'm setting up assume specifications at the trust boundary to encode this relationship.
+
+For FRAME_SIZE, I'll ensure it equals `spec_page_size()` and that the page size is positive. For FRAME_SHIFT, I'll ensure it's less than `usize::BITS` and that `pow2(FRAME_SHIFT)` equals the spec page size. Since `pow2` is always positive, the positivity constraint on page size follows naturally from the FRAME_SHIFT specification, though I'm adding it explicitly to FRAME_SIZE as well to be safe. The key question is whether it's sound to have FRAME_SIZE's assume spec guarantee positivity when FRAME_SIZE is generated from the architecture constant. I need to check whether `mem::FRAME_SHIFT` is actually a const or a function call, since the syntax `raw_addr >> mem::FRAME_SHIFT` without parentheses suggests it's a const, but the assume_specification I wrote treats it as a function — which would be inconsistent if the spec already passed verification.
+[RESULT ✓] bash: === how FRAME_SHIFT / FRAME_SIZE are defined in arch ===
+=== search arch mem ===
+grep: src/arch/src/: No such file or directory
+=== usage in phys.rs ===
+14:use crate::hal::mem::types::address::{
+19:use ::arch::mem::{
+81:        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
+8...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "fn FRAME_SHIFT\|const FRAME_SHIFT\|FRAME_SHIFT" $(find / -path /proc -prune -o -n
+
+[THINKING] I'm noticing that `mem::FRAME_SHIFT` is being used without parentheses, but my specification assumes it's a function call. I need to check how it's actually defined in the arch crate to understand the correct usage.
+[RESULT ✓] bash: /mnt/shared/nanvix/src/libs/arch/src/x86/mem/constants.rs:68:pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+/mnt/shared/verus-ai-improve4/target-systems/nanvix-kheap0404/src/libs/arch/src/x86/mem/constants.rs:82:pub const FRAME_SHIFT: usize = PAGE_SHIFT;
+/mnt/shared/verus-ai-improve4/target-systems/nanv...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find . -path "*arch*mem*constants.rs" 2>/dev/null; echo "=== look at it ==="; f=$(find . -p
+
+[THINKING] I'm realizing there's a mismatch here — `FRAME_SHIFT` is defined as a const, not a function, so applying `assume_specification` to it shouldn't work. Let me check what I actually wrote in the spec file to understand how this is even compiling.
+
+Actually, maybe those `assume_spec` declarations are targeting functions in the local arch module rather than the constants themselves. I need to find which arch crate the kernel is using and look at what's actually defined there.
+[RESULT ✓] bash: ./src/libs/arch/src/x86/mem/constants.rs
+=== look at it ===
+38:/// Log2 PAGE_SIZE
+40:pub const PAGE_SHIFT: usize = 12;
+47:pub const PAGE_SIZE: usize = 4096;
+48:::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
+55:pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
+76:pub const PAGE_TABLE_LENGTH:...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && f=$(find . -path "*arch*paging*frame*number*.rs" 2>/dev/null | head -1); echo "file: $f"; g
+
+[THINKING] I'm noticing something odd — `FRAME_SHIFT` and `FRAME_SIZE` are constants, yet my spec file has `assume_specification` declarations for them, which is unusual for const values. Let me check what I actually wrote in the phys.spec.rs file to understand how this verified.
+
+Looking back at the pattern, I see that `frame.rs` uses the same approach with `PAGE_SIZE` as a const and it verified successfully, so Verus must be treating const items as zero-argument functions for `assume_specification` purposes. I'll follow that same pattern.
+
+The real issue is that when I use `mem::FRAME_SHIFT` in a bitshift operation like `raw_addr >> mem::FRAME_SHIFT`, Verus needs to know the shift amount is valid, and the assume_specification constraints I'm adding need to ensure the constant value works correctly in that context.
+
+But stepping back, the reviewer's feedback is clear: they want actual proofs now, not justifications about what the proof phase will handle. The checklist explicitly demands `admit=0` in the summary. So I need to stop deferring and start building the real proofs incrementally, starting with the simpler cases like `from_mmio_address`.
+
+For that function, the ensures clause needs to show the result is `Ok` and that the wrapped address satisfies the invariant. The invariant checks that the frame number derived from the address stays within bounds. Since the requires clause already constrains the input address to satisfy this, the proof should follow directly from the view definition—though I need to verify that Verus properly reveals the view implementation within the module where it's defined.
+
+Now for `from_number`, I need to handle the multiply overflow check and prove that multiplying the frame number by the page size produces a valid address. The frame number is bounded by the max, so the multiplication should stay within usize limits, and the result will naturally be page-aligned.
+
+The issue is that `spec_max_frame_number` is currently uninterpreted, so I can't establish the relationship between it and `usize::MAX` divided by the page size. Without that constraint, Verus can't discharge the overflow obligation for the multiplication.
+
+I need to define `spec_max_frame_number()` to equal `usize::MAX / spec_page_size() - 1`, or at least add a postcondition ensuring `(spec_max_frame_number() + 1) * spec_page_size() <= usize::MAX + 1`. Let me look at how `FrameNumber::MAX` is actually defined.
+[RESULT ✓] bash: file: ./src/libs/arch/src/x86/mem/paging/frame/number.rs
+18:/// A frame number is in the range from `0` to [`Self::MAX`] (inclusive).
+21:pub struct FrameNumber(usize);
+29:    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+45:    /// - `None`: If the value is greater than [`Self::MAX`...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "MAX_ADDRESS" src/libs/arch/src/x86/mem/constants.rs
+[RESULT ✓] bash: 90:pub const MAX_ADDRESS: usize = usize::MAX;
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now I understand the dependencies. Let me view the current phys.rs structure fully and check vstd lemma availability.
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm calculating the maximum frame number as a function of the address space and frame size, which gives me a specific value I can use to model this constraint in the specification.
+
+Now I need to prove the overflow conditions work out—specifically that when a frame number is within bounds, multiplying it by the page size won't exceed `usize::MAX`. This involves nonlinear arithmetic reasoning with floor division, which is doable but requires careful proof work.
+
+I'm reconsidering the scope here since this is turning into substantial proof work for what should be a specification phase, but the reviewer is asking for the `admit` to be removed, so I need to actually attempt the proofs rather than just explain why they're difficult.
+
+Let me design the spec infrastructure to make the proofs more tractable: I'll define `spec_max_frame_number` as an interpreted function that divides `usize::MAX` by the page size, keep the frame raw value as an uninterpreted projection, and establish assumptions about `FRAME_SIZE` and `FRAME_SHIFT` that anchor the page size and its bit representation.
+
+Now I'm working through the relationship between the bitshift operation and division: `raw_addr >> FRAME_SHIFT` should equal `raw_addr / page_size`, which requires `pow2(FRAME_SHIFT) == page_size`. I need to carefully handle the casting between nat and int types when setting up this equivalence, since `pow2` returns nat but `spec_page_size` returns int.
+
+Once I establish that `frame_number as int == spec_frame_number(self@)`, the unwrap succeeds because the invariant guarantees `frame_number <= spec_max_frame_number()`, so `from_raw_value` returns `Some`. The shift operation itself is well-defined since `FRAME_SHIFT < usize::BITS` from the assumptions.
+
+Now for the multiply overflow in `from_number`: I need to show `frame_raw * page_size <= usize::MAX`. Since `frame_raw <= usize::MAX/page_size - 1`, I can use the fact that `(usize::MAX/page_size) * page_size <= usize::MAX` (from the fundamental division property), which means `frame_raw * page_size <= (usize::MAX/page_size - 1) * page_size < usize::MAX`. Nonlinear arithmetic should handle this with the key facts about the division bound and positivity of page_size.
+
+For the ensures conditions: the result address equals `frame_raw * page_size` with no overflow, so `result@ == spec_from_number(frame_raw)`. And since we're multiplying by page_size, the result is always divisible by page_size, so `result@ % spec_page_size() == 0`.
+
+For the invariant, dividing `frame_raw * page_size` by page_size gives us back `frame_raw`, which is already bounded by `spec_max_frame_number()` from the input constraint.
+
+All of these are provable using standard lemmas about division, modular arithmetic, and multiplication. I'm going to commit to actually writing out the proofs rather than using admits — the reviewer is pushing for it, and the sketches show it's feasible, so I'll work through the nonlinear arithmetic and complete them properly.
+
+Let me start by examining the current state of phys.rs and checking what imports are available, particularly whether I can use vstd lemmas inside proof blocks within exec functions.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I'm noticing there are two separate `use vstd::prelude::*` imports—one at line 8 without any conditional gating, and another at line 31 that's wrapped in a `#[cfg(verus_keep_ghost)]` attribute. The earlier build error mentioned `::vstd::prelude::*` at line 30, so I need to clarify which import is actually causing the issue and whether they're conflicting.
+
+Since the build passed after adding the cfg gate to line 31, line 8 must be fine as-is—it's probably needed for the macros or other parts of the code to work in the normal build. I'll leave it alone and move on to checking the View impl location and examining the proof.rs file, specifically looking at lines 250-310 of phys.rs.
+[RESULT ✓] view: 178. impl Address for PhysicalAddress {
+179.     ///
+180.     /// # Description
+181.     ///
+182.     /// Instantiates a new [`PhysicalAddress`] from a raw value.
+183.     ///
+184.     /// # Parameters
+185.     ///
+186.     /// - `raw_addr`: The raw value.
+187.     ///
+188.     /// # Returns
+189.   ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && echo "=== power2 ==="; grep -n "pub.*fn pow2\|pub.*fn lemma_pow2_pos\|spec 
+
+[THINKING] I need to verify that the View implementation for VirtualAddress works correctly and check the `from_raw_value` and `into_raw_value` methods. Once I've confirmed those details, I'll structure the proofs using `proof` blocks and assertions with justifications, making sure to import the necessary dependencies.
+
+Now I'm looking at what vstd lemmas are available for bit shifting, power-of-two calculations, and division/modulo operations to support the proof logic.
+[RESULT ✓] bash: === power2 ===
+32:pub open spec fn pow2(e: nat) -> nat {
+122:pub broadcast proof fn lemma_pow2_pos(e: nat)
+=== div_mod lemmas ===
+242:pub broadcast proof fn lemma_div_pos_is_pos(x: int, d: int)
+489:pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+696:pub broadcast proof fn lemma_div_...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && sed -n '776,800p;1066,1090p;489,510p' arithmetic/div_mod.rs
+
+[THINKING] I'm checking the signatures of a few key lemmas about division and modulo operations—specifically how division cancels out when multiplying by the divisor, how modulo behaves with multiples, and the fundamental relationship between division, modulo, and the original value.
+[RESULT ✓] bash: pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+    requires
+        d != 0,
+    ensures
+        x == #[trigger] (d * (x / d) + (x % d)),
+{
+    assert(x == d * (x / d) + (x % d)) by {
+        ModINL::lemma_fundamental_div_mod(x, d);
+    }
+}
+
+/// Proof that dividing `x` by `c * d` is...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && sed -n '1025,1045p' arithmetic/div_mod.rs; echo "=== mod_division_less / mo
+
+[THINKING] I'm identifying the key lemmas I need: one for division that handles the inverse operation on results, and another for modulo with multiples that validates alignment properties, though I need to adjust the second one since my expression structure differs slightly from the standard form.
+
+For the overflow proof in `from_number`, I'm working through the concrete arithmetic: given that `frame_raw` is bounded by `usize::MAX/page_size - 1`, I need to show that `frame_raw * page_size` doesn't exceed `usize::MAX`. The strategy is to use the fundamental division-modulo relationship and a multiplication inequality lemma to establish that `(q-1)*p ≤ M` where `q = M/p`.
+
+Writing the proof structure... I need to restructure the function to split the raw value and frame size into separate let bindings before the multiply, so I can establish the proof obligation that their product stays within bounds. The tricky part is whether reading a const with an assume_specification actually triggers its ensures clause — I haven't confirmed this works yet since the existing code just uses admit(). Let me think through whether the assume_specification even applies to const reads or if Verus just inlines the const value directly. When I read `mem::FRAME_SIZE` in code, Verus applies its specification ensuring the result equals `spec_page_size()`, so binding it to a let variable gives me a named value with that constraint. I should also convert `spec_max_frame_number` from uninterpreted to interpreted, defining it as `usize::MAX / spec_page_size() - 1` to match the actual relationship between max address and frame size.
+
+This interpreted definition stays consistent with the `from_raw_value` semantics where None is returned when the value exceeds the maximum, and `into_frame_number` will satisfy its obligations since the invariant already guarantees the frame number stays within bounds. I need to verify that `FRAME_SHIFT < usize::BITS` holds and that `pow2(FRAME_SHIFT) == page_size` to make the shift operations valid.
+
+For `into_frame_number`, I'll bind `FRAME_SHIFT` to a local variable first to capture its ensures clause, then use that in the shift operation. The key insight is that both `FRAME_SIZE` and `FRAME_SHIFT` reference `spec_page_size()` through their assume_specs, so they're consistent with each other. I need to import `pow2` from vstd's arithmetic module into the spec file to encode the relationship between the shift amount and page size in the assume_specs.
+
+Strengthening these assume_specs with true facts about the architecture constants is sound at the trust boundary. Now I'll update the spec file with the necessary imports and then write out the updated code.
+
+Writing proof code... I need to check the function signature and what lemmas are available around that line to verify my assertions are sound.
+[RESULT ✓] bash: pub broadcast proof fn lemma_mod_division_less_than_divisor(x: int, m: int)
+    requires
+        m > 0,
+    ensures
+        0 <= #[trigger] (x % m) < m,
+{
+    lemma_mod_auto(m);
+}
+
+pub broadcast group group_mod_properties {
+    group_mod_basics,
+    lemma_mod_division_less_than_divisor,
+}
+
+/// Proof...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+This requires real proofs (the reviewer rejects admits). Let me build the spec infrastructure first, then discharge the proofs. Starting with the spec file:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] I've got the modulo properties working—the lemma confirms that `m%p` stays within bounds, and combined with the division property, I can establish that `p*(m/p)` is both at most `m` and at least `m - p + 1`. Now I'm updating the spec file and need to import the power-of-two function from the arithmetic module.
+
+Since the spec file gets textually included into phys.rs, any `use` statements I add to the verus block in phys.spec.rs will be available in the proof blocks of the exec functions. I'm adding the necessary imports for the division-modulo lemmas and the power function.
+
+Adding module imports... Writing the proof block... I need to be careful about nat versus int division equivalence. When both operands are nonnegative, nat and int division should give the same result, and Verus typically handles this automatically through its SMT encoding, though I might need helper asserts if there's friction. The key is that `pow2(shift)` returns a nat, but I need to connect it to `spec_page_size()` which is an int—the assume_spec gives me `pow2(shift) as int == spec_page_size()`, so I can work with that to establish `frame_number as nat == self@ / page_size` through the nat division lemma. I'm planning the edits to the spec file now. I need to add imports for the power-of-two and division-modulo lemmas, then redefine `spec_max_frame_number` as an interpreted function that divides the max usize by the page size, and strengthen the assumptions on `FRAME_SIZE` and `FRAME_SHIFT` to include the constraints that page size is positive and the shift value's power of two equals the page size. Then I'll need to reconsider how the `into_raw_value` function works with this new interpretation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Now the three functions in phys.rs. Let me view their exact current text:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I need to check the current implementation of those three functions in phys.rs before making any changes.
+[RESULT ✓] view: 112.     /// # Safety
+113.     ///
+114.     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
+115.     ///
+116.     // Deliberately bypasses the RAM-range validity check (MMIO GPAs may lie
+117.     // outside tracked RAM). On success it is pure identity wrapping
+118.   ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Now let me apply FIX-3 (from_mmio_address), FIX-1+FIX-2 (from_number), and FIX-1 (into_frame_number):
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | grep -E "error|

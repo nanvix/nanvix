@@ -22,6 +22,14 @@
 verus! {
 
 use crate::hal::mem::spec_page_size;
+use vstd::arithmetic::power2::pow2;
+use vstd::arithmetic::div_mod::{
+    lemma_fundamental_div_mod,
+    lemma_mod_division_less_than_divisor,
+    lemma_div_by_multiple,
+    lemma_mod_multiples_basic,
+};
+use vstd::bits::lemma_usize_shr_is_div;
 
 // `FrameNumber` lives in the `arch` crate, which is not Verus-enabled and has no
 // `View`/datatype registration reachable here. Declare it to Verus as an opaque
@@ -42,8 +50,14 @@ pub struct ExFrameNumber(FrameNumber);
 // The integer index of a frame number (`0 ..= spec_max_frame_number()`).
 pub uninterp spec fn spec_frame_raw_value(frame: FrameNumber) -> int;
 
-// The largest representable frame number (`arch FrameNumber::MAX`).
-pub uninterp spec fn spec_max_frame_number() -> int;
+// The largest representable frame number. Mirrors `arch FrameNumber::MAX ==
+// MAX_ADDRESS / FRAME_SIZE - 1 == usize::MAX / FRAME_SIZE - 1`. Interpreting it
+// against `usize::MAX` and `spec_page_size()` is what lets verified constructors
+// discharge their `usize` multiply (no-overflow) obligation: a frame index in
+// `0 ..= spec_max_frame_number()` scaled by `spec_page_size()` stays `<= usize::MAX`.
+pub open spec fn spec_max_frame_number() -> int {
+    usize::MAX as int / spec_page_size() - 1
+}
 
 // ── Derived spec helpers over the View domain (`int`) ─────────────────────────
 
@@ -61,17 +75,21 @@ pub open spec fn spec_from_number(frame_view: int) -> int {
 // ── `arch`/`sys` library-edge `assume_specification`s ─────────────────────────
 
 // `::arch::mem::FRAME_SIZE` is the frame size (alias of `PAGE_SIZE`), tied to the
-// canonical `spec_page_size()`.
+// canonical `spec_page_size()`. It is strictly positive (`== 4096`); positivity is
+// the load-bearing fact for the division/modulo reasoning in the constructors.
 pub assume_specification[ ::arch::mem::FRAME_SIZE ] -> (result: usize)
     ensures
         result == spec_page_size(),
+        spec_page_size() > 0,
 ;
 
 // `::arch::mem::FRAME_SHIFT == log2(FRAME_SIZE)`. Bounded below the pointer width
-// so `raw_addr >> FRAME_SHIFT` is well-defined.
+// so `raw_addr >> FRAME_SHIFT` is well-defined, and `2^FRAME_SHIFT == FRAME_SIZE`
+// so the shift coincides with division by `spec_page_size()`.
 pub assume_specification[ ::arch::mem::FRAME_SHIFT ] -> (result: usize)
     ensures
         result < usize::BITS,
+        pow2(result as nat) == spec_page_size(),
 ;
 
 // `VirtualAddress::new` is a pure newtype constructor: the wrapped value is the
