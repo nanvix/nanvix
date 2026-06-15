@@ -604,3 +604,130 @@ Looking at how bitmap and bump-allocator handle this—they both have vstd as a 
 Turn 27
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-bin 2>&1 | tail -35
+[RESULT ✓] bash: Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+
+thread 'rustc' (3789443) panicked at rust_verify/src/verus_items.rs:740:17:
+unexpected verus diagnostic item verus::verus_builtin::two_phase_mutable_reference_tie
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtr...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+A pre-existing construct elsewhere in the `arch` crate triggers a Verus front-end panic. Let me locate it and check whether module scoping avoids it.
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '140,160p' scripts/verify.sh
+
+[THINKING] There's a Verus front-end error about an unexpected diagnostic item related to two-phase mutable references, which is being triggered somewhere in the arch crate. Since Verus verifies the entire crate at once, it's hitting a construct it can't parse. The MODULE argument should let me scope the verification to just the number module instead of processing all 525 functions. Verus still needs to process the whole crate for type-checking and cross-references even with module scoping, so the two-phase borrow panic in arch's existing code is a blocker. I'm wondering if this is a pre-existing Verus incompatibility in arch that was never caught before, or if other large crates like `sys` have been refactored to avoid such constructs. Let me check whether `--module` actually limits what Verus processes, or if I need to find the specific offending construct and understand why it's failing.
+[RESULT ✓] bash: fi
+
+    # Build cargo verus command with optional toolchain channel and extra args.
+    CARGO_CMD="cargo"
+    if [[ -n "${CARGO_CHANNEL:-}" ]]; then
+        CARGO_CMD="cargo +${CARGO_CHANNEL}"
+    fi
+
+    # shellcheck disable=SC2206
+    CMD=($CARGO_CMD verus verify -p "$CRATE_NAME" --no-default-feat...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '160,200p' scripts/verify.sh
+[RESULT ✓] bash: fi
+    MODULE="$MODULE_ARG"
+
+    if [[ "$MODULE_ARG" == "root" ]]; then
+        CMD+=(-- --verify-root)
+    elif [[ -n "$MODULE_ARG" ]]; then
+        CMD+=(-- --verify-module "$MODULE_ARG")
+    fi
+    LABEL="${CRATE_NAME}::${MODULE_ARG:-all}"
+
+    echo "=== Verus Verification (cargo mode) ==="
+    e...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+The panic is during whole-crate lowering (module scoping won't help). Let me check the verus version and find the offending construct.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===verus version.json==="; cat /home/ruize/verus-bin/version.json 2>/dev/null; echo; ec
+
+[THINKING] So `--verify-module` only restricts verification itself, but Verus still processes the entire crate during its front-end phase—the panic on two-phase mutable references happens during item collection before any module-scoped verification even begins. This means the whole arch crate needs to be processable by Verus's item collector, and there's some construct using two-phase borrows somewhere that's causing it to panic. I need to track down where this is happening.
+
+The panic is actually coming from verus_items.rs line 740, which means Rust's standard library or core has a diagnostic item called `two_phase_mutable_reference_tie` that this version of Verus doesn't recognize. This could be a toolchain version mismatch, or it's triggered by a specific code pattern like `vec.push(vec.len())` or `x.method(&mut x.field)`. I should run with a full backtrace to find the exact source location, though the panic might not include a span by default. I could search the codebase for common two-phase borrow patterns, but with 525 functions that could take a while—or this might even be triggered by vstd or a macro expansion.
+
+Actually, the diagnostic item prefix `verus::verus_builtin::` suggests this is a Verus builtin, not a rustc one, which points to a version mismatch between the verus binary and the vstd/builtin rlibs. The vstd version in Cargo.toml is pinned to `=0.0.0-2026-05-31-0205`, so I should check if the verus binary at `/home/ruize/verus-bin` matches. Other crates like bitmap verify fine with the same binary and vstd, so it's not a pure version mismatch—something specific in the arch crate is triggering this. When Verus lowers a function containing a two-phase borrow, it inserts this builtin diagnostic item, and the item collector panics because this verus binary version doesn't have it registered. Since arch code isn't wrapped in `verus!` macros and only number.rs has verus_spec, but Verus still processes all functions, there's likely a two-phase borrow somewhere in arch that this verus version can't handle. This would be a Verus limitation, though the constraint assumed exec code was pre-refactored for compatibility—but that was probably only for the number module, not the entire arch crate which was never Verus-processed before.
+
+I need to get a backtrace with the span to find the offending construct, or check if I'm using the wrong verus binary by verifying the version against what the project expects.
+[RESULT ✓] bash: ===verus version.json===
+{
+  "verus": {
+    "profile": "release",
+    "version": "0.2026.05.13.fae8859",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "toolchain": "1.95.0-x86_64-unknown-linux-gnu",
+    "commit": "fae885933d60b690adaa9dc7e0db40b322f194f0"
+  }
+}
+
+===project...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===expected version==="; cat build/verus-version 2>/dev/null; echo "===installed==="; /
+[RESULT ✓] bash: ===expected version===
+0.2026.05.31.5dd6d83
+===installed===
+Verus
+  Version: 0.2026.05.13.fae8859
+  Profile: release
+  Platform: linux_x86_64
+  Toolchain: 1.95.0-x86_64-unknown-linux-gnu
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Version mismatch: installed verus is `05-13` but project expects `05-31` (matching the vstd version). Let me find the correct binary.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "===search verus installs==="; find /home/ruize -maxdepth 4 -name "version.json" -path "
+
+[THINKING] There's a version mismatch between the Verus binary and the project dependencies. The installed binary is from May 13th, but the project expects the May 31st version, and the vstd in Cargo.toml is pinned to that newer date. The `two_phase_mutable_reference_tie` builtin that's being used only exists in the May 31st version, so the older binary can't find it.
+
+The bitmap crate had verified successfully before because it was cached from when matching versions were in use. When I forced arch to recompile, it tried using the outdated May 13th binary against the May 31st vstd, causing the panic. I need to locate or install the correct May 31st Verus binary version.
+[RESULT ✓] bash: ===search verus installs===
+/home/ruize/verus/version.json
+/home/ruize/verus-bin/version.json
+/home/ruize/toolchain/verus-june7-backup/version.json
+/home/ruize/toolchain/verus-06.14-clobber-bak/version.json
+/home/ruize/toolchain/verus-pinned-0531/version.json
+/home/ruize/toolchain/verus-06.14-active...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+There's a pinned `0531` install. Let me confirm its version and use it.
+[TOOL] bash: cat /home/ruize/toolchain/verus-pinned-0531/version.json; echo "==="; /home/ruize/toolchain/verus-pinned-0531/verus --ve
+[RESULT ✓] bash: {
+  "verus": {
+    "profile": "release",
+    "version": "0.2026.05.31.5dd6d83",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "toolchain": "1.95.0-x86_64-unknown-linux-gnu",
+    "commit": "5dd6d836101ac38ed3ebcfdff61a0e98e0c586fe"
+  }
+}
+===
+Verus
+  Version: 0.2026.05.31.5d...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+This is the correct version. Let me re-run the arch baseline with the pinned binary.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&
