@@ -232,3 +232,138 @@ Turn 18
 ────────────────────────────────────────────────────────────
 That's just descriptive text in the new `map_frame` entry, not a ledger entry. The stale entry is gone. Now run module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 900 make verify-ke
+[RESULT ✓] bash: === Results ===
+  3 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module mm::phys::kframe.
+  Global: assume=0 external_body=15 admit=7 trusted=0 cfg_gate=12
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage =...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Module CLEAN, 3 verified, 0 errors. Now run `make build` to confirm no regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 900 make build 2>&1 | tail -20
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] The `make build` command doesn't have a defined target, so I'll switch to using the `z` build tool instead as specified in the skill.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^(check-kernel|build-kernel|kernel|all):" Makefile 2>/dev/null | 
+[RESULT ✓] bash: 411:all: all-nanvix
+===
+652:	rust-lint-check-kernel \
+753:	format-check-kernel
+821:	check-kernel \
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^check-kernel:|^all-kernel:|kernel\.elf|^build-kernel" Makefile |
+[RESULT ✓] bash: 234:    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+=== targets with kernel ===
+624:verify-kernel: ensure-verus
+860:all-test-kernel-ramfs: $(TEST_KERNEL_RAMFS_IMG)
+869:clean-test-kernel-ramfs:
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "^check-kernel:|^check:" Makefile | head
+[RESULT ✓] bash: 820:check: \
+827:check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
+829:check: check-nanvix-shim
+834:check: check-nanvix-bench
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -n "check-kernel" Makefile
+[RESULT ✓] bash: 652:	rust-lint-check-kernel \
+753:	format-check-kernel
+821:	check-kernel \
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/Makefile
+[RESULT ✓] view: 820. check: \
+821. 	check-kernel \
+822. 	check-guest-binaries \
+823. 	check-guest-rlibs \
+824. 	check-guest-staticlibs
+825. 
+826. ifneq ($(strip $(filter $(MACHINE),microvm)),)
+827. check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
+828. ifneq ($(IS_WINDOWS),yes...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+`check-kernel` is a target. Let me build/check the kernel via the proper target.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && timeout 1200 make check-kernel 2>&1 | tail -25
+[RESULT ✓] bash: {"reason":"compiler-artifact","package_id":"path+file:///home/ruize/nanvix-phy-specs-bottom-up/src/libs/koptions#0.16.17","manifest_path":"/home/ruize/nanvix-phy-specs-bottom-up/src/libs/koptions/Cargo.toml","target":{"kind":["lib"],"crate_types":["lib"],"name":"koptions","src_path":"/home/ruize/nan...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+The only build error is the **pre-existing** `manager.rs:245` unused-variable warning — not in any file I touched. Let me confirm it's pre-existing on the base branch and that my changes don't touch `manager.rs`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== files I changed (uncommitted) ==="; git status --porcelain; echo 
+
+[THINKING] The only remaining error is a pre-existing unused variable warning in manager.rs that was already present on the base branch. I'm verifying that my changes didn't touch that file to confirm it's not something I introduced.
+[RESULT ✓] bash: === files I changed (uncommitted) ===
+ M verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue-fixer-t001-claude-20260615-121041.jsonl
+ M verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/dialogue-fixer-t001-claude-20260615-121041.txt
+=== does base branch have the same manager...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+My kframe changes were auto-committed by verify.sh. The `manager.rs:245` line is byte-identical on the base branch — pre-existing, unrelated to my work. Let me confirm my actual diff vs base is limited to the intended files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git diff --stat verus-ai-prove-bottom-up..HEAD -- src/kernel/ verus-ai-logs
+
+[THINKING] Looking at the git status output, my kframe changes are already committed by the verify script. The warning about the `for i in 0..count {` syntax appears in the base branch too, so it's a pre-existing issue unrelated to my modifications. I should verify the actual diff to confirm what I've changed.
+[RESULT ✓] bash: === confirm manager.rs NOT in my diff ===
+0
+<shellId: 17 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git log --oneline -8; echo "=== current branch ==="; git branch --show-curr
+
+[THINKING] The diff output is empty for src/kernel, which suggests the changes might already be committed or I'm working directly on the base branch. Let me check the git log to see what commit we're currently on.
+[RESULT ✓] bash: a2b7376d8 [verus] verify PASS: kernel::mm::phys::kframe (3 verified, 0 errors)
+53e0ff811 [verus] verify FAIL: kernel::mm::phys::kframe (0 verified, compilation/setup error (verus did not run))
+ab7ba60b2 [verus] verify FAIL: kernel::mm::phys::kframe (0 verified, compilation/setup error (verus did not...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+We're working directly on the base branch; verify.sh auto-commits. The build error is the pre-existing `manager.rs:245` warning (out of scope, identical on base). Let me run the full kernel verification to confirm no regression, then write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && export VERUS_EXECUTABLE_DIR=~/toolchain/verus && timeout 1200 make verify-k
+
+[THINKING] I'm realizing the issue—we're working directly on the base branch, so `git diff` against HEAD shows nothing since HEAD is already on that branch. I need to compare against an earlier commit like `2020a04be` to see what's actually changed. The real test is checking if the current kframe.rs matches the baseline for AST consistency.
+
+Let me verify the current state of kframe.rs and spec.rs to make sure they're clean, and confirm the cheating gate shows no issues. The module is already verified with no errors or cheating detected. The only remaining build error is a pre-existing warning in manager.rs that's outside my scope, so I'll document that as an unrelated failure. Now I need to run a full kernel verification to check for any regressions, then write up the summary.
