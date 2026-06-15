@@ -300,3 +300,5 @@ All cheating-elimination checklist items PASS with tool-backed evidence:
 [2026-06-15 19:08:18] [GATE] Verify FAILED (attempt 1), log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/cheating-elimination/gate_verify_fail_1.log
 [2026-06-15 19:08:18] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 19:14:11]   ↳ gate-fix done in 5m53s (exit=0)
+[2026-06-15 19:14:11] [GATE] Running build: make build
+[2026-06-15 19:14:11] [GATE] Running verify: make verify
