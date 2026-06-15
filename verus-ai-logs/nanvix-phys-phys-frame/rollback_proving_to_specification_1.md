@@ -1,0 +1,109 @@
+ROLLBACK
+
+## Root Cause
+
+The abstract state of the `mm::phys` subsystem is modeled in `mod.spec.rs` as
+
+    pub uninterp spec fn phys_view() -> PhysMemView;   // mod.spec.rs:171
+
+— an **argument-free, uninterpreted constant**. A constant has the same value at
+every program point, so it cannot express the pre- vs post-state of a *mutating*
+operation on the global frame-allocator singleton.
+
+The six mutating free-function shims in `frame.rs` each tail-call an `Inner::*`
+mutator and carry a `#[verus_spec]` `ensures` that asserts a **post-state**
+membership fact about `phys_view()`:
+
+    alloc          (frame.rs:751)  Ok(frame) => phys_view().frames.allocated_frames.contains(frame@)
+                                              && refcounts[frame@] == 1
+    alloc_contiguous (frame.rs:795) Ok(base)  => forall i in [0,count): allocated_frames.contains(base@+i*PAGE) ...
+    free           (frame.rs:855)   phys_view().inv()                       (+ refcount release semantics intended)
+    book           (frame.rs:900)   Ok(()) => allocated_frames.contains(phys_addr@)
+    alloc_range    (frame.rs:925)   Ok(()) => forall a in region_frames: allocated_frames.contains(a)
+    share          (frame.rs:954)   Ok(()) => allocated_frames.contains(frame@) && refcounts.contains_key(frame@)
+
+The only bridge from the live singleton to the abstract view is `instance()`
+(frame.rs:652, a TCB `external_body`):
+
+    ensures (*result).inv() && (*result)@ == phys_view().frames
+
+This pins the returned `&mut Inner` to the **pre** state at the call's return.
+After `instance().alloc()` mutates `*result`, `(*result)@` becomes the post state,
+but `phys_view()` — being a constant — still equals the pre state. The shim's
+post-state `ensures` is therefore asserted about the pre state, where the
+just-allocated frame is still *free*. By `FrameAllocView::wf` disjointness
+(`allocated_frames.disjoint(free_frames)`), the obligation is not merely unproven —
+it is **false**.
+
+## Failed Local Fixes (attempted in this proving phase)
+
+1. **Remove the `admit()` and prove it directly.** Deleting `proof! { admit(); }`
+   from the `alloc` shim and running `make verify-kernel MODULE=mm::phys` yields:
+
+       error: postcondition not satisfied
+       752 |     instance().alloc()
+       verification results:: 31 verified, 1 errors
+
+   (Independently reproduced by the reviewer in Turn 1 and in isolation by
+   `reproducers/01_shim_fails.rs` → `0 verified, 1 errors`.)
+
+2. **Re-spec the shim contracts "equally strongly" (the shims are NOT in the
+   do-not-modify list).** Impossible without weakening: `reproducers/02_goal_is_false.rs`
+   (`1 verified, 0 errors`) proves the *negation* of the shim postcondition from its
+   own premises under the strongest sound single-state `instance()` bridge. Any
+   *provable* shim spec must therefore drop the allocation-effect fact, which is a
+   spec **weakening** — forbidden by the "No specs weakened" checklist rule.
+
+3. **Strengthen `instance()` (the one modifiable boundary) to reflect post-state
+   back into the view.** `reproducers/03_strengthening_derives_false.rs`
+   (`1 verified, 0 errors`) proves that evaluating such a bridge at the pre- and
+   post-mutation points forces `pre_state == post_state`, i.e. derives `false`, for
+   any state-changing operation. An inconsistent `ensures` on an `external_body`
+   accessor is an unsound false axiom — strictly worse than the `admit`.
+
+4. **Name the post-state inside `frame.rs`/`frame.proof.rs`.** Not expressible:
+   there is no `old(phys_view())`, no state-indexed view, and no ghost token
+   threaded through the frozen `Inner::*` contracts. The post-state of the constant
+   `phys_view()` simply cannot be referred to in this module.
+
+`external_body` and `assume` were not used (both forbidden on current-module
+functions). The pure-query shims `is_covered`, `refcount`, and `free_count` verify
+with zero `admit` (the last newly discharged this phase via `lemma_free_count`),
+confirming the defect is specific to *state mutation* under a constant view, not to
+the bridge mechanism.
+
+## What specification Should Fix
+
+Make the subsystem view **diff-able** so a mutating shim can relate its post-state
+to the observable abstraction. Concretely, one of:
+
+- Replace the argument-free `uninterp spec fn phys_view() -> PhysMemView` with a
+  **state-indexed** abstraction and thread `old`/`new` views through the bridge —
+  e.g. give `instance()` (and the `Inner::*` mutator contracts) an explicit
+  pre/post view pair, so a shim can state `new_view().frames.allocated_frames
+  .contains(frame@)` against the *post* view; **or**
+- Introduce a **tracked ghost ownership/permission token** for the singleton
+  (standard Verus pattern for global mutable state) that `instance()` yields and
+  the `Inner::*` mutators consume-and-produce, carrying the
+  `old(self)@ → final(self)@` transition up to the shim.
+
+This requires editing the do-not-modify `mod.spec.rs` (`phys_view()` /
+`PhysMemView`) and the frozen `Inner::*` `#[verus_spec]` transition contracts —
+both outside this module's allowed proving-phase edits. The existing spec
+transition helpers (`spec_initialize`, `spec_book_frame`, `spec_book_frames`,
+`spec_share`, …) already model the per-operation state deltas; the missing piece is
+a *state-threading mechanism* connecting them to `phys_view()` across a mutation.
+
+## Evidence
+
+- Real code, `alloc` admit removed: `error: postcondition not satisfied` at
+  `frame.rs:752 instance().alloc()`, `31 verified, 1 errors`.
+- `reproducers/01_shim_fails.rs`                 → `0 verified, 1 errors` (faithful isolated model; same failure).
+- `reproducers/02_goal_is_false.rs`              → `1 verified, 0 errors` (shim postcondition's NEGATION provable ⇒ spec is false).
+- `reproducers/03_strengthening_derives_false.rs`→ `1 verified, 0 errors` (post-state `instance()` bridge ⇒ false; unsound).
+- Committed module baseline (frame.rs unmodified): `32 verified, 0 errors`,
+  `assume=0 external_body=22 admit=6 cfg_gate=9` — the 6 `admit`s are exactly the
+  six mutating shims listed above (frame.rs:756/797/857/902/927/956).
+
+All reproducers run with the project-pinned Verus at `/home/ruize/verus-bin/verus`
+and were re-executed independently by the reviewer.
