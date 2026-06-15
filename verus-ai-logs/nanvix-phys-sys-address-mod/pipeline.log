@@ -106,3 +106,5 @@ Module: sys-address-mod
 [2026-06-15 18:39:41] [GATE] Verify FAILED (attempt 1), log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-address-mod/specification/gate_verify_fail_1.log
 [2026-06-15 18:39:41] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 18:41:22]   ↳ gate-fix done in 1m40s (exit=0)
+[2026-06-15 18:41:22] [GATE] Running build: make build
+[2026-06-15 18:41:22] [GATE] Running verify: make verify
