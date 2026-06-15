@@ -435,3 +435,20 @@ Turn 29
 [TOOL] report_intent: Final verification and build
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== verify-kernel module ==="; timeout 600 make verify-kernel MODULE=hal::mem::
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === verify-kernel module ===
+verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  6 verified
+  0 errors
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Unverified functions:
+=== Summary ===
+  verification: 6 verified, 0 errors (exit 0)
+  cheatin...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Module CLEAN (6 verified, 0 errors). Both surviving divergences carry `VERUS REWRITE` comments (one with a committed, tested reproducer; the other with git evidence). Now the full crate verify + build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== make verify (full crate) ==="; timeout 700 make verify 2>&1 | grep -E "Summ
+
+[THINKING] The module verification passed with the mismatches and extras now properly documented with VERUS REWRITE comments and reproducers, meeting the reviewer's requirements. Next I'll run the full crate verification and build to confirm everything compiles correctly.
