@@ -1036,3 +1036,18 @@ Turn 61
 Turn 62
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42
+[RESULT ✓] bash: assume_specification provided: `for<T> for<'_> (&hal::mem::types::address::aligned::page::PageAligned<T>) -> &T`
+             expected:                      `for<T> for<'_> (&hal::mem::types::address::aligned::page::PageAligned<T>) -> &<hal::mem::types::address::aligned::page::PageAligned<T> as core...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+[THINKING] The return type needs to be the associated type `&<PageAligned<T> as Deref>::Target` rather than just `&T`, even though they're equivalent. I'll update the signature to use the fully qualified associated type, and since `Target` equals `T`, passing it to `spec_addr` should work fine.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -42

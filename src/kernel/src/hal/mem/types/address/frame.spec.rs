@@ -124,7 +124,7 @@ pub assume_specification[ <PhysicalAddress as Address>::from_raw_value ](
 // carries no `View<V = int>` bound (mirrors `page.spec.rs`).
 pub assume_specification<T: Address> [
     <PageAligned<T> as ::core::ops::Deref>::deref
-](addr: &PageAligned<T>) -> (result: &T)
+](addr: &PageAligned<T>) -> (result: &<PageAligned<T> as ::core::ops::Deref>::Target)
     ensures
         spec_addr(result) == addr@,
 ;
