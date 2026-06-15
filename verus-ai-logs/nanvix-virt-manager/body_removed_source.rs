@@ -215,10 +215,14 @@ impl VirtMemoryManager {
                     &&& new.inv()
                     &&& new@.kernel == vmem@.kernel
                     &&& new@.user == Map::<nat, UserPageView>::empty()
+                    &&& new@.pgdir != vmem@.pgdir
                 },
                 Err(_) => true,
             },
     )]
+    // external_body: depends on the not-yet-verified `phys`, `kpage`, and
+    // `PageDirectory` modules (no Verus contracts yet). The contract above is the
+    // trusted boundary until those modules are verified.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> { ... }
 
@@ -275,6 +279,12 @@ impl VirtMemoryManager {
                 },
             },
     )]
+    // Verus front-end limitation: the body calls `parent.for_each_user_mapping(|..| { .. })`
+    // with a closure that captures `count`, `buf`, and `child` by mutable reference. Verus
+    // does not support closures capturing a mutable reference ("only &mut capture is blocked";
+    // see verus-syntax/verus-constraints). The callback-based iteration API cannot be expressed
+    // without such a capture, so this function is kept `external_body` and its `#[verus_spec]`
+    // contract above is the trusted boundary. See `verus-unsupported.md`.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> { ... }
 
@@ -379,6 +389,9 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem)@ == old(vmem)@,
             },
     )]
+    // external_body: depends on the not-yet-verified `arch::cpu::excp::ErrorCode`
+    // accessors, `sys::mm::align_down`, and `hal` `PageAligned::from_raw_value`
+    // (no Verus contracts yet). The contract above is the trusted boundary.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_resolve_cow_fault(
         &mut self,
@@ -421,7 +434,6 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem)@ == old(vmem)@,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn try_unmap_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -472,6 +484,8 @@ impl VirtMemoryManager {
                 },
             },
     )]
+    // external_body: uses `Vec::drain(..)`/`Vec::capacity()`, std iterator types
+    // that vstd does not model. See `verus-unsupported.md`.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_upages(
         &mut self,
@@ -502,6 +516,7 @@ impl VirtMemoryManager {
         requires
             self.inv(),
             vmem.inv(),
+            vmem@.user_mapped(vaddr.addr_nat()),
         ensures
             match ret {
                 Ok(_) => {
@@ -511,7 +526,6 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem)@ == old(vmem)@,
             },
     )]
-    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn ctrl_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -544,6 +558,8 @@ impl VirtMemoryManager {
                 Err(_) => true,
             },
     )]
+    // external_body: depends on the not-yet-verified `phys` and `kpage` modules
+    // (no Verus contracts yet). The contract above is the trusted boundary.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpage(&mut self, clear: bool) -> Result<KernelPage, Error> { ... }
 
@@ -574,6 +590,8 @@ impl VirtMemoryManager {
                 Err(_) => final(kframes)@.len() == 0,
             },
     )]
+    // external_body: uses `iter_mut().try_for_each(..)`, std iterator combinators
+    // that vstd does not model. See `verus-unsupported.md`.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn alloc_kpages(
         &mut self,
@@ -601,6 +619,8 @@ impl VirtMemoryManager {
                 Err(_) => final(vmem).inv(),
             },
     )]
+    // external_body: delegates to the not-yet-verified `elf::elf32_load` (no Verus
+    // contract yet). The contract above is the trusted boundary.
     #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn load_elf(
         &mut self,
