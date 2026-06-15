@@ -211,3 +211,35 @@ All in-scope functions verify (6 verified, 0 errors, 0 admit/assume). Now confir
 
 The proof file is empty as expected for a trivial newtype, and the spec file defines the invariant. Both `new` and `from_raw_value` verify against their ensures clauses without needing proof bodies. Everything checks out, so now I need to run the full verification to make sure nothing regresses.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification is complete. Summary:
+
+**Scope module (`sys` crate / `virt.rs`):** 6 verified, 0 errors. No `admit()`, `assume()`, or `external_body` anywhere in scope.
+
+**In-scope functions:**
+- `VirtualAddress::new` — verifies `result@ == value as int` & `inv()` (trivial newtype identity, no proof body needed).
+- `VirtualAddress::from_raw_value` — verifies via delegation to `new`.
+- `VirtualAddress` struct + `View`/`inv` — verified.
+- `<VirtualAddress as Address>::into_raw_value` — documented Verus front-end limitation (whole-impl verification pulls in unsupported `usize as *const u8` casts from sibling `as_ptr`/`as_mut_ptr`). Its newtype-identity contract is preserved by a consumer-side `assume_specification` trust boundary, already recorded in `bugs.md` and `verus-unsupported.md`. Not a proof gap or code bug.
+
+**Full `make verify`:** all crates pass with 0 errors (sys 6, bitmap 70, slab 35, kernel 43). The `CHEATING_DETECTED` flag comes solely from pre-existing TCB-allowed `external_body`/`cfg_gate` in the **kernel** crate (per `tcb-allowed.md`) — none in my scope; the `sys` crate reports `assume=0 external_body=0 admit=0`.
+
+The proofs were already complete and pass cleanly — no spec weakening, no bugs found, no changes required.
+
+[THINKING] All modules are verifying cleanly with zero errors. The "CHEATING_DETECTED" status I'm seeing comes from pre-existing external_body usages in the kernel crate that are already documented as TCB-allowed, so that's outside my scope. My own sys crate shows no external_body issues or regressions from my changes — the proofs were already complete before I started.
+
+The in-scope functions all verify correctly, and the one limitation with `into_raw_value` is already documented as a known Verus front-end issue handled by consumer-side specifications. There are no admit placeholders left to remove, so the work is genuinely done.
+
+
+=== Session End ===
+Session: 0b8dfaa9-51e1-4fa8-b288-4eb9087412be
+Duration: 98.5s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-sys-virt-address/proving/prover-claude-20260615-155341.jsonl
