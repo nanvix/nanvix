@@ -1377,3 +1377,19 @@ Turn 85
 ────────────────────────────────────────────────────────────
 Normal kernel build passes. Now confirm Verus verification still passes for the module.
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -30
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  Module mm::virt::identity_map:
+    ⚠️  external_body: 3
+  Affected functions:
+    - identity_map.rs:521 ensure_pt: external_body
+    - identity_map.rs:610 ensure_pte: external_body
+    - identity_map.rs:698 identity_map_page: external_body
+  Global: assume=0 external...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+Module verifies: 4 verified, 0 errors. Now the full `make verify` to check for regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify 2>&1 | tail -50
+
+[THINKING] Four tests passed without errors, so I should run the full verification suite to check for any regressions.
