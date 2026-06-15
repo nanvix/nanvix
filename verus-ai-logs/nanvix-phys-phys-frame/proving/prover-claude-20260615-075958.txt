@@ -2440,3 +2440,74 @@ Now rewrite the `free` body:
 Turn 147
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: verification results:: 65 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+    - frame.rs:136 alloc: admit
+    - frame.rs:213 alloc_contiguous: admit
+    - frame.rs:648 book: admit
+    - frame.rs:748 alloc_range: admit
+    - frame.rs:840 instance: external_body
+    - frame.rs:8...
+
+────────────────────────────────────────────────────────────
+Turn 148
+────────────────────────────────────────────────────────────
+`free` verifies. Now `book` (line 581, spec at ~530-580):
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I've verified the free function and now need to look at the book function and its specification, along with the remaining allocation wrappers.
+[RESULT ✓] view: 560.             use_type_invariant(&frame);
+561.         }
+562.         let raw: usize = frame.into_raw_value();
+563.         let frame_number: usize = raw / mem::FRAME_SIZE;
+564.         proof! {
+565.             assert(mem::FRAME_SIZE as int == spec_page_size());
+566.             assert(raw as in...
+
+────────────────────────────────────────────────────────────
+Turn 149
+────────────────────────────────────────────────────────────
+`book` takes `PageAligned<PhysicalAddress>`. Let me see how the already-proven `is_covered` handles it:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm looking at how `book` handles the physical address with its `PageAligned` wrapper, and I need to recalculate the frame number using division instead of the current method. The issue is figuring out how to extract the raw value from the `PageAligned<PhysicalAddress>` type to perform the division by `FRAME_SIZE`.
+[RESULT ✓] view: 680.             self.inv(),
+681.             ret <==> (
+682.                 self@.allocated_frames.contains(phys_addr@)
+683.                 || self@.free_frames.contains(phys_addr@)
+684.             ),
+685.     )]
+686.     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
+68...
+
+────────────────────────────────────────────────────────────
+Turn 150
+────────────────────────────────────────────────────────────
+Now add `lemma_refcount_book` and rewrite `book`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm working through the `book` operation that transitions a frame from free to allocated by setting its bitmap bit and initializing its refcount to 1. The spec defines success when the frame exists in the free set, resulting in it being moved to allocated with refcount established, and failure when it's already allocated or doesn't exist. The implementation calls `set` on the frame number, which succeeds by setting the bit and initializing the refcount, or fails by returning an error if the index is out of bounds or the bit is already set.
+
+For the error case, I need to prove that when `set` fails—either because the frame number exceeds the bitmap size or the bit is already set—the frame wasn't in the free set. If the frame number is too large, it's definitely not free since free frames must have valid indices. If the bit is already set, the frame is allocated rather than free, and these states are disjoint. The key insight is that `set` handles out-of-bounds gracefully by returning an error, so I don't need a separate bounds check before calling it.
+
+For the implementation, I'll extract the physical address, compute the frame number via division, invoke the frame facts lemma to establish the relationship between the frame and the bitmap state, then match on the result of `set` to handle both success and failure paths.
+
+In the success case, I need to show that before the set operation, the bit was clear. The `set` operation ensures the bit wasn't previously set, and combined with the frame facts lemma—which states that a frame is free if and only if its index is within bounds and the bit is clear—I can conclude the frame was indeed free. After setting the bit and initializing the refcount to 1, I need to verify that the internal invariant holds and the view updates correctly: the allocated set gains the frame, the free set loses it, and the refcount map records the new entry.
+
+Defining a lemma to reason about the refcount state after both mutations: the bitmap gains the new bit, the refcount array gets updated to 1 for that frame, and I can establish that the old refcount was 0 (from the invariant, since the bit wasn't set before).
+
+Now I'm specifying the full lemma signature with preconditions capturing the state after both operations and postconditions asserting the invariant holds with the correct view changes. I'm verifying the frame address bounds hold for the new state since the number of bits is unchanged, and fnn falls within the old invariant's range. For the tail-zero property, indices beyond num_bits stay at zero refcount since fnn is strictly less than num_bits. Now I need to formalize the refcount book lemma and handle the error case where either fnn is out of bounds or already in the set, which means the frame address isn't in the free list.
+
+Writing the book function... Finishing the proof for the error case... Asserting intermediate facts...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 151
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 152
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs

@@ -484,4 +484,163 @@ proof fn lemma_refcount_clear(old_inner: &Inner, new_inner: &Inner, fnn: int, pa
     };
 }
 
+// Booking a previously-free frame at index `fnn` sets its bit and initialises its slot to 1. This
+// preserves `internal_inv` and moves `pa` (= `fnn * ps`) from the free set to the allocated set with
+// a refcount entry of 1. Used by `book`.
+proof fn lemma_refcount_book(old_inner: &Inner, new_inner: &Inner, fnn: int, pa: int)
+    requires
+        old_inner.inv(),
+        0 <= fnn < old_inner.bitmap@.num_bits,
+        !old_inner.bitmap@.set_bits.contains(fnn),
+        new_inner.refcount@ == old_inner.refcount@.update(fnn, 1),
+        new_inner.bitmap.inv(),
+        new_inner.bitmap@.num_bits == old_inner.bitmap@.num_bits,
+        new_inner.bitmap@.set_bits == old_inner.bitmap@.set_bits.insert(fnn),
+        pa == fnn * spec_page_size(),
+    ensures
+        new_inner.internal_inv(),
+        new_inner@.allocated_frames =~= old_inner@.allocated_frames.insert(pa),
+        new_inner@.free_frames =~= old_inner@.free_frames.remove(pa),
+        new_inner@.refcounts =~= old_inner@.refcounts.insert(pa, 1int),
+{
+    let ps: int = spec_page_size();
+    let nbits: int = old_inner.bitmap@.num_bits;
+    assert(ps > 0);
+    assert(old_inner.bitmap.inv());
+    assert(old_inner.bitmap@.wf());
+    assert(new_inner.refcount@.len() == old_inner.refcount@.len());
+    assert(new_inner.refcount@[fnn] == 1);
+    assert(pa == frame_addr_of(fnn));
+    // The previously-free slot was zero.
+    assert(old_inner.refcount@[fnn] == 0);
+    assert forall|i: int| #[trigger] new_inner.bitmap@.set_bits.contains(i) <==> (
+        old_inner.bitmap@.set_bits.contains(i) || i == fnn
+    ) by {}
+
+    // internal_inv(new_inner): only slot `fnn` changed; it is now set and equal to 1.
+    assert(new_inner.internal_inv()) by {
+        assert(new_inner.bitmap.inv());
+        assert forall|i: int| 0 <= i < nbits implies (
+            #[trigger] new_inner.bitmap@.set_bits.contains(i) <==> new_inner.refcount@[i] > 0
+        ) by {
+            if i == fnn {
+            } else {
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        };
+        assert forall|i: int| 0 <= i < nbits implies (
+            !(#[trigger] new_inner.bitmap@.set_bits.contains(i)) <==> new_inner.refcount@[i] == 0
+        ) by {
+            if i == fnn {
+            } else {
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        };
+        assert forall|i: int| 0 <= i < nbits && new_inner.bitmap@.set_bits.contains(i) implies
+            0 < #[trigger] new_inner.refcount@[i] <= 255 by {
+            if i == fnn {
+            } else {
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        };
+        assert forall|i: int| nbits <= i < new_inner.refcount@.len() implies
+            #[trigger] new_inner.refcount@[i] == 0 by {
+            assert(i != fnn);
+            assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+        };
+    };
+
+    // allocated_frames: add `pa`.
+    assert(new_inner@.allocated_frames =~= old_inner@.allocated_frames.insert(pa)) by {
+        assert forall|addr: int| new_inner@.allocated_frames.contains(addr) implies
+            #[trigger] old_inner@.allocated_frames.insert(pa).contains(addr) by {
+            let i = choose|i: int|
+                #[trigger] new_inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+            assert(addr == i * ps);
+            if i == fnn {
+                assert(addr == pa);
+            } else {
+                assert(old_inner.bitmap@.set_bits.contains(i));
+            }
+        }
+        assert forall|addr: int| old_inner@.allocated_frames.insert(pa).contains(addr) implies
+            #[trigger] new_inner@.allocated_frames.contains(addr) by {
+            if addr == pa {
+                assert(new_inner.bitmap@.set_bits.contains(fnn));
+            } else {
+                let i = choose|i: int|
+                    #[trigger] old_inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+                assert(addr == i * ps);
+                assert(new_inner.bitmap@.set_bits.contains(i));
+            }
+        }
+    };
+
+    // free_frames: drop `pa`.
+    assert(new_inner@.free_frames =~= old_inner@.free_frames.remove(pa)) by {
+        assert forall|addr: int| new_inner@.free_frames.contains(addr) implies
+            #[trigger] old_inner@.free_frames.remove(pa).contains(addr) by {
+            let i = choose|i: int|
+                0 <= i < nbits && !(#[trigger] new_inner.bitmap@.set_bits.contains(i))
+                    && addr == frame_addr_of(i);
+            assert(addr == i * ps);
+            assert(i != fnn);
+            assert(!old_inner.bitmap@.set_bits.contains(i));
+            if addr == pa {
+                assert(i == fnn) by (nonlinear_arith) requires ps > 0, i * ps == fnn * ps, addr == i * ps, pa == fnn * ps, addr == pa;
+            }
+        }
+        assert forall|addr: int| old_inner@.free_frames.remove(pa).contains(addr) implies
+            #[trigger] new_inner@.free_frames.contains(addr) by {
+            let i = choose|i: int|
+                0 <= i < nbits && !(#[trigger] old_inner.bitmap@.set_bits.contains(i))
+                    && addr == frame_addr_of(i);
+            assert(addr == i * ps);
+            if i == fnn {
+                assert(addr == pa);
+            }
+            assert(i != fnn);
+            assert(!new_inner.bitmap@.set_bits.contains(i));
+        }
+    };
+
+    // refcounts: add `pa` with value 1.
+    assert(new_inner@.refcounts =~= old_inner@.refcounts.insert(pa, 1int)) by {
+        assert forall|addr: int| #[trigger] new_inner@.refcounts.contains_key(addr) implies
+            old_inner@.refcounts.insert(pa, 1int).contains_key(addr) by {
+            let i = choose|i: int|
+                #[trigger] new_inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+            assert(addr == i * ps);
+            if i != fnn {
+                assert(old_inner.bitmap@.set_bits.contains(i));
+            }
+        }
+        assert forall|addr: int| old_inner@.refcounts.insert(pa, 1int).contains_key(addr) implies
+            #[trigger] new_inner@.refcounts.contains_key(addr) by {
+            if addr == pa {
+                assert(new_inner.bitmap@.set_bits.contains(fnn));
+            } else {
+                let i = choose|i: int|
+                    #[trigger] old_inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+                assert(addr == i * ps);
+                assert(new_inner.bitmap@.set_bits.contains(i));
+            }
+        }
+        assert forall|addr: int| new_inner@.refcounts.contains_key(addr) implies
+            #[trigger] new_inner@.refcounts[addr] == old_inner@.refcounts.insert(pa, 1int)[addr] by {
+            let i = choose|i: int|
+                #[trigger] new_inner.bitmap@.set_bits.contains(i) && addr == frame_addr_of(i);
+            assert(addr == i * ps);
+            assert(addr / ps == i) by (nonlinear_arith) requires addr == i * ps, ps > 0;
+            if addr == pa {
+                assert(i == fnn) by (nonlinear_arith) requires ps > 0, i * ps == fnn * ps, addr == i * ps, pa == fnn * ps, addr == pa;
+                assert(new_inner.refcount@[i] == 1);
+            } else {
+                assert(i != fnn);
+                assert(new_inner.refcount@[i] == old_inner.refcount@[i]);
+            }
+        }
+    };
+}
+
 }

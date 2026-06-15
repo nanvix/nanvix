@@ -646,16 +646,49 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        proof! { admit(); }
-        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        proof_decl! {
+            let ghost pa: int = phys_addr@;
+            let ghost old_self = *self;
+        }
+        let raw: usize = phys_addr.into_raw_value();
+        let frame_number: usize = raw / mem::FRAME_SIZE;
+        proof! {
+            assert(mem::FRAME_SIZE as int == spec_page_size());
+            assert(raw as int == pa);
+            assert(pa % spec_page_size() == 0);
+            assert(frame_number as int == pa / spec_page_size());
+            lemma_frame_facts(self, pa, frame_number as int);
+        }
         match self.bitmap.set(frame_number) {
             Ok(()) => {
                 #[cfg(not(verus_keep_ghost))]
                 debug_assert_eq!(self.refcount[frame_number], 0);
+                proof! {
+                    let fnn = frame_number as int;
+                    // `set` succeeded, so the index was in range and previously clear: the frame was
+                    // free and its refcount slot was zero.
+                    assert(fnn < self.bitmap@.num_bits);
+                    assert(!old_self.bitmap@.set_bits.contains(fnn));
+                    assert(old_self@.free_frames.contains(pa));
+                    assert(old_self.refcount@[fnn] == 0);
+                }
                 self.refcount[frame_number] = 1;
+                proof! {
+                    let fnn = frame_number as int;
+                    assert(self.bitmap@.set_bits == old_self.bitmap@.set_bits.insert(fnn));
+                    assert(self.bitmap@.num_bits == old_self.bitmap@.num_bits);
+                    assert(self.refcount@ == old_self.refcount@.update(fnn, 1));
+                    lemma_refcount_book(&old_self, self, fnn, pa);
+                    lemma_internal_inv_implies_wf(self);
+                }
                 Ok(())
             },
             Err(error) => {
+                proof! {
+                    // `set` failed: the index was out of range or the bit was already set; either
+                    // way the frame is not free, and the allocator state is unchanged.
+                    assert(!self@.free_frames.contains(pa));
+                }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)
