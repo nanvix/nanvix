@@ -385,6 +385,18 @@ impl Inner {
                             assert(0 <= j - lo < count as int);
                         }
                     }
+                    // The booked range was free in the pre-state, so `frames` is a subset of
+                    // the old free-frame set.
+                    assert(old_self.bitmap@.all_bits_unset_in_range(lo, hi));
+                    assert forall|addr: int| frame_set(lo, hi).contains(addr) implies
+                        #[trigger] old_self@.free_frames.contains(addr) by {
+                        let j = choose|j: int| lo <= j < hi
+                            && addr == #[trigger] frame_addr_of(j);
+                        assert(!old_self.bitmap@.is_bit_set(j));
+                        assert(!old_self.bitmap@.set_bits.contains(j));
+                        assert(0 <= j < old_self.bitmap@.num_bits);
+                    }
+                    assert(frames.subset_of(old_self@.free_frames));
                 }
                 Ok(frame_address)
             },

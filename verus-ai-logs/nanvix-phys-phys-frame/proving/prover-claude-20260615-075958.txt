@@ -4580,3 +4580,86 @@ I need to update the post-loop assertion at line 333 to the bounded form to matc
 Turn 300
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
+[RESULT ✓] bash: error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:238:17
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+   --> src/kernel/src/mm/phys/frame.rs:318:46
+   --> src/kernel/src/mm/phys/frame.rs:333:13
+   --> src/kernel/src/mm/phys/frame.rs:334:38
+   --> src/kernel/src/mm/phys/frame...
+
+────────────────────────────────────────────────────────────
+Turn 301
+────────────────────────────────────────────────────────────
+Down to 1 error: the function postcondition at line 238. Let me view the spec and the remainder of the function:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm down to one remaining error in the postcondition at line 238. The issue traces through the loop invariant at lines 317-318 and the assertion at 333-334, so I need to examine the full function signature and its ensures clause to understand what's not being satisfied after the lemma_book_range application.
+[RESULT ✓] view: 200. 
+201.         // Attempt to convert the frame number to a frame address.
+202.         match FrameAddress::from_frame_number(frame_number) {
+203.             Ok(frame_address) => {
+204.                 proof! {
+205.                     assert(frame_address@ == pa);
+206.                 }
+207.   ...
+
+────────────────────────────────────────────────────────────
+Turn 302
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to prove that the frames defined by the postcondition match my frame_set function, where the base address aligns with the frame address at the lower bound and the frame address function maps indices to their corresponding addresses.  Now I should look at the extensionality proof block in the rest of the function to see how to establish this equivalence.
+[RESULT ✓] view: 338.         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
+339.             Some(frame_number) => frame_number,
+340.             None => {
+341.                 proof! {
+342.                     // `frame_number < num_bits < u32::MAX <= spec_max()`, so the conversi...
+
+────────────────────────────────────────────────────────────
+Turn 303
+────────────────────────────────────────────────────────────
+The view equality is handled by the lemma, but I likely need to prove `frames.subset_of(old(self)@.free_frames)`. Let me check how `free_frames` is defined in the View:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -n "free_frames\|allocated_frames\|fn view\|impl View for Inner\|spec fn
+
+[THINKING] I'm working through how the proof connects the established equivalence between `frames` and `frame_set(lo,hi)` with the postcondition requirements. The lemma_book_range provides the view in terms of `frame_set(lo,hi)`, and since `frames` is equivalent to that, the allocated/free/refcounts should match up in the final state. But I need to verify that the postcondition's requirements on `final(self)@` are fully satisfied by this equivalence.
+
+The key issue is ensuring that `old(self)@` in the postcondition aligns with the `old_self` captured at the function entry—since `old_self` was captured before any mutations and `old(self)` refers to the pre-state, they should be equal, but I need to make sure Verus recognizes this connection between the ghost copy and the logical pre-state.
+
+The subset requirement `frames.subset_of(old(self)@.free_frames)` needs explicit proof: I need to show that each frame address in the range [lo,hi) belongs to the old free_frames set, which should follow from the fact that those bits were unset in the original bitmap, but I may need to add an assertion to establish this connection clearly.
+[RESULT ✓] bash: 16:pub open spec fn frame_addr_of(i: int) -> int {
+20:impl View for Inner {
+23:    closed spec fn view(&self) -> FrameAllocView {
+25:            allocated_frames: Set::new(|addr: int|
+30:            free_frames: Set::new(|addr: int|
+94:        inner@.allocated_frames.contains(pa) <==> (
+100:        ...
+
+────────────────────────────────────────────────────────────
+Turn 304
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 20. impl View for Inner {
+21.     type V = FrameAllocView;
+22. 
+23.     closed spec fn view(&self) -> FrameAllocView {
+24.         FrameAllocView {
+25.             allocated_frames: Set::new(|addr: int|
+26.                 exists|i: int|
+27.                     #[trigger] self.bitmap@.set_bits.conta...
+
+────────────────────────────────────────────────────────────
+Turn 305
+────────────────────────────────────────────────────────────
+I need to add the `subset_of` proof. Let me add it to the final Ok block:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to prove that the frame set from lo to hi is a subset of the old free frames by showing each frame address in that range exists in the old bitmap's free frames. For any frame address at position j in the range, I can use j itself as the witness—it's within the valid bit range and wasn't set in the old bitmap.
+
+Now I'm adding this subset assertion to the proof block after establishing the frame set equivalence. The key is that I need the all_bits_unset fact to be available, which comes from the alloc_range precondition. Since old_self represents the state before alloc_range was called, the ensures clause about all_bits_unset_in_range applies directly to it.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 306
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
