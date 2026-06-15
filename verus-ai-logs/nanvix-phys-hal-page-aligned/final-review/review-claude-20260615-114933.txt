@@ -857,3 +857,103 @@ Turn 7
 [TOOL] report_intent: Running verification builds
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-kernel MODULE=hal::mem::types::address::aligned::page
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+AST consistency PASS. Now run fn_coverage (needs original vs current) and spec_drift.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-hal-page-aligned/final-review && git --no-pager show 158
+[RESULT ✓] bash: === fn_coverage (orig vs current) ===
+# Function Coverage Report
+
+- **Source file:** `verus-ai-logs/nanvix-phys-hal-page-aligned/final-review/_orig_page.rs`
+- **Verus file:** `src/kernel/src/hal/mem/types/address/aligned/page.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy/src/kernel/src/hal/mem/types`...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+[TOOL] view: /home/ruize/nanvix-phy/verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-53-28.log
+[TOOL] bash: cd /home/ruize/nanvix-phy && rg -n "pub fn from_address|fn into_raw_value|pub struct PageAligned" src/kernel/src/hal/mem
+[RESULT ✓] bash: 37:pub struct PageAligned<T: Address>(T);
+65:    pub fn from_address(addr: T) -> Result<Self, Error> {
+80:    fn into_raw_value(self) -> usize {
+<shellId: 24 completed with exit code 0>
+[RESULT ✓] view: 1.     - hal/mem/types/address/aligned/page.rs:65 from_address: external_body
+2.     - hal/mem/types/address/frame.rs:107 into_raw_value: external_body
+3.     - mm/phys/frame.rs:137 alloc: external_body
+4.     - mm/phys/frame.rs:210 alloc_contiguous: external_body
+5.     - mm/phys/frame.rs:290 free:...
+[RESULT ✓] view: 1. Timestamp: 2026-06-15_11-53-28
+2. Mode: cargo
+3. Crate: kernel
+4. Directory: N/A
+5. Module: hal::mem::types::address::aligned::page
+6. Exit code: 0
+7. cached (no recompilation)
+8. —
+9. 
+10. Cheating patterns:
+11.   assume=0
+12.   external_body=24
+13.   admit=0
+14.   trusted=0
+15.   no_decreases=0...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Now spec_drift check:
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift git-diff --before HEAD ===" && python3 /home/ruize/verus-ai-exp/verus-
+[RESULT ✓] bash: === spec_drift git-diff --before HEAD ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift vs base branch (merge-base) ===" && python3 /home/ruize/verus-ai-exp/v
+[RESULT ✓] bash: === spec_drift vs base branch (merge-base) ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 1
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift det...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Drift checks pass. Now run the verification — `make verify-kernel` scoped to the module (long-running).
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 590 make verify-kernel MODULE=hal::mem::types::address::aligned::page 2>&1 | tail -
