@@ -26,13 +26,6 @@ pub open spec fn spec_aligned(addr_view: int) -> bool {
 // previously declared in `mm/phys/frame.spec.rs`; they belong here next to the type they
 // describe. Removing them entirely (the contracts equal `result == a@`) breaks the verus
 // build with "cannot use function ... which is ignored because it is ... external".
-pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as Address>::into_raw_value ](
-    a: crate::hal::mem::PageAligned<T>,
-) -> (result: usize)
-    ensures
-        result as int == a@,
-;
-
 pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::deref ](
     a: &crate::hal::mem::PageAligned<T>,
 ) -> (result: &<crate::hal::mem::PageAligned<T> as ::core::ops::Deref>::Target)
