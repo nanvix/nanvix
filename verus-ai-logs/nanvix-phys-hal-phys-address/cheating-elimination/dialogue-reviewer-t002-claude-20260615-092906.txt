@@ -242,3 +242,84 @@ Working tree has the correct fixed form. Now the final clean verification + buil
 [THINKING] Looking at the git diff, I'm noticing something confusing about the state of these changes — the committed version shows `into_frame_number` with the single-line form while the working tree has the split version for `from_number`, but I recall seeing the split form already present in the earlier turn with the VERUS REWRITE comment block, so the HEAD state doesn't quite match what I'm seeing now.
 
 Regardless of the commit history, what matters is that the working tree has the correct split form with the proper comment, so I should run a final clean verify-kernel and build to confirm everything compiles without errors or warnings.
+[RESULT ✓] bash: verification results:: 97 verified, 0 errors
+  97 verified
+  0 errors
+  cheating: assume=0 external_body=19 admit=14 trusted=0 no_decreases=0 cfg_gate=19
+  Unverified function list written to: verus-ai-logs/verify-kernel/verus-logs/coverage-unverified.txt
+  verification: 97 verified, 0 errors (exit ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Verification clean (97 verified, 0 errors; crate-wide cheating counts unchanged & all out-of-scope). Now the build for 0 warnings.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -i "address/phys\|PhysicalAddress" verus-ai-logs/verify-kernel/verus-logs/cheati
+
+[THINKING] The verification passed with 97 confirmed and no errors, though the cheating detection is crate-wide while the module itself is clean. Now I need to check the build command from the checklist—it looks like it should be something like `make build` or `./z build`—and run it to verify there are no warnings.
+[RESULT ✓] bash: phys entries exit:1
+=== build target ===
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^[a-z].*build.*:|^all:|\.PHONY.*build" Makefile | head; echo "=== z script?
+[RESULT ✓] bash: 411:all: all-nanvix
+=== z script? ===
+./z
+z
+z.ps1
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build 2>&1 | tail -30; echo "EXIT:${PIPESTATUS[0]}"
+[RESULT ✓] bash: cp -f --preserve /home/ruize/nanvix-phy-specs/target/debug/nanvixd /home/ruize/nanvix-phy-specs/bin/nanvixd.elf
+# Build the standalone rootfs image from a seed directory using mkramfs.
+/home/ruize/nanvix-phy-specs/bin/mkramfs.elf -o /home/ruize/nanvix-phy-specs/bin/standalone-rootfs.img /home/ruize/...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Build succeeded (exit 0). The only "Warning" is a benign environment note (sysroot symlink), not a compiler/code warning. All checklist items now pass. Let me do a final strict warning scan, then write the review and STOP.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ./z build 2>&1 | grep -iE "warning: |warn\b" | grep -v "Sysroot directory" | head; ec
+
+[THINKING] The build completed successfully with no compiler warnings—just a benign sysroot symlink warning from the environment. Let me verify the kernel build itself has no warnings either.
+[RESULT ✓] bash: code-warnings exit:0
+<shellId: warn completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+No compiler warnings. All checklist items now pass. Writing the turn 2 review and STOP.
+[TOOL] report_intent: Writing turn 2 review and STOP
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/turn_002_driver.md
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/STOP
+
+[THINKING] I'm realizing the exit code from `echo` doesn't actually tell me whether grep found matches — it's always 0. The fact that no output was printed means there are no compiler warnings beyond the sysroot issue, which is what I needed to know.
+
+All the checklist items are passing or fixed now, so I should write up the turn 2 review and mark this as resolved.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/turn_002_driver.md with 4490 characters
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue/STOP with 9 characters
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Turn 2 complete — **RESOLVED**. All checklist items PASS/FIXED, independently verified.
+
+**Key verifications this turn (not trusting fixer claims):**
+- **AST consistency FIXED** — `into_frame_number` restored to `dev` (now MATCH). Re-ran tool: 15 match, 1 mismatch, 1 extra — both remaining divergences documented.
+- **`from_number` rewrite proven mandatory** — I reproduced it two ways: (1) ran the committed reproducer through Verus (single-line `bad` fails with overflow error), and (2) **temporarily restored the single-line form in the real file** → `make verify-kernel` failed with `precondition not satisfied`, 96 verified/1 error. Restored the split afterward. Carries `VERUS REWRITE` comment + reproducer.
+- **`clone_address`** — confirmed via git that it's a non-defaulted `sys::mm::Address` trait method added during the pipeline (dev=0, verus-ai-prove=1); mandatory & out-of-scope, documented.
+- **Final verification + build** — `make verify-kernel` → 97 verified, 0 errors; `./z build` → exit 0, no compiler warnings. Crate-wide cheating counts unchanged and all out-of-scope (no `address/phys` entry in detector detail).
+
+STOP file created with `RESOLVED`.
+
+
+=== Session End ===
+Session: 96d3a575-2fef-4828-b6f6-33b4e97da419
+Duration: 157.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/dialogue-reviewer-t002-claude-20260615-092906.jsonl
