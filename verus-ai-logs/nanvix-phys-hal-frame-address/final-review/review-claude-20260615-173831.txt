@@ -346,3 +346,162 @@ Let me start by running the quick grep and script checks in parallel with the lo
 src/kernel/src/hal/mem/types/address/frame.proof.rs:29:// (no `admit`, no `external_body`), registered in `verus-ai-logs/tcb-allowed.md`.
 === assume_specification ===
 src/kernel/src/hal/mem/types/address/frame.rs:39:// the `hal::mem` trust-boundar...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). Frame module: 0 admit, 0 assume, 0 external_body. Now running the analysis scripts.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== frame-module external_body in cheating-detail ===" && grep -i "frame" verus-ai-lo
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== ast_consistency ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_con
+
+[THINKING] The verification checks out with no admits or assumes in the frame files, though there are 24 external bodies and 6 cfg gates that are crate-wide. Within the frame module itself, I'm seeing 1 axiom function alongside 3 assume specifications, which represents a distinct dimension of verification that I need to account for alongside the other cheating dimensions.
+
+I notice the axiom function is registered in tcb-allowed.md and appears to substitute for what would otherwise be an admit, though the guardrails script doesn't flag it as cheating. Let me pull the frame-module-specific external body counts from the cheating details to verify none are in frame.rs, then run the coverage, spec drift, and consistency checks.
+[RESULT ✓] bash: === frame-module external_body in cheating-detail ===
+(none referencing hal/.../address/frame)
+
+=== fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: ...
+[RESULT ✓] bash: === ast_consistency ===
+
+⚠️  INCONSISTENCIES FOUND: 3 mismatched, 0 missing
+# AST Consistency Report: ast_orig__lavoh3s
+
+**Source:** `/tmp/ast_orig__lavoh3s.rs`
+**Verus:** `src/kernel/src/hal/mem/types/address/frame.rs`
+
+## Summary
+
+- Functions matched: 6/9
+- Functions mismatched: 3
+- Missing in Ver...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== body_removed_source.rs ===" && cat verus-ai-logs/nanvix-phys-hal-frame-address/bo
+
+[THINKING] The ast_consistency check is flagging 3 mismatches against the baseline, which correspond to the three functions that received VERUS DEVIATION rewrites—the ones where complex expressions get extracted into intermediate variables with accompanying proof blocks. These are expected changes that have already been approved as valid transformations.
+
+The key question is what baseline the tool is comparing against. It looks like ast_consistency extracts the function bodies from the Verus file, strips out Verus-specific constructs like proof! and spec annotations, then compares the result against a reference baseline. I need to examine the actual diff files to understand what the original source looks like and confirm that each mismatch is indeed a documented, semantically-equivalent rewrite rather than an unintended change.
+[RESULT ✓] bash: === body_removed_source.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//============================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && find /tmp /home/ruize -name "FrameAddress__from_frame_number.diff" 2>/dev/null | head; echo
+
+[THINKING] I'm noticing the baseline version from the caller-analysis phase had `into_raw_value` marked as external_body and `inv()` with just one conjunct, but the current code has evolved — `into_raw_value` is now body-verified without the external_body marker, `inv()` gained a second conjunct, and several functions like from_frame_number and from_raw_value got let rewrites plus proof blocks. Now I'm checking what ast_consistency.py actually does — it strips verus annotations from the current source and compares function-body hashes to catch any exec-semantic changes introduced by verification. The three mismatches line up exactly with the documented VERUS DEVIATION rewrites, so I need to verify those transformations are semantically equivalent by looking at the actual diffs the script generated.
+[RESULT ✓] bash: ---help---
+usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+
+AST-level exec consistency checker for Verus verification.
+
+Compare executable code between an original Rust source and its
+Verus-verified counterpart using tree-...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && for fn in FrameAddress::from_frame_number FrameAddress::from_raw_value FrameAddress::into_f
+
+[THINKING] The auto-detection picked up the base reference from the verus-ai/* branch, so I'm comparing the current execution semantics against the original code from the verus-ai/sys-virt-address branch. The three mismatches represent the rewrites, so I need to pull the diffs for each of the three functions to verify they're semantically equivalent.
+[RESULT ✓] bash: ===== FrameAddress::from_frame_number =====
+usage: ast_consistency.py [-h] [--base-ref BASE_REF]
+                          [source] verus {count,summary,diff,report} ...
+ast_consistency.py: error: argument command: invalid choice: 'FrameAddress::from_frame_number' (choose from 'count', 'summary', 'd...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && for fn in "FrameAddress::from_frame_number" "FrameAddress::from_raw_value" "FrameAddress::i
+[RESULT ✓] bash: ===== FrameAddress::from_frame_number =====
+## FrameAddress::from_frame_number (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,3 +1,9 @@
+     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+-        Ok(Self(PageAligned::from_address(PhysicalAddress::from_number(frame_n...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+All 3 AST mismatches are the documented, pre-approved `f(complex_expr)` → `let x = …; f(x)` rewrites with `// VERUS DEVIATION` comments — semantically equivalent. Now running spec_drift and build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.p
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== git diff stat vs base branch ===" && git diff --stat verus-ai/sys-virt-address --
+
+[THINKING] I'm confirming these three mismatches correspond to the documented rewrites where complex expressions get extracted into intermediate bindings. Looking at the first case with `from_frame_number`, the original chains multiple function calls together, while the rewrite extracts `PhysicalAddress::from_number(frame_number)` into a separate binding before passing it to `PageAligned::from_address`.
+
+For `from_raw_value`, the pattern is similar — the inner `from_raw_value` call with its error propagation happens first in both versions, just made explicit through the binding. The third case with `into_frame_number` is trickier since it involves method resolution and auto-dereferencing through the `PageAligned` wrapper, but the rewrite explicitly dereferences to get the underlying `PhysicalAddress` value and calls the method on that, which should be semantically equivalent since `PhysicalAddress` is `Copy`.
+
+All three rewrites are documented as pre-approved semantic equivalents for a known Verus limitation around binding complex expressions in proof contexts, each marked with a `// VERUS DEVIATION` comment. The skill requires a minimal reproducer for any claimed Verus limitation, so I need to verify whether there's an isolated reproducer recorded in the proving or cheating-elimination directories, and check the verus-unsupported documentation. This is the kind of assessment the sub-agents should handle. Let me run the spec drift check and build verification next.
+[RESULT ✓] bash: === git diff stat vs base branch ===
+ .../src/hal/mem/types/address/frame.proof.rs       |  43 +++++++
+ src/kernel/src/hal/mem/types/address/frame.rs      | 127 ++++++++++++-------
+ src/kernel/src/hal/mem/types/address/frame.spec.rs | 136 +++++++++++++++++++++
+ 3 files changed, 264 insertions(+), 42...
+[RESULT ✓] bash: === spec_drift ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 11 comple...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== spec_drift vs base branch ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scrip
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tee /tmp/make_build.log | tail -25
+
+[THINKING] I'm checking the spec_drift results and realizing that comparing against HEAD only shows whether the working tree matches the current branch tip, not whether there's actual drift from the base branch. The meaningful check would be running spec_drift against the base branch to see if there are real differences, though the checklist does specify using HEAD.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+[RESULT ✓] bash: === spec_drift vs base branch ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 8
+- **Contract drift (⚠ review required): 1**
+  - Ensures removed: 0
+  - Requires added: 1
+- Proof drift (informational): 0
+- Functions added: 5
+- Functions removed: 0
+
+## Contract Drift (⚠ REVIEW REQUIRED)
+...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Build OK. spec_drift vs base shows only `into_frame_number` gained `requires self.inv()` + new ensures — both additions to a previously-unspecced function (not a weakening). Running full `make verify` for cross-module regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 560 make verify 2>&1 | tee /tmp/make_verify.log | tail -40
+
+[THINKING] I'm noticing a spec drift issue with `into_frame_number` where a `requires self.inv()` precondition was added, but this isn't actually weakening the contract since the original had no specification at all. The callers always maintain a valid FrameAddress by construction, so the new requirement is consistent with how the function is actually used—it's just making an implicit assumption explicit rather than removing an existing guarantee.
+
+The build completed successfully (cached), and now I'm deciding whether to run the full `make verify` across all crates for a comprehensive cross-module regression check, though the kernel verification already passed quickly.
