@@ -736,3 +736,107 @@ The base branch picked up auto-commits from `verify.sh`. My working tree is corr
 
 But my working tree has the correct content, so I just need to run a clean verify to confirm it passes, which will auto-commit the good state. The git history will contain the experiment commits, but as long as the final tip is correct and passes verification, the workflow should track the right state.
 [RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: /home/ruize/nanvix-phy-specs/scripts/verify.sh --crate kernel --module hal::mem::types::address::aligned::page --log-dir verus-ai-logs/verify-kernel
+note: verifying module hal::mem::types::address::aligned::page
+verification results:: 11 verified, 0 errors (partial verification with `--verify-*`)
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Verification passes: **11 verified, 0 errors**. Module cheating gate (assume/external_body/admit) = 0. Let me check git state and confirm the working tree is clean:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -4 && echo "=== working tree status ===" && git status --short && e
+
+[THINKING] The verification shows 11 passing checks with no errors, and the module-scoped issue is just the one required ghost-code gate. The global counts are coming from out-of-scope modules, so they're not relevant here. Looking at the `#[cfg(verus_keep_ghost)]` attribute on line 219, it's actually necessary because the block uses `spec_page_size()` which only exists under that configuration—this is gating ghost code, not executable code, so the heuristic flagged it incorrectly.
+
+The real question is whether I can remove this gate entirely. The ungated `View` impl at line 234 compiles fine, but it would still need `spec_page_size()` if I moved the `inv` spec function there. The key insight is that `verus_keep_ghost` is only set during verification—in a normal `cargo build`, it's not set, so the gated block gets removed entirely. The ungated `verus!` macro at line 234 must be expanding to valid Rust in normal builds, which means the `verus!` macro from the builtin macros is handling the expansion properly even without the ghost code present.
+
+The problem is that `spec_page_size()` itself is gated at frame.rs:36, so it doesn't exist in normal builds. That's why the `inv` block must stay gated—it depends on a gated function. To remove this gate, I'd need to un-gate `spec_page_size()` in frame.rs, which is out of scope. This is actually a false-positive for the detector: it's flagging pure spec code (a `spec fn` definition), not exec code, and this same pattern appears throughout the codebase where ghost code legitimately needs to be gated behind `verus_keep_ghost`.
+
+The key insight is that `has_cheating()` doesn't count `cfg_gate` as a failure condition—it's only a warning. The module's actual cheating count (assume/external_body/admit/trusted/no_decreases) is zero. The two `assume_specification` items are required external trust boundaries, and the one cfg-gate is necessary ghost-code gating. So the phase should pass. I need to document why this gate is required and then clean up the git history.
+[RESULT ✓] bash: 53ed3bbe3 [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page (11 verified, 0 errors, admit=16 external_body=19 cfg_gate=19)
+7ca592b98 [verus] verify FAIL: kernel::hal::mem::types::address::aligned::page (0 verified, compilation/setup error (verus did not run))
+e...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in page.rs page.spec.rs page.proof.rs; do git diff 24143f263 HEAD -- src/kernel
+
+[THINKING] The latest commit is passing with all 11 tests verified and no errors—the spec.rs file has been correctly restored and matches HEAD. The working tree only shows log file changes from this session, and all three spec files are back to their baseline state.
+[RESULT ✓] bash: page.rs: unchanged vs phase-start (correct baseline)
+page.spec.rs: unchanged vs phase-start (correct baseline)
+page.proof.rs: unchanged vs phase-start (correct baseline)
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+All three module files are unchanged vs the verified phase-start baseline — my experiments cancelled out cleanly. Now writing the report. Let me verify the report directory:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -d verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/ && rm -f /tmp/
+
+[THINKING] The module files match the baseline commit with no changes, and the experimental commits cancelled each other out as expected. Now I'm checking AST consistency between the exec code in page.rs and the original verus-ai-prove version to confirm the source remains unchanged without any cfg-gates or semantic modifications.
+
+Since page.rs is identical to the phase-start baseline and that baseline already verified successfully, there's no regression risk from running the full make verify—the module hasn't changed at all. My investigation shows the module actually had zero eliminable cheating to begin with; the two assume_specifications represent required external trust boundaries that are architecturally necessary. I need to clarify the distinction between proof gaps and trust boundaries in the report — the assume_specifications and cfg-gate aren't stuck proofs but rather required external trust boundaries, so verification_todo should note there are no actual proof gaps remaining. Now I'll write up the report.
+[RESULT ✓] bash: verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/
+tmp cleaned
+<shellId: 40 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-page-aligned/verification_todo.md with 2660 characters
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/fix_report.md with 4386 characters
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+Let me do a final confirmation of the clean state:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== source/spec/proof match verified baseline? ===" && git diff 24143f263 HEAD 
+
+[THINKING] Let me run a final verification to confirm the working tree is clean and matches the PASS commit state, then double-check that the module verification still shows 11 verified with no errors and unchanged files against baseline.
+[RESULT ✓] bash: === source/spec/proof match verified baseline? ===
+(empty above = identical)
+=== working tree (non-log) changes ===
+  none (only logs/report modified)
+<shellId: 41 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating-elimination work for **hal-page-aligned**:
+
+## Result: PASS
+
+**Module verification:** `make verify-kernel MODULE=hal::mem::types::address::aligned::page` → **11 verified, 0 errors**.
+
+**Gate-counted cheating in this module = 0** (admit=0, assume=0, external_body=0). The global `external_body=19 admit=16` come entirely from out-of-scope modules (`mm/phys/*`, `mm/virt/*`).
+
+**Remaining non-gate items — investigated via the escalation ladder, proven irreducible:**
+
+| Item | Verdict |
+|------|---------|
+| `assume_specification[PAGE_ALIGNMENT]` | Required (external-bottom). Removed it → reproduced `cannot use function PAGE_ALIGNMENT … external`. It's a `pub const` in the external `arch` crate. |
+| `assume_specification[Deref::deref]` | Required (external-top). `core::ops::Deref` is a std trait; verifying it in-body would touch an unlisted function (barred). |
+| `#[cfg(verus_keep_ghost)]` at page.rs:219 | Required ghost-code gate (refs `spec_page_size()`, itself ghost-gated). Standard idiom, not exec code. |
+
+**AST consistency:** Zero mismatches — `page.rs`, `page.spec.rs`, `page.proof.rs` are byte-identical to the verified baseline. Two transient experimental edits were fully reverted.
+
+**Outputs written:**
+- `cheating-elimination/fix_report.md`
+- `verification_todo.md` (no proof gaps; documents the irreducible trust boundaries with evidence)
+
+The module entered the phase with zero eliminable cheating; the only artifacts are legitimate external trust boundaries (spec-design external-top/external-bottom) and required ghost-code gating, none of which trip the cheating gate or represent soundness escapes.
+
+
+=== Session End ===
+Session: 7bada3f0-bfc4-48e2-a792-439c9409ee2b
+Duration: 551.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-page-aligned/cheating-elimination/prover-claude-20260615-082907.jsonl
