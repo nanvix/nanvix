@@ -149,3 +149,221 @@ The trusted-function FAIL is properly fixed. Let me verify the fixer's key claim
 
 === assume_specification still present ===
 34:pub assume_specification[ KernelFrame::map_frame ](base: ...
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module mm::phys::kframe.
+  Global: assume=0 external_body=15 admit=7 trusted=0 cfg_gate=12
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Co...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '17,22p' src/kernel/src/mm/virt/mod.rs
+[RESULT ✓] bash: pub(crate) use identity_map::{
+    identity_map_page,
+    memcpy,
+    sync_kernel_pdes,
+};
+<shellId: 3 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Trusted-function FAIL is **FIXED** and verified. Now the remaining items: AST consistency, spec-drift, cross-module regression, and build. Let me locate those tools.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && find /home/ruize/verus-ai-exp/verus-ai -iname '*ast*consist*' -o -iname '*s
+
+[THINKING] Good, the trusted-function issue is resolved and I've confirmed that identity_map_view isn't being re-exported. The external_body and assume_specification items are also taken care of. Now I need to work through the remaining checklist: running the AST consistency check, verifying there's no spec drift, and checking cross-module registration.
+
+The full kernel build completed with no errors or warnings, which is a good sign. I'm looking for the ast-consistency and spec-drift tools in the verus-ai directory since they're referenced as skills but aren't showing up in my current project skills list.
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency
+/home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check
+/home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/__pycache__/spec...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistenc
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-che
+[RESULT ✓] bash: ---
+name: ast-consistency
+description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+---
+
+# AST Consistency Check
+
+Source exec code must not change during verification — see `verus-constraints`
+for the full ru...
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/ke
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+KernelFrame::base                        MATCH                                
+KernelFrame::clear                       MATCH   ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+AST consistency reports mismatches. Let me examine each one against the baseline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch --show-current; echo "=== ast diff new ==="; python3 /home/ruize
+
+[THINKING] I'm seeing AST consistency issues — the `drop` and `new` functions are showing mismatches against the auto-detected base reference, while `map_frame` has extra entries. Let me trace through the diffs to understand what's diverging.
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+=== ast diff new ===
+## KernelFrame::new (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -3,15 +3,7 @@
+         // Deref/DerefMut can safely access it. This lazily installs a page
+         // table entry if needed (page tables come from a BSS pool, so no recursive frame
+     ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== ast diff drop ==="; python3 /home/ruize/verus-ai-exp/verus-ai/scr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && cat verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json 2>/dev/null |
+
+[THINKING] The baseline version had the side effect inlined in `new`, but the verified version extracted it into `map_frame` during the rewrite. The AST checker flags this as a MISMATCH since the exec code changed, and now I'm trying to determine whether this code extraction counts as an approved deviation under the ast-consistency skill's requirement that source exec code remain unchanged during verification.
+[RESULT ✓] bash: {
+ "module_name": "phys-kframe",
+ "log_name": "nanvix-phys-phys-kframe",
+ "source_path": "/home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/kframe.rs",
+ "current_phase": "cheating-elimination",
+ "current_phase_idx": 4,
+ "completed_phases": [
+  "proving"
+ ],
+ "phase_results": {
+  "proving...
+[RESULT ✓] bash: === ast diff drop ===
+## KernelFrame::drop (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,5 +1,6 @@
+     fn drop(&mut self) {
+         if let Err(e) = super::frame::free(self.base) {
++            
+             error!("failed to free kernel frame: {:?}", e);
+         }
+     }
+<shellId: 9 completed...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== kframe.rs at cheating-elim phase start (3763437) new/map_frame/dr
+
+[THINKING] I'm seeing that the mismatch in the `drop` is actually from the `#[cfg(not(verus_keep_ghost))]` attribute being stripped from the `error!` macro call, which leaves behind a blank line in the Verus version. This is a pre-approved case for cfg-gating around logging statements.
+
+For `new` and `map_frame`, the differences are actual rewrites where side effects were extracted during the cheating-elimination phase, which should only be allowed if they're semantically equivalent and address verified Verus limitations.
+
+The key question is whether I'm comparing against the original pre-verification source or the phase-start baseline. The checklist governs what's acceptable for this phase, but ast-consistency fundamentally measures exec fidelity against the original source. I need to check what changed at the phase-start SHA to distinguish what was already there from what this phase introduced.
+[RESULT ✓] bash: === kframe.rs at cheating-elim phase start (3763437) new/map_frame/drop ===
+    // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+        ensures
+            match r...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The mismatches stem from the legitimate `external_body`-elimination rewrite this phase performed. Let me check the deviation-documentation requirements and whether they're recorded.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '60,140p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consiste
+
+[THINKING] At the cheating-elimination phase, `new` had an `external_body` with an inlined side effect that got removed by extracting `map_frame` and adding the assume_specification—exactly the kind of rewrite this phase is designed to do. I need to verify AST consistency with zero mismatches to ensure these rewrites are semantically equivalent.
+
+The extraction of `map_frame` isn't semantically equivalent in the strict "exec unchanged" sense, but it IS the legitimate cheating-elimination operation—`new` still calls `map_frame` which runs identical code, so the compiled exec behavior is unchanged. The real question is what baseline the auto-detected ast-consistency is comparing against, and whether this refactoring counts as an acceptable deviation that needs to be documented in the skill's deviation process.
+[RESULT ✓] bash: Exec changes that fix verified bugs are also pre-approved. These must:
+- Have a `// VERUS BUG FIX: <description>` comment at the fix site
+- Be recorded in `bugs.md` with full evidence
+- Be committed with `[verus-ai] BUG FIX:` prefix
+- Be limited to auto-fixable categories (overflow, off-by-one, miss...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me determine whether the `drop` cfg-gate and the `new` rewrite were introduced in *this* phase or pre-existing, to scope correctly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== drop at phase start 3763437 ==="; git show 3763437acdb43576cce061
+
+[THINKING] The AST consistency rules require that any mismatches either get restored to the original state, documented as pre-approved deviations, or marked as VERUS DEVIATIONs with supporting evidence. I'm looking at three flagged items: the `KernelFrame::new` mismatch from extracting `map_frame` out of the body, the new `KernelFrame::map_frame` helper that's extra in Verus, and the `KernelFrame::drop` mismatch from a blank line or cfg gate difference.
+
+For the drop function, the issue is that a cfg gate was added around the error logging during the cheating-elimination phase, and when the AST checker strips that attribute, it leaves behind a blank line artifact. Since cfg-gating logging is a pre-approved deviation according to the checklist, this mismatch is actually just a tooling artifact that needs to be documented as such.
+
+For the new + map_frame rewrite, this is the core external_body elimination that preserves the exec semantics by delegating to map_frame with the original statements intact. The VERUS REWRITE comment is the correct marker per the checklist and documents the three blockers, though I need to verify whether the minimal reproducer needs to be saved as separate files or if capturing the errors inline in the dialogue is sufficient.
+
+The drop mismatch with cfg-gated logging is a pre-approved deviation, but I should check whether it has a comment explaining the cfg-gate and, more critically, whether this cfg-gate was introduced during this phase or was already present from earlier work.
+[RESULT ✓] bash: === drop at phase start 3763437 ===
+    fn drop(&mut self) {
+        if let Err(e) = super::frame::free(self.base) {
+            #[cfg(not(verus_keep_ghost))]
+            error!("failed to free kernel frame: {:?}", e);
+        }
+    }
+=== what ast baseline auto-detects: merge-base ===
+cb2dd5d257feda...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The `drop` cfg-gate is pre-existing (present at phase start) and is logging — explicitly allowed. The `new`→`map_frame` mismatch is this phase's `external_body`-elimination: a byte-identical statement extraction (semantically equivalent) for a verified limitation, with a VERUS REWRITE comment. Let me confirm the reproducer requirement and run remaining items in parallel.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== reproducer/unsupported files for kframe ==="; ls verus-ai-logs/na
+
+[THINKING] The `drop` cfg-gate was already in place before this phase started, so it's a pre-existing configuration rather than something introduced here—and the logging cfg-gating is an approved deviation. I'm noticing something odd with the ast tool's baseline detection: HEAD matches the merge-base, which suggests the tool is using a different reference point for determining the source original.
+
+Looking at the diff more carefully, the ast tool appears to be using the inlined version as the baseline—the pre-verification original before any Verus annotations were added. For the AST consistency checklist, the two real deviations from that original are the `new`/`map_frame` extraction refactor (semantically equivalent, marked with a VERUS REWRITE comment) and the `drop` blank-line artifact from the cfg-gating (a known tooling artifact of the pre-approved logging cfg-gate). Both are acceptable because the actual execution behavior—the error call—remains identical.
+
+The checklist explicitly permits semantically-equivalent rewrites for verified Verus limitations, so both mismatches qualify as passing. Let me verify the `new`/`map_frame` refactor is genuinely equivalent: the original inlines the address mapping logic directly in the constructor, while the new version extracts it into a helper method but preserves the exact same statements and error propagation. That's byte-for-byte identical, just reorganized.
+
+Now I need to check the minimal reproducer requirement—the fixer captured three Verus errors in the dialogue, but I should verify whether a standalone file is needed. The cfg-gate in `drop` is actually logging, which falls under the pre-approved exceptions, so it passes the checklist regardless of a missing comment. Looking at the summary, the only exec changes are the expected ones — `new` and `drop` have mismatches (both justified), `map_frame` has an extra entry, and the rest match perfectly. Now I need to verify whether a reproducer file exists in the kframe log directory to satisfy the documentation requirement.
+[RESULT ✓] bash: === reproducer/unsupported files for kframe ===
+dialogue
+dialogue-fixer-t001-claude-20260615-121041.jsonl
+dialogue-fixer-t001-claude-20260615-121041.txt
+dialogue-reviewer-t001-claude-20260615-120653.jsonl
+dialogue-reviewer-t001-claude-20260615-120653.txt
+dialogue-reviewer-t002-claude-20260615-121541...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Spec-drift: **PASS** (0 contract drift). Now running the two long-pole items — cross-module regression and the build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | sed -n '/=== Results ===/,/Log written/p'
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,40p' verus-ai-logs/nanvix-phys-phys-kframe/cheating-elimination/f
+
+[THINKING] The spec-drift check passes with no drift detected. The `new` function maintains its original contract requiring base invariants and ensuring the postcondition, but now it's verified rather than assumed, which actually strengthens the specification. The `map_frame` got an empty assume_specification, so nothing weakened overall.
+
+I'm verifying that `map_frame` being a new function with an empty contract doesn't constitute a spec weakening—its side effect was always trusted inside the external_body `new` before, so trust actually decreased rather than increased. Now I need to check whether a standalone reproducer is required for the exec rewrite justification, and then run the full kernel verification to catch any cross-module regressions.
+[RESULT ✓] bash: # Cheating Elimination Report: phys-kframe
+
+Module: `mm::phys::kframe`
+Files: `src/kernel/src/mm/phys/kframe.rs`, `kframe.spec.rs`, `kframe.proof.rs`
+Command: `make verify-kernel MODULE=mm::phys::kframe` → **3 verified, 0 errors, status: CLEAN**
+Full crate: `make verify-kernel` → **116 verified, 0 e...
