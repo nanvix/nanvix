@@ -392,3 +392,42 @@ Now running verification to establish ground truth and warm the cache.
 [TOOL] bash: cd /home/ruize/nanvix-phy && make verify-arch 2>&1 | tail -40
 
 [THINKING] The test functions are being counted in coverage but they're not in scope since they're callers rather than implementations—the actual functions I need to verify are `from_raw_value` and `into_raw_value`, both of which have ensures clauses. Now I'm running the verification commands to cache the results and confirm everything checks out.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification is CLEAN (PASS, 0 cheating). Now running build.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make build 2>&1 | tail -25
+
+[THINKING] The verification passed cleanly with no issues detected across the architecture crate, and the two in-scope functions both have contracts as expected. Now I'm running the build and checking the verification script's output.
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "build:" Makefile 2>/dev/null | head; echo "--- available targets ---"; grep -E "^
+[RESULT ✓] bash: 230:    # Profiling build: release performance + debug symbols + frame pointers.
+--- available targets ---
+update-sysroot-link:
+dump-sccache-stats:
+all: all-nanvix
+all-nanvix: \
+all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+all-nanvix: all-nanvix-shim
+all...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+`make build` is a no-op target (real builds use `make all`). Running `make verify` for cross-module regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | tail -50
+
+[THINKING] The `make build` command returns "Nothing to be done," which means there's a `build` target defined but it has no recipe—it's essentially a no-op that exits successfully. The actual build happens through `make all` or `make verify`.
+
+The checklist requires both `make build` and `make verify`, so I should run `make verify` next to confirm the cross-module regression tests pass (most results should be cached). Let me execute that.
