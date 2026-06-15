@@ -999,3 +999,250 @@ Key facts from the script:
 ────────────────────────────────────────────────────────────
 Turn 15
 ────────────────────────────────────────────────────────────
+Caller analysis read. Let me check the verification progress and closely examine the `share` and `refcount` wrapper Err arms (potential soundness concern with external_body).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys; sed -n '1636,1690p' frame.rs
+[TOOL] read_bash: {'shellId': 'verifymod', 'delay': 30}
+[RESULT ✓] read_bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+[RESULT ✓] bash: }
+
+/// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
+// Dependency contract: singleton wrapper around `Inner::share`. On success the frame is (still)
+// allocated; the per-frame reference-count increment lives in the global partition and is pinned
+// to `phys_vi...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Verification **PASSED (exit 0)**. Critical finding: the 4 `admit`s are all in `manager.proof.rs` (out-of-scope), **frame module has admit=0**. Let me now run AST consistency, spec drift, and check rewrite comments.
+[TOOL] report_intent: Checking AST consistency and drift
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys; echo "=== VERUS REWRITE ==="; grep -nE 'VERUS REWRITE' frame.rs 
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/scripts/ | grep -E 'ast_consistency|spec_drift|fn_coverage'
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === VERUS REWRITE ===
+=== VERUS BUG FIX ===
+frame.rs:297:        // VERUS BUG FIX: `Bitmap::alloc_range` requires `size <= num_bits`. `alloc_contiguous`
+frame.rs:547:        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
+frame.rs:716:        // VERUS BUG FIX: avoi...
+[RESULT ✓] bash: ast_consistency.py
+fn_coverage.py
+spec_drift.py
+<shellId: 43 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] rg: Err\(_\)\s*=>\s*true|ensures\s*\n\s*true
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+No REWRITE comments; 8 BUG FIX comments. Let me run AST consistency and spec drift checks.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/ast_consistency.py src/kernel/src/m
+[RESULT ✓] bash: ## Functions
+
+Function                                 Status               Verification    
+──────────────────────────────────────── ──────────────────── ────────────────
+Inner::alloc                             MISMATCH                             
+Inner::alloc_contiguous                  MISMATCH...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] rg: Err\(_\)\s*=>\s*true
+[TOOL] rg: ensures\s*\n
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:1443:            Err(_) => true,
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:1529:            Err(_) => true,
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] rg: ensures\s*\n\s*true
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:1566:    ensures
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:1567:        true,
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+8 MISMATCHes, all `Inner` methods. Let me view the actual diffs to verify each is an approved bug-fix deviation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for fn in "Inner::alloc" "Inner::alloc_contiguous" "Inner::alloc_range" "Inner::book"
+[TOOL] rg: VERUS REWRITE
+[RESULT ✓] rg: No matches found.
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[RESULT ✓] bash: ############## Inner::alloc ##############
+## Inner::alloc (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,27 +1,43 @@
+     fn alloc(&mut self) -> Result<FrameAddress, Error> {
++        
++        
+         let frame_number: usize = match self.bitmap.alloc() {
+             Ok(index) => index,
+     ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] rg: VERUS BUG FIX
+[RESULT ✓] rg: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:297:        // VERUS BUG FIX: `Bitmap::alloc_range` requires `size <= num_bits`. `alloc_contiguous`
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:547:        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on ...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[RESULT ✓] read_agent: Agent is still running after waiting 180s. agent_id: review-claude, agent_type: general-purpose, status: running, description: Independent final review (claude), elapsed: 205s, total_turns: 0, model: claude-opus-4.8, current_intent: "Checking AST consistency and drift", tool_calls_completed: 28, (ti...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+I'll wait for both reviewers to finish their analysis.
+[TOOL] read_agent: {'agent_id': 'review-codex', 'timeout': 180, 'wait': True}
+Let me view the remaining diffs and read bugs.md to confirm each bug-fix is documented.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for fn in "Inner::free" "Inner::share" "Inner::refcount" "Inner::is_covered"; do echo
+[RESULT ✓] bash: ############## Inner::free ##############
+## Inner::free (exec-only): MISMATCH
+
+--- source
++++ verus
+@@ -1,31 +1,48 @@
+     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
+-        let frame_number: usize = frame.into_frame_number().into_raw_value();
++        // VERUS BUG FIX: avoid i...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cat > /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md <<'EOF'
+
+[RESULT ✓] bash: 
+<shellId: 47 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md
+[RESULT ✓] view: 1. # Final Independent Review — `mm::phys::frame`
+2. 
+3. ## Spec Quality
+4. 
+5. Evidence reviewed:
+6. - `frame.rs`, `frame.spec.rs`, `frame.proof.rs` (direct file inspection)
+7. - `spec_drift.py` report: **No contract drift detected**.
+8. 
+9. Findings:
+10. - `Inner::*` contracts for in-scope methods...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+All 8 MISMATCHes explained: 7 are documented `VERUS BUG FIX` changes (avoiding panicking `into_frame_number()` unwrap), 1 (`Inner::alloc`) is just block-wrapping + stripped-ghost blanks (semantically equivalent). Let me read bugs.md and run spec drift + coverage, plus start full `make verify`.
+[TOOL] report_intent: Reconciling bugs and running drift
+[TOOL] bash: cat /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/bugs.md
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: # Bugs / Suspicious code — `mm::phys::frame`
+
+## [open] `Inner::alloc_range`: possible off-by-one between body and spec
+
+- Body (frame.rs:588-589, 598, 626):
+  - `start_frame_number = region.start().into_frame_number().into_raw_value()`
+  - `end_frame_number = start_frame_number + region.size() / me...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+DRIFT_EXIT=0
+<shellId: 49 completed w...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] apply_patch: *** Begin Patch
+*** Update File: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanv
+[RESULT ✓] apply_patch: Modified 1 file(s): /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md
+[RESULT ✓] view: 115. Assessment: **PASS**, verification error count observed: **0**.
+116. 
+117. ## Bug Summary (total + severities + reconciliation)
+118. 
+119. `bugs.md` entries reviewed: **5**
+120. 
+121. Reconciliation:
+122. 1. **[open] alloc_range off-by-one** → **Fixed in current code**.
+123.    - Current implem...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status --short
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-080059.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-080059.txt
+?? verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md
+<shellId: 50 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Completed. I wrote the full raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md`
+
+**Final verdict: PASS**
+
+**Blockers:** none  
+- `admit=0`, `assume=0` in frame module files  
+- All frame-module `external_body` functions are in `tcb-allowed.md`  
+- AST consistency checks passed (`VERUS REWRITE`: none; bug-fix comments consistent)  
+- `make verify-kernel MODULE=mm::phys` passed (exit 0)  
+- `make verify` passed (exit 0)
+
+Non-blocking findings are documented (notably weak/tautological wrapper error contracts and strict caller-coverage gaps).
+[RESULT ✓] read_agent: Agent completed. agent_id: review-codex, agent_type: general-purpose, status: completed, description: Independent final review (codex), elapsed: 242s, total_turns: 0, model: gpt-5.3-codex, duration: 242s
+
+Completed. I wrote the full raw review to:
+
+`/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Codex reviewer done (PASS). Waiting for the claude reviewer to finish.
+[TOOL] read_agent: {'agent_id': 'review-claude', 'timeout': 180, 'wait': True}
+
+[THINKING] Waiting for the code review from Claude now that Codex has passed.
+bugs.md is thorough. Spec drift = 0 (PASS). Let me verify git is clean, confirm the `internal_inv` strengthening exists, run function coverage, and kick off full `make verify` for regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git status ==="; git status --porcelain; echo "=== internal_inv clause 7 ==
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify 2>&1 | tee verus-ai-logs/nanvix-phys-phys-frame/final-review/verify_full.
+[RESULT ✓] bash: <command started in background with shellId: verifyfull>
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-080059.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/final-review/review-claude-20260615-080059.txt
+?? verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md
+=== internal_inv clause 7...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
