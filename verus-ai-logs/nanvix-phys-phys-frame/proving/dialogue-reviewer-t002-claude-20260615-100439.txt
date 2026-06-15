@@ -139,3 +139,43 @@ Turn 2
 ────────────────────────────────────────────────────────────
 Directive removed and invariant strengthened as required. Now let me run `make verify-kernel` myself to confirm exit 0, and check the x86_64 claim.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel 2>&1 | tee /tmp/vk2.log | tail -25; echo "EXIT=${PIPESTA
+[RESULT ✓] bash: 1186 |             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
+     |             ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheati...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Exit 0 now, but it was cached ("cached (no recompilation)") and I see what looks like a warning around line 1186. The checklist requires **0 warnings**. Let me check the full log and force a clean run.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && grep -nE "warning|error\[|verified, [0-9]+ error|E0080" /tmp/vk2.log | head
+
+[THINKING] I see the build completed successfully, but there's a warning flagged at line 1186 that I need to investigate. Let me examine the full log to identify what warnings or errors are present and verify the actual count against the checklist requirement of zero warnings.
+[RESULT ✓] bash: 
+<shellId: 2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && sed -n '1,60p' /tmp/vk2.log
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+These are `note:` trigger-selection messages, not warnings. But the run was cached — I need a genuine non-cached codegen to confirm the E0080 is truly gone. Let me force a rebuild by touching the proof file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && touch src/kernel/src/mm/phys/frame.proof.rs && make verify-kernel 2>&1 | te
+
+[THINKING] These are just informational notes, not actual warnings, so they don't affect the result. The cached run shows exit 0, but I need to verify the actual count since it didn't recompile. Looking back at the previous non-cached run from that earlier commit, it showed 112 verified with 0 errors, so I should confirm there's genuinely no E0080 error in this cached version.
