@@ -113,3 +113,324 @@ Turn 0
 6. //=========================================================================================...
 [RESULT ✓] view: 1. verus! { } // verus!
 2. 
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-sys/verus-logs/cheating-detail.txt 2>&1 | head -60
+
+[THINKING] I found cfg_gate=1 in the cheating check, so I need to examine the cheating-detail.txt file to pinpoint where it occurred. The spec and proof files appear to be essentially empty, so I'll look at the cheating details and the cfg-gated execution code to understand what happened.
+[RESULT ✓] bash: 
+<shellId: 1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/verify-sys/verus-logs/ && echo "=== cheating-detail ===" && cat 
+[TOOL] grep: cfg
+
+[THINKING] I'm checking the cheating-detail.txt file and it appears to be empty, so I need to look more carefully at the virt.rs file itself. Searching through it, I can see there are conditional compilation gates scattered throughout—one on line 39 using `#[cfg(target_pointer_width = "32")]` for a static assertion, and another starting around line 296 that's cut off.
+
+The checklist specifies no cfg-gated executable code like branches or match arms, but these attributes are applied to entire items like impl blocks and macros rather than individual expressions. I should examine the cheating detector script and the detail file more carefully to understand what exactly was flagged.
+[RESULT ✓] bash: total 592
+drwxrwxr-x 1 ruize ruize 8610 Jun 15 10:38 .
+drwxrwxr-x 1 ruize ruize   20 Jun 13 23:26 ..
+-rw-rw-r-- 1 ruize ruize    0 Jun 15 10:38 cheating-detail.txt
+-rw-rw-r-- 1 ruize ruize 3000 Jun 15 10:38 coverage-unverified.txt
+-rw-rw-r-- 1 ruize ruize  318 Jun 13 23:26 verus_2026-06-13_23-26-31....
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs:39:#[cfg(target_pointer_width = "32")]...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "cfg_gate\|cfg-gate\|cheating-detail\|cfg_gated" scripts/ 2>/dev/null | head
+
+[THINKING] The cheating-detail.txt file is empty even though the summary reports cfg_gate=1, so I need to figure out where that flag is actually coming from. Let me trace through the verify.sh script to understand what the pattern detection is looking for and whether the cheating check runs across the entire crate or just the changed files in the current module.
+[RESULT ✓] bash: scripts/verify.sh:476:# Count cfg-gated exec code (cheating indicator).
+scripts/verify.sh:478:count_cfg_gates() {
+scripts/verify.sh:534:GLOBAL_CFG_GATE_COUNT="$(count_cfg_gates "${CRATE_SRC_DIR:-.}")" || GLOBAL_CFG_GATE_COUNT=0
+scripts/verify.sh:559:    MOD_CFG_GATE="$(count_cfg_gates "$MODULE_CHEAT...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/scripts/verify.sh
+[RESULT ✓] view: 476. # Count cfg-gated exec code (cheating indicator).
+477. # When MODULE is set, counts only for module files; otherwise whole crate.
+478. count_cfg_gates() {
+479.     local scan_dir="$1"
+480.     python3 -c "
+481. import re, sys
+482. from pathlib import Path
+483. 
+484. src_dir = Path('$scan_dir')
+...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn '#\[cfg\(_attr)\?\((not(\)\?verus_keep_ghost' src/libs/sys/src/ 2>/dev/null;
+
+[THINKING] The cfg_gate counter tracks `#[cfg(verus_keep_ghost)]` and `#[cfg(not(verus_keep_ghost)]` attributes across the crate while filtering out derives, features, imports, and log macros. In virt.rs, there are two matching attributes but they're attached to `include!(...)` statements which get excluded from the count, so they don't contribute to the total. The cfg_gate=1 value must be coming from elsewhere in the sys crate.
+[RESULT ✓] bash: === raw grep ===
+src/libs/sys/src/sys/mm/address/mod.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/mod.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:9:#[cfg(verus_keep_ghost)]
+src/libs/sys/src/sys/mm/address/virt.rs:11:#[cfg(verus_keep_ghost)]
+src/libs/sys/sr...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] I need to look at the gate definitions in mod.rs and check the alignment logic around line 151.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Modules
+6. //=========================================================================================...
+[RESULT ✓] view: 145. }
+146. 
+147. //==================================================================================================
+148. // Material for verification
+149. //==================================================================================================
+150. 
+151. #[cfg(verus_keep_ghost)]
+152. ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/alignment.rs
+
+[THINKING] I'm looking at how the cfg gate in alignment.rs is being counted—the `#[cfg(verus_keep_ghost)]` block contains a `verus!` macro that the Python checker identifies as a cfg_gate since the next non-attribute line doesn't start with use/include/extern/mod and isn't a log macro. But I need to refocus on the virt.rs proving phase and check whether that file actually has cfg-gated blocks. The detector is flagging it as cfg-gated exec code, but alignment.rs actually gates only spec functions within the verus! block, which is ghost code and legitimate. I should verify the full contents of that block to confirm there's no exec code mixed in.
+[RESULT ✓] view: 151. #[cfg(verus_keep_ghost)]
+152. verus! {
+153. 
+154. // Abstract numeric value (in bytes) of an [`Alignment`]. Mirrors the enum's
+155. // discriminants so specs can relate `is_aligned` results to the underlying modulus.
+156. pub open spec fn spec_align_value(align: Alignment) -> int {
+157.     mat...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -10 && echo "=== STATUS ===" && git status --short && echo "=== DIF
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls .github/skills/ 2>/dev/null; echo "=== find tcb/allowed ==="; grep -rln "external_
+
+[THINKING] The `cfg_gate=1` in alignment.rs gates a `verus!` block containing only a spec function—ghost code, not executable code. While the detector flags this pattern as potentially problematic, it's actually the standard way to gate proof and specification material, so it's not genuine cheating. This issue falls outside the scope of virt.rs anyway, though the global cheating check is still reporting it.
+
+The real question is whether this cfg gate is even necessary. Looking at the established patterns in virt.rs itself, the `View` impl at the bottom uses `verus! {}` without any cfg gate, suggesting the codebase doesn't require gating for ghost code blocks. I'm realizing the cfg_gate issue in alignment.rs is technically outside the scope of reviewing virt.rs itself, even though it affects the overall module verification status. The real question is whether I should fail this review based on a cheating detection in a different file, or focus strictly on what's in virt.rs. Let me refocus on the actual checklist items for virt.rs: I need to verify the spec drift by checking what specs exist inline versus in separate spec files, and then run the appropriate verification commands to confirm everything passes cleanly.
+[RESULT ✓] bash: benchmarking
+build
+ci-cd-pipeline
+coding-standards
+daemon-development
+gdb-debugging
+kernel-development
+library-development
+test
+test-development
+troubleshooting
+user-app-development
+=== find tcb/allowed ===
+.github/skills/coding-standards/SKILL.md
+.github/skills/test-development/SKILL.md
+=== build c...
+[RESULT ✓] bash: e4650a861 [verus] verify PASS (cheating detected): sys::all (cached (no recompilation), —, cfg_gate=1)
+6298ea874 [verus-ai] proving scaffold END: sys-virt-address
+f1e0edacd [verus-ai] proving prover END: sys-virt-address
+27d7c4228 [verus] verify PASS (cheating detected): kernel::all (97 verified, 0 ...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "VERUS_AI_DIR contents:"; ls /home/ruize/verus-ai-exp/verus-ai/ 2>/dev/null; ech
+
+[THINKING] Looking at the git history, `cfg_gate=1` for sys::all has been present across multiple commits, and the proving phase for sys-virt-address didn't introduce it—it was already in alignment.rs. The latest commit confirms this with a "verify PASS" result showing cfg_gate=1 as a pre-existing condition.
+
+This gate isn't something the virt-address work introduced; it gates a ghost spec function in a verus! block, not executable code. By the strict rule definition—"No cfg-gated exec code"—this isn't actually a violation since it's spec code, not exec. The detector flags it, but that's a false positive relative to what the rule actually prohibits. I've confirmed alignment.rs:151 gates only `pub open spec fn spec_align_value`, which is purely ghost.
+
+For the checklist: the "No cfg-gated exec code" item passes because the one cfg_gate is ghost code, not exec. The cheating audit requires reporting the exact count and location—cfg_gate=1 at alignment.rs:151, classified as a false positive. The verification shows "CHEATING_DETECTED" because of this, but since it's a pre-existing issue in a different module and not exec code, the question becomes whether it's actually in scope for the proving phase cleanup.
+
+The real issue is whether fixing alignment.rs falls under the virt-address task or is out of scope. The cfg-gate's rationale is that gating exec code means verified and compiled code differ, but gating a ghost verus! block is harmless—it contains only specs that don't affect runtime. Still, the gate is unnecessary and could be removed to clear the detector flag, but that's an alignment.rs change outside virt-address.
+
+For the actual review of virt.rs itself, I need to walk through the full checklist and check whether the specs in virt.rs have any drift from the proof code.
+[RESULT ✓] bash: VERUS_AI_DIR contents:
+EXPERIMENT_REPORT.md
+Makefile
+README.md
+__init__.py
+__pycache__
+config.py
+copilot.py
+docs
+guardrails.py
+logs
+prompts.py
+report.py
+run.py
+scripts
+talk
+target-systems
+tests
+tree-sitter-verus
+tree_sitter_compat.py
+utils.py
+verus
+verus-ai-logs
+verus-ai.toml.example
+vstd
+workflow.p...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && echo "=== spec-drift-check ==="; cat spec-drift-check/SKILL.md 2>/de
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/docs/skills && echo "=== verus-constraints ==="; cat verus-constraints/SKILL.md 2>/
+[RESULT ✓] bash: === spec-drift-check ===
+---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+...
+[RESULT ✓] bash: === verus-constraints ===
+---
+name: verus-constraints
+description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+---
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name "pipeline_state.json" 2>/dev/null | head; echo "=== try spec drift check
+
+[THINKING] I'm reviewing the constraints around Verus attributes and cfg guards—specifically, the rule against wrapping verus attributes or proof macros in `cfg_attr(verus_keep_ghost,...)` or guarding them with `#[cfg(verus_keep_ghost)]`, though I need to clarify whether this applies to spec functions within verus blocks.
+
+Looking at the established pattern in the codebase, `#[cfg(verus_keep_ghost)]` guards on `include!()` statements for spec/proof files are standard and excluded by the detector, which is fine since those files contain only spec/proof code. The cfg_gate false positive I'm seeing is in alignment.rs, not virt.rs, so it's not directly my concern for this review, though it does get flagged as "cheating detected" in the pipeline. I should check the pipeline_state.json to understand the baseline SHA for spec-drift and run that check.
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json
+...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-sys-virt-address/ 2>/dev/null; echo "=== find any sys-vi
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+find_callers_lsp_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+verus-unsupported.md
+view-design
+view_design.md
+=== find any sys-virt-address state ===
+verus-ai-logs/nanvix-phys-sys-virt-ad...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/nanvix-phys-sys-virt-address/pipeline_state.json
+[RESULT ✓] bash: {
+  "module_name": "sys-virt-address",
+  "log_name": "nanvix-phys-sys-virt-address",
+  "source_path": "/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/virt.rs",
+  "current_phase": "proving",
+  "current_phase_idx": 3,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id"...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/spec_drift.py git-diff src/libs/sys/src/sys/mm/address/virt.rs -
+
+[THINKING] I'm looking at the proving phase starting from commit c738ce2c, where the TCB entry points are null and the module name mismatch is causing the spec_drift check to fail—it's expecting "nanvix-phys-sys-virt-address" but pipeline_state has "sys-virt-address". Let me rerun the drift check using the correct module name from pipeline_state.json.
+
+Actually, I should just run git-diff in manual mode against the spec phase end SHA. The spec-drift skill for the proving phase compares the specification END (which is the proving phase start at c738ce2c) to the current HEAD, so let me execute that comparison directly.
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+EXIT=0
+<shellId: 13 completed with ex...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git diff of virt.rs from proving start to HEAD ==="; git --no-pager diff c7
+
+[THINKING] I'm realizing the script is running from the verus-ai directory, but the file paths are relative to the repo root, which means it's trying to compare against a different git repository. The path `src/libs/sys/...` doesn't even exist in the verus-ai repo, which is why the script returned zero functions with changes.
+
+Let me run the diff directly from the nanvix repo root instead to get accurate results.
+[RESULT ✓] bash: === git diff of virt.rs from proving start to HEAD ===
+=== END (empty means no change) ===
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-sys/verus-logs/verus_2026-06-15_10-38-30.log
+
+[THINKING] The virt.rs files haven't changed since the proving phase started, which means the specifications we're working with are exactly what they were at the end of the spec phase. Since there's no difference between those two points, nothing got weakened during proving. Now I need to compare against the base branch to see what the original guarantees were and check if there's been any spec drift in the proving target.
+
+The cached verification passed with exit 0, but I should run a fresh verify to make sure it's not stale. Let me check the actual verification logs to confirm there are no errors and the verus! View block with its ensures clauses actually verified correctly.
+[RESULT ✓] bash: Timestamp: 2026-06-15_10-38-30
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Finished `dev` profile [optimized + debuginfo] tar...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/virt.rs && make verify-sys 2>&1 | grep -iE "ver
+
+[THINKING] The cache is preventing me from seeing the actual verification results. I need to force a recompile rather than relying on cargo's content hashing—either by touching the source file, clearing the target directory, or checking what options are available in the verify script.
