@@ -1,0 +1,28 @@
+Timestamp: 2026-06-15_09-03-47
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=22
+  admit=1
+  trusted=0
+  no_decreases=0
+  cfg_gate=9
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+   --> src/kernel/src/mm/phys/frame.rs:738:9
+    |
+738 |         auth@.initialized,
+    |         ^^^^
+    |
+    = help: For information on the new mutable reference support, see: https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

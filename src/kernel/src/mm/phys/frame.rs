@@ -753,8 +753,8 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     let r = instance();
     let res = r.alloc();
-    proof {
-        auth.borrow_mut().v.frames = (*r)@;
+    proof! {
+        auth.v.frames = (*r)@;
     }
     res
 }

@@ -274,3 +274,38 @@ Turn 13
 ────────────────────────────────────────────────────────────
 Now run module verification to capture the real result for this `alloc` experiment.
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+[RESULT ✓] bash: ⚠️  admit: 1
+    ⚠️  cfg-gated exec code: 3
+  Affected functions:
+    - frame.rs:137 alloc: external_body
+    - frame.rs:210 alloc_contiguous: external_body
+    - frame.rs:290 free: external_body
+    - frame.rs:368 share: external_body
+    - frame.rs:428 refcount: external_body
+    - frame.rs:481 bo...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -n "^error\|^warning\|-->" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_09-
+[RESULT ✓] bash: 20:error: expected one of `,`, `:`, or `}`, found `.`
+21:   --> src/kernel/src/mm/phys/frame.rs:757:13
+35:error: expected `;`, found `res`
+36:   --> src/kernel/src/mm/phys/frame.rs:758:6
+43:error: Misuse of #[verus_spec]
+44:   --> src/kernel/src/mm/phys/frame.rs:753:1
+49:error: could not compile `ke...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Syntax error: I used `proof {` instead of `proof! {` and an unnecessary `borrow_mut()`. Let me fix.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm hitting a syntax error in the proof macro where I'm trying to assign to the frames field. The issue is with how I'm chaining the method call and field assignment together — the compiler's expecting different syntax at that point. I need to reconsider whether I'm using the right macro syntax here, since I wrote `proof {` instead of `proof! {}`. Fixing the proof block syntax...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | grep -n "^error\|^warning\|-->\|veri
