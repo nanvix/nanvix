@@ -2,12 +2,13 @@
   "module_name": "hal-platform-microvm",
   "log_name": "nanvix-phys-hal-platform-microvm",
   "source_path": "/home/ruize/nanvix-phy/src/kernel/src/hal/platform/microvm/mod.rs",
-  "current_phase": "proving",
-  "current_phase_idx": 3,
+  "current_phase": "cheating-elimination",
+  "current_phase_idx": 4,
   "completed_phases": [
     "caller-analysis",
     "view-design",
-    "specification"
+    "specification",
+    "proving"
   ],
   "phase_results": {
     "caller-analysis": {
@@ -69,7 +70,8 @@
     "caller-analysis": "5b0379853300830015c683dc213bc0dab81de185",
     "view-design": "f5516e2f7948a69f6d186a5b6f6f942be7326758",
     "specification": "d9580512007a4cf08140f60a52eebf24e3c98fa8",
-    "proving": "25275ea30bc8770592c2421a737deadde3ce0440"
+    "proving": "25275ea30bc8770592c2421a737deadde3ce0440",
+    "cheating-elimination": "566e8155637b5fd61452d40d2c0265531e20f719"
   },
   "phase_history": [
     {
@@ -118,6 +120,12 @@
       "phase": "proving",
       "event": "end",
       "sha": "46a6823796b74743a4cc2ba6f1a4e4e173f59843",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "cheating-elimination",
+      "event": "start",
+      "sha": "566e8155637b5fd61452d40d2c0265531e20f719",
       "rollback_iter": 0
     }
   ],
