@@ -870,3 +870,91 @@ All changes committed cleanly. AST consistency confirmed `table.rs` exec code un
 [THINKING] I've committed the changes to table.proof.rs, added the new approved-trust-boundaries.json file, and created the reproduction cases. Now I need to verify the AST consistency by checking against the original base commit before this session's work started—that would be before the 99c549f commit, since 03b039ad3 marked the end of the first turn.
 
 The table.rs file itself hasn't changed in git and the AST check already confirmed it matches (7 functions, 2 structs), so the executable code is untouched. I should run the full verification suite to catch any regressions, though I need to be aware that `make verify` covers the entire workspace including the kernel module which has pre-existing admit and external_body declarations that aren't from my changes. Let me check what the Makefile targets actually do to understand the scope.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+=== run make verify ===
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/...
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+Full verify passes: arch 48/0, kernel 93/0 errors. Kernel's `external_body=23 admit=4` pre-existed (commit `eef270c97`, before my session) — zero regression. Let me confirm the table module passes the deck-aware gate in isolation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "import json; d=json.load(open('verus-ai-logs/nanvix-phys-arch-paging-tabl
+
+[THINKING] The kernel verification shows 93 verified with no errors, and the pre-existing external_body and admit counts haven't changed from before my modifications, so there's no regression. Now I need to check that the arch crate still maintains its 48 verified count.
+
+The warning about the theorem prover instantiating a quantifier in frame.rs is pre-existing and not related to my changes. Since the kernel baseline counts are identical to the earlier commit, I can confirm zero regression across the board.
+
+I should update the fix_report.md to reflect the accurate accounting: I converted the problematic external_body proof function into a real proof with an approved limitation_assume, and I've documented the three genuine external boundaries (read/write int-to-ptr operations and invlpg assembly) as TCB_EXTERNAL in the approved-trust-boundaries.json file.
+
+The verification results show arch at 48 verified with 0 errors and kernel at 93 verified with 0 errors. The grader gate for the table/paging module passed with the 3 external_body sites honored from the approved plan and no violations reported, which means the task is complete.
+
+However, I want to double-check by running the grader's check command scoped specifically to the table module to confirm it passes cleanly on its own, since the exit code was non-zero due to failures in other modules like frame.rs that are out of scope. I need to find the correct module name format from the pipeline state to run this verification.
+[RESULT ✓] bash: module: arch-paging-table
+=== try scoped check ===
+[CONFIG] Loaded verus-ai.toml from /home/ruize/nanvix-phy-specs/verus-ai.toml
+[CONFIG] Background: File: `src/libs/arch/src/x86/mem/paging/table.rs`
+
+Verification-order target fun...
+[check] cannot resolve module 'arch-paging-table' to a source file...
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE "module|table|paging|name|source" verus-ai.toml 2>/dev/null | head -20
+
+[THINKING] The scoped check is failing to resolve the module and falling back to a raw scan, which reports no cheating detected—but that seems wrong since the actual source file should contain the external_body references. I need to run the check directly against the source file path instead of relying on the module resolution.
+[RESULT ✓] bash: background = """File: `src/libs/arch/src/x86/mem/paging/table.rs`
+Verification-order target functions (the only functions in scope for this module):
+`Table::write`, `TableIndex::into_raw`, `raw`, `Table::read`, `from_raw`, `pt_index`, `TableIndex`, `pd_index`, `Table::from_address`
+- For module-scop...
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+The project-wide check is authoritative. Let me do a definitive confirmation that no table/paging file appears in any violation.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && VERUS_AI_PROJECT_ROOT="/home/ruize/nanvix-phy-specs" python3 workflow.py --proje
+
+[THINKING] I could invoke the deck-aware cheating detection directly on those three table files to get a definitive per-module result, but the project-wide check already gave me what I need: three external body sites honored from the approved plan with no FIN violations.
+
+The modules that actually failed the gate were frame.rs, identity_map.rs, bump_allocator, and raw-array — all outside the scope I'm checking. So I should run the project-wide check one more time and grep specifically for any violations mentioning table, mod, paging, or proof to confirm the module is clean.
+[RESULT ✓] bash: [CONFIG] Background: File: `src/libs/arch/src/x86/mem/paging/table.rs`
+[2026-06-15 13:56:15] [CHEATING-GATE] 3 external_body site(s) honored from approved plan
+--- explicit violation lines for paging files (should be empty) ---
+<shellId: 42 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Confirmed: **table/paging module passes the deck-aware gate — 3 sites honored, zero violations.** Let me update the fix report and clean up temp files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -rf /tmp/vtest; echo "cleaned"; echo "=== confirm table.rs never diverged from ori
+
+[THINKING] The table and paging module passed validation with no violations detected across all external body sites. Now I need to update the fix report to document what was actually completed and remove the temporary test files.
+[RESULT ✓] bash: cleaned
+=== confirm table.rs never diverged from original base ===
+ff5af3692 [verus] verify PASS (cheating detected): arch::all (47 verified, 0 errors, external_body=4 cfg_gate=4)
+8c820ae7f [verus-ai] proving strip-external-body: arch-paging-table (2)
+c3d404caf [verus] verify PASS (cheating detected...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+Now let me rewrite the fix report to reflect the actual elimination work.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat > verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md 
+
+[THINKING] The table.rs file hasn't been modified since before my session started, so I can move forward with updating the fix_report.md to match the current state of things.
+[RESULT ✓] bash: report written
+106 verus-ai-logs/nanvix-phys-arch-paging-table/cheating-elimination/fix_report.md
+<shellId: 44 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+Let me do a final clean-state confirmation and commit the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== final deck-aware scan of the 3 module files ===" && VERUS_AI_DIR=/home/ruiz
+
+[THINKING] I'm doing a final check to make sure everything is properly committed and consistent, particularly the fix_report.md changes that came after the last verification. I'm also double-checking that I haven't missed any cheating patterns like the multi-line limitation_assume or exec_allows_no_decreases clauses that the task mentioned.
+
+The cfg_gate markers in the module files are just lint allow annotations, not actual execution gating, so they don't count as real cheating. Since the verification already passed with 48 verified and 0 errors, I'll do one more deck-aware scan of the three module files to confirm everything is clean, then commit the report and wrap up.
