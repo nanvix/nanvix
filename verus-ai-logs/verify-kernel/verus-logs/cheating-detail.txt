@@ -20,10 +20,10 @@
     - mm/phys/mod.rs:82 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:117 book_mmio_regions: external_body
     - mm/phys/mod.spec.rs:73 ExLinkedList (struct): external_type_spec
-    - mm/virt/identity_map.proof.rs:27 lemma_map_idempotent: admit
-    - mm/virt/identity_map.proof.rs:40 lemma_map_on_success: admit
-    - mm/virt/identity_map.proof.rs:54 lemma_map_monotone: admit
-    - mm/virt/identity_map.proof.rs:65 lemma_map_preserves_inv: admit
+    - mm/virt/identity_map.proof.rs:25 lemma_map_idempotent: admit
+    - mm/virt/identity_map.proof.rs:38 lemma_map_on_success: admit
+    - mm/virt/identity_map.proof.rs:52 lemma_map_monotone: admit
+    - mm/virt/identity_map.proof.rs:63 lemma_map_preserves_inv: admit
     - mm/virt/identity_map.rs:522 ensure_pt: external_body
     - mm/virt/identity_map.rs:611 ensure_pte: external_body
     - mm/virt/identity_map.rs:699 identity_map_page: external_body

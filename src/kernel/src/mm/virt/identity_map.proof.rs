@@ -18,8 +18,6 @@
 
 verus! {
 
-use crate::hal::mem::spec_page_size;
-
 /// Idempotence: re-mapping an already-reachable page (when the mapper is live)
 /// leaves the abstract state unchanged. Backs the caller expectation that
 /// `identity_map_page` is a safe no-op on an already-mapped page (e.g. per page

@@ -1,0 +1,61 @@
+Timestamp: 2026-06-15_20-59-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::identity_map
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=25
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: cannot use type `arch::x86::mem::paging::pde::PageDirectoryEntry` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:522:14
+    |
+522 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: cannot use type `arch::x86::mem::paging::table::TableIndex` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:522:45
+    |
+522 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    |                                             ^^^^^^^^^^^^^^^^^^^
+...
+613 |     pte_idx: TableIndex,
+    |     -------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExTableIndex(arch::mem::paging::TableIndex);
+
+error: cannot use type `arch::x86::mem::paging::pte::PageTableEntry` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:612:5
+    |
+612 |     pt: Table<PageTableEntry>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: cannot use type `arch::x86::mem::paging::table::Table` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/identity_map.rs:522:14
+    |
+522 | fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+612 |     pt: Table<PageTableEntry>,
+    |     -------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(E)]
+            #[verifier::external_type_specification]
+            pub struct ExTable<E>(arch::mem::paging::Table<E>)
+            where
+            E: arch::mem::paging::TableEntry,;
+
+error: could not compile `kernel` (bin "kernel") due to 4 previous errors

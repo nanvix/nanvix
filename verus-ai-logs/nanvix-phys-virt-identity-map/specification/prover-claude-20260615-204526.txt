@@ -1055,3 +1055,22 @@ Turn 60
 ────────────────────────────────────────────────────────────
 Now run the module verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -70
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+Duplicate import (both files included in same module). Remove it from proof.rs.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] The duplicate `use` import in proof.rs conflicts since both files are included in the same module, so I need to remove it from proof.rs and rely on the one already in scope from spec.rs. The cheating check flagged external_body:3 as a warning and cross-referenced tcb-allowed.md, which is a good sign since it didn't actually fail the cheating detection, and the admit count shows 4 entries.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 1200 make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -70
