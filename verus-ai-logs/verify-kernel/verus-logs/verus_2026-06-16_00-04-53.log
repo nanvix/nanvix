@@ -1,0 +1,2035 @@
+Timestamp: 2026-06-16_00-04-53
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=31
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=28
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: `bump_allocator::BumpAllocError` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/vmem.rs:135:17
+    |
+135 | /  /                 PAGE_TABLE_ALLOCATOR
+136 | |  |                     .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+    | |  |_______________________________________________________________-
+137 | |                        .map_err(|e| {
+    | |   ______________________________-
+    | |   ______________________________|
+    | |  |
+138 | |  |                         error!("Vmem::new(): page directory allocation failed: {}", e);
+139 | |  |                         Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
+140 | |  |                     })?
+    | |__|_____________________-^
+    |    |_____________________|
+    |    |_____________________|
+    |
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExBumpAllocError(bump_allocator::BumpAllocError);
+
+error: `bump_allocator::impl&%1::alloc_as` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:135:17
+    |
+135 | /                 PAGE_TABLE_ALLOCATOR
+136 | |                     .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+    | |_______________________________________________________________^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<const N: usize, const A: usize, S, T> [bump_allocator::FixedSizeBumpAllocator::<N, A, S>::alloc_as] (_0: &bump_allocator::FixedSizeBumpAllocator<N, A, S>) -> core::result::Result<&'static mut core::mem::MaybeUninit<T>, bump_allocator::BumpAllocError>
+            where
+            S: bump_allocator::BssStorage,;
+
+error: cannot use type `kernel::mm::virt::page_table_allocator::PageTableBss` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:135:17
+    |
+135 |                   PAGE_TABLE_ALLOCATOR
+    |  _________________^-------------------
+136 | |                     .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+    | |_______________________________________________________________^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageTableBss(crate::mm::virt::page_table_allocator::PageTableBss);
+
+error: `bump_allocator::FixedSizeBumpAllocator` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/vmem.rs:135:17
+    |
+135 |                 PAGE_TABLE_ALLOCATOR
+    |                 ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(S)]
+            #[verifier::external_type_specification]
+            pub struct ExFixedSizeBumpAllocator<const N: usize, const A: usize, S>(bump_allocator::FixedSizeBumpAllocator<N, A, S>)
+            where
+            S: bump_allocator::BssStorage,;
+
+error: `alloc::collections::linked_list::impl&%7::new` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:147:13
+    |
+147 |         > = LinkedList::new();
+    |             ^^^^^^^^^^^^^^^^^
+...
+189 |         let mut kpages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
+    |                                                               -----------------
+...
+203 |             user_page_tables: LinkedList::new(),
+    |                               -----------------
+...
+229 |         > = LinkedList::new();
+    |             -----------------
+...
+243 |         let mut kernel_pages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
+    |                                                                     -----------------
+...
+266 |             user_page_tables: LinkedList::new(),
+    |                               -----------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [alloc::collections::LinkedList::<T>::new] () -> alloc::collections::LinkedList<T>;
+
+error: `alloc::collections::linked_list::impl&%8::pop_front` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:149:24
+     |
+ 149 |             let next = kernel_page_tables.pop_front();
+     |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 191 |             let next = kernel_pages.pop_front();
+     |                        ------------------------
+...
+2124 |             let next = self.user_page_tables.pop_front();
+     |                        ---------------------------------
+...
+2134 |             let next = self.kernel_pages.pop_front();
+     |                        -----------------------------
+...
+2144 |             let next = self.kernel_page_tables.pop_front();
+     |                        -----------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::pop_front] (_0: &alloc::collections::LinkedList<T, A>) -> core::option::Option<T>
+             where
+             A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:154:52
+    |
+154 |             let page_table_address: FrameAddress = page_table.physical_address()?;
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+236 |             let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
+    |                                                    -----------------------------------
+...
+346 |                 page_table.physical_address()?,
+    |                 -----------------------------
+...
+490 |                 let page_table_address: FrameAddress = page_table.physical_address()?;
+    |                                                        -----------------------------
+...
+746 |             if pt.borrow().1.physical_address()? == pgtab_addr {
+    |                --------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::physical_address] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::map` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:156:13
+    |
+156 |               pgdir.map(vaddr, page_table_address, false, AccessPermission::RDWR)?;
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+238 |               pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+    |               ------------------------------------------------------------------------------
+...
+344 | /             self.pgdir.map(
+345 | |                 pt_vaddr,
+346 | |                 page_table.physical_address()?,
+347 | |                 false,
+348 | |                 AccessPermission::RDWR,
+349 | |             )?;
+    | |_____________-
+...
+492 | /                 self.pgdir
+493 | |                     .map(pgtable_vaddr, page_table_address, false, AccessPermission::RDWR)?;
+    | |__________________________________________________________________________________________-
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory::<T>::map] (_0: &crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory<T>, _1: crate::hal::mem::types::address::page::PageTableAddress, _2: crate::hal::mem::types::address::frame::FrameAddress, _3: bool, _4: sys::mm::AccessPermission) -> core::result::Result<(), sys::error::Error>
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `sys::sys::mm::access::impl&%11::RDWR` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:156:57
+    |
+156 |             pgdir.map(vaddr, page_table_address, false, AccessPermission::RDWR)?;
+    |                                                         ^^^^^^^^^^^^^^^^^^^^^^
+...
+238 |             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+    |                                                                    ----------------------
+...
+348 |                 AccessPermission::RDWR,
+    |                 ----------------------
+...
+376 |                     AccessPermission::RDWR,
+    |                     ----------------------
+...
+493 |                     .map(pgtable_vaddr, page_table_address, false, AccessPermission::RDWR)?;
+    |                                                                    ----------------------
+
+error: `alloc::collections::linked_list::impl&%8::push_back` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:157:13
+    |
+157 |               kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+196 |               kpages.push_back(Rc::new(RefCell::new(entry)));
+    |               ----------------------------------------------
+...
+239 |               kernel_page_tables.push_back(entry.clone());
+    |               -------------------------------------------
+...
+250 |               kernel_pages.push_back(entry.clone());
+    |               -------------------------------------
+...
+356 | /             self.kernel_page_tables
+357 | |                 .push_back(Rc::new(RefCell::new((pt_vaddr, page_table))));
+    | |_________________________________________________________________________-
+...
+380 |                   self.kernel_pages.push_back(Rc::new(RefCell::new(kpage)));
+    |                   ---------------------------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::push_back] (_0: &alloc::collections::LinkedList<T, A>, _1: T)
+            where
+            A: core::alloc::Allocator,;
+
+error: `core::cell::impl&%30::new` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:157:44
+    |
+157 |             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+196 |             kpages.push_back(Rc::new(RefCell::new(entry)));
+    |                                      -------------------
+...
+357 |                 .push_back(Rc::new(RefCell::new((pt_vaddr, page_table))));
+    |                                    ------------------------------------
+...
+380 |                 self.kernel_pages.push_back(Rc::new(RefCell::new(kpage)));
+    |                                                     -------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [core::cell::RefCell::<T>::new] (_0: T) -> core::cell::RefCell<T>;
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:169:39
+     |
+ 169 |             let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
+     |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 258 |                 PageDirectoryAddress::from_raw_value(pgdir.physical_address()?.into_raw_value())?;
+     |                                                      ------------------------------------------
+...
+ 278 |         unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+     |                                           ---------------------------
+...
+1209 |         let dst_paddr: usize = new_frame.address().into_raw_value();
+     |                                ------------------------------------
+...
+1331 |         Ok(frame.into_raw_value() + offset)
+     |            ----------------------
+...
+1423 |                         usize_to_const_ptr(src_frame.into_raw_value() + offset),
+     |                                            --------------------------
+...
+1587 |                 let dst_phys_addr_raw: usize = dst_frame.into_raw_value() + offset;
+     |                                                --------------------------
+...
+1599 |                 let dst: *mut u8 = usize_to_mut_ptr(dst_frame.into_raw_value() + offset);
+     |                                                     --------------------------
+...
+1758 |                     let src_phys_addr: usize = src_frame.into_raw_value() + src_offset;
+     |                                                --------------------------
+1759 |                     let dst_phys_addr: usize = dst_frame.into_raw_value() + dst_offset;
+     |                                                --------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::into_raw_value] (_0: crate::hal::mem::types::address::frame::FrameAddress) -> usize;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:169:39
+    |
+169 |             let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+258 |                 PageDirectoryAddress::from_raw_value(pgdir.physical_address()?.into_raw_value())?;
+    |                                                      ------------------------
+...
+277 |         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
+    |                                        -----------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory::<T>::physical_address] (_0: &crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory<T>) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::mem::types::address::pd::PageDirectoryAddress::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:171:17
+    |
+171 |                 PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+258 |                 PageDirectoryAddress::from_raw_value(pgdir.physical_address()?.into_raw_value())?;
+    |                 --------------------------------------------------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::mem::types::address::pd::PageDirectoryAddress::from_raw_value] (_0: usize) -> core::result::Result<hal::mem::types::address::pd::PageDirectoryAddress, sys::error::Error>;
+
+error: `arch::x86::cpu::cr3::Cr3Register` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/vmem.rs:172:17
+    |
+172 |               let kernel_cr3: Cr3Register = Cr3Register {
+    |  _________________^^^^^^^^^^________________-
+173 | |                 page_level_write_through: PageLevelWriteThroughFlag::Disabled,
+174 | |                 page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
+175 | |                 paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
+...   |
+183 | |                 })?,
+184 | |             };
+    | |_____________-
+185 |               super::identity_map_init(pd_paddr, kernel_cr3)?;
+    |                                                  ----------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExCr3Register(arch::cpu::cr3::Cr3Register);
+
+error: `arch::x86::cpu::cr3::PageLevelWriteThroughFlag` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/vmem.rs:173:43
+    |
+173 |                 page_level_write_through: PageLevelWriteThroughFlag::Disabled,
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageLevelWriteThroughFlag(arch::cpu::cr3::PageLevelWriteThroughFlag);
+
+error: `arch::x86::cpu::cr3::PageLevelCacheDisableFlag` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/vmem.rs:174:43
+    |
+174 |                 page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPageLevelCacheDisableFlag(arch::cpu::cr3::PageLevelCacheDisableFlag);
+
+error: `arch::x86::cpu::cr3::PagingStructureBaseAddress` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+   --> src/kernel/src/mm/virt/vmem.rs:175:48
+    |
+175 |                         paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
+    |        ________________________________________________^
+    |       |________________________________________________|
+    |  ____||________________________________________________|
+176 | |    ||                     pd_paddr_raw as u32,
+177 | |    ||                 )
+    | |    ||_________________-
+178 | |    |                  .ok_or_else(|| {
+...   |    |
+183 | |    |                  })?,
+    | |    |___________________-^
+    | |________________________|
+    |
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::external_type_specification]
+            pub struct ExPagingStructureBaseAddress(arch::cpu::cr3::PagingStructureBaseAddress);
+
+error: `arch::x86::cpu::cr3::impl&%2::new` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:175:48
+    |
+175 |                   paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
+    |  ________________________________________________^
+176 | |                     pd_paddr_raw as u32,
+177 | |                 )
+    | |_________________^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::cpu::cr3::PagingStructureBaseAddress::new] (_0: u32) -> core::option::Option<arch::cpu::cr3::PagingStructureBaseAddress>;
+
+error: cannot use function `kernel::mm::virt::identity_map::init` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:185:13
+    |
+185 |             super::identity_map_init(pd_paddr, kernel_cr3)?;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            assume_specification [crate::mm::virt::identity_map::init] (_0: crate::hal::mem::types::address::pd::PageDirectoryAddress, _1: arch::cpu::cr3::Cr3Register) -> core::result::Result<(), sys::error::Error>;
+
+error: `verus_builtin::impl&%5::assume_new` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:205:24
+    |
+205 |             vmem_view: Ghost::assume_new(),
+    |                        ^^^^^^^^^^^^^^^^^^^
+...
+268 |             vmem_view: Ghost::assume_new(),
+    |                        -------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<A> [vstd::prelude::Ghost::<A>::assume_new] () -> vstd::prelude::Ghost<A>;
+
+error: `alloc::collections::linked_list::Iter` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:230:13
+     |
+ 230 |              let mut kernel_page_table_iter = from.kernel_page_tables.iter();
+     |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^   ------------------------------
+ 231 |              loop {
+ 232 |                  let entry = match kernel_page_table_iter.next() {
+     |                                    -----------------------------
+...
+ 244 |              let mut kernel_page_iter = from.kernel_pages.iter();
+     |                  --------------------   ------------------------
+ 245 |              loop {
+ 246 |                  let entry = match kernel_page_iter.next() {
+     |                                    -----------------------
+...
+ 795 |              let mut user_page_table_iter = self.user_page_tables.iter();
+     |                  ------------------------   ----------------------------
+ 796 |              loop {
+ 797 |                  let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+     |                                                                ---------------------------
+...
+ 850 |              let mut user_page_table_iter = self.user_page_tables.iter();
+     |                  ------------------------   ----------------------------
+ 851 |              loop {
+ 852 |                  let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+     |                                                                ---------------------------
+...
+ 900 |              let mut user_page_table_iter = self.user_page_tables.iter();
+     |                  ------------------------   ----------------------------
+ 901 |              loop {
+ 902 |                  let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+     |                                                                ---------------------------
+...
+ 954 |              let mut user_page_table_iter = self.user_page_tables.iter();
+     |                  ------------------------   ----------------------------
+ 955 |              loop {
+ 956 |                  let (pgtab_addr, page_table) = match user_page_table_iter.next() {
+     |                                                       ---------------------------
+...
+1924 |                  let at = self
+     |     ______________________-
+     |  __|______________________|
+1925 | |  |                 .user_page_tables
+1926 | |  |                 .iter()
+     | |  |_______________________-
+1927 | |                    .position(|entry| entry.0 == pgtable_vaddr)
+     | |______________________________________________________________-
+     |
+     = help: The following declaration may resolve this error:
+             #[verifier::reject_recursive_types(T)]
+             #[verifier::external_type_specification]
+             pub struct ExIter<'a, T>(alloc::collections::linked_list::Iter<'a, T>);
+
+error: `alloc::collections::linked_list::impl&%8::iter` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:230:42
+     |
+ 230 |           let mut kernel_page_table_iter = from.kernel_page_tables.iter();
+     |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 244 |           let mut kernel_page_iter = from.kernel_pages.iter();
+     |                                      ------------------------
+...
+ 795 |           let mut user_page_table_iter = self.user_page_tables.iter();
+     |                                          ----------------------------
+...
+ 850 |           let mut user_page_table_iter = self.user_page_tables.iter();
+     |                                          ----------------------------
+...
+ 900 |           let mut user_page_table_iter = self.user_page_tables.iter();
+     |                                          ----------------------------
+...
+ 954 |           let mut user_page_table_iter = self.user_page_tables.iter();
+     |                                          ----------------------------
+...
+1924 |               let at = self
+     |  ______________________-
+1925 | |                 .user_page_tables
+1926 | |                 .iter()
+     | |_______________________-
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::iter] (_0: &alloc::collections::LinkedList<T, A>) -> alloc::collections::linked_list::Iter<'_, T>
+             where
+             A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%10::next` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:232:31
+    |
+232 |             let entry = match kernel_page_table_iter.next() {
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+246 |             let entry = match kernel_page_iter.next() {
+    |                               -----------------------
+...
+797 |             let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+    |                                                           ---------------------------
+...
+852 |             let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+    |                                                           ---------------------------
+...
+902 |             let (lookup_pgtable_addr, page_table) = match user_page_table_iter.next() {
+    |                                                           ---------------------------
+...
+956 |             let (pgtab_addr, page_table) = match user_page_table_iter.next() {
+    |                                                  ---------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a, T> [<alloc::collections::linked_list::Iter<'a, T> as core::iter::Iterator>::next] (_0: &alloc::collections::linked_list::Iter<'a, T>) -> core::option::Option<&'a T>;
+
+error: `core::cell::impl&%46::deref` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:236:52
+     |
+ 236 |             let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
+     |                                                    ^^^^^^^^^^^^^^
+ 237 |             // FIXME: do not be so open about permissions.
+ 238 |             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+     |                       --------------
+...
+ 367 |             if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
+     |                --------------
+...
+ 746 |             if pt.borrow().1.physical_address()? == pgtab_addr {
+     |                -----------
+...
+2083 |             match pt_ref.1.is_page_present(page_address) {
+     |                   ------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<'a, T> [<core::cell::Ref<'a, T> as core::ops::Deref>::deref] (_0: &core::cell::Ref<'a, T>) -> &T
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: `core::cell::Ref` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:236:52
+     |
+ 236 |             let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
+     |                                                    ^^^^^^^^^^^^^^
+ 237 |             // FIXME: do not be so open about permissions.
+ 238 |             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+     |                       --------------
+...
+ 367 |             if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
+     |                --------------
+...
+ 746 |             if pt.borrow().1.physical_address()? == pgtab_addr {
+     |                -----------
+...
+2082 |             let pt_ref = page_table.borrow();
+     |                 ------   -------------------
+2083 |             match pt_ref.1.is_page_present(page_address) {
+     |                   ------
+     |
+     = help: The following declaration may resolve this error:
+             #[verifier::reject_recursive_types(T)]
+             #[verifier::external_type_specification]
+             pub struct ExRef<'b, T>(core::cell::Ref<'b, T>)
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: `core::cell::impl&%31::borrow` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:236:52
+     |
+ 236 |             let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
+     |                                                    ^^^^^^^^^^^^^^
+ 237 |             // FIXME: do not be so open about permissions.
+ 238 |             pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+     |                       --------------
+...
+ 367 |             if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
+     |                --------------
+...
+ 746 |             if pt.borrow().1.physical_address()? == pgtab_addr {
+     |                -----------
+...
+2082 |             let pt_ref = page_table.borrow();
+     |                          -------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [core::cell::RefCell::<T>::borrow] (_0: &core::cell::RefCell<T>) -> core::cell::Ref<'_, T>
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: cannot use function `kernel::mm::virt::identity_map::sync_kernel_pdes` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:259:13
+    |
+259 |             super::sync_kernel_pdes(target_pd_paddr)?;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            assume_specification [crate::mm::virt::identity_map::sync_kernel_pdes] (_0: crate::hal::mem::types::address::pd::PageDirectoryAddress) -> core::result::Result<(), sys::error::Error>;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::load_page_directory` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:278:18
+    |
+278 |         unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::arch::x86::mem::mmu::load_page_directory] (_0: usize);
+
+error: cannot use function `kernel::hal::mem::types::address::page::PageTableAddress::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:325:42
+     |
+ 325 |           let pt_vaddr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  __________________________________________^
+ 326 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 327 | |         )?);
+     | |___________^
+...
+ 474 |               let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
+     |                                                     ----------------------------
+...
+ 790 |           let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  ____________________________________________-
+ 791 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 792 | |         )?);
+     | |___________-
+...
+ 846 |           let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  ____________________________________________-
+ 847 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 848 | |         )?);
+     | |___________-
+...
+ 896 |           let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  ____________________________________________-
+ 897 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 898 | |         )?);
+     | |___________-
+...
+1024 |           let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
+     |                                                 ------------------------------------
+...
+1070 |           let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
+     |                                                 ------------------------------------
+...
+1123 |           let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
+     |                                                 ------------------------------------
+...
+1881 |                   let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
+     |                                                         ----------------------------
+...
+1969 |               let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
+     |                                                     ----------------------------
+...
+2059 |               let pde: PageDirectoryEntry = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
+     |                                                                       ----------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::mem::types::address::page::PageTableAddress::new] (_0: crate::hal::mem::types::address::aligned::pgtab::PageTableAligned<sys::mm::VirtualAddress>) -> crate::hal::mem::types::address::page::PageTableAddress;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::pgtab::PageTableAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:325:64
+     |
+ 325 |           let pt_vaddr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  ________________________________________________________________^
+ 326 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 327 | |         )?);
+     | |_________^
+...
+ 471 |               let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  ___________________________________________________________-
+ 472 | |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 473 | |             )?;
+     | |_____________-
+...
+ 790 |           let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  __________________________________________________________________-
+ 791 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 792 | |         )?);
+     | |_________-
+...
+ 846 |           let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  __________________________________________________________________-
+ 847 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 848 | |         )?);
+     | |_________-
+...
+ 896 |           let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
+     |  __________________________________________________________________-
+ 897 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+ 898 | |         )?);
+     | |_________-
+...
+1021 |           let pgtab_aligned: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  _______________________________________________________________-
+1022 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+1023 | |         )?;
+     | |_________-
+...
+1067 |           let pgtab_aligned: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  _______________________________________________________________-
+1068 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+1069 | |         )?;
+     | |_________-
+...
+1120 |           let pgtab_aligned: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  _______________________________________________________________-
+1121 | |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+1122 | |         )?;
+     | |_________-
+...
+1878 |                   let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  _______________________________________________________________-
+1879 | |                     ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+1880 | |                 )?;
+     | |_________________-
+...
+1966 |               let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  ___________________________________________________________-
+1967 | |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+1968 | |             )?;
+     | |_____________-
+...
+2055 |               let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+     |  ___________________________________________________________-
+2056 | |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+2057 | |             )?;
+     | |_____________-
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [<crate::hal::mem::types::address::aligned::pgtab::PageTableAligned<T> as sys::mm::Address>::crate::from_raw_value] (_0: usize) -> core::result::Result<hal::mem::types::address::aligned::pgtab::PageTableAligned<T>, sys::error::Error>
+             where
+             T: sys::mm::Address,;
+
+error: `sys::sys::mm::alignment::align_down` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:326:13
+     |
+ 326 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 472 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                 --------------------------------------------------------------
+...
+ 791 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             --------------------------------------------------------------
+...
+ 847 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             --------------------------------------------------------------
+...
+ 897 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             --------------------------------------------------------------
+...
+1022 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             --------------------------------------------------------------
+...
+1068 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             --------------------------------------------------------------
+...
+1121 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |             --------------------------------------------------------------
+...
+1268 |         let start: usize = ::sys::mm::align_down(addr.into_raw_value(), PAGE_ALIGNMENT);
+     |                            ------------------------------------------------------------
+...
+1275 |         let last_page: usize = ::sys::mm::align_down(end_inclusive, PAGE_ALIGNMENT);
+     |                                ----------------------------------------------------
+...
+1879 |                     ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                     --------------------------------------------------------------
+...
+1967 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                 --------------------------------------------------------------
+...
+2056 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                 --------------------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [sys::mm::align_down] (_0: usize, _1: sys::mm::Alignment) -> usize;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:326:35
+     |
+ 326 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+ 472 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                       ----------------------
+...
+ 791 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ----------------------
+...
+ 847 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ----------------------
+...
+ 897 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ----------------------
+...
+1022 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ----------------------
+...
+1068 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ----------------------
+...
+1121 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                   ----------------------
+...
+1329 |         let offset: usize = vaddr.into_raw_value() - page_aligned.into_raw_value();
+     |                                                      -----------------------------
+...
+1413 |                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
+     |                                                            ----------------------
+...
+1552 |             let offset: usize = dst.into_raw_value() - vaddr.into_raw_value();
+     |                                                        ----------------------
+...
+1740 |                 let src_offset: usize = cur_src.into_raw_value() - src_page.into_raw_value();
+     |                                                                    -------------------------
+...
+1746 |                 let dst_offset: usize = cur_dst.into_raw_value() - dst_page.into_raw_value();
+     |                                                                    -------------------------
+...
+1814 |         let base: *mut u8 = usize_to_mut_ptr(dst.into_raw_value());
+     |                                              --------------------
+...
+1879 |                     ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                           ----------------------
+...
+1967 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                       ----------------------
+...
+2056 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                       ----------------------
+...
+2095 |                         FrameAddress::new(PageAligned::from_raw_value(vaddr.into_raw_value())?);
+     |                                                                       ----------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::into_raw_value] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> usize
+             where
+             T: sys::mm::Address,;
+
+error: `arch::x86::mem::constants::PGTAB_ALIGNMENT` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:326:59
+     |
+ 326 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ^^^^^^^^^^^^^^^
+...
+ 472 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                               ---------------
+...
+ 791 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+ 847 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+ 897 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1022 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1068 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1121 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1879 |                     ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                                   ---------------
+...
+1967 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                               ---------------
+...
+2056 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                               ---------------
+
+error: `sys::sys::mm::alignment::Alignment` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+    --> src/kernel/src/mm/virt/vmem.rs:326:59
+     |
+ 326 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ^^^^^^^^^^^^^^^
+...
+ 472 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                               ---------------
+...
+ 791 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+ 847 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+ 897 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1022 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1068 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1121 |             ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                           ---------------
+...
+1268 |         let start: usize = ::sys::mm::align_down(addr.into_raw_value(), PAGE_ALIGNMENT);
+     |                                                                         --------------
+...
+1275 |         let last_page: usize = ::sys::mm::align_down(end_inclusive, PAGE_ALIGNMENT);
+     |                                                                     --------------
+...
+1328 |             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
+     |                                                        --------------
+...
+1412 |                     PageAligned::from_address(src.align_down(PAGE_ALIGNMENT))?;
+     |                                                              --------------
+...
+1538 |                 match PageAligned::from_address(dst.align_down(PAGE_ALIGNMENT)) {
+     |                                                                --------------
+...
+1739 |                     PageAligned::from_address(cur_src.align_down(PAGE_ALIGNMENT))?;
+     |                                                                  --------------
+...
+1745 |                     PageAligned::from_address(cur_dst.align_down(PAGE_ALIGNMENT))?;
+     |                                                                  --------------
+...
+1879 |                     ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                                   ---------------
+...
+1967 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                               ---------------
+...
+2056 |                 ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+     |                                                               ---------------
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::read_pde` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:330:45
+     |
+ 330 |         let pde: PageDirectoryEntry = match self.pgdir.read_pde(pt_vaddr) {
+     |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 476 |             let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+     |                                                 ----------------------------------
+...
+1883 |                 let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+     |                                                     ----------------------------------
+...
+1971 |             let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+     |                                                 ----------------------------------
+...
+2059 |             let pde: PageDirectoryEntry = match self.pgdir.read_pde(PageTableAddress::new(vaddr)) {
+     |                                                 -------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory::<T>::read_pde] (_0: &crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory<T>, _1: crate::hal::mem::types::address::page::PageTableAddress) -> core::option::Option<arch::mem::paging::PageDirectoryEntry>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `arch::x86::mem::paging::pde::impl&%1::is_present` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:340:13
+     |
+ 340 |         if !pde.is_present() {
+     |             ^^^^^^^^^^^^^^^^
+...
+ 487 |             if !pde.is_present() {
+     |                 ----------------
+...
+ 728 |         if !pde.is_present() {
+     |             ----------------
+...
+1894 |                 if !pde.is_present() {
+     |                     ----------------
+...
+1981 |             if !pde.is_present() {
+     |                 ----------------
+...
+2069 |             if !pde.is_present() {
+     |                 ----------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [arch::mem::paging::PageDirectoryEntry::is_present] (_0: &arch::mem::paging::PageDirectoryEntry) -> bool;
+
+error: `alloc::collections::linked_list::IterMut` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:361:13
+    |
+361 |         let mut kernel_page_table_iter = self.kernel_page_tables.iter_mut();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^   ----------------------------------
+362 |         loop {
+363 |             let entry = match kernel_page_table_iter.next() {
+    |                               -----------------------------
+...
+740 |         let mut kernel_page_table_iter = self.kernel_page_tables.iter_mut();
+    |             --------------------------   ----------------------------------
+741 |         loop {
+742 |             let pt = match kernel_page_table_iter.next() {
+    |                            -----------------------------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExIterMut<'a, T>(alloc::collections::linked_list::IterMut<'a, T>);
+
+error: `alloc::collections::linked_list::impl&%8::iter_mut` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:361:42
+    |
+361 |         let mut kernel_page_table_iter = self.kernel_page_tables.iter_mut();
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+740 |         let mut kernel_page_table_iter = self.kernel_page_tables.iter_mut();
+    |                                          ----------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::iter_mut] (_0: &alloc::collections::LinkedList<T, A>) -> alloc::collections::linked_list::IterMut<'_, T>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%15::next` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:363:31
+    |
+363 |             let entry = match kernel_page_table_iter.next() {
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+742 |             let pt = match kernel_page_table_iter.next() {
+    |                            -----------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a, T> [<alloc::collections::linked_list::IterMut<'a, T> as core::iter::Iterator>::next] (_0: &alloc::collections::linked_list::IterMut<'a, T>) -> core::option::Option<&'a mut T>;
+
+error: cannot use function `kernel::hal::mem::types::address::page::PageTableAddress::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:367:16
+    |
+367 |             if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^    -------------------------
+...
+682 |             if addr.into_raw_value() == pt_vaddr.into_raw_value() {
+    |                ---------------------    -------------------------
+...
+694 |                         if addr.into_raw_value() == pt_vaddr.into_raw_value() {
+    |                            ---------------------    -------------------------
+...
+960 |             let base: usize = pgtab_addr.into_raw_value();
+    |                               ---------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::mem::types::address::page::PageTableAddress::into_raw_value] (_0: crate::hal::mem::types::address::page::PageTableAddress) -> usize;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::map` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:370:17
+     |
+ 370 | /                 entry.borrow_mut().1.map(
+ 371 | |                     PageAddress::new(vaddr),
+ 372 | |                     kpage.frame_address(),
+ 373 | |                     true,
+...    |
+ 376 | |                     AccessPermission::RDWR,
+ 377 | |                 )?;
+     | |_________________^
+...
+ 507 |           page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+     |           -------------------------------------------------------------------------------------
+...
+2096 | /                     pt_mut.1.map(
+2097 | |                         page_address,
+2098 | |                         frame_addr,
+2099 | |                         false, // user-accessible (MMIO regions are mapped for user processes)
+...    |
+2102 | |                         access,
+2103 | |                     )?;
+     | |_____________________-
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::map] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress, _2: crate::hal::mem::types::address::frame::FrameAddress, _3: bool, _4: bool, _5: bool, _6: sys::mm::AccessPermission) -> core::result::Result<(), sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `core::cell::impl&%55::deref_mut` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:370:17
+     |
+ 370 |                 entry.borrow_mut().1.map(
+     |                 ^^^^^^^^^^^^^^^^^^
+...
+2096 |                     pt_mut.1.map(
+     |                     ------
+...
+2106 |                     pt_mut.1.ctrl(false, page_address, access)?;
+     |                     ------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<'a, T> [<core::cell::RefMut<'a, T> as core::ops::DerefMut>::deref_mut] (_0: &core::cell::RefMut<'a, T>) -> &T
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: `core::cell::RefMut` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:370:17
+     |
+ 370 |                 entry.borrow_mut().1.map(
+     |                 ^^^^^^^^^^^^^^^^^^
+...
+2090 |             let mut pt_mut = page_table.borrow_mut();
+     |                 ----------   -----------------------
+2091 |             // If the PTE is not present, create an identity-mapped entry first.
+2092 |             match pt_mut.1.is_page_present(page_address) {
+     |                   ------
+...
+2096 |                     pt_mut.1.map(
+     |                     ------
+...
+2106 |                     pt_mut.1.ctrl(false, page_address, access)?;
+     |                     ------
+     |
+     = help: The following declaration may resolve this error:
+             #[verifier::reject_recursive_types(T)]
+             #[verifier::external_type_specification]
+             pub struct ExRefMut<'b, T>(core::cell::RefMut<'b, T>)
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: `core::cell::impl&%31::borrow_mut` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:370:17
+     |
+ 370 |                 entry.borrow_mut().1.map(
+     |                 ^^^^^^^^^^^^^^^^^^
+...
+2090 |             let mut pt_mut = page_table.borrow_mut();
+     |                              -----------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [core::cell::RefCell::<T>::borrow_mut] (_0: &core::cell::RefCell<T>) -> core::cell::RefMut<'_, T>
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: cannot use function `kernel::hal::mem::types::address::page::PageAddress::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:371:21
+     |
+ 371 |                     PageAddress::new(vaddr),
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 507 |         page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+     |                        -----------------------
+...
+ 789 |         let page_addr: PageAddress = PageAddress::new(vaddr);
+     |                                      -----------------------
+...
+ 845 |         let page_addr: PageAddress = PageAddress::new(vaddr);
+     |                                      -----------------------
+...
+ 895 |         let page_addr: PageAddress = PageAddress::new(vaddr);
+     |                                      -----------------------
+...
+1027 |         page_table.mark_cow(PageAddress::new(vaddr))
+     |                             -----------------------
+...
+1073 |         page_table.unmark_cow(PageAddress::new(vaddr))
+     |                               -----------------------
+...
+1126 |         page_table.replace_cow_frame(PageAddress::new(vaddr), new_frame)
+     |                                      -----------------------
+...
+1903 |             let page_address: PageAddress = PageAddress::new(vaddr);
+     |                                             -----------------------
+...
+1990 |         let page_address: PageAddress = PageAddress::new(vaddr);
+     |                                         -----------------------
+...
+2078 |         let page_address: PageAddress = PageAddress::new(vaddr);
+     |                                         -----------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::mem::types::address::page::PageAddress::new] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<sys::mm::VirtualAddress>) -> crate::hal::mem::types::address::page::PageAddress;
+
+error: cannot use function `kernel::mm::virt::kpage::KernelPage::frame_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:372:21
+    |
+372 |                     kpage.frame_address(),
+    |                     ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::virt::kpage::KernelPage::frame_address] (_0: &crate::mm::virt::kpage::KernelPage) -> crate::hal::mem::types::address::frame::FrameAddress;
+
+error: cannot use function `kernel::mm::virt::manager::VirtMemoryManager::get_mut` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:409:55
+    |
+409 |             let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a> [crate::mm::virt::manager::VirtMemoryManager::get_mut] () -> &'a crate::mm::virt::manager::VirtMemoryManager;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:413:55
+    |
+413 |         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+    |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+437 |         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+    |                                                       -------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::new] (_0: T) -> crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::alloc_kernel_frame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:433:13
+    |
+433 |             unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::manager::PhysMemoryManager::alloc_kernel_frame] (_0: &crate::mm::phys::manager::PhysMemoryManager) -> core::result::Result<mm::phys::kframe::KernelFrame, sys::error::Error>;
+
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::get_mut` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:433:22
+     |
+ 433 |             unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1206 |         let new_frame: UserFrame = unsafe { PhysMemoryManager::get_mut() }.alloc_user_frame()?;
+     |                                             ----------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<'a> [crate::mm::phys::manager::PhysMemoryManager::get_mut] () -> &'a crate::mm::phys::manager::PhysMemoryManager;
+
+error: cannot use function `kernel::mm::phys::kframe::KernelFrame::clear` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:434:9
+    |
+434 |         kframe.clear()?;
+    |         ^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::phys::kframe::KernelFrame::clear] (_0: &crate::mm::phys::kframe::KernelFrame) -> core::result::Result<(), sys::error::Error>;
+
+error: cannot use function `kernel::mm::virt::kpage::KernelPage::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:435:33
+    |
+435 |         let kpage: KernelPage = KernelPage::new(kframe);
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::mm::virt::kpage::KernelPage::new] (_0: crate::mm::phys::kframe::KernelFrame) -> crate::mm::virt::kpage::KernelPage;
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::into_inner` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:463:32
+     |
+ 463 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ^^^^^^^^^^^^^^^^^^
+...
+ 542 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+1015 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+1061 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+1114 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+1175 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+1863 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+1958 |         if !Self::is_user_addr(vaddr.into_inner()) {
+     |                                ------------------
+...
+2047 |         if !Self::is_kernel_addr(vaddr.into_inner()) {
+     |                                  ------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::mem::types::address::aligned::page::PageAligned::<T>::into_inner] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<T>) -> T
+             where
+             T: sys::mm::Address,;
+
+error: `alloc::collections::linked_list::impl&%8::push_front` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:499:17
+    |
+499 | /                 self.user_page_tables
+500 | |                     .push_front((pgtable_vaddr, page_table));
+    | |____________________________________________________________^
+...
+707 |               self.user_page_tables.push_front(entry);
+    |               ---------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::push_front] (_0: &alloc::collections::LinkedList<T, A>, _1: T)
+            where
+            A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::mm::phys::upool::UserFrame::address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:507:49
+     |
+ 507 |         page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+     |                                                 ^^^^^^^^^^^^^^^^
+...
+1209 |         let dst_paddr: usize = new_frame.address().into_raw_value();
+     |                                -------------------
+...
+1214 |         let new_frame_addr: FrameAddress = new_frame.address();
+     |                                            -------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::mm::phys::upool::UserFrame::address] (_0: &crate::mm::phys::upool::UserFrame) -> crate::hal::mem::types::address::frame::FrameAddress;
+
+error: cannot use function `kernel::mm::phys::upool::UserFrame::leak` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:514:9
+     |
+ 514 |         uframe.leak();
+     |         ^^^^^^^^^^^^^
+...
+1218 |         let _ = new_frame.leak();
+     |                 ----------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::mm::phys::upool::UserFrame::leak] (_0: crate::mm::phys::upool::UserFrame) -> crate::hal::mem::types::address::frame::FrameAddress;
+
+error: `sys::sys::config::memory_layout::USER_BASE` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:555:22
+    |
+555 |         virt_addr >= config::memory_layout::USER_BASE && virt_addr < config::memory_layout::USER_END
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `sys::sys::config::memory_layout::USER_END` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:555:70
+    |
+555 |         virt_addr >= config::memory_layout::USER_BASE && virt_addr < config::memory_layout::USER_END
+    |                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `sys::sys::mm::address::virt::impl&%0::checked_add` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:583:15
+    |
+583 |         match start.checked_add(size - 1) {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+623 |         match start.checked_add(size - 1) {
+    |               ---------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [sys::mm::VirtualAddress::checked_add] (_0: &sys::mm::VirtualAddress, _1: usize) -> core::option::Option<sys::mm::VirtualAddress>;
+
+error: cannot use function `kernel::hal::platform::microvm::is_valid_physical_region` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:648:9
+    |
+648 |         crate::hal::platform::is_valid_physical_region(start, size)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [crate::hal::platform::microvm::is_valid_physical_region] (_0: usize, _1: usize) -> bool;
+
+error: `alloc::collections::linked_list::impl&%8::front` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:681:36
+    |
+681 |         if let Some((addr, _pt)) = self.user_page_tables.front() {
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::front] (_0: &alloc::collections::LinkedList<T, A>) -> core::option::Option<&T>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%8::front_mut` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:683:32
+    |
+683 |                   return Ok(&mut self.user_page_tables.front_mut().expect("front exists").1);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+708 |               return Ok(&mut self
+    |  ____________________________-
+709 | |                 .user_page_tables
+710 | |                 .front_mut()
+    | |____________________________-
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::front_mut] (_0: &alloc::collections::LinkedList<T, A>) -> core::option::Option<&mut T>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::CursorMut` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:689:17
+    |
+689 |             let mut cursor = self.user_page_tables.cursor_front_mut();
+    |                 ^^^^^^^^^^   ----------------------------------------
+...
+692 |                 match cursor.current() {
+    |                       ------
+...
+695 |                             removed_entry = cursor.remove_current();
+    |                                             ------
+...
+701 |                 cursor.move_next();
+    |                 ------
+    |
+    = help: The following declaration may resolve this error:
+            #[verifier::reject_recursive_types(A)]
+            #[verifier::reject_recursive_types(T)]
+            #[verifier::external_type_specification]
+            pub struct ExCursorMut<'a, T, A>(alloc::collections::linked_list::CursorMut<'a, T, A>)
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%8::cursor_front_mut` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:689:30
+    |
+689 |             let mut cursor = self.user_page_tables.cursor_front_mut();
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::cursor_front_mut] (_0: &alloc::collections::LinkedList<T, A>) -> alloc::collections::linked_list::CursorMut<'_, T, A>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%24::current` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:692:23
+    |
+692 |                 match cursor.current() {
+    |                       ^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a, T, A> [alloc::collections::linked_list::CursorMut::<'a, T, A>::current] (_0: &alloc::collections::linked_list::CursorMut<'a, T, A>) -> core::option::Option<&mut T>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%26::remove_current` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:695:45
+    |
+695 | ...                   removed_entry = cursor.remove_current();
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a, T, A> [alloc::collections::linked_list::CursorMut::<'a, T, A>::remove_current] (_0: &alloc::collections::linked_list::CursorMut<'a, T, A>) -> core::option::Option<T>
+            where
+            A: core::alloc::Allocator,;
+
+error: `alloc::collections::linked_list::impl&%24::move_next` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+   --> src/kernel/src/mm/virt/vmem.rs:701:17
+    |
+701 |                 cursor.move_next();
+    |                 ^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<'a, T, A> [alloc::collections::linked_list::CursorMut::<'a, T, A>::move_next] (_0: &alloc::collections::linked_list::CursorMut<'a, T, A>)
+            where
+            A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::from_frame_number` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:735:40
+     |
+ 735 |         let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
+     |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1193 |         let src_frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+     |                                       ---------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::from_frame_number] (_0: arch::mem::paging::FrameNumber) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>;
+
+error: `arch::x86::mem::paging::pde::impl&%1::frame_number` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+   --> src/kernel/src/mm/virt/vmem.rs:735:72
+    |
+735 |         let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
+    |                                                                        ^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [arch::mem::paging::PageDirectoryEntry::frame_number] (_0: &arch::mem::paging::PageDirectoryEntry) -> arch::mem::paging::FrameNumber;
+
+error: `arch::x86::mem::paging::frame::number::FrameNumber` is not supported (note: you may be able to add a Verus specification to this type with the `external_type_specification` attribute)
+    --> src/kernel/src/mm/virt/vmem.rs:735:72
+     |
+ 735 |         let pgtab_addr: FrameAddress = FrameAddress::from_frame_number(pde.frame_number())?;
+     |                                                                        ^^^^^^^^^^^^^^^^^^
+...
+1193 |         let src_frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+     |                                                                       ------------------
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::eq` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:746:16
+    |
+746 |             if pt.borrow().1.physical_address()? == pgtab_addr {
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [<crate::hal::mem::types::address::frame::FrameAddress as core::cmp::PartialEq>::crate::eq] (_0: &crate::hal::mem::types::address::frame::FrameAddress, _1: &crate::hal::mem::types::address::frame::FrameAddress) -> bool;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::lookup` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:804:24
+     |
+ 804 |                 return page_table.lookup(page_addr);
+     |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 858 |                     return Ok(Some(page_table.lookup(page_addr)?));
+     |                                    ----------------------------
+...
+1906 |             if page_table.lookup(page_address)? != frame_address {
+     |                -------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::lookup] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::is_page_present` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:857:20
+     |
+ 857 |                 if page_table.is_page_present(page_addr)? {
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+2083 |             match pt_ref.1.is_page_present(page_address) {
+     |                   --------------------------------------
+...
+2092 |             match pt_mut.1.is_page_present(page_address) {
+     |                   --------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::is_page_present] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress) -> core::result::Result<bool, sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::read_pte_at` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:907:27
+    |
+907 |                 return Ok(page_table.read_pte_at(page_addr));
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::read_pte_at] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress) -> core::option::Option<arch::mem::paging::PageTableEntry>
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::iter_present_ptes` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:961:32
+    |
+961 |             let mut pte_iter = page_table.iter_present_ptes();
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::iter_present_ptes] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>) -> impl core::iter::Iterator<Item = (usize, arch::mem::paging::PageTableEntry)> + '_
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `arch::x86::mem::constants::PAGE_SIZE` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:969:45
+     |
+ 969 |                         pte_idx.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
+     |                                             ^^^^^^^^^^^^^^
+...
+1210 |         super::memcpy(usize_to_mut_ptr(dst_paddr), usize_to_const_ptr(src_paddr), mem::PAGE_SIZE)?;
+     |                                                                                   --------------
+...
+1289 |             page = page.checked_add(mem::PAGE_SIZE).ok_or_else(|| {
+     |                                     --------------
+...
+1414 |                 let copy_size: usize = usize::min(size, mem::PAGE_SIZE - offset);
+     |                                                         --------------
+...
+1553 |             let copy_size: usize = usize::min(mem::PAGE_SIZE - offset, size);
+     |                                               --------------
+...
+1741 |                 let src_avail: usize = mem::PAGE_SIZE - src_offset;
+     |                                        --------------
+...
+1747 |                 let dst_avail: usize = mem::PAGE_SIZE - dst_offset;
+     |                                        --------------
+...
+1816 |         super::memset(base, value as u8, mem::PAGE_SIZE)?;
+     |                                          --------------
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:976:58
+     |
+ 976 |                 let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+     |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1279 |             let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page)?;
+     |                                                      ---------------------------------
+...
+2095 |                         FrameAddress::new(PageAligned::from_raw_value(vaddr.into_raw_value())?);
+     |                                           ---------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [<crate::hal::mem::types::address::aligned::page::PageAligned<T> as sys::mm::Address>::crate::from_raw_value] (_0: usize) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<T>, sys::error::Error>
+             where
+             T: sys::mm::Address,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::mark_cow` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1027:9
+     |
+1027 |         page_table.mark_cow(PageAddress::new(vaddr))
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::mark_cow] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress) -> core::result::Result<(), sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::unmark_cow` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1073:9
+     |
+1073 |         page_table.unmark_cow(PageAddress::new(vaddr))
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::unmark_cow] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress) -> core::result::Result<(), sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::replace_cow_frame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1126:9
+     |
+1126 |         page_table.replace_cow_frame(PageAddress::new(vaddr), new_frame)
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::replace_cow_frame] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress, _2: crate::hal::mem::types::address::frame::FrameAddress) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `arch::x86::mem::paging::pte::impl&%1::is_cow` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1183:13
+     |
+1183 |         if !pte.is_cow() {
+     |             ^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [arch::mem::paging::PageTableEntry::is_cow] (_0: &arch::mem::paging::PageTableEntry) -> bool;
+
+error: `arch::x86::mem::paging::pte::impl&%1::frame_number` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1193:71
+     |
+1193 |         let src_frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+     |                                                                       ^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [arch::mem::paging::PageTableEntry::frame_number] (_0: &arch::mem::paging::PageTableEntry) -> arch::mem::paging::FrameNumber;
+
+error: cannot use function `kernel::mm::phys::upool::UserFrame::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1196:64
+     |
+1196 |         let probe: ManuallyDrop<UserFrame> = ManuallyDrop::new(UserFrame::new(src_frame));
+     |                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1222 |         drop(UserFrame::new(old_frame));
+     |              -------------------------
+...
+1935 |         Ok(Some(UserFrame::new(frame_address)))
+     |                 -----------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::mm::phys::upool::UserFrame::new] (_0: crate::hal::mem::types::address::frame::FrameAddress) -> crate::mm::phys::upool::UserFrame;
+
+error: cannot use function `kernel::mm::phys::upool::UserFrame::refcount` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1197:12
+     |
+1197 |         if probe.refcount()? == 1 {
+     |            ^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::mm::phys::upool::UserFrame::refcount] (_0: &crate::mm::phys::upool::UserFrame) -> core::result::Result<u8, sys::error::Error>;
+
+error: cannot use function `kernel::mm::phys::manager::PhysMemoryManager::alloc_user_frame` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1206:36
+     |
+1206 |         let new_frame: UserFrame = unsafe { PhysMemoryManager::get_mut() }.alloc_user_frame()?;
+     |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::mm::phys::manager::PhysMemoryManager::alloc_user_frame] (_0: &crate::mm::phys::manager::PhysMemoryManager) -> core::result::Result<mm::phys::upool::UserFrame, sys::error::Error>;
+
+error: `arch::x86::mem::paging::pte::impl&%1::frame_address` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1208:32
+     |
+1208 |         let src_paddr: usize = pte.frame_address();
+     |                                ^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [arch::mem::paging::PageTableEntry::frame_address] (_0: &arch::mem::paging::PageTableEntry) -> usize;
+
+error: cannot use function `kernel::mm::virt::identity_map::memcpy` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1210:9
+     |
+1210 |           super::memcpy(usize_to_mut_ptr(dst_paddr), usize_to_const_ptr(src_paddr), mem::PAGE_SIZE)?;
+     |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1421 | /                     super::memcpy(
+1422 | |                         usize_to_mut_ptr(dst_gpa),
+1423 | |                         usize_to_const_ptr(src_frame.into_raw_value() + offset),
+1424 | |                         copy_size,
+1425 | |                     )?;
+     | |_____________________-
+...
+1602 |                   let copy_result: Result<(), Error> = super::memcpy(dst, src, copy_size);
+     |                                                        ----------------------------------
+...
+1760 | /                     super::memcpy(
+1761 | |                         usize_to_mut_ptr(dst_phys_addr),
+1762 | |                         usize_to_const_ptr(src_phys_addr),
+1763 | |                         copy_size,
+1764 | |                     )?;
+     | |_____________________-
+     |
+     = help: The following declaration may resolve this error:
+             assume_specification [crate::mm::virt::identity_map::memcpy] (_0: *mut u8, _1: *const u8, _2: usize) -> core::result::Result<(), sys::error::Error>;
+
+error: `type_safe::utils::usize_to_mut_ptr` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1210:23
+     |
+1210 |         super::memcpy(usize_to_mut_ptr(dst_paddr), usize_to_const_ptr(src_paddr), mem::PAGE_SIZE)?;
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1422 |                         usize_to_mut_ptr(dst_gpa),
+     |                         -------------------------
+...
+1599 |                 let dst: *mut u8 = usize_to_mut_ptr(dst_frame.into_raw_value() + offset);
+     |                                    -----------------------------------------------------
+...
+1761 |                         usize_to_mut_ptr(dst_phys_addr),
+     |                         -------------------------------
+...
+1814 |         let base: *mut u8 = usize_to_mut_ptr(dst.into_raw_value());
+     |                             --------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [type_safe::usize_to_mut_ptr] (_0: usize) -> *mut u8;
+
+error: `type_safe::utils::usize_to_const_ptr` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1210:52
+     |
+1210 |         super::memcpy(usize_to_mut_ptr(dst_paddr), usize_to_const_ptr(src_paddr), mem::PAGE_SIZE)?;
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1423 |                         usize_to_const_ptr(src_frame.into_raw_value() + offset),
+     |                         -------------------------------------------------------
+...
+1601 |                 let src: *const u8 = usize_to_const_ptr(src_gpa);
+     |                                      ---------------------------
+...
+1762 |                         usize_to_const_ptr(src_phys_addr),
+     |                         ---------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [type_safe::usize_to_const_ptr] (_0: usize) -> *const u8;
+
+error: `core::mem::drop` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:1222:9
+     |
+1222 |         drop(UserFrame::new(old_frame));
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+2129 |             drop(user_page_table);
+     |             ---------------------
+...
+2139 |             drop(entry);
+     |             -----------
+...
+2149 |             drop(entry)
+     |             -----------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [core::mem::drop] (_0: T)
+             where
+             T: core::marker::Destruct,;
+
+error: `sys::sys::mm::address::virt::impl&%1::into_raw_value` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1268:50
+     |
+1268 |         let start: usize = ::sys::mm::align_down(addr.into_raw_value(), PAGE_ALIGNMENT);
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^
+1269 |         let end_inclusive: usize =
+1270 |             addr.into_raw_value().checked_add(size - 1).ok_or_else(|| {
+     |             ---------------------
+...
+1329 |         let offset: usize = vaddr.into_raw_value() - page_aligned.into_raw_value();
+     |                             ----------------------
+...
+1413 |                 let offset: usize = src.into_raw_value() - vaddr.into_raw_value();
+     |                                     --------------------
+...
+1420 |                     let dst_gpa: usize = crate::hal::platform::virt_to_phys(dst.into_raw_value());
+     |                                                                             --------------------
+...
+1429 |                 src = VirtualAddress::new(src.into_raw_value() + copy_size);
+     |                                           --------------------
+1430 |                 dst = VirtualAddress::new(dst.into_raw_value() + copy_size);
+     |                                           --------------------
+...
+1552 |             let offset: usize = dst.into_raw_value() - vaddr.into_raw_value();
+     |                                 --------------------
+...
+1555 |             let src_phys_addr_raw: usize = src.into_raw_value();
+     |                                            --------------------
+...
+1600 |                 let src_gpa: usize = crate::hal::platform::virt_to_phys(src.into_raw_value());
+     |                                                                         --------------------
+...
+1613 |             dst = VirtualAddress::new(dst.into_raw_value() + copy_size);
+     |                                       --------------------
+1614 |             src = VirtualAddress::new(src.into_raw_value() + copy_size);
+     |                                       --------------------
+...
+1740 |                 let src_offset: usize = cur_src.into_raw_value() - src_page.into_raw_value();
+     |                                         ------------------------
+...
+1746 |                 let dst_offset: usize = cur_dst.into_raw_value() - dst_page.into_raw_value();
+     |                                         ------------------------
+...
+1768 |                 cur_src = VirtualAddress::new(cur_src.into_raw_value() + copy_size);
+     |                                               ------------------------
+1769 |                 cur_dst = VirtualAddress::new(cur_dst.into_raw_value() + copy_size);
+     |                                               ------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [<sys::mm::VirtualAddress as sys::mm::Address>::into_raw_value] (_0: sys::mm::VirtualAddress) -> usize;
+
+error: `arch::x86::mem::constants::PAGE_ALIGNMENT` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1268:73
+     |
+1268 |         let start: usize = ::sys::mm::align_down(addr.into_raw_value(), PAGE_ALIGNMENT);
+     |                                                                         ^^^^^^^^^^^^^^
+...
+1275 |         let last_page: usize = ::sys::mm::align_down(end_inclusive, PAGE_ALIGNMENT);
+     |                                                                     --------------
+...
+1328 |             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
+     |                                                        --------------
+...
+1412 |                     PageAligned::from_address(src.align_down(PAGE_ALIGNMENT))?;
+     |                                                              --------------
+...
+1538 |                 match PageAligned::from_address(dst.align_down(PAGE_ALIGNMENT)) {
+     |                                                                --------------
+...
+1739 |                     PageAligned::from_address(cur_src.align_down(PAGE_ALIGNMENT))?;
+     |                                                                  --------------
+...
+1745 |                     PageAligned::from_address(cur_dst.align_down(PAGE_ALIGNMENT))?;
+     |                                                                  --------------
+
+error: cannot use function `kernel::hal::mem::types::address::aligned::page::PageAligned::from_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1328:13
+     |
+1328 |             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1412 |                     PageAligned::from_address(src.align_down(PAGE_ALIGNMENT))?;
+     |                     ---------------------------------------------------------
+...
+1538 |                 match PageAligned::from_address(dst.align_down(PAGE_ALIGNMENT)) {
+     |                       ---------------------------------------------------------
+...
+1739 |                     PageAligned::from_address(cur_src.align_down(PAGE_ALIGNMENT))?;
+     |                     -------------------------------------------------------------
+...
+1745 |                     PageAligned::from_address(cur_dst.align_down(PAGE_ALIGNMENT))?;
+     |                     -------------------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::mem::types::address::aligned::page::PageAligned::<T>::from_address] (_0: T) -> core::result::Result<hal::mem::types::address::aligned::page::PageAligned<T>, sys::error::Error>
+             where
+             T: sys::mm::Address,;
+
+error: `sys::sys::mm::address::virt::impl&%0::align_down` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1328:39
+     |
+1328 |             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
+     |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1412 |                     PageAligned::from_address(src.align_down(PAGE_ALIGNMENT))?;
+     |                                               ------------------------------
+...
+1538 |                 match PageAligned::from_address(dst.align_down(PAGE_ALIGNMENT)) {
+     |                                                 ------------------------------
+...
+1739 |                     PageAligned::from_address(cur_src.align_down(PAGE_ALIGNMENT))?;
+     |                                               ----------------------------------
+...
+1745 |                     PageAligned::from_address(cur_dst.align_down(PAGE_ALIGNMENT))?;
+     |                                               ----------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [sys::mm::VirtualAddress::align_down] (_0: &sys::mm::VirtualAddress, _1: sys::mm::Alignment) -> sys::mm::VirtualAddress;
+
+error: cannot use function `kernel::hal::platform::microvm::virt_to_phys` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1420:42
+     |
+1420 |                     let dst_gpa: usize = crate::hal::platform::virt_to_phys(dst.into_raw_value());
+     |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1600 |                 let src_gpa: usize = crate::hal::platform::virt_to_phys(src.into_raw_value());
+     |                                      --------------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::platform::microvm::virt_to_phys] (_0: usize) -> usize;
+
+error: `sys::sys::mm::address::virt::impl&%0::new` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`)
+    --> src/kernel/src/mm/virt/vmem.rs:1429:23
+     |
+1429 |                 src = VirtualAddress::new(src.into_raw_value() + copy_size);
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1430 |                 dst = VirtualAddress::new(dst.into_raw_value() + copy_size);
+     |                       -----------------------------------------------------
+...
+1613 |             dst = VirtualAddress::new(dst.into_raw_value() + copy_size);
+     |                   -----------------------------------------------------
+1614 |             src = VirtualAddress::new(src.into_raw_value() + copy_size);
+     |                   -----------------------------------------------------
+...
+1768 |                 cur_src = VirtualAddress::new(cur_src.into_raw_value() + copy_size);
+     |                           ---------------------------------------------------------
+1769 |                 cur_dst = VirtualAddress::new(cur_dst.into_raw_value() + copy_size);
+     |                           ---------------------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [sys::mm::VirtualAddress::new] (_0: usize) -> sys::mm::VirtualAddress;
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::into_physical_address` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1813:49
+     |
+1813 |         let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
+     |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::into_physical_address] (_0: crate::hal::mem::types::address::frame::FrameAddress) -> crate::hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>;
+
+error: cannot use function `kernel::mm::virt::identity_map::memset` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1816:9
+     |
+1816 |         super::memset(base, value as u8, mem::PAGE_SIZE)?;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             assume_specification [crate::mm::virt::identity_map::memset] (_0: *mut u8, _1: u8, _2: usize) -> core::result::Result<(), sys::error::Error>;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::unmap` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1913:13
+     |
+1913 |             page_table.unmap(page_address)?;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::unmap] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: crate::hal::mem::types::address::page::PageAddress) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::nmapped` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1915:29
+     |
+1915 |             (pgtable_vaddr, page_table.nmapped() == 0)
+     |                             ^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::nmapped] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>) -> usize
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `alloc::collections::linked_list::impl&%10%default%position` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:1924:22
+     |
+1924 |               let at = self
+     |  ______________________^
+1925 | |                 .user_page_tables
+1926 | |                 .iter()
+1927 | |                 .position(|entry| entry.0 == pgtable_vaddr)
+     | |___________________________________________________________^
+
+error: cannot use function `kernel::hal::mem::types::address::page::PageTableAddress::eq` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1927:35
+     |
+1927 |                 .position(|entry| entry.0 == pgtable_vaddr)
+     |                                   ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [<crate::hal::mem::types::address::page::PageTableAddress as core::cmp::PartialEq>::crate::eq] (_0: &crate::hal::mem::types::address::page::PageTableAddress, _1: &crate::hal::mem::types::address::page::PageTableAddress) -> bool;
+
+error: `alloc::collections::linked_list::impl&%8::remove` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:1930:48
+     |
+1930 |             let (_pgtable_addr, _page_table) = self.user_page_tables.remove(at);
+     |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T, A> [alloc::collections::LinkedList::<T, A>::remove] (_0: &alloc::collections::LinkedList<T, A>, _1: usize) -> T
+             where
+             A: core::alloc::Allocator,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::unmap` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1932:13
+     |
+1932 |             self.pgdir.unmap(pgtable_vaddr)?;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory::<T>::unmap] (_0: &crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory<T>, _1: crate::hal::mem::types::address::page::PageTableAddress) -> core::result::Result<hal::mem::types::address::frame::FrameAddress, sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_table::PageTable::ctrl` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:1993:9
+     |
+1993 |         page_table.ctrl(false, page_address, access)?;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+2106 |                     pt_mut.1.ctrl(false, page_address, access)?;
+     |                     ------------------------------------------
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_table::PageTable::<T>::ctrl] (_0: &crate::hal::arch::x86::mem::mmu::page_table::PageTable<T>, _1: bool, _2: crate::hal::mem::types::address::page::PageAddress, _3: sys::mm::AccessPermission) -> core::result::Result<(), sys::error::Error>
+             where
+             T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: `core::cell::impl&%54::deref` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`) (note: the vstd library provides some specification for the Rust std library, but it is currently limited)
+    --> src/kernel/src/mm/virt/vmem.rs:2092:19
+     |
+2092 |             match pt_mut.1.is_page_present(page_address) {
+     |                   ^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification<'a, T> [<core::cell::RefMut<'a, T> as core::ops::Deref>::deref] (_0: &core::cell::RefMut<'a, T>) -> &T
+             where
+             T: core::marker::MetaSized + ?Sized,;
+
+error: cannot use function `kernel::hal::mem::types::address::frame::FrameAddress::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+    --> src/kernel/src/mm/virt/vmem.rs:2095:25
+     |
+2095 |                         FrameAddress::new(PageAligned::from_raw_value(vaddr.into_raw_value())?);
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: The following declaration may resolve this error:
+             pub assume_specification [crate::hal::mem::types::address::frame::FrameAddress::new] (_0: crate::hal::mem::types::address::aligned::page::PageAligned<hal::mem::types::address::phys::PhysicalAddress>) -> crate::hal::mem::types::address::frame::FrameAddress;
+
+error: cannot use function `kernel::hal::arch::x86::mem::mmu::page_directory::PageDirectory::new` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/mm/virt/vmem.rs:134:13
+    |
+134 | /             PageDirectory::new(PageDirectoryStorage::Bss(unsafe {
+135 | |                 PAGE_TABLE_ALLOCATOR
+136 | |                     .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+137 | |                     .map_err(|e| {
+...   |
+141 | |                     .assume_init_mut()
+142 | |             }));
+    | |_______________^
+...
+224 |               PageDirectory::new(PageDirectoryStorage::KernelPage(pgdir_page));
+    |               ----------------------------------------------------------------
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification<T> [crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory::<T>::new] (_0: T) -> crate::hal::arch::x86::mem::mmu::page_directory::PageDirectory<T>
+            where
+            T: core::ops::Deref<Target = [u32]> + core::ops::DerefMut,;
+
+error: could not compile `kernel` (bin "kernel") due to 109 previous errors

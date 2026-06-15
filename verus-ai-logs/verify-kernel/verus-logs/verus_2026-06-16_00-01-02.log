@@ -1,0 +1,32 @@
+Timestamp: 2026-06-16_00-01-02
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::virt::vmem
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=31
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=28
+
+--- Full output ---
+    Checking kernel v0.16.48 (/home/ruize/nanvix-virt/src/kernel)
+error: The verifier does not yet support the following Rust feature: let expressions
+   --> src/kernel/src/mm/virt/vmem.rs:148:15
+    |
+148 |         while let Some((vaddr, page_table)) = kernel_page_tables.pop_front() {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: The verifier does not yet support the following Rust feature: let expressions
+    --> src/kernel/src/mm/virt/vmem.rs:2113:15
+     |
+2113 |         while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

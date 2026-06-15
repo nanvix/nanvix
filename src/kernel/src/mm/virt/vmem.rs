@@ -67,16 +67,16 @@ use ::core::{
     cell::RefCell,
     mem::ManuallyDrop,
 };
-use ::type_safe::{
-    usize_to_const_ptr,
-    usize_to_mut_ptr,
-};
 use ::sys::{
     config,
     error::{
         Error,
         ErrorCode,
     },
+};
+use ::type_safe::{
+    usize_to_const_ptr,
+    usize_to_mut_ptr,
 };
 
 //==================================================================================================
@@ -121,6 +121,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn new(
         mut kernel_pages: LinkedList<KernelPage>,
         mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -145,7 +146,12 @@ impl Vmem {
         let mut kpage_tables: LinkedList<
             Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
         > = LinkedList::new();
-        while let Some((vaddr, page_table)) = kernel_page_tables.pop_front() {
+        loop {
+            let next = kernel_page_tables.pop_front();
+            if next.is_none() {
+                break;
+            }
+            let (vaddr, page_table) = next.unwrap();
             let page_table_address: FrameAddress = page_table.physical_address()?;
             // FIXME: do not be so open about permissions.
             pgdir.map(vaddr, page_table_address, false, AccessPermission::RDWR)?;
@@ -182,7 +188,12 @@ impl Vmem {
 
         // Store root pages.
         let mut kpages: LinkedList<Rc<RefCell<KernelPage>>> = LinkedList::new();
-        while let Some(entry) = kernel_pages.pop_front() {
+        loop {
+            let next = kernel_pages.pop_front();
+            if next.is_none() {
+                break;
+            }
+            let entry = next.unwrap();
             kpages.push_back(Rc::new(RefCell::new(entry)));
         }
 
@@ -208,6 +219,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
@@ -263,6 +275,7 @@ impl Vmem {
         requires
             self.inv(),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn load(&self) -> Result<(), Error> {
         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
         unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
@@ -276,6 +289,7 @@ impl Vmem {
         ensures
             ret.addr_nat() == self@.pgdir,
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn pgdir(&self) -> &PageDirectory<PageDirectoryStorage> {
         &self.pgdir
     }
@@ -307,6 +321,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn map_kpage(
         &mut self,
         kpage: KernelPage,
@@ -393,6 +408,7 @@ impl Vmem {
     // Bare `external_body`, deferred to the proving phase: the returned value is the
     // concrete page-table representation that the View abstracts away (`internal_inv()`),
     // so it has no abstract postcondition until that representation is modeled.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         let kpage: KernelPage = {
             // SAFETY: the memory manager is initialized and access is synchronized.
@@ -416,6 +432,7 @@ impl Vmem {
     // Bare `external_body`, deferred to the proving phase: the returned value is the
     // concrete page-table representation that the View abstracts away (`internal_inv()`),
     // so it has no abstract postcondition until that representation is modeled.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
         // concurrent or re-entrant access to the physical memory manager is possible.
@@ -443,6 +460,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn map(
         &mut self,
         uframe: UserFrame,
@@ -527,6 +545,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn is_user_page_mapped(&self, vaddr: PageAligned<VirtualAddress>) -> Result<bool, Error> {
         // Check if the provided address lies outside user space.
         if !Self::is_user_addr(vaddr.into_inner()) {
@@ -541,6 +560,7 @@ impl Vmem {
         ensures
             ret == spec_is_user_addr(virt_addr.addr_nat()),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn is_user_addr(virt_addr: VirtualAddress) -> bool {
         virt_addr >= config::memory_layout::USER_BASE && virt_addr < config::memory_layout::USER_END
     }
@@ -563,6 +583,7 @@ impl Vmem {
         ensures
             ret == spec_is_user_region(start.addr_nat(), size as nat),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn is_user_region(start: VirtualAddress, size: usize) -> bool {
         // Reject zero-length regions.
         if size == 0 {
@@ -581,6 +602,7 @@ impl Vmem {
         ensures
             ret == spec_is_kernel_addr(virt_addr.addr_nat()),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn is_kernel_addr(virt_addr: VirtualAddress) -> bool {
         !Self::is_user_addr(virt_addr)
     }
@@ -603,6 +625,7 @@ impl Vmem {
         ensures
             ret == spec_is_kernel_region(start.addr_nat(), size as nat),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn is_kernel_region(start: VirtualAddress, size: usize) -> bool {
         // Reject zero-length regions.
         if size == 0 {
@@ -634,6 +657,7 @@ impl Vmem {
         ensures
             ret == spec_is_physical_region(start as nat, size as nat),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn is_physical_region(start: usize, size: usize) -> bool {
         crate::hal::platform::is_valid_physical_region(start, size)
     }
@@ -663,6 +687,7 @@ impl Vmem {
     // Bare `external_body`, deferred to the proving phase: the returned value is a mutable
     // reference into the concrete page-table representation that the View abstracts away
     // (`internal_inv()`), so it has no abstract postcondition until that representation is modeled.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn lookup_user_page_table(
         &mut self,
         pt_vaddr: PageTableAddress,
@@ -710,6 +735,7 @@ impl Vmem {
     // Bare `external_body`, deferred to the proving phase: the returned value is the
     // concrete page-table representation that the View abstracts away (`internal_inv()`),
     // so it has no abstract postcondition until that representation is modeled.
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn lookup_kernel_page_table(
         &mut self,
         pde: &PageDirectoryEntry,
@@ -775,6 +801,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn find_user_frame(&self, vaddr: PageAligned<VirtualAddress>) -> Result<FrameAddress, Error> {
         let page_addr: PageAddress = PageAddress::new(vaddr);
         let pgtab_addr: PageTableAddress = PageTableAddress::new(PageTableAligned::from_raw_value(
@@ -828,6 +855,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn try_find_user_frame(
         &self,
         vaddr: PageAligned<VirtualAddress>,
@@ -878,6 +906,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub(crate) fn try_find_user_pte(
         &self,
         vaddr: PageAligned<VirtualAddress>,
@@ -937,6 +966,7 @@ impl Vmem {
                 Err(_) => true,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
     where
         F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<(), Error>,
@@ -1001,6 +1031,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn mark_user_page_cow(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
         if !Self::is_user_addr(vaddr.into_inner()) {
             let reason: &str = "address is not in user space";
@@ -1044,6 +1075,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn unmark_user_page_cow(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1096,6 +1128,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn replace_user_page_cow_frame(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1161,6 +1194,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn resolve_cow_at(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<bool, Error> {
         if !Self::is_user_addr(vaddr.into_inner()) {
             return Ok(false);
@@ -1246,6 +1280,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn resolve_cow_for_region(
         &mut self,
         addr: VirtualAddress,
@@ -1313,6 +1348,7 @@ impl Vmem {
                         + page_offset(vaddr.addr_nat())
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn user_vaddr_to_paddr(&self, vaddr: VirtualAddress) -> Result<usize, Error> {
         let page_aligned: PageAligned<VirtualAddress> =
             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
@@ -1355,6 +1391,7 @@ impl Vmem {
                 &&& spec_is_kernel_region(dst.addr_nat(), size as nat)
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_from_user_unaligned(
         &self,
         dst: VirtualAddress,
@@ -1474,6 +1511,7 @@ impl Vmem {
             final(self)@ == old(self)@,
             final(self).inv(),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_to_user_unaligned_unchecked(
         &mut self,
         mut dst: VirtualAddress,
@@ -1638,6 +1676,7 @@ impl Vmem {
             final(self)@ == old(self)@,
             final(self).inv(),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_to_user_unaligned(
         &mut self,
         dst: VirtualAddress,
@@ -1690,6 +1729,7 @@ impl Vmem {
                 &&& spec_is_user_region(dst.addr_nat(), size as nat)
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn copy_user_to_user(
         src_vmem: &Vmem,
         src: VirtualAddress,
@@ -1797,6 +1837,7 @@ impl Vmem {
             final(self)@ == old(self)@,
             final(self).inv(),
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
         // Get corresponding user page.
         let uframe: FrameAddress = self.find_user_frame(dst)?;
@@ -1845,6 +1886,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn unmap(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1939,6 +1981,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn uctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -2025,6 +2068,7 @@ impl Vmem {
                 Err(_) => final(self)@ == old(self)@,
             },
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     pub fn kctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -2109,18 +2153,34 @@ impl Drop for Vmem {
         opens_invariants none
         no_unwind
     )]
+    #[cfg_attr(verus_keep_ghost, verus_verify(external_body))]
     fn drop(&mut self) {
-        while let Some((_pgtable_vaddr, user_page_table)) = self.user_page_tables.pop_front() {
+        loop {
+            let next = self.user_page_tables.pop_front();
+            if next.is_none() {
+                break;
+            }
+            let (_pgtable_vaddr, user_page_table) = next.unwrap();
             drop(user_page_table);
         }
 
         // Unmap shared kernel pages.
-        while let Some(entry) = self.kernel_pages.pop_front() {
+        loop {
+            let next = self.kernel_pages.pop_front();
+            if next.is_none() {
+                break;
+            }
+            let entry = next.unwrap();
             drop(entry);
         }
 
         // Unmap shared kernel page tables.
-        while let Some(entry) = self.kernel_page_tables.pop_front() {
+        loop {
+            let next = self.kernel_page_tables.pop_front();
+            if next.is_none() {
+                break;
+            }
+            let entry = next.unwrap();
             drop(entry)
         }
     }
