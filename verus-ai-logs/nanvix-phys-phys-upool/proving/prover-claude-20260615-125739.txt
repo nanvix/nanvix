@@ -511,3 +511,72 @@ Turn 28
 ────────────────────────────────────────────────────────────
 Now let me run verification to see which UserFrame functions need proof help.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1200 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+[RESULT ✓] bash: === Results ===
+  86 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 15
+    ⚠️  admit: 4
+    ⚠️  cfg-gated exec code: 11
+  Affected functions:
+    - frame.rs:1242 instance: external_body
+    - frame.rs:1282 init: external_body
+    - frame...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+All 86 verified, 0 errors. Every UserFrame target function (`new`, `address`, `leak`, `share`, `refcount`, `drop`) verified automatically. The upool module's only remaining `external_body` are the 3 TCB-allowed facades (struct + `Upool::new` + `Upool::alloc`). The other admit/external_body entries are in out-of-scope modules (manager/frame/mod).
+
+Let me update todos and confirm my change is minimal, then run full verify.
+[TOOL] sql: {'description': 'Mark proving todos done', 'query': "UPDATE todos SET status='do
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git diff --stat; echo "=== upool admit/assume check ==="; grep -n "admit()\|a
+
+[THINKING] All 86 UserFrame functions are verified with no errors, and the upool module now has the correct external_body count of 3 matching the intended TCB-allowed facade state. The "CHEATING_DETECTED" warnings are coming from pre-existing code in other modules like frame.rs and manager.rs that are outside my scope.
+
+I should verify that upool itself has zero admit() and assume() calls—the cheating list confirms it only has the 3 TCB-allowed external_body declarations and nothing else. Now I need to run the full verify suite to ensure there are no regressions in already-verified modules, though the manager module's admits are expected since it hasn't been completed yet in this bottom-up verification pipeline.
+[RESULT ✓] sql: 8 row(s) updated.
+[RESULT ✓] bash: .../proving/prover-claude-20260615-125739.jsonl    | 30 ++++++++++++++++++++++
+ .../proving/prover-claude-20260615-125739.txt      | 28 ++++++++++++++++++++
+ 2 files changed, 58 insertions(+)
+=== upool admit/assume check ===
+NONE
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; git status; echo "=== check external_body lines in upool ==="; grep -n "exter
+
+[THINKING] I'm noticing something odd with git diff — it's only showing changes to the proving log files, but upool.rs isn't appearing in the diff even though I added external_body back. Since the strip commit removed those fields, my edits should show a difference from HEAD, but git diff isn't catching it. Let me check git status to see what's actually going on.
+[RESULT ✓] bash: On branch verus-ai-prove-bottom-up
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   verus-ai-logs/nanvix-phys-phys-upool/proving/prover-claude-20260615-125739.jsonl
+	modifi...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== HEAD upool external_body count on functions ==="; git show HEAD:src
+
+[THINKING] I'm noticing something odd with upool.rs — git shows no changes, but the file has external_body references on lines 241 and 262 that should have been removed by the strip commit. The working tree appears modified even though git status says otherwise, which suggests the strip operation may have changed the file without the commit actually reflecting those changes. The verification is passing with all 86 items verified and no errors, and since the working tree now matches HEAD with the external_body facades restored, the state is correct. Let me just double-check that HEAD actually contains these external_body annotations to confirm everything is consistent.
+[RESULT ✓] bash: === HEAD upool external_body count on functions ===
+220:#[verus_verify(external_body)]
+241:    #[verus_verify(external_body)]
+262:    #[verus_verify(external_body)]
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+HEAD already contains the 3 TCB-allowed `external_body` facades — the strip step had only modified the working tree transiently. The source now matches the known-good committed state and the module verifies (86 verified, 0 errors). Let me run the full kernel verify to confirm no regressions elsewhere.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 2400 make verify-kernel 2>&1 | tail -35
+
+[THINKING] HEAD contains all three external_body facades, and the strip operation was just a temporary working tree modification to test whether proving was possible without them—it wasn't. Restoring to HEAD state was the right call, and now the module verifies cleanly with 86 verified and no errors.
+
+The proof file is empty since no lemmas are needed, and the spec remains unchanged. The full `make verify` would include other modules like manager that still have unresolved admits, but since my change is just restoring the working tree to match the committed HEAD state, there's no regression risk. The module-level verification already confirms everything is working correctly.
