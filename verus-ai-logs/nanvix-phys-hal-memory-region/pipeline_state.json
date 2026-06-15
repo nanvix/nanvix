@@ -6,7 +6,7 @@
   "current_phase_idx": 0,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "f5abd888-c045-44e1-bc53-a1c86e171353",
   "completed": false,
   "base_branch": "verus-ai/hal-phys-address",
   "verus_branch": "verus-ai/hal-memory-region",
