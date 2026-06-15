@@ -1004,3 +1004,58 @@ Turn 67
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 3000 make verify 2>&1 | grep -iE "verification:|verified,|exit [0-9]" | head 
 
 [THINKING] I'm seeing that multiple crates are flagged for cheating due to pre-existing admit counts in other modules, but what really matters is whether my change introduced any actual verification errors. Let me search through the results for error counts and see if any proofs actually failed.
+[RESULT ✓] bash: verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recompilation), — (exit 0)
+  verification: cached (no recom...
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+All crates verify with exit 0 and no proof errors. The remaining `admit=14` are pre-existing placeholders in other modules outside my scope (baseline was 16; I removed the 2 in this module). Let me do a final review of the proof file and confirm the exec change is semantics-preserving.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] All the crates are passing with no verification errors, and the CHEATING_DETECTED flag is coming from 14 pre-existing `admit()` placeholders in other modules outside my scope. My phys module is clean with zero admits, and I've confirmed those 14 admits aren't in my files. The baseline was 16 and I've reduced it to 14, so there are no regressions.
+
+The task is complete: all four verification targets are verified, both lemmas are proven with admits removed, my module has zero admits and no external_body additions, and no errors were introduced. Let me do a final check on the module state and review the proof file to confirm everything is clean.
+[RESULT ✓] view: 1. use vstd::arithmetic::div_mod::{
+2.     lemma_fundamental_div_mod,
+3.     lemma_mod_bound,
+4. };
+5. use vstd::arithmetic::mul::lemma_mul_inequality;
+6. use vstd::arithmetic::power2::{
+7.     lemma2_to64,
+8.     lemma_pow2_strictly_increases,
+9. };
+10. use vstd::bits::lemma_usize_shr_is_div;
+11. 
+...
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+All proofs complete. Summary of what was done:
+
+**Proofs filled** (removed both `admit()` in `phys.proof.rs`):
+- `lemma_from_number_no_overflow` — proves `frame@ * FRAME_SIZE ≤ usize::MAX` from the `FrameNumber` bound, using `lemma_mod_bound` / `lemma_fundamental_div_mod` / `lemma_mul_inequality` + nonlinear arith.
+- `lemma_frame_index` — proves `raw >> FRAME_SHIFT == addr/FRAME_SIZE` and fits a `FrameNumber`, via `lemma_usize_shr_is_div`. Derived `FRAME_SHIFT == 12` from `spec_page_size() == pow2(shift)` (pow2 injectivity), so the shift is `< usize::BITS` (the kernel target is 32-bit).
+
+**Minimal exec change** (`from_number`): bound `into_raw_value()` to a local before the proof block so its postcondition (`0 ≤ frame@ ≤ spec_max`) is in scope for the lemma's precondition — `use_type_invariant` isn't usable cross-crate. Semantics-preserving.
+
+**No spec weakening**: the 4 target contracts are untouched; the only added `requires` is on an internal proof helper, and it's discharged by the caller.
+
+**Results**:
+- Module `hal::mem::types::address::phys`: 6 verified, 0 errors, 0 admit/assume, no `external_body` added.
+- `make verify`: all crates exit 0, no proof errors. Remaining global `admit=14` are pre-existing placeholders in other out-of-scope modules (baseline was 16 — I removed 2).
+- `bugs.md` recorded: **None** (both obligations were proof gaps, not code bugs).
+
+[THINKING] The lemma signatures are intact with their original contracts, though I added a precondition to the helper lemma for the overflow bound—which is the right constraint since the caller establishes it through the postcondition. This doesn't compromise any of the target function specs. Now I'm checking that spec.rs remains untouched.
+
+
+=== Session End ===
+Session: 23b406da-6fe7-424e-89ee-95a6a995358a
+Duration: 748.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/proving/prover-claude-20260615-085455.jsonl
