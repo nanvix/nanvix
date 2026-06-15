@@ -175,7 +175,7 @@ impl Inner {
             assert(nbits as int == self.bitmap@.num_bits);
             assert(idx < nbits as int);
             assert(nbits < u32::MAX);
-            assert(usize::MAX == 0xFFFF_FFFF_FFFF_FFFFu64);
+            assert(usize::MAX as int == 0xFFFF_FFFF_FFFF_FFFF);
             assert(idx <= FrameNumber::spec_max());
         }
         self.refcount[frame_number] = 1;

@@ -2983,3 +2983,47 @@ The core issue is the "reserved top-of-memory frame": if the allocator never boo
 Turn 187
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:178:20
+verification results:: 71 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
+  1 errors
+  verification: 71 verified, 1 errors (exit 101)
+  status: V...
+
+────────────────────────────────────────────────────────────
+Turn 188
+────────────────────────────────────────────────────────────
+`usize::MAX` is symbolic (Verus models usize as 32-or-64-bit). The boundary case is the "reserved top-of-memory frame". Let me check if a word-size directive exists:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; grep -rn "global size_of\|global layout\|size_of usize\|usize == 8" src/ 2>/d
+
+[THINKING] The assertion at line 178 is checking whether `usize::MAX` equals the 64-bit value, and it's failing—which means Verus isn't assuming a fixed 64-bit size for `usize`. This makes `usize::MAX` symbolic, varying between 32-bit and 64-bit interpretations. On a 32-bit system, `idx` could actually reach `spec_max+1`, making the `None` path genuinely reachable according to the spec, so the `alloc` function as written could mutate state in that scenario.
+
+The kernel targets x86_64, but Verus allows 32-bit by default. I could use Verus's `global size_of usize == 8;` directive to lock it to 64-bit, which would make `usize::MAX == 2^64-1` and eliminate the edge case—but adding a global directive feels out of scope since it affects the whole crate. Alternatively, I could restructure the code to avoid the fallible conversion after mutation: compute the frame address as `idx * FRAME_SIZE` before committing the bitmap change, or roll back the allocation (clear the bit, reset refcount) if the address conversion fails, ensuring the invariant `Err==old` is maintained.
+
+The cleanest approach is to verify the arithmetic directly: combining `idx * 4096 <= usize::MAX` from the internal invariant with `idx < num_bits < u32::MAX`, I can check whether `idx <= spec_max` holds for both 32-bit and 64-bit word sizes. For 64-bit, `spec_max = 2^52 - 2` and `idx < 2^32`, so the bound holds. For 32-bit, the constraint `idx * 4096 <= 2^32 - 1` gives `idx <= 2^20 - 1`, which I need to verify against `spec_max = (2^32-1)/4096 - 1`.
+
+The real issue is that on 32-bit systems, the bound isn't provable without additional constraints, but since the kernel targets x86_64 exclusively with 64-bit word size, the practical solution is to enforce that constraint globally. The cleanest fix mirrors the division approach: when allocating, construct the `FrameAddress` directly from the bitmap index using the proper constructor. I'm working through the boundary condition more carefully. If I constrain num_bits to be at most spec_max + 1, then idx would be at most spec_max, which closes the off-by-one gap. But checking the internal invariant, I get num_bits ≤ spec_max + 2, leaving me one step short. The fundamental issue persists regardless of how I approach the bounds—the only real solutions are either fixing the word size globally or excluding the top frame entirely. Given that this is x86_64 kernel code, adding a global directive declaring usize as 64-bit is the proper Verus approach and won't weaken any specifications. Let me check if such a directive already exists in the crate root.
+[RESULT ✓] bash: exit: 0
+<shellId: 110 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 189
+────────────────────────────────────────────────────────────
+My test may have failed on type mismatch. Let me retest with proper casting:
+[TOOL] edit: 
+
+[THINKING] I'm reconsidering whether to restructure the alloc function to use `from_frame_number` directly instead of relying on the fallible `from_raw_value`, since the allocated index should always be valid. There's a subtlety here with how `FrameNumber::from_raw_value` handles bounds checking against the spec maximum.
+
+The core issue is that if the conversion fails, I can't satisfy the error contract for alloc—the Err spec requires `free_frames.is_empty()`, but we only reach that error path after successfully allocating a frame, meaning free_frames wasn't empty. This means the conversion failure case doesn't fit the spec's Err contract at all, so the conversion must succeed. The only principled solution is to add a global directive asserting the target architecture is 64-bit, which guarantees the conversion can't fail and makes the None branch genuinely unreachable. Actually, I realize the real issue might be simpler — maybe Verus defaults to 64-bit usize already, and my test assertion failed for a different reason like a type mismatch between the literal and usize. Let me retest with proper casting to see if that's what went wrong, then decide whether I actually need the global directive.
+
+────────────────────────────────────────────────────────────
+Turn 190
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 191
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
