@@ -139,6 +139,50 @@ Any `external_body` outside this list must be removed.
 - `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::into_raw_value` — the raw value is
   the abstract frame address (`ensures result as int == self@`). Verified when the address layer is.
 
+## `external_body` introduced while speccing `mm::virt::identity_map`
+
+These three exec functions realize the V==P identity mapping through the page-table hardware
+trust boundary. Each carries its **full** `#[verus_spec]` contract unchanged (no spec weakening);
+the `external_body` only trusts the *body* until the `mm::virt` page-table permission ghost token
+is realized. This is the same deferred-ghost-token class as `table::write`
+(no contents `ensures`) and `kframe::new` (the caller already TCB-listed *because* it calls
+`identity_map_page`). All three were verified-by-`admit()` in the spec phase; the `admit()` is now
+replaced by the codebase-sanctioned `external_body` + this listing.
+
+- `src/kernel/src/mm/virt/identity_map.rs::ensure_pt` — body calls
+  `PAGE_TABLE_ALLOCATOR.alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()`, whose contract carries
+  `requires bump_view(self).inv()` (`src/libs/bump_allocator/src/lib.rs:350`). `bump_view` is a
+  parameter-free `uninterp spec fn` with **no** establishing lemma and **no** `type_invariant`
+  anywhere in `src/libs/bump_allocator/` (verified: `grep -rn "bump_view" src` filtered to
+  `ensures|broadcast|axiom|proof fn|type_invariant` returns nothing). That `inv()` is the bump
+  allocator's own deferred ghost token — it is **not** derivable from `ensure_pt`'s sole
+  precondition `identity_map_view().inv()`, so the alloc-path obligation cannot be discharged
+  in-body. Same cross-module deferral class as `kframe::new`. Contract preserved verbatim:
+  `Ok(pt_paddr) => identity_map_view().inv() && spec_is_page_aligned(pt_paddr)`,
+  `Err(_) => identity_map_view().inv()`.
+- `src/kernel/src/mm/virt/identity_map.rs::ensure_pte` — installs the leaf PTE via
+  `Table::<PageTableEntry>::write`, which is deliberately **contents-free**
+  (`external_body`, only `requires index@ < PAGE_TABLE_LENGTH`, no contents `ensures`; a contents
+  postcondition is documented-unsound — see the `table::write` entry above). There is therefore no
+  spec link from a concrete PTE write to the parameter-free `identity_map_view().mapped`, so the
+  `mapped.contains(spec_page_base(phys_addr))` postcondition is the deferred page-table permission
+  token (the `identity_map_view()` `v -> v'` transition). Contract preserved verbatim:
+  `Ok(_) => identity_map_view().inv() && identity_map_view().mapped.contains(spec_page_base(phys_addr))`,
+  `Err(_) => identity_map_view().inv() && !...contains(...)`.
+- `src/kernel/src/mm/virt/identity_map.rs::identity_map_page` — composes a `KERNEL_PD_PADDR`
+  atomic load with `ensure_pt`/`ensure_pte`. No spec links the atomic load + sub-call composition
+  to the parameter-free `identity_map_view()`, so the `accessible(phys_addr)` postcondition rests
+  on the same `mm::virt` token. Note `kframe::new` is **already** TCB-listed precisely *because it
+  calls this function* needing the unrealized token. Contract preserved verbatim:
+  `Ok(_) => identity_map_view().inv() && identity_map_view().accessible(phys_addr@)`,
+  `Err(_) => identity_map_view().inv() && !...accessible(...)`.
+
+- `src/kernel/src/mm/virt/identity_map.spec.rs::ExPageTableBss` —
+  `#[verifier::external_type_specification]` + `#[verifier::external_body]` registration of the
+  external `super::page_table_allocator::PageTableBss` BSS-pool type (the backing store for
+  `PAGE_TABLE_ALLOCATOR`). Opaque external type, no fields modeled; listed for completeness so
+  every in-scope `external_*` is accounted for.
+
 ## External-bottom: build-time constant accessor
 
 - `src/kernel/src/mm/phys/manager.rs::kernel_watermark` — `external_body` accessor that returns

@@ -21,7 +21,7 @@
     - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
     - mm/phys/upool.rs:251 new: external_body
     - mm/phys/upool.rs:289 alloc: external_body
-    - mm/virt/identity_map.rs:533 ensure_pt: admit
-    - mm/virt/identity_map.rs:627 ensure_pte: admit
-    - mm/virt/identity_map.rs:718 identity_map_page: admit
+    - mm/virt/identity_map.rs:534 ensure_pt: external_body
+    - mm/virt/identity_map.rs:626 ensure_pte: external_body
+    - mm/virt/identity_map.rs:715 identity_map_page: external_body
     - mm/virt/identity_map.spec.rs:143 ExPageTableBss (struct): external_type_spec

@@ -506,6 +506,7 @@ fn ensure_identity_mapped_range(
 /// - [`ErrorCode::OutOfMemory`]: No BSS page table slots available.
 /// - [`ErrorCode::BadAddress`]: The allocated page table frame number is out of range.
 ///
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         identity_map_view().inv(),
@@ -531,10 +532,8 @@ fn ensure_identity_mapped_range(
         },
 )]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
-    proof! { admit(); }
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
-        #[cfg(not(verus_keep_ghost))]
         error!("ensure_pt(): {reason}");
         Error::new(ErrorCode::InvalidArgument, reason)
     })?;
@@ -550,7 +549,6 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
         PAGE_TABLE_ALLOCATOR
             .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
             .map_err(|e| {
-                #[cfg(not(verus_keep_ghost))]
                 error!("ensure_pt(): page table allocation failed: {}", e);
                 Error::new(ErrorCode::OutOfMemory, "BSS page table allocation failed")
             })?
@@ -607,6 +605,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
 /// - [`ErrorCode::InvalidArgument`]: Failed to read the PTE.
 /// - [`ErrorCode::BadAddress`]: The frame number is out of range.
 ///
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         identity_map_view().inv(),
@@ -629,10 +628,8 @@ fn ensure_pte(
     pte_idx: TableIndex,
     phys_addr: usize,
 ) -> Result<(), Error> {
-    proof! { admit(); }
     let pte: PageTableEntry = unsafe { pt.read(pte_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PTE read from page table";
-        #[cfg(not(verus_keep_ghost))]
         error!("ensure_pte(): {reason}");
         Error::new(ErrorCode::InvalidArgument, reason)
     })?;
@@ -645,7 +642,6 @@ fn ensure_pte(
     let frame: FrameNumber =
         FrameNumber::from_raw_value(phys_addr / mem::PAGE_SIZE).ok_or_else(|| {
             let reason: &str = "frame number out of range";
-            #[cfg(not(verus_keep_ghost))]
             error!("ensure_pte(): {reason}");
             Error::new(ErrorCode::BadAddress, reason)
         })?;
@@ -695,6 +691,7 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         identity_map_view().inv(),
@@ -716,7 +713,6 @@ fn ensure_pte(
         },
 )]
 pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-    proof! { admit(); }
     let phys_addr: usize = phys_addr.into_raw_value();
 
     let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);

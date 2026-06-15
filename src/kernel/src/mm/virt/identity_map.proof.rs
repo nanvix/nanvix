@@ -25,7 +25,7 @@ pub proof fn lemma_install_page_monotone(v: IdentityMapView, page: int)
         v.mapped.subset_of(v.spec_install_page(page).mapped),
 {
     assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
-    assert forall|x: int| v.mapped.contains(x) implies
+    assert forall|x: int| #[trigger] v.mapped.contains(x) implies
         v.spec_install_page(page).mapped.contains(x) by {
         assert(v.mapped.insert(page).contains(x));
     }
