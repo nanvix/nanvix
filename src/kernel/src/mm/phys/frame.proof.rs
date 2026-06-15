@@ -263,7 +263,6 @@ proof fn lemma_refcount_bump(old_inner: &Inner, new_inner: &Inner, fnn: int, new
     assert(old_inner.bitmap@.wf());
     assert(new_inner.refcount@.len() == old_inner.refcount@.len());
     assert(new_inner.refcount@[fnn] == new_val);
-    assert forall|i: int| i != fnn implies new_inner.refcount@[i] == old_inner.refcount@[i] by {};
 
     // internal_inv(new_inner): only slot `fnn` changed, and it stays set and positive.
     assert(new_inner.internal_inv()) by {

@@ -2214,3 +2214,40 @@ Now let me write `lemma_refcount_bump`:
 Turn 133
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.proof.rs:248:32
+   --> src/kernel/src/mm/phys/frame.proof.rs:266:44
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.proof.rs:266:44
+   --> src/kernel/src/mm/phys/frame.proof.rs:266:70
+verification results:: 59 verified, 1 errors (partial verification with...
+
+────────────────────────────────────────────────────────────
+Turn 134
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 258. {
+259.     let ps: int = spec_page_size();
+260.     let nbits: int = old_inner.bitmap@.num_bits;
+261.     assert(ps > 0);
+262.     assert(old_inner.bitmap.inv());
+263.     assert(old_inner.bitmap@.wf());
+264.     assert(new_inner.refcount@.len() == old_inner.refcount@.len());
+265.     assert(ne...
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+The `update` equality must be bounded to valid indices. Let me remove the over-broad forall (the per-index asserts already work via the update axiom):
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm seeing an issue with the assertion at line 266 where the refcount equality check is failing. The problem is that `Seq::update` only guarantees equality for indices within the valid bounds [0, len), but the assertion is trying to verify equality for all integers, including those outside the sequence's bounds where refcount values are undefined or default. The trigger for the equality might not fire properly in these out-of-bounds cases, causing the assertion to fail.
+
+I need to restrict the forall quantifier to only check indices within the actual length of the refcount sequence. By adding the bounds check `0 <= i < new_inner.refcount@.len()` to the assertion, the quantifier will only apply to valid indices where the update semantics are well-defined. Since the code later uses this fact only for indices within [0, nbits) and [nbits, len), which are all within the valid range, this bounded version should work correctly when Verus instantiates it for specific indices.
+
+Actually, I can skip the standalone forall assertion entirely—Verus understands the update axiom directly, so the inner assertions that check `new_inner.refcount@[i] == old_inner.refcount@[i]` for `i != fnn` will derive automatically from the fact that update only changes the specified index. Let me just remove line 266 and rely on that.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 700 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "error|frame.rs
