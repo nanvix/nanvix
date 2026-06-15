@@ -218,6 +218,18 @@ impl<T: Address> MemoryRegion<T> {
             crate::hal::mem::spec_addr(&result) == self@.start,
     )]
     pub fn start(&self) -> T {
+        // VERUS REWRITE: original exec body was `self.start.clone()`.
+        // Verus limitation: `Clone::clone` on a generic `T: Address` has no spec
+        // relating `spec_addr(&result)` to `spec_addr(&self.start)`, so the
+        // postcondition `spec_addr(&result) == self@.start` cannot be discharged
+        // through `.clone()`. Minimal reproducer — restoring `self.start.clone()`:
+        //   error: postcondition not satisfied
+        //     --> region.rs:218:13  (spec_addr(&result) == self@.start)
+        //     221 | self.start.clone()  -- at the end of the function body
+        //   verification results:: 40 verified, 1 errors
+        // `Address: Copy` (sys/mm/address/mod.rs:33) makes the direct field read
+        // identity (`result == self.start`), discharging the postcondition.
+        // Semantically equivalent: clone of a `Copy` type is a bitwise copy.
         self.start
     }
 
