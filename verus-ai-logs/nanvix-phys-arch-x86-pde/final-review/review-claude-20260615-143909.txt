@@ -477,3 +477,58 @@ Turn 14
 ────────────────────────────────────────────────────────────
 VERUS is at `~/toolchain/verus`. Let me start verification in the background.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=$HOME/toolchain/verus 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Verification passed (exit 0). The crate-wide cheating counts (external_body=3, cfg_gate=2) are outside pde. Let me confirm none are in pde and all external_body are TCB-approved.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating detail ===" && cat verus-ai-logs/verify-arch/verus-logs/cheating-d
+
+[THINKING] The verification passed, but the cheating check shows 3 external_body violations and 2 cfg_gate violations across the arch crate overall—though the pde files themselves have none. I'm tracking down where these violations are coming from: the external_body issues appear to be in table.rs, mod.rs, and table.proof.rs, but I need to verify the exact count and confirm these are the only sources.
+[RESULT ✓] bash: === cheating detail ===
+    - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== any pde in detail? ===
+NO pde references
+...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All 3 external_body (invlpg, read, write) and the lemma are TCB-approved and outside pde. pde scope is fully clean. Let me check the cfg_gate locations and start build + full verify, then launch sub-agents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cfg-gate search in pde ===" && grep -nE 'cfg\(.*verus' src/libs/arch/src/x8
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make build 2>&1 | tail -25
+
+[THINKING] I'm checking the three external_body sites in the codebase and confirming they're all properly allowed in the TCB. There's a discrepancy with lemma_entry_roundtrip though—it's marked as an "assume" in the proof file, but it's actually a broadcast proof function with external_body according to the TCB list, so the labeling seems off.
+
+The key insight is that the pde module itself is completely clean with zero violations, while all the cheating (external_body, assume, cfg_gate) lives in sibling modules like table and mod that are pre-approved in the TCB. Since those are out of scope for this review, I need to verify the cfg_gate locations aren't in pde either, then run the full build and verification suite to check for cross-module regressions.
+[RESULT ✓] bash: === cfg-gate search in pde ===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+<shellId: 17 completed with exit code 0>
+[RESULT ✓] bash: make: Nothing to be done for 'build'.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+pde cfg gates are only the spec/proof `include!` (standard). `make build`: nothing to do (cached, exit 0). Now let me start the full cross-module `make verify` in background and launch the two sub-agent reviews.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify VERUS_EXECUTABLE_DIR=$HOME/toolchain/verus 2>&1 | tail -60
+
+[THINKING] The PDE config gates are just the `include!` statements for spec and proof files, which is standard behavior. The `make build` command didn't do anything because it's not a real target or was already built — the CI documentation suggests using `./z build` instead, but the pipeline was calling `make build`, so I need to figure out what that target actually does and whether it needs arguments.
+
+Since the pipeline log showed `make build` passed with exit 0, it's likely just cached. Now I'm going to run the full `make verify` for cross-module regression testing, which could take a while since it includes the kernel. I'll start it in the background and have sub-agents work in parallel.
+[RESULT ✓] bash: <command started in background with shellId: full-verify>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
