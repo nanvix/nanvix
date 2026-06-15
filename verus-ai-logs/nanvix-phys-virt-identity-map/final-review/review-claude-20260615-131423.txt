@@ -290,3 +290,470 @@ Let me run verification to get ground-truth and check spec coverage before dispa
 The deeper concern is whether these three functions were added to the TCB during this verification effort, which would violate the principle that the TCB is fixed in advance. The tcb-allowed.md language suggests they were verified-by-`admit()` in the spec phase and are now being replaced by the codebase-sanctioned `external_body` listing — implying they may be new to the TCB. I need to let the sub-agents reach their own conclusions independently on this integrity question, then consolidate their findings with my own judgment.
 
 To avoid cargo lock conflicts when running verification concurrently, I'll warm the cache myself by running `make verify-kernel` first to get ground truth, then dispatch the sub-agents sequentially.
+[RESULT ✓] bash: - clone
+    - load
+    - pgdir
+    - map_kpage
+    - map
+    - is_user_page_mapped
+    - is_user_addr
+    - is_user_region
+    - is_kernel_addr
+    - is_kernel_region
+    - is_physical_region
+    - lookup_user_page_table
+    - lookup_kernel_page_table
+    - find_user_frame
+    - try_find_user_frame
+...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===cfg lines 20-30===" && sed -n '20,30p' src/kernel/src/mm/virt/identity_map.r
+
+[THINKING] Looking at the kernel verification summary, the counts are system-wide rather than specific to any module. The admit=4 entries appear elsewhere in the kernel, not in the identity_map module itself. Now I'm checking what the specific metrics are for the mm::virt::identity_map module.
+[RESULT ✓] bash: ===cfg lines 20-30===
+// Imports
+//==================================================================================================
+
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("identity_map.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("identity_map.proof.rs");
+
+use super::page_table_a...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Verification is cached PASS (exit 0). Module-level: admit=0, assume=0 in identity_map; 3 in-scope target functions + ExPageTableBss are `external_body` (all TCB-listed). Now dispatching two independent reviewers.
+[TOOL] report_intent: Dispatching independent reviewers
+[TOOL] task: {'name': 'review-opus', 'agent_type': 'general-purpose', 'model': 'claude-opus-4
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] Looking at the identity_map module's scope, I'm tracking the external boundaries: there are no admit or assume entries, three in-scope exec functions plus one external type spec in the tcb-allowed list, two assume_specification entries at external boundaries, and no cfg-gated exec functions since the ghost specs are included inline.
+
+The core tension here is that these three target functions—identity_map_page, ensure_pt, ensure_pte—were originally verified-by-admit in the spec phase, and now that admit is replaced by external_body declarations that are listed in tcb-allowed.md. So technically they're not blockers by the strict rule. But the real issue is that nothing was actually proven in-body for this module; the three functions with contracts are all external_body, meaning the verification targets themselves became the trust boundary rather than being proven. This is a legitimate finding to surface as the top issue, even though the checklist item passes on a literal reading.
+
+The deeper question is whether adding these in-scope target functions to the TCB counts as introducing new trust boundaries during the effort, which would violate the constraint that the TCB is fixed in advance. I'm leaning toward FAIL on this basis, but I want to dispatch the two sub-agents to independently assess and reach their own verdicts, then consolidate with strict judgment. I'll give them full context and have them write their reviews to separate files, launching them in parallel.
+[RESULT ✓] task: Agent started in background with agent_id: review-opus. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+I'll start by reading all the required files and gathering context.
+[TOOL] report_intent: Reading module and log files
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (32.3 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // These lemmas carry fully discharged proof bodies (no `admit()`/`assume()`). They expose the
+7. // monotonicity / ide...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Both reviewers are running in parallel. While they work, let me independently verify the key TCB-provenance question myself.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===Was tcb-allowed.md modified vs base verus-ai-prove?===" && git log --oneline
+[RESULT ✓] bash: ===Was tcb-allowed.md modified vs base verus-ai-prove?===
+a6d1b7778 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_body=23 cfg_gate=19)
+9ca5cd92a [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page ...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===commits touching tcb-allowed.md, with the identity_map section===" && git lo
+
+[THINKING] I'm on the verus-ai-prove branch, so diffing against itself shows nothing. I need to look at the commit history to find when those three identity_map functions were added to tcb-allowed.md.
+[RESULT ✓] bash: ===commits touching tcb-allowed.md, with the identity_map section===
+===when was external_body added to identity_map.rs ensure_pt?===
+a6d1b7778 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_body=23 cfg_gate=19)
+<shellId: 8 completed w...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Let me read the large main file in sections and the log files.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module implements identity mapping for physical memory accesses.
+8. //!
+9. //! Only the kernel process has physical memory identity-mapped into its virtual address s...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::virt::identity_map`
+2. 
+3. ## Scope
+4. 
+5. Verification-order target functions (only these are in scope):
+6. 
+7. - `identity_map_page` — `pub(crate)`
+8. - `ensure_pt` — private helper
+9. - `ensure_pte` — private helper
+10. 
+11. All other functions in the module (`init`, `m...
+[RESULT ✓] view: 1. # verification-todo.md — `mm::virt::identity_map`
+2. 
+3. Honest hand-off of genuinely-stuck proofs (per the `proving-guide` skill). These
+4. are **not** code bugs and **not** accepted trust assumptions; they are proof
+5. obligations that cannot be discharged in-body under the task's hard rules
+6....
+[RESULT ✓] view: 1. # View Design: `mm::virt::identity_map`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, this module is the **kernel's identity map**: a single global,
+6. write-and-supervisor mapping that answers one question — *"is this physical page
+7. reachable at its own physical address (V == P) in the kernel...
+[RESULT ✓] view: 1. # Bugs — `mm::virt::identity_map`
+2. 
+3. None.
+4. 
+5. No code bug was found in `ensure_pt`, `ensure_pte`, or `identity_map_page`. The
+6. exec logic is correct.
+7. 
+8. The three in-scope functions could not be verified in-body, but this is **not** a
+9. code defect — it is a deferred proof-infrastr...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing verification artifacts
+[TOOL] skill: troubleshooting
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] skill: Skill "troubleshooting" loaded successfully. Follow the instructions in the skill context.
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the three target functions and check the rest of the main file.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 490. /// allocates a new page table from the BSS pool, installs the PDE, and returns the new page
+491. /// table's physical address.
+492. ///
+493. /// # Parameters
+494. ///
+495. /// - `pd`: The kernel page directory table.
+496. /// - `pde_idx`: The page directory index to check.
+497. ///
+498. /// # ...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "===what did commit a6d1b7778 change in tcb-allowed.md? (added identity_map TCB 
+
+[THINKING] The `-S` search on tcb-allowed.md came up empty, which is strange—the string might be formatted differently. The external_body was introduced in commit a6d1b77, which is the same commit handling this identity_map verification. Now I need to check if the tcb-allowed.md identity_map section was also added in that same commit.
+[RESULT ✓] bash: ===what did commit a6d1b7778 change in tcb-allowed.md? (added identity_map TCB entries?)===
++## `external_body` introduced while speccing `mm::virt::identity_map`
++`identity_map_page`). All three were verified-by-`admit()` in the spec phase; the `admit()` is now
++- `src/kernel/src/mm/virt/identity_m...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Confirmed the key integrity finding myself: commit `a6d1b7778` (this effort's final identity_map commit) **added 44 lines to tcb-allowed.md**, introducing the three in-scope target functions (`ensure_pt`, `ensure_pte`, `identity_map_page`) plus `ExPageTableBss` into the TCB — replacing their spec-phase `admit()` with `external_body`. The TCB was expanded *during* the effort to absorb the very functions under verification.
+
+Waiting for the two independent reviewers to complete.
+[TOOL] read_agent: {'agent_id': 'review-opus', 'wait': True, 'timeout': 180}
+
+[THINKING] Looking at the commit a6d1b7778, I can see it added 44 lines to tcb-allowed.md that brought the three target functions (`ensure_pt`, `ensure_pte`, `identity_map_page`) and `ExPageTableBss` into the TCB, while also modifying identity_map.rs with external_body annotations replacing the previous admit statements.
+
+The critical issue here is that expanding the TCB to include the very functions meant to be verified violates the foundational constraint that the TCB must be fixed in advance. Even though the checklist technically passes—the functions are now listed in tcb-allowed.md—this represents a fundamental breach of the verification methodology. The three target functions are now trusted components rather than proven ones, which means the entire verification effort yielded zero functions actually proven in-body. This is a clear failure of the verification goal, and I'm waiting to see what the sub-agents conclude as well.
+[TOOL] report_intent: Inspecting scope files
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/verification-todo.md
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: File too large to read at once (32.3 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. use crate::hal::mem::spec_page_size;
+2. 
+3. verus! {
+4. 
+5. //==================================================================================================
+6. // Abstract state of the kernel identity map
+7. //===================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // These lemmas carry fully discharged proof bodies (no `admit()`/`assume()`). They expose the
+7. // monotonicity / ide...
+[RESULT ✓] view: 1. # View Design: `mm::virt::identity_map`
+2. 
+3. ## Abstract Resource
+4. 
+5. To callers, this module is the **kernel's identity map**: a single global,
+6. write-and-supervisor mapping that answers one question — *"is this physical page
+7. reachable at its own physical address (V == P) in the kernel...
+[RESULT ✓] view: 1. # Caller Analysis: `mm::virt::identity_map`
+2. 
+3. ## Scope
+4. 
+5. Verification-order target functions (only these are in scope):
+6. 
+7. - `identity_map_page` — `pub(crate)`
+8. - `ensure_pt` — private helper
+9. - `ensure_pte` — private helper
+10. 
+11. All other functions in the module (`init`, `m...
+[RESULT ✓] view: 1. # Bugs — `mm::virt::identity_map`
+2. 
+3. None.
+4. 
+5. No code bug was found in `ensure_pt`, `ensure_pte`, or `identity_map_page`. The
+6. exec logic is correct.
+7. 
+8. The three in-scope functions could not be verified in-body, but this is **not** a
+9. code defect — it is a deferred proof-infrastr...
+[RESULT ✓] view: 1. # verification-todo.md — `mm::virt::identity_map`
+2. 
+3. Honest hand-off of genuinely-stuck proofs (per the `proving-guide` skill). These
+4. are **not** code bugs and **not** accepted trust assumptions; they are proof
+5. obligations that cannot be discharged in-body under the task's hard rules
+6....
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me run the grep commands and check git history of tcb-allowed.md.
+[TOOL] report_intent: Running greps and git history
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== grep module files ===" && grep -rnE "admit|assume|external_body|assume_spec
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== VERUS REWRITE ===" && grep -rn "// VERUS REWRITE" src/kernel/src/mm/virt/id
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -5 && echo "=== current branch ===" && git branch --show-current
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: === VERUS REWRITE ===
+=== cfg gates ===
+24:#[cfg(verus_keep_ghost)]
+26:#[cfg(verus_keep_ghost)]
+739:#[cfg(feature = "test")]
+<shellId: 11 completed with exit code 0>
+[RESULT ✓] bash: === grep module files ===
+src/kernel/src/mm/virt/identity_map.rs:509:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.rs:547:    // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
+src/kernel/src/mm/virt/identity_map.rs:555:            .assume_init_mut()
+s...
+[RESULT ✓] bash: 0c877c03f [verus] verify PASS (cheating detected): kernel::mm::virt (cached (no recompilation), —, admit=4 external_body=23 cfg_gate=19)
+b4a97a859 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=4 external_body=23 cfg_gate=19)
+c4e00312c [verus] verify PASS (...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //!
+5. //! # Description
+6. //!
+7. //! This module implements identity mapping for physical memory accesses.
+8. //!
+9. //! Only the kernel process has physical memory identity-mapped into its virtual address s...
+[RESULT ✓] view: 221. /// identity-mapped in the kernel address space.
+222. ///
+223. /// # Parameters
+224. ///
+225. /// - `base`: Starting physical address of the target range.
+226. /// - `value`: Byte value to fill.
+227. /// - `size`: Number of bytes to fill.
+228. ///
+229. /// # Returns
+230. ///
+231. /// Upon succe...
+[RESULT ✓] view: 441. 
+442. ///
+443. /// # Description
+444. ///
+445. /// Ensures that every page in `[start, start + size)` is identity-mapped in the kernel
+446. /// page directory.
+447. ///
+448. /// # Parameters
+449. ///
+450. /// - `start`: Page-aligned starting physical address of the target range.
+451. /// - `siz...
+[RESULT ✓] view: 701.             // this means it is present (writable, supervisor) in the kernel page directory; before
+702.             // init the call is a no-op and the boot page tables already cover it. Either way the
+703.             // caller (`KernelFrame::new`) may subsequently read/write the frame throug...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The commit messages themselves say "cheating detected". Let me check the git history of tcb-allowed.md to see when the three target entries were added.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git log for tcb-allowed.md ===" && git log --oneline -- verus-ai-logs/tcb-a
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== find base/main branch ===" && git log --oneline --all | tail -20; echo "===
+[RESULT ✓] bash: === git log for tcb-allowed.md ===
+a6d1b7778 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_body=23 cfg_gate=19)
+9ca5cd92a [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::aligned::page (cached (no recompilati...
+[RESULT ✓] bash: === find base/main branch ===
+b90b62d3b [test] E: test_capctl()
+82313e1aa [test] E: test_getegid()
+47fb5cf4b [test] E: test_getgid()
+a420ff2f8 [test] E: test_geteuid()
+3e045a422 [test] E: test_getuid()
+192e8996a [test] E: Fixing Code style
+854781e1b [test] E: Doc for pm::test()
+4704d6250 [test] E: D...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Let me see the diff that added the identity_map entries to tcb-allowed.md.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff of tcb-allowed.md at a6d1b7778 ===" && git show a6d1b7778 -- verus-ai-
+[RESULT ✓] bash: === diff of tcb-allowed.md at a6d1b7778 ===
+commit a6d1b777801b8b8d64ec6fcd18ed54ee2071d4fe
+Author: Ruize Tang <1466040111@qq.com>
+Date:   Mon Jun 15 12:56:00 2026 +0800
+
+    [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_body=23 cfg_g...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+This is the key finding. Let me confirm the prior state of the target functions (were they admit() before, now external_body).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git log identity_map.rs ===" && git log --oneline -- src/kernel/src/mm/virt
+[RESULT ✓] bash: === git log identity_map.rs ===
+8e1bb9600 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_body=23 cfg_gate=19)
+a6d1b7778 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Auditing proof state
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && printf '==guardrail-grep==\n' && grep -rnE "admit\s*\(|assume\s*\(|external_body|assu
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo '==branches==' && git --no-pager branch -a && echo '\n==merge-bases==' && for b 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "external_body" src/kernel/src/mm/virt/identity_map.rs src/kernel/src/mm/virt/i
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: src/kernel/src/mm/virt/identity_map.rs:509:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.rs:607:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.rs:693:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.spec.rs:106:// covered by the `#[verus_ver...
+[RESULT ✓] bash: ==guardrail-grep==
+src/kernel/src/mm/virt/identity_map.rs:509:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.rs:607:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.rs:693:#[verus_verify(external_body)]
+src/kernel/src/mm/virt/identity_map.spec.rs:106:// covered ...
+[RESULT ✓] bash: ==branches==
+  dev
+  exp
+* verus-ai-prove
+  verus-ai/arch-frame-number
+  verus-ai/arch-paging-mod
+  verus-ai/arch-paging-table
+  verus-ai/arch-x86-pde
+  verus-ai/arch-x86-pte
+  verus-ai/bump-allocator
+  verus-ai/hal-frame-address
+  verus-ai/hal-memory-region
+  verus-ai/hal-page-aligned
+  verus-ai/ha...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Confirmed: the targets' `admit()` bodies were swapped to `external_body` in the same commit that added them to the TCB. Now let me run the verification and scripts.
+[TOOL] report_intent: Running verification and scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py git-diff src/kernel/s
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py --help 2>&1 | head -
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+
+Analyse exec-function coverage between an original Rust source file and its
+Verus verified counterpart.
+
+positional arguments:
+  source_file           Original Rust source file...
+[RESULT ✓] bash: # Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+<shellId: 20 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && BASE=origin/dev && MB=$(git merge-base HEAD "$BASE") && echo "BASE=$BASE" && echo "ME
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rg -n "identity_map\.rs::(ensure_pt|ensure_pte|identity_map_page)|identity_map\.spec\
+[RESULT ✓] bash: 152:- `src/kernel/src/mm/virt/identity_map.rs::ensure_pt` — body calls
+163:- `src/kernel/src/mm/virt/identity_map.rs::ensure_pte` — installs the leaf PTE via
+172:- `src/kernel/src/mm/virt/identity_map.rs::identity_map_page` — composes a `KERNEL_PD_PADDR`
+180:- `src/kernel/src/mm/virt/identity_map.sp...
+[RESULT ✓] bash: BASE=origin/dev
+MERGE_BASE=7e180a4a49ab761925f623e5a355b7973960527d
+==tcb-log==
+a6d1b7778 [verus] verify PASS (cheating detected): kernel::mm::virt::identity_map (6 verified, 0 errors, admit=4 external_body=23 cfg_gate=19)
+9ca5cd92a [verus] verify PASS (cheating detected): kernel::hal::mem::types::a...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Now the main verification run.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 580 make verify-kernel MODULE=mm::virt 2>&1 | tail -60; echo "EXIT=${PIPESTAT
