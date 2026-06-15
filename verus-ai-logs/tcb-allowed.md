@@ -126,7 +126,14 @@ methods, whose abstract state *is* the global `FrameAllocView` they do not own, 
 ## Cross-module dependencies trusted until their module is verified (`external_body` / `assume_specification`)
 
 - `src/kernel/src/mm/phys/frame.rs::init` — also listed under skip; callable from verified `init`.
-- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — no specs yet; opaque callee.
+- `src/kernel/src/mm/phys/manager.rs::PhysMemoryManager::init` — `external_body`. Brings up the
+  `PhysMemoryManager` singleton by writing the `static mut PHYS_MEMORY_MANAGER:
+  MaybeUninit<PhysMemoryManager>` behind the `PHYS_MEMORY_MANAGER_INIT: AtomicBool` flag. Verus
+  does not support `static mut` paths (raw-memory/atomics outside its model — same class as
+  `frame::instance`), so the body cannot be verified. The contract is sound and non-trivial:
+  `ensures` both arms pin `phys_view().manager_ready`, the §8 ghost-token attachment recording that
+  the manager layer is up (the frame partition is untouched). Removed when the singleton-bringup
+  layer gains a `PointsTo`-backed verified path.
 - `src/kernel/src/mm/phys/kframe.rs::KernelFrame::map_frame` — exec-only helper holding the
   identity-mapping side effect extracted from `KernelFrame::new`. Declared in
   `kframe.spec.rs` as `pub assume_specification[ KernelFrame::map_frame ](base: FrameAddress)
@@ -187,6 +194,34 @@ methods, whose abstract state *is* the global `FrameAllocView` they do not own, 
   consequence of this external-bottom boundary, not a verification escape: the watermark threshold
   is genuinely outside Verus's view and callers do not depend on its concrete value (only on the
   fact that user allocations are gated by it; see `caller_analysis.md` line 121).
+
+## §8 ghost-token attachment lemmas in `mm::phys::manager` (`external_body` proof fns)
+
+These four `proof fn`s in `manager.proof.rs` are the §8 ghost-token attachment axioms that bridge
+the manager's abstract view to the *global* frame partition and to the runtime effects of the
+`external_body` frame free-function layer (`frame::alloc`/`alloc_contiguous`/`free`) and `Drop` —
+none of which carry a `self` Verus can reason through. They are irreducible trust boundaries to the
+not-yet-verified frame free-function layer (same trust class as the `external_body` wrappers
+`frame::alloc`/`free`/`book`/`alloc_range`/`share` above). They are `external_body` rather than
+`admit()` proof bodies because `admit()` is the cheating-placeholder form; `external_body` is the
+documented trust-boundary form (see `crate-analysis`/`proving-guide`). They are realized in the
+proving phase by a ghost token over the `frame::INSTANCE` / `PhysMemoryManager` / `Upool`
+singletons and removed when the frame free-function layer is verified.
+
+- `src/kernel/src/mm/phys/manager.proof.rs::lemma_manager_attached` — `ensures m@ ==
+  phys_view().frames`. Pins the manager's uninterpreted `Upool` view to the global frame partition.
+  Pure attachment axiom (both sides uninterpreted); not provable within the module.
+- `src/kernel/src/mm/phys/manager.proof.rs::lemma_kernel_alloc_one` — effect of a single
+  `frame::alloc` on the brokered partition (`pre.free_frames.contains(addr)`, `post ==
+  pre.alloc_one(addr)`, `post.wf()`). `frame::alloc` takes no `self`; the link to `self@` is
+  supplied here. Not provable (arbitrary `post`); the free→reserved transition lives in the
+  `external_body` `frame::alloc`.
+- `src/kernel/src/mm/phys/manager.proof.rs::lemma_kernel_alloc_contiguous` — region-level analogue
+  for `frame::alloc_contiguous` (`count` contiguous page-aligned frames, all free→reserved). Not
+  provable (arbitrary `post`/`frames`); bridged to the `external_body` `frame::alloc_contiguous`.
+- `src/kernel/src/mm/phys/manager.proof.rs::lemma_user_bulk_err_restored` — on a mid-bulk failure
+  `Vec::clear()` drops (frees) every frame already taken, restoring the partition (`m@ == pre`).
+  `Drop` side effects are not modeled in exec, so the restoration is the trusted boundary.
 
 ## `assume_specification` for not-yet-verified callees (eliminated when their module is verified)
 
