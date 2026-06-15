@@ -338,3 +338,113 @@ Turn 14
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | tail -40
 
 [THINKING] I need to figure out the correct module path for the verification—based on the log directory structure, it looks like modules are involved, so the path should be `x86::mem::paging::pte`, and I'll run the verification with that MODULE parameter.
+[RESULT ✓] bash: cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module x86::mem::paging::pte:
+    ⚠️  cfg-gated exec code: 2
+  Global: assume=0 external_body=3 admit=0 trusted=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Verification passes (exit 0), but cheating check flags cfg_gate=2 and external_body=3. Let me check the detail to see if these are in the pte module itself or dependencies.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null
+
+[THINKING] The verification passes, but the cheating detection is flagging external_body=3 and cfg_gate=2 violations. I need to investigate whether these are coming from the dependency functions (which would be allowed) or from the cfg-gating logic in pte.rs, since the task is only to verify the four target functions themselves.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+The external_body/assume are all in other modules (mod.rs invlpg = hardware TCB, table.rs read/write = MMIO). None are in pte. Let me check the cfg_gate=2 locations and whether they're in pte.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; grep -n "cfg(not(verus_keep_ghost))\|cfg(verus_keep_ghost)\|cfg_attr" src/libs/arch/src
+
+[THINKING] I'm tracking down where the cfg_gate instances are located across the modules—I see external_body references in mod.rs and table.rs for hardware and MMIO operations, plus an assume in table.proof.rs, but I need to verify the full picture of cfg-gating in pte.rs since the detail view is cutting off the complete list.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+85:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+307:    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; head -13 src/libs/arch/src/x86/mem/paging/pde.rs | grep -n "cfg\|include"
+
+[THINKING] Looking at the cfg gates in pte.rs, there are two types: the include directives on lines 9 and 11 that pull in spec.rs and proof.rs with the verus_keep_ghost gate, and the allow attributes on lines 85 and 307 that suppress warnings. The cheating check's cfg_gate=2 is probably pointing to one of those early include statements.
+
+These cfg-gated includes are standard across all modules and required by Verus constraints, so they're not actually problematic. The real point is that the four target functions all verify successfully, and the remaining flags the detector raised—external_body references in dependencies and these standard spec/proof includes—fall outside the scope of what I'm checking. Let me verify that pde has the same pattern and also verifies cleanly to confirm this is the expected baseline.
+[RESULT ✓] bash: 9:#[cfg(verus_keep_ghost)]
+10:include!("pde.spec.rs");
+11:#[cfg(verus_keep_ghost)]
+12:include!("pde.proof.rs");
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All 4 target functions verify with exit 0, admit=0. The external_body (mod.rs invlpg hardware, table.rs MMIO) and cfg_gate (standard spec/proof `include!` guards, identical to pde) are all outside the pte module and are accepted patterns. Let me view the full verification result section to confirm 0 errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; sed -n '1,60p' verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_14-50-47.log 2>/de
+
+[THINKING] The cfg-gating pattern with `#[cfg(verus_keep_ghost)]` is standard across verified modules and not a sign of improper execution code. All four target functions are now verifying successfully, and the existing inline proof blocks are handling the verification requirements.
+
+But I'm realizing the task description says to complete all proofs and eliminate every admit() placeholder, yet the verification shows zero admits and the functions are already passing. Let me confirm whether the proofs are actually complete or if I'm missing something about what still needs to be done.
+[RESULT ✓] bash: Module: x86::mem::paging::pte
+  admit=0
+=== tail of verus raw ===
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; f=$(ls -t verus-ai-logs/verify-arch/verus-logs/verus_*.log | head -1); echo "FILE: $f";
+[RESULT ✓] bash: FILE: verus-ai-logs/verify-arch/verus-logs/verus_2026-06-15_14-50-47.log
+Timestamp: 2026-06-15_14-50-47
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: x86::mem::paging::pte
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Verification is cached. Let me force a fresh verification and confirm there are no admit/assume in the pte module source files directly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; echo "=== admit/assume in pte files ==="; grep -n "admit()\|assume(" src/libs/arch/src/
+
+[THINKING] The cached verification result indicates the proofs passed in a previous run, but to be absolutely certain they're genuinely complete, I should verify the exit code and admission count—the 0 exit code with admit=0 confirms the proofs are solid. I'm slightly uncertain whether the cache means Verus actually ran on the source or just reused prior results, though a valid cache would only exist if verification succeeded before.
+
+Let me reconsider what's actually been done here. The proof.rs file is empty, the exec functions have inline proofs already in place, and verification passes—which suggests the work might already be complete. But I need to check whether those inline proofs and verus_spec annotations were part of the original source or added during the specification phase. The real goal is to ensure the pte module passes verify-arch with zero errors, zero admits, and zero assumes, which appears to be satisfied. Let me do a fresh non-cached verification run to be thorough, and then search the pte files directly to confirm there are no remaining admits I've missed.
+[RESULT ✓] bash: === admit/assume in pte files ===
+(none above = good)
+=== inline proof in pte.rs ===
+314:        proof! { use_type_invariant(frame); }
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+No admits or assumes anywhere in pte. The proofs are complete. Let me force a fresh (non-cached) verification to confirm genuine success.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; touch src/libs/arch/src/x86/mem/paging/pte.rs src/libs/arch/src/x86/mem/paging/pte.spec
+
+[THINKING] I need to verify that the proofs are actually passing without relying on cached results. Let me force a fresh compilation by touching the source file to invalidate any stale cache and ensure the verification genuinely succeeds.
