@@ -217,3 +217,56 @@ Verification passes but it was cached. Let me force a clean re-verification to c
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/virt.rs && timeout 600 make verify-sys 2>&1 | g
 
 [THINKING] The cheating detail turns out to be empty—that cfg gate is just a configuration flag, not actual cheating behavior. There are no virtual functions in the unverified list either. I should force a non-cached run to verify this is working correctly, so I'll touch the virt.rs file and re-run the check.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+  coverage: 2/255 exe...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/verify-sys/verus-logs/ && echo "===" && cat verus-ai-logs/verify-sys
+
+[THINKING] I'm seeing 6 verified results with no errors and no admits or assumptions, but the "CHEATING_DETECTED" status is only flagged because of cfg_gate=1. I need to figure out whether this is a legitimate configuration gate or a false positive. The cheating details file came up empty, so I'm looking into what the cfg_gate actually refers to—it seems to be related to conditional compilation attributes like `#[cfg(verus_keep_ghost)]` or similar target-specific configurations.
+
+Since I haven't modified anything in the source, this cfg_gate=1 must be pre-existing. The real question is whether it's actually cheating or just part of the original codebase, so I need to examine the cheating details more carefully to understand what's being flagged.
+[RESULT ✓] bash: cheating-detail.txt
+coverage-unverified.txt
+verus_2026-06-13_23-26-31.log
+verus_2026-06-13_23-37-10.log
+verus_2026-06-13_23-58-58.log
+verus_2026-06-13_23-59-16.log
+verus_2026-06-13_23-59-23.log
+verus_2026-06-14_00-02-05.log
+verus_2026-06-14_00-02-18.log
+verus_2026-06-14_00-37-25.log
+verus_2026-06-14...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "admit\|assume\|external_body" src/libs/sys/src/sys/mm/address/ ; echo "exit
+
+[THINKING] The cheating-detail.txt file is empty, so there's no additional detail for cfg_gate=1. Looking at the script that computes cfg_gate, it's actually the `#[cfg(target_pointer_width = "32")]` block that gates the `From<VirtualAddress> for u32` implementation and the static assertion—these are legitimate platform-specific configurations, not cheating. The static assertion on line 40 is also properly cfg-gated.
+
+This cfg_gate flag is pre-existing in the source code and wasn't introduced by me. The task criteria are met: 6 verified items, 0 errors, 0 admit calls, 0 assume calls, and 0 external_body references. Since the diff from the proving start was empty, the source hasn't changed, so the cfg_gate count is inherent to the original code. Let me verify there are no admit or assume calls lurking in the source, spec, or proof files.
+[RESULT ✓] bash: exit: 1
+===cfg in virt===
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+39:#[cfg(target_pointer_width = "32")]
+296:#[cfg(target_pointer_width = "32")]
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All in-scope items verify with no admit/assume/external_body. The cfg_gate=1 is a pre-existing platform gate (`target_pointer_width = "32"`), not introduced. Now confirming no regressions across all modules.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify 2>&1 | grep -E "verifying module|verification results|error:
+
+[THINKING] I'm realizing the cfg_gate=1 corresponds to an existing platform configuration gate like `target_pointer_width = "32"`, which controls whether certain code gets compiled for the x86-kernel target. Since x86-kernel is 32-bit, that condition is actually true and the code does get included. The cfg_gate heuristic I'm using counts functions that are hidden behind these configuration gates during verification.
+
+All four in-scope items are now verified with no errors and no admit/assume/external_body calls — the specs were already written during the spec phase and Verus discharged the proof bodies automatically. The trait impl for into_raw_value is included in the 6 verified items, and since the view is closed but transparent within the module, it verifies correctly. Now I need to run the full make verify to confirm there are no regressions.
