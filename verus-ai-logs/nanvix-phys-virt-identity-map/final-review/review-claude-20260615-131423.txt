@@ -757,3 +757,114 @@ Turn 5
 ────────────────────────────────────────────────────────────
 Now the main verification run.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 580 make verify-kernel MODULE=mm::virt 2>&1 | tail -60; echo "EXIT=${PIPESTAT
+[RESULT ✓] bash: - get_mut
+    - new
+    - new_vmem
+    - link_user_pages
+    - link_one_user_page
+    - rollback_linked_pages
+    - try_resolve_cow_fault
+    - try_unmap_upage
+    - alloc_upages
+    - ctrl_upage
+    - alloc_kpage
+    - alloc_kpages
+    - load_elf
+    - deref
+    - deref_mut
+    - deref
+    - deref_...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo 'head-has-file:' && test -f verus-ai-logs/tcb-allowed.md && echo yes || echo no 
+[RESULT ✓] bash: head-has-file:
+yes
+origin-dev-file:
+fatal: path 'verus-ai-logs/tcb-allowed.md' exists on disk, but not in 'origin/dev'
+no
+==direct-diff==
+diff --git a/verus-ai-logs/tcb-allowed.md b/verus-ai-logs/tcb-allowed.md
+new file mode 100644
+index 000000000..5b89e6e90
+--- /dev/null
++++ b/verus-ai-logs/tcb-all...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import re, pathlib
+files=[
+' src/kernel/src/mm/virt/identity_map.rs'
+[RESULT ✓] bash: FILE src/kernel/src/mm/virt/identity_map.rs
+  admit: 0
+  assume: 0
+  external_body_attr: 3
+  assume_specification: 0
+  cfg_attr: 3
+
+FILE src/kernel/src/mm/virt/identity_map.spec.rs
+  admit: 0
+  assume: 0
+  external_body_attr: 4
+  assume_specification: 6
+  cfg_attr: 0
+
+FILE src/kernel/src/mm/virt/ide...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 - <<'PY'
+import re, pathlib
+files=[
+'src/kernel/src/mm/virt/identity_map.rs',
+[RESULT ✓] bash: FILE src/kernel/src/mm/virt/identity_map.rs
+  admit: 0
+  assume: 0
+  external_body_attr: 3
+  assume_specification: 0
+  cfg_attr: 3
+
+FILE src/kernel/src/mm/virt/identity_map.spec.rs
+  admit: 0
+  assume: 0
+  external_body_attr: 1
+  assume_specification: 1
+  cfg_attr: 0
+
+FILE src/kernel/src/mm/virt/ide...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification done (exit 0, but status CHEATING_DETECTED). Let me confirm exact module counts and try fn_coverage.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== external_body in .rs (verus_verify) ===" && grep -cn "verus_verify(external
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/fn_coverage.py src/kernel/src/mm/vi
+[RESULT ✓] bash: === external_body in .rs (verus_verify) ===
+3
+=== external_body verifier in spec.rs ===
+106:// covered by the `#[verus_verify(external_body)]` boundary on the exec bodies (TCB-listed in
+143:#[verifier::external_body]
+153:// hardware trust boundary (`#[verus_verify(external_body)]`, inline-asm TLB fl...
+[RESULT ✓] bash: # Function Coverage Report
+
+- **Source file:** `src/kernel/src/mm/virt/identity_map.rs`
+- **Verus file:** `src/kernel/src/mm/virt/identity_map.rs`
+- **Verus dir:** `/home/ruize/nanvix-phy-specs/src/kernel/src`
+- **Parser:** tree-sitter
+
+## Summary
+
+| Metric | Count |
+|--------|------:|
+| Source exec...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Running module verification
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt
+[RESULT ✓] report_intent: Intent logged
