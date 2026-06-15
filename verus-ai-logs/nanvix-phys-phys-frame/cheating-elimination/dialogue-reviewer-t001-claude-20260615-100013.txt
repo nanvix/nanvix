@@ -599,3 +599,73 @@ Turn 25
 Turn 26
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1500 make verify-kernel MODULE=mm::phys 2>&1 | grep -A30 "=== Results\|error\|verif
+[RESULT ✓] bash: error: precondition not satisfied
+   --> src/kernel/src/mm/phys/frame.rs:851:9
+    |
+851 |         lemma_free_count(inner);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/mm/phys/frame.proof.rs:95:9
+    |
+ 95 |         inner.bitmap@.num_bits >= 0,
+    |         -------------------...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] The inlined version fails verification because the precondition `num_bits >= 0` isn't satisfied before calling the lemma, whereas the split version establishes this fact through the binding before invoking `lemma_free_count`. So the split is genuinely necessary to satisfy Verus's requirements.
+
+However, the current implementation violates the checklist: it uses a non-standard "VERUS DEVIATION" comment instead of the required "VERUS REWRITE" tag, and it's missing a minimal reproducer. I need to revert my test changes and fix the documentation to meet the standards.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff --stat -- src/kernel/src/mm/phys/frame.rs; echo "exit=$?"; sed -n '843,
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+exit=0
+pub(super) fn free_count() -> usize {
+    let inner = instance();
+    // VERUS DEVIATION (pre-approved: intermediate value for assertions):
+    // `number_of_bits() - usage()` is split into named bindings...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager diff -- src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noticing the diff shows changes against HEAD, which means the committed version of frame.rs already has the split between nbits and used. My revert actually restored that split, but the diff is indicating there are still differences in the working tree compared to what's committed.
+[RESULT ✓] bash: diff --git a/src/kernel/src/mm/phys/frame.rs b/src/kernel/src/mm/phys/frame.rs
+index 9898c08bc..cfe196a6b 100644
+--- a/src/kernel/src/mm/phys/frame.rs
++++ b/src/kernel/src/mm/phys/frame.rs
+@@ -847,10 +847,12 @@ pub(super) fn free_count() -> usize {
+     // recover `num_bits >= 0` from the `usize` re...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && git --no-pager log --oneline -5; echo "---status---"; git status --short
+
+[THINKING] I'm noticing a discrepancy in the git history — the committed HEAD version has the inlined form, but my working tree shows the split form that matches the earlier diff target. That's odd, so HEAD must currently have the inlined version on this branch.
+
+Let me trace through what happened: at the session start, `git status` showed frame.rs was clean (matching HEAD), and the file had the split form. But now `git diff` shows HEAD has the inlined form instead. Either my edits got committed somehow, or the index hash changed between then and now — the earlier diff showed index `cfe196a6b` for the working tree, but now HEAD is at `9898c08bc`.
+
+This doesn't make sense unless a background process or auto-commit hook committed my test edit. Let me check the git log to see if there's a recent commit I'm not aware of.
+[RESULT ✓] bash: 9632fe1f9 [verus] verify FAIL: kernel::mm::phys (30 verified, 1 errors)
+b44760ddc [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, external_body=23 cfg_gate=9)
+0db63d43f [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, extern...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Restoring passing verification state
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1500 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "Results|verified|errors|Exi
+
+[THINKING] I see there's an auto-commit hook tied to `make verify-kernel` that captured my test edit as a commit with a message indicating the verification failed. The broken inlined version got committed, and now my revert is sitting as an uncommitted change in the working tree. I need to restore the correct split form.
+
+I'll run `make verify-kernel MODULE=mm::phys` again to verify the corrected version passes and let the auto-commit capture the PASS state.
+[RESULT ✓] report_intent: Intent logged
