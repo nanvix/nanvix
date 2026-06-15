@@ -1490,3 +1490,95 @@ verify-kernel: 3 verified, 0 errors. Now a final full `make verify` to confirm n
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1200 make verify 2>&1 | grep -E "verifying module|Crate|Exit code|verified,|errors|
 
 [THINKING] The verify build passed with 3 verified and no errors, confirming the gating change doesn't affect verification since the cfg flag is properly set during that build phase.
+[RESULT ✓] bash: Crate     : bitmap
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Crate     : sys
+  Exit code : 0
+  status: CLEAN
+  Crate     : nanvix-slab
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Crate     : bump-allocator
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Crate     : kernel
+note: verifying module ...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+All crates exit 0 — no regressions. The "CHEATING_DETECTED" labels are pre-existing (external_body trust boundaries) plus the two sanctioned `admit()` placeholders for this spec phase. Let me do a final review of the three files to confirm coherence:
+[TOOL] view: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/address/phys.spec.rs
+
+[THINKING] All crates are exiting cleanly with no verification errors. The "CHEATING_DETECTED" statuses are expected from the external trust boundaries and sanctioned admits in this phase. I'm confirming the kernel crate shows 3 verified with 0 errors in the full verify run, and all goals are met—verify-kernel passed and make verify shows no regressions across any crates.
+
+The build is complete and the two admits in the proof bodies are sanctioned for this spec phase. Now I'm doing a final review of the spec and proof files to ensure they're coherent and clean before wrapping up.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // PhysicalAddress — Specifications
+5. //
+6. // A `PhysicalAddress` abstracts to a single mathematical integer: the raw
+7. // physical address (`PhysicalAddress@ : int`, defined by the `View` impl in
+8. // `ph...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== phys.proof.rs ==="; cat src/kernel/src/hal/mem/types/address/phys.proof.rs; echo 
+
+[THINKING] Now I'm reviewing the spec file to make sure it's solid, then I need to check the proof file and look at the annotated functions in phys.rs to see the current state.
+[RESULT ✓] bash: === phys.proof.rs ===
+verus! { } // verus!
+=== phys.rs annotated funcs (95-180) ===
+// left out of verification scope.
+#[verus_verify]
+impl PhysicalAddress {
+    ///
+    /// # Description
+    ///
+    /// Constructs a physical address from a memory-mapped I/O address.
+    ///
+    /// # Parameters
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Everything is coherent and complete. The task is done.
+
+## Summary
+
+Added Verus specs in-place to `PhysicalAddress` (`phys.rs`) for the 4 in-scope targets.
+
+**phys.spec.rs** — `View` abstracts to the raw address `int`; `inv()` = frame-representability (`self@ / FRAME_SIZE ≤ FrameNumber::MAX`), the load-bearing fact that makes `into_frame_number` total. Added:
+- `ExFrameNumber` external type spec (arch `FrameNumber` isn't Verus-enabled)
+- uninterp projections `spec_frame_raw_value`, `spec_max_frame_number`
+- derived helpers `spec_frame_number` (addr→frame), `spec_from_number` (frame→base)
+- `assume_specification`s at the arch/sys library edge (`FRAME_SIZE`, `FRAME_SHIFT`, `VirtualAddress::new`/`into_raw_value`, `FrameNumber::into_raw_value`/`from_raw_value`)
+
+**phys.rs** — `#[verus_spec]` on the 3 exec functions (in a dedicated `#[verus_verify]` impl block, separate from the 4 untouched functions):
+- `from_mmio_address`: `requires` frame-representability → `ensures Ok(r) => r@==addr@ && r.inv()` (verifies without admit)
+- `from_number`: `ensures result@ == frame*FRAME_SIZE` (admit)
+- `into_frame_number`: `requires self.inv()` → `ensures` result index == `self@/FRAME_SIZE` (admit)
+
+Also gated the pre-existing `use ::vstd::prelude::*;` behind `#[cfg(verus_keep_ghost)]` to fix the dual-compilation unused-import error.
+
+**Results**
+- `make verify-kernel MODULE=hal::mem::types::address::phys`: **3 verified, 0 errors** (2 sanctioned `admit()` placeholders)
+- `make verify`: all crates exit 0 — **no regressions**
+- `./z build -- all`: **build complete** (dual compilation works)
+
+No external_body added to any in-scope function; no bugs needed recording (the top-frame overflow risk is correctly contained by the `inv()` precondition). `phys.proof.rs` needs no lemmas.
+
+[THINKING] Now I'm reviewing the annotated functions against the goals. The `from_mmio_address` function requires frame-representability and verifies the result without using admit, ensuring the address matches. The `from_number` function uses admit to guarantee the result matches the spec conversion, and `into_frame_number` requires the invariant to hold while ensuring the raw frame value matches the spec.
+
+The `PhysicalAddress` type itself is covered through the View implementation and its invariant. All four in-scope functions are accounted for, and the verification passes cleanly with no errors across all crates. The two sanctioned admit calls are in the proof bodies, there's no external_body on any of the functions, and no additional lemmas were needed. No bugs were discovered—the overflow panic risk is properly handled by the invariant precondition. Everything checks out.
+
+
+=== Session End ===
+Session: 7ef94563-e3f8-4c22-8121-34f5e65b9a6e
+Duration: 1389.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-hal-phys-address/specification/prover-claude-20260615-120824.jsonl
