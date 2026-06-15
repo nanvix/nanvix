@@ -617,3 +617,138 @@ Let me check if there's actually a universal pin — maybe `into_raw_value` for 
 Turn 32
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|self@|Vi
+[RESULT ✓] bash: error[E0599]: the method `view` exists for reference `&hal::mem::types::region::MemoryRegion<T>`, but its trait bounds were not satisfied
+    | ----------------------------------- doesn't satisfy `_: View`
+218 |             result as int == self@.size,
+    |                                  ^ method...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Confirmed: the conditional `View` bound breaks typechecking in the `impl<T: Address>` accessor block. I must make the `View` unconditional via the universal `spec_addr` projection (mirroring `PageAligned`). Let me verify `spec_addr`'s reachability.
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== aligned/mod.rs ==="; cat src/kernel/src/hal/mem/types/address/aligned/mod.rs 2>/dev
+
+[THINKING] I see that the View trait needs to be made unconditional through `spec_addr`, following the same pattern that PageAligned uses. Now I'm working through the consistency and bridging problem by looking at how PageAligned handles this—that precedent should show me the way forward.
+
+For MemoryRegion, if I define the view's start as `spec_addr(&self.start)`, then when a caller gets a VirtualAddress back from `region.start()`, they get a faithful representation of the abstract address. The spec `spec_addr(&result) == self@.start` guarantees that the returned value faithfully reflects the abstract state, which is what callers like `kernel_vas` actually need. Cross-module proof obligations can wait for later phases; right now I just need the accessor specs to be correct and useful.
+
+The tricky part is TruncatedMemoryRegion's start method and how it bridges back to the original region's abstract state—I need to think through what's truly consistent there. I'm realizing the gap between what my spec provides and what callers need exists in their proof phase, not mine—for now I just need a correct spec with no errors. The real question is whether `spec_addr(&pa) == pa@` should hold universally. Since page.rs deliberately kept them distinct, maybe the cleanest approach is to redefine MemoryRegion's view to use `spec_addr(&self.start)` consistently, and rethink how TruncatedMemoryRegion forwards its view rather than trying to make the current structure work. I'm realizing the universal spec for `into_raw_value` doesn't actually exist—only per-type implementations do. So I need to step back and focus on what the spec actually needs to accomplish: it must typecheck, correctly describe what the methods return, match caller expectations, and be provable during the proving phase. For `TruncatedMemoryRegion::start`, the spec `spec_addr(&result) == self@.start` is provable since result is `self.0.start.clone()` and `self@.start` equals `spec_addr(&self.0.start)`.
+
+I should use `spec_addr` uniformly across all address specs rather than mixing in `result@`. This gives me consistent specs: both `MemoryRegion::start` and `TruncatedMemoryRegion::start` ensure `spec_addr(&result) == self@.start`, while size methods ensure `result as int == self@.size`. The view definitions follow naturally—`MemoryRegion<T>@` has `start = spec_addr(&self.start)` and `size = self.size as int`, while `TruncatedMemoryRegion@` is just `self.0@`. Now I need to figure out whether the caller's page-alignment expectation translates to a postcondition on the result itself. I'm settling on mirroring the page.rs design exactly: using spec_addr as the universal address projection for the start field and expressing accessor ensures through spec_addr(&result). This is consistent, typechecks without requiring View bounds, and keeps the abstract address of the result faithful to the stored start. The gap between @ and spec_addr for callers is a later concern that resolves through into_raw_value, which should universally return spec_addr of the inner value. MUST use spec_addr uniformly for the ensures clause. The caller bridge to into_raw_value is theoretically possible but requires relating spec_addr(&result.0) to spec_addr(&result), which I can't axiomatically establish. Since the view is generic in T and can't special-case PageAligned, I'm committing to spec_addr uniformly across both MemoryRegion and TruncatedMemoryRegion—self@.start = spec_addr(&self.start) in both cases.
+
+Now reconsidering whether TruncatedMemoryRegion should define its own view that reaches through to the inner address's @ directly, rather than forwarding the outer PageAligned's @. If I override the view to extract self.0.start@ explicitly, callers would see result@ == self@.start naturally, but this breaks the forced equality between TruncatedMemoryRegion@ and MemoryRegion<PageAligned>@. The other fields like size, typ, perm, and cache should also forward through the inner view using `..self.0@`, with only start overridden to use the specialized projection. This keeps the view consistent across all fields while allowing the start accessor to bridge correctly to into_raw_value. Since I'm in the same module as MemoryRegion, accessing the private start field is fine, and PageAligned's unconditional View impl means the projection works. I'm settling on a final spec design: MemoryRegion's view exposes start via spec_addr and size as int, while TruncatedMemoryRegion simply forwards to its wrapped region's view. The accessor specs are uniform across both types—start returns a result where spec_addr matches the view's start, and size returns an int matching the view's size. This keeps things clean and aligns with the design doc.
+
+I realize the view_design.md table assumes the return type has a View instance, but that doesn't work for bare T without adding a View bound that breaks typechecking elsewhere. So I'm deviating from the doc's View<V=int> requirement and using spec_addr instead, which is the correct and implementable approach. I'll need to update view_design.md to reflect this. Now I need to check whether spec_addr is accessible from region.rs.
+[RESULT ✓] bash: === aligned/mod.rs ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//====================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; echo "=== spec_page_size definition ==="; grep -rn "spec fn spec_page_size\|uninterp spec fn 
+
+[THINKING] I'm tracing through the module re-exports to understand how `spec_addr` is accessible through the public API, and now I need to find where `spec_page_size` is defined so I can follow the same import pattern.
+[RESULT ✓] bash: === spec_page_size definition ===
+src/kernel/src/hal/mem/types/address/frame.rs:34:pub uninterp spec fn spec_page_size() -> int;
+=== address/mod exports (pub use) ===
+21:pub use ::sys::mm::{
+25:pub use aligned::*;
+26:pub use frame::*;
+27:pub use page::*;
+28:pub use pd::*;
+29:pub use phys::*;
+=== typ...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -n '1,40p' src/kernel/src/hal/mem/mod.rs
+
+[THINKING] Tracing through the module re-exports to understand how `spec_page_size` is accessible—it's defined in frame.rs and re-exported up through address, then region.rs accesses it via `crate::hal::mem::spec_page_size`, which means hal/mem must be re-exporting it from its types module.
+[RESULT ✓] bash: // Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+mod typ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Confirmed. Now I'll implement the proper design: unconditional `View` via the universal `spec_addr` projection (mirroring `PageAligned`). Let me write the spec file and update the source. First, revert my probe edit.
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] I'm tracing through the module re-exports to confirm that `spec_addr` is accessible via `crate::hal::mem`. Now I'm planning the implementation scope: I'll focus on adding verus_spec to four target functions while also designing the View pattern for the spec and proof modules. For the region.rs changes, I need to update the View implementation for MemoryRegion to work unconditionally with any type that implements Address using the spec address type.
+
+I'm also adding the invariant to MemoryRegion with the wf_geometry helper, which shouldn't create proof obligations by itself since it's an open spec function. The spec helpers like wf_geometry, spec_end, spec_last, and contains will live in the spec module alongside the View definitions, though I'm working in-place with the existing structure where the View is currently defined in region.rs with cfg-gated sections. Moving the View and spec material into region.spec.rs should work since the included file shares region.rs's scope and imports, and Rust doesn't care about item order for impls. I'll move the verus block to region.spec.rs, remove it from region.rs's bottom, and add verus_spec annotations to the four functions instead.
+
+For the spec helpers like wf_geometry and spec_end, I need to be careful — they shouldn't be floating specs with no connection to exec contracts. Since the four accessors only need basic assertions about start and size, I'll skip the extra helpers for now and keep things minimal. The TruncatedMemoryRegion::inv is already pre-existing without references, so I won't add more floating specs beyond what's necessary.
+
+On whether the accessor specs should require inv(): the alignment guarantee flows from inv(), but callers can derive it themselves by combining inv() with the accessor's ensures clause, so I don't need to bake the requirement into the accessor itself.
+
+Now I'm weighing whether to keep inv() even though it's not directly referenced by any in-scope function—it's a pre-existing type invariant that callers rely on, so it counts as external-top and stays. The minimal approach is to keep exactly what's there: View plus inv() made unconditional, add the four accessor ensures clauses, and stop there. That covers typechecking and caller expectations without introducing floating specs.
+
+The remaining question is whether to capture the range-math property (start + size - 1 no overflow) in the invariant—it's listed as a caller expectation, but adding wf_geometry carries churn risk. Defining the invariants...
+
+The goal explicitly requires covering every View operation from view_design, so I need to include wf_geometry, spec_end, spec_last, contains, and spec_set_cache_policy even if some aren't directly referenced by in-scope callers. These are legitimate View helper predicates and documented API for downstream phases. For spec_set_cache_policy, I'll add it as a pure spec function on the View since set_cache_policy itself isn't in scope to modify, making it a floating transition but justified by view_design's completeness requirement.
+
+I should verify that moving the View to region.spec.rs won't break existing verified modules—caller_analysis shows region.spec.rs was an empty stub with no dependencies, so changing the View body is safe. The spec.rs file will be included textually after the use statements in region.rs, so it'll have access to the necessary imports and forward references to types like MemoryRegion should work fine in Verus.
+
+I'm debating whether to keep the View block in region.rs (where it currently sits at the bottom) or move it to region.spec.rs. Looking at the project's existing patterns, phys.spec.rs has its View implementation there, while page.rs keeps it in-file—so there's precedent for both. Since the task explicitly calls for View types and helpers in region.spec.rs and that matches the phys convention, I'll move the entire verus block there, then add the verus_spec annotations to the four accessor functions.
+
+For the ensures clauses, I need to reference spec_addr from the attribute context. Since verus_spec attributes are erased in normal builds, I can safely use the full path `crate::hal::mem::spec_addr` inside the attribute without breaking the non-verus build—the path only needs to resolve when verus_keep_ghost is active.
+
+For MemoryRegion::start, the ensures clause checks that spec_addr of the result equals self@.start. For TruncatedMemoryRegion::start returning PageAligned<T>, the same pattern applies since PageAligned implements Address. The size accessor just ensures the result as int matches self@.size.
+
+Now I'm deciding whether to explicitly ensure alignment for TruncatedMemoryRegion::start—it's derivable from the invariant, but since callers don't necessarily carry the invariant, I'll keep the accessor caller-friendly and omit the extra alignment guarantee.
+
+Writing region.spec.rs... Finishing the invariant definition for TruncatedMemoryRegion, then checking that the View implementations work correctly — the private fields are accessible within the module, spec_addr resolves properly under the verus_keep_ghost configuration, and the type constraints all line up for both MemoryRegion and TruncatedMemoryRegion views.
+
+Now I need to remove the old verus block from region.rs to avoid duplication, and for the exec accessor functions in proof.rs, I'm realizing that proving spec_addr preservation through clone might require an admit() since Verus may not automatically know that cloning preserves the spec value. I'll follow the workflow of writing the code first, then running verification and adding `proof!{admit();}` only where needed as a placeholder. Let me start by writing the spec file, then make the corresponding edits to the implementation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Now write the spec file with the View, invariants, and helpers:
+[TOOL] bash: cd /home/ruize/nanvix-phy; cat > src/kernel/src/hal/mem/types/region.spec.rs <<'EOF'
+// Copyright(c) The Maintainers of 
+[RESULT ✓] bash: done
+<shellId: 27 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Now remove the old in-file `verus!` View block from region.rs and add `#[verus_spec]` to the four accessors:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Now add the `#[verus_spec]` annotations to the four target accessors:
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+Now let me run verification to see the result:
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-kernel MODULE=hal::mem::types::region 2>&1 | grep -iE "error|spec_add
+
+[THINKING] I need to figure out whether `#[verus_spec]` alone is sufficient for verification or if I also need `#[verus_verify]` on the impl blocks. Based on the syntax documentation, `#[verus_spec]` by itself marks functions for verification without requiring additional specs.
+
+Looking at page.rs, the impl block has `#[verus_verify]` on line 38, but I'm not sure if that's necessary for region.rs. Let me just run the verifier and see what happens.
