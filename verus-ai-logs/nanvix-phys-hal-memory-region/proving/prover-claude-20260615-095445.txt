@@ -274,3 +274,28 @@ Turn 11
 Turn 12
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -40
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=19 admit=12 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unveri...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "admit\|assume\|external_body" src/kernel/src/hal/mem/types/region.rs src/ke
+
+[THINKING] The build shows a clean status with cached results, and the four target functions all have contracts that verified successfully. I'm checking whether there are any issues with the admit or external_body counts in the region module itself, since those higher numbers appear to be from other modules.
+[RESULT ✓] bash: 
+<shellId: 7 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The four target functions already have contracts and verify cleanly. Let me force a non-cached re-verification to confirm.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/hal/mem/types/region.rs && timeout 1200 make verify-kernel MODUL
+
+[THINKING] The region module checks out cleanly with no admit or external_body violations, and all four target functions have proper contracts. The global counts I'm seeing are from dependencies outside the scope. I'm verifying that the check actually ran fresh on the region module rather than using cached results, and the status confirms it ran cleanly with no cheating detected and all four functions accounted for, though it notes the compilation was cached.
