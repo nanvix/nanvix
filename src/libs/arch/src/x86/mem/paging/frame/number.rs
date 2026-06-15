@@ -23,6 +23,7 @@ use crate::mem;
 /// A type that represents a frame number.
 /// A frame number is in the range from `0` to [`Self::MAX`] (inclusive).
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone, Copy)]
 pub struct FrameNumber(usize);
 

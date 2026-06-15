@@ -118,3 +118,20 @@ But I'm reconsidering whether type_invariant is the right approach here. Looking
 However, looking at the upstream tcb-allowed contract in phys.spec.rs, the into_raw_value specification has no requires clause at all — it unconditionally ensures the range without any precondition. This means the tcb-allowed contract guarantees the range holds for every FrameNumber regardless of whether the invariant is satisfied. If I add a requires self.inv() precondition, that would actually weaken the contract relative to what tcb-allowed specifies, which violates the spec drift requirement that my contract must be at least as strong. So type_invariant is actually the correct mechanism here — it's the only way to unconditionally guarantee the range without adding a precondition that would contradict the tcb-allowed specification.
 
 Now I need to verify whether the impl containing into_raw_value needs #[verus_verify], and whether the type_invariant itself requires special annotation on the struct. I'm also concerned about whether the const constructors like NULL and MAX will satisfy the invariant during const evaluation. Rather than speculate further, I should just run the verifier and see what errors come up.
+[RESULT ✓] bash: PATH="/home/ruize/toolchain/verus-pinned-0531:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-kerne...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The struct needs `#[verus_verify]` for the type invariant to attach. Let me mirror the sibling pattern.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] The `type_invariant` requirement means Verus needs the struct to be defined as a verified datatype in this crate, so I need to add the `#[verus_verify(external_derive)]` annotation to the `FrameNumber` struct alongside its existing derives. I'm checking whether the `Debug` derive might conflict with this annotation.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 600 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&
