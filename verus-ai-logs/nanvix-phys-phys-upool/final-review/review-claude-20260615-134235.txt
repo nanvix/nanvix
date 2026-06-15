@@ -337,3 +337,416 @@ user-app-development
 === view_design tail ===
 
 6. **Inline `FrameAllocView { … }` transitions in every contract instead ...
+[RESULT ✓] bash: - manager.proof.rs:27 lemma_kernel_alloc_one: admit
+    - manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
+    - manager.proof.rs:153 lemma_user_bulk_err_restored: admit
+    - manager.rs:104 init: external_body
+    - manager.rs:536 kernel_watermark: external_body
+    - mod.rs:73 book_physica...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== cfg gate detail for upool ===" && grep -i upool verus-ai-logs/ver
+
+[THINKING] The kernel verification passes successfully. The "CHEATING_DETECTED" status appears across the mm::phys module with multiple external bodies and admits, but those admits are coming from other files in the manager.proof.rs lemmas, not from upool itself. Looking at upool specifically, there are two external bodies at lines 255 and 288, both marked as tcb-allowed, with no admits or assumes present in that file.
+
+For the upool review scope, I need to verify the cfg-gating details and check where the referenced skills (spec-design, verus-constraints, ast-consistency, bug-reporting) are located, since they're not in the .github/skills directory. I also notice there are already some review files from a prior attempt, so I'll need to generate the expected output files and coordinate the sub-agents properly.
+[RESULT ✓] bash: === cfg gate detail for upool ===
+    - mm/phys/upool.rs:255 new: external_body
+    - mm/phys/upool.rs:288 alloc: external_body
+=== find verus-ai skills ===
+/home/ruize/verus-ai-exp/verus-ai-phy-mm-0423/docs/virt-mm-spec-design.md
+=== skills dirs ===
+/home/ruize/verus-ai-exp/verus-ai/docs/skills
+/ho...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] bash: ls /home/ruize/verus-ai-exp/verus-ai/docs/skills/ 2>/dev/null
+[RESULT ✓] bash: ast-consistency
+body-removal
+bug-reporting
+caller-analysis
+crate-analysis
+proof-extraction
+proof-minimization
+property-analysis
+proving-guide
+review-methodology
+spec-design
+spec-drift-check
+tcb-plan
+verification-order
+verus-constraints
+verus-setup
+verus-syntax
+view-design
+<shellId: 9 completed with ...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+I have enough context. Launching two independent review sub-agents (one per model) in parallel.
+[TOOL] report_intent: Launching review sub-agents
+[TOOL] task: {'name': 'review-claude', 'agent_type': 'general-purpose', 'model': 'claude-opus
+[TOOL] task: {'name': 'review-codex', 'agent_type': 'general-purpose', 'model': 'gpt-5.3-code
+
+[THINKING] I've located the skills directory and identified the output file naming convention I'll use. Now I'm setting up comprehensive prompts to launch the two independent sub-agents in parallel, each with full context to conduct their reviews.
+
+Both agents will read the source specifications, proof files, and analysis documents, apply the relevant skills around spec design and constraint verification, then run the verification suite including the kernel module check and various analysis scripts to count violations and generate their final reviews to their designated output paths. I'm keeping the make commands lightweight by targeting just the cached physical memory module to avoid conflicts while they run concurrently.
+[RESULT ✓] task: Agent started in background with agent_id: review-claude. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] task: Agent started in background with agent_id: review-codex. You'll be notified when it completes. Tell the user you're waiting and end your response, or continue unrelated work until notified.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────
+Turn 0
+────────────────────────────────────────────────────────────
+Both review sub-agents are running in the background (claude-opus-4.8 and gpt-5.3-codex). I'll wait for them to complete, then consolidate their findings into the final review.
+I'll start by reading the skills, then the in-scope files. Let me batch the reads.
+[TOOL] report_intent: Reading skills and scope files
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && git branch --show-current && git log --oneline -5
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] bash: verus-ai-prove-bottom-up
+4471a91d6 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=7 external_body=14 cfg_gate=12)
+9b563f8a7 [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=7 external_body=14 cfg_gate=12)
+d5ad3f...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+The skill paths are directories. Let me read the SKILL.md files and the scope files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+[TOOL] report_intent: Reviewing upool verification
+[TOOL] bash: wc -l /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs /home/ruize/nanvix-phy-specs-bottom-up/src/
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 292 /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+     17 /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.spec.rs
+      1 /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.proof.rs
+    149 /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-...
+
+────────────────────────────────────────────────────────────
+Turn 1
+────────────────────────────────────────────────────────────
+Now let me read the spec-design skill and the in-scope source files.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+[RESULT ✓] view: SKILL.md
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Now let me read the spec-design skill in sections, plus spec.rs and proof.rs.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.proof.rs
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl UserFrame {
+4.     /// Well-formedness of a user-frame handle: its owned physical address is page aligned.
+5.     ///
+6.     /// This is purely structural; it makes **no** ownership claim (it does not assert the frame
+7.     /// is allocated or has a positive refcount). Owner...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Now the supporting docs and rest of spec-design skill.
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/caller_analysis.md
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::upool`
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-upool/find_callers_lsp.out`
+5. (rust-analyzer LSP, intra-crate only; crate `kernel` has no external dependents).
+6. 
+7. Summary: 8 exec functions, all `pub`/`pub(super)`/trait-pub, 0 private, 2 ty...
+[RESULT ✓] view: 130.       code), would I believe this ensures clause is guaranteed?"
+131.    5. **Version sensitivity**: note the stdlib/crate version the
+132.       assumption was checked against.
+133. 
+134.    - `external_body`: allowed on dependency functions in other modules as
+135.      a temporary contract p...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/upool.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/caller_analysis.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/bugs.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/verus-constraints/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/ast-consistency/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/bug-reporting/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.md
+[RESULT ✓] view: File too large to read at once (23.2 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //==================================================================================================
+5. // Imports
+6. //=========================================================================================...
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl UserFrame {
+4.     /// Well-formedness of a user-frame handle: its owned physical address is page aligned.
+5.     ///
+6.     /// This is purely structural; it makes **no** ownership claim (it does not assert the frame
+7.     /// is allocated or has a positive refcount). Owner...
+[RESULT ✓] view: 1. verus! { } // verus!
+2. 
+[RESULT ✓] view: 1. # Caller Analysis: `mm::phys::upool`
+2. 
+3. ## Script Output
+4. See: `verus-ai-logs/nanvix-phys-phys-upool/find_callers_lsp.out`
+5. (rust-analyzer LSP, intra-crate only; crate `kernel` has no external dependents).
+6. 
+7. Summary: 8 exec functions, all `pub`/`pub(super)`/trait-pub, 0 private, 2 ty...
+[RESULT ✓] view: 1. # View Design: `mm::phys::upool` (`UserFrame`, `Upool`)
+2. 
+3. > Phase output. Designs the abstract `View`s that all later specs
+4. > (`requires`/`ensures`) for the eight in-scope functions will reference:
+5. > `UserFrame::new`, `UserFrame::address`, `UserFrame::leak`,
+6. > `UserFrame::share`, `U...
+[RESULT ✓] view: 221. Consumes the handle, returning its address **without** releasing the frame.
+222. 
+223. ```
+224. requires  self.inv()
+225. ensures   result@ == self@
+226.           result.inv()
+227.           phys_view() == old(phys_view())     // Drop suppressed: refcount NOT decremented
+228. ```
+229. 
+230. Th...
+[RESULT ✓] view: 1. # Bugs — mm::phys::upool
+2. 
+3. No code bugs found during the specification phase.
+4. 
+5. ## Notes / deferred modeling
+6. 
+7. - `phys_view()` is a no-argument `uninterp spec fn` (effectively a global
+8.   constant), so before/after global-state transitions cannot be expressed at
+9.   this phase. ...
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] view: 1. ---
+2. name: verus-constraints
+3. description: "Mandatory rules for writing Verus code. Covers attribute-based syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4. ---
+5. 
+6. # Verus...
+[RESULT ✓] view: 1. ---
+2. name: ast-consistency
+3. description: "AST-level exec fidelity checking tools and pre-approved deviations. Use after modifying source files to verify exec code is unchanged."
+4. ---
+5. 
+6. # AST Consistency Check
+7. 
+8. Source exec code must not change during verification — see `verus-cons...
+[RESULT ✓] view: 1. ---
+2. name: bug-reporting
+3. description: "Classify and report bugs found during Verus verification. Distinguishes true bugs from missing constraints and verifier limitations. Use when a verification failure might indicate a code bug."
+4. ---
+5. 
+6. # Bug Reporting
+7. 
+8. Finding real code bugs ...
+[RESULT ✓] view: 1. ---
+2. name: spec-drift-check
+3. description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+4. ---
+5. 
+6. # Spec Drift Check
+7. 
+8. #...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+Now let me read the view_design, bugs, and tcb-allowed docs.
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/view_design.md
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/bugs.md
+[RESULT ✓] view: File too large to read at once (20.9 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. # Bugs — mm::phys::upool
+2. 
+3. No code bugs found during the specification phase.
+4. 
+5. ## Notes / deferred modeling
+6. 
+7. - `phys_view()` is a no-argument `uninterp spec fn` (effectively a global
+8.   constant), so before/after global-state transitions cannot be expressed at
+9.   this phase. ...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/view_design.md
+[RESULT ✓] view: 1. # View Design: `mm::phys::upool` (`UserFrame`, `Upool`)
+2. 
+3. > Phase output. Designs the abstract `View`s that all later specs
+4. > (`requires`/`ensures`) for the eight in-scope functions will reference:
+5. > `UserFrame::new`, `UserFrame::address`, `UserFrame::leak`,
+6. > `UserFrame::share`, `U...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/view_design.md
+[RESULT ✓] view: 120.     pub open spec fn release(self, addr: int) -> FrameAllocView {
+121.         if self.refcounts[addr] == 1 {
+122.             FrameAllocView {
+123.                 allocated_frames: self.allocated_frames.remove(addr),
+124.                 free_frames: self.free_frames.insert(addr),
+125.       ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-upool/view_design.md
+[RESULT ✓] view: 360. 
+361. - **Two minimal Views, no new struct.** `UserFrame@ = int` and
+362.   `Upool@ = FrameAllocView` (both already committed) are the smallest honest
+363.   models: a handle's caller-visible value is the frame it owns; a stateless pool
+364.   facade's value is the partition it draws from. Wrap...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: wc -l /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] bash: 467 /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/tcb-allowed.md
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-design/SKILL.md
+[RESULT ✓] view: 1. ---
+2. name: spec-design
+3. description: "How to write good Verus specs. Covers spec quality principles (anti-patterns, error paths), spec classification (internal, external-top, external-bottom trust boundaries), View abstraction design, and static vs dynamic enforcement. Use when writing or rev...
+[RESULT ✓] view: 241. - **Type-system guarantees** — ownership, borrow rules, type matching
+242. - **Display/formatting** — debug output, logging, string representation
+243. - **Boilerplate trait impls** — derived traits, mechanical delegations
+244. 
+245. **Basic ensures only** (no additional spec design):
+246. - **...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Now let me run the helper scripts and start verification.
+[TOOL] report_intent: Running verification and analysis scripts
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && make verify-kernel MODULE=mm::phys 2>&1 | tail -60
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up && echo "=== fn_coverage ===" && python3 /home/ruize/verus-ai-exp/verus-ai/scr
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: <command started in background with shellId: verify>
+[RESULT ✓] bash: === fn_coverage ===
+usage: fn_coverage.py [-h] [--verus-dir VERUS_DIR] [--json] [--markdown]
+                      source_file verus_exec_file
+fn_coverage.py: error: the following arguments are required: verus_exec_file
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
