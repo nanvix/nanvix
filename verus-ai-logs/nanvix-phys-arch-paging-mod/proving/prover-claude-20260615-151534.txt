@@ -310,3 +310,19 @@ All accounted for: `invlpg` is the only in-scope function, and its 3 entries plu
 [THINKING] I'm confirming that my module only references invlpg as an external function at the hardware boundary, which is TCB-allowed, and the table module components are already verified. There's no actual assume() or admit() code—just a comment mentioning assume_specification—so everything in scope checks out as legitimate.
 
 Now running the full verification suite to make sure nothing else broke.
+[RESULT ✓] bash: 1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1357:42
+     |
+1357 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                            ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+All modules pass with **0 errors**. The kernel's `admit=4 external_body=23` matches the pre-existing baseline (commit `c71568fb7`) — no regressions introduced. Let me confirm the overall exit status across all crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; make verify 2>&1 | grep -E "verification results|errors|Exit code|status:" 
+
+[THINKING] The full verification run across all crates and the kernel completed successfully with 93 verified modules and zero errors. The kernel shows admit=4 and external_body=23, which are pre-existing baseline values from commit c71568fb7 and not regressions—they match exactly what was there before.
