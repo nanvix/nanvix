@@ -1106,3 +1106,37 @@ Module verifies: **5 verified, 0 errors, CLEAN**. Now run the full `make verify`
 [THINKING] The module is verifying cleanly with 5 items confirmed and no errors, with the configuration gate count dropping from 7 to 6 after removing an inline verus block. The admit=1 serves as a bridge lemma placeholder for the spec phase, and the 4 in-scope functions plus the FrameAddress View type account for the 5 verified items, leaving 5 more to cover.
 
 The remaining unverified functions are out of scope and shouldn't be touched. I need to run the full verification and build suite to check for regressions, but first I'm updating view_design.md to document the strengthened invariant with representability and the new spec helpers, since I added a bound to the invariant that was previously deferred — into_frame_number requires it. I'll kick off the full verify and build in the background while making these documentation changes.
+[RESULT ✓] bash: Detail: verus-ai-logs/verify-bump-allocator/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  3/6 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+
+=== Summary ===
+  verification: cached (no recompi...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -c "verifying module" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_16-45-09
+
+[THINKING] I'm noticing a discrepancy in the verification output — it says the full verify-kernel ran with `--crate kernel` and `Module: <all>`, but the cached result note only mentions the `hal::mem::types::address::frame` module being verified. The exit code is 0, so it completed successfully, but I need to figure out whether it actually verified all kernel modules or just that one frame module.
+
+The "cached (no recompilation)" message is concerning because I modified frame.rs and its specs, which means mm::phys (which depends on frame) should have been invalidated and re-verified. Let me search through the full verification log to check the error counts and confirm whether all modules actually re-verified or if the cache incorrectly short-circuited the process.
+[RESULT ✓] bash: 1
+--- modules ---
+note: verifying module hal::mem::types::address::frame
+--- errors/results ---
+<shellId: 39 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+Let me explicitly re-verify `mm::phys` (the main consumer of `FrameAddress`) to be sure the strengthened `inv()` causes no regression.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 580 make verify-kernel MODULE=mm::phys 2>&1 | tail -30
+
+[THINKING] The kernel verification only showed one module being re-verified because the results were cached—Verus reused cached verification for everything except the changed module. Since I modified frame.rs, which mm::phys depends on, I need to check whether that dependency triggered a re-verification or if the caching prevented it.
+
+The key insight is that if all the callers of my modified functions in mm::phys are marked as external_body, then mm::phys verification doesn't actually check those function bodies, so the cache would remain valid even with my changes. The full `make verify` returned exit 0 across all crates with no errors—the CHEATING_DETECTED messages are just the pre-existing external_body trust states, not failures.
+
+To be certain there's no regression, I should explicitly re-verify mm::phys since the cache might have masked whether it actually needed re-checking.
