@@ -545,3 +545,61 @@ The module path needs the `sys::` prefix. Let me retry.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && timeout 600 make verify-sys MODULE=sy
 
 [THINKING] I'm realizing the module path needs to be `sys::mm::address` rather than just `mm::address`, but the make command was passing the shorter version. The previous run succeeded because it was cached, but running it fresh now fails due to the incorrect module name. I need to check what the task actually specifies for the module format.
+[RESULT ✓] bash: Exit code : 101
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 0 verified, compilation/setup error (verus did not run) (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+  cheating: assume=0 external_body=0 admit=0 trusted=0 no_decreases=0 cfg_gate=1
+==...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-sys/verus-logs/verus_*.log | head -1 | xargs sed -n '17,90
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sys)
+error: could not find module mm::address specified by --verify-module or --verify-only-module
+       available modules are:
+       - sys::mm::access
+       - sys::mm::address
+       - sys::mm::address::virt
+   ...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: grep -n "verify-module\|verify-only-module\|MODULE\|crate.*::\|sed.*::" /home/ruize/verus-ai-exp/verus-ai/scripts/verify
+
+[THINKING] I'm tracing through how the MODULE variable gets passed to the Verus script. The Makefile sets `VERUS_MODULE_ARG := --module $(MODULE)`, which should expand to `--module sys::mm::address`, but the error message shows just `mm::address` without the `sys::` prefix. This suggests the verify.sh script is either stripping or transforming the module path somewhere before passing it to Verus.
+[RESULT ✓] bash: 24:MODULE=""
+42:  --module MODULE       Module path to verify (e.g., "kernel::pm::thread").
+67:            MODULE="$2"
+157:    if [[ "$MODULE" == "root" ]]; then
+159:    elif [[ -n "$MODULE" ]]; then
+160:        CMD+=(-- --verify-module "$MODULE")
+162:    LABEL="${CRATE_NAME}::${MODULE:-all}"
+166:  ...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '320,335p;600,635p' Makefile
+
+[THINKING] I'm tracing through how the Makefile passes the module argument to Verus. The issue is that when I run `make verify-sys MODULE=sys::mm::address`, the Makefile constructs `--module $(MODULE)`, which should pass `--module sys::mm::address` to Verus, but the error message suggests it's only receiving `mm::address` instead.
+[RESULT ✓] bash: export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+	$(CARGO) verus verify --locked --no-default-features
+
+export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+export VERUS_AI_DIR ?= /home/ruize/verus-ai-exp/verus-ai
+
+ifneq ($(st...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/libs/sys/src/sys/mm/address/mod.rs && timeout 600 make verify-sys MODULE=sy
+
+[THINKING] The module path being passed through the build system might be getting transformed somewhere — `sys::mm::address` is going to verify.sh as `--module sys::mm::address`, then to verus as `--verify-module sys::mm::address`, but the actual error shows just `mm::address`. I'm wondering if the error message I saw is stale from a previous failed compilation, since touching mod.rs would force a recompile but the cached error output might still be showing the old failure.
+
+Let me just run this cleanly from scratch and watch the full output without filtering to see what's actually happening.
