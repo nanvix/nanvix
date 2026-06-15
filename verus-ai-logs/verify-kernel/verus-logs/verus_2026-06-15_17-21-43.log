@@ -1,0 +1,43 @@
+Timestamp: 2026-06-15_17-21-43
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+45 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=24
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=6
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy/src/kernel)
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/upool.rs:153:17
+     |
+ 153 |         let r = frame::share(self.addr);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/kernel/src/mm/phys/frame.rs:1016:9
+     |
+1016 |         frame.inv(),
+     |         ----------- failed precondition
+
+error: precondition not satisfied
+    --> src/kernel/src/mm/phys/upool.rs:197:17
+     |
+ 197 |         let r = frame::refcount(self.addr);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+    ::: src/kernel/src/mm/phys/frame.rs:1056:9
+     |
+1056 |         frame.inv(),
+     |         ----------- failed precondition
+
+verification results:: 45 verified, 2 errors
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors
