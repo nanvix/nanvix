@@ -1,0 +1,29 @@
+Timestamp: 2026-06-15_09-44-57
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=12
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: cannot use function `sys::sys::mm::address::virt::impl&%1::into_raw_value` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.
+   --> src/kernel/src/hal/mem/types/address/phys.rs:167:31
+    |
+167 |         let raw_addr: usize = self.0.into_raw_value();
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: The following declaration may resolve this error:
+            pub assume_specification [<sys::mm::VirtualAddress as sys::mm::Address>::into_raw_value] (_0: sys::mm::VirtualAddress) -> usize;
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error
