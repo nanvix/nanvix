@@ -5057,3 +5057,144 @@ Now let me write the full `alloc_range` body:
 Turn 333
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(
+[RESULT ✓] bash: error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:919:13
+error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:919:13
+   --> src/kernel/src/mm/phys/frame.rs:317:17
+   --> src/kernel/src/mm/phys/frame.rs:318:46
+   --> src/kernel/src/mm/phys/frame.rs:333:1...
+
+────────────────────────────────────────────────────────────
+Turn 334
+────────────────────────────────────────────────────────────
+Major progress — admit gone, only 2 postcondition errors at line 919 (the `alloc_range` ensures). Let me get details:
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; cat verus-ai-logs/verify-kernel/verus-logs/*.log 2>/dev/null | grep -B2 -A18 
+
+[THINKING] I've narrowed it down to just two errors now, both postcondition failures in the alloc_range function at line 919. The error messages reference other lines that seem to be related context, but the actual issue is in that ensures block. Let me pull up the detailed error information to understand what's going wrong.
+[RESULT ✓] bash: | |_________^
+
+error: postcondition not satisfied
+   --> src/kernel/src/mm/phys/manager.rs:181:17
+    |
+181 |                 Ok(()) => {
+    |                 ^^^^^^ failed this postcondition
+...
+239 |                     return Err(error);
+    |                     ----------------- at this exit
+
+...
+
+────────────────────────────────────────────────────────────
+Turn 335
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; ls -t verus-ai-logs/verify-kernel/verus-logs/*.log 2>/dev/null | head -1 | xa
+
+[THINKING] I need to track down the specific postcondition error in frame.rs at line 919 rather than looking at the manager.rs log, so I'm searching for that exact location in the verification output.
+[RESULT ✓] bash: error: postcondition not satisfied
+    --> src/kernel/src/mm/phys/frame.rs:919:13
+     |
+ 919 | /             ({
+ 920 | |                 let start_frame_number = region@.start / spec_page_size();
+ 921 | |                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
+ 922...
+
+────────────────────────────────────────────────────────────
+Turn 336
+────────────────────────────────────────────────────────────
+The Err/Ok postconditions need: (1) reconstruct the contract's `frames` exactly and equate to `frame_set`, (2) the success-case subset proof, (3) map extensionality for refcounts. Let me view and fix both blocks:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through two failing exit cases, specifically the first one at line 1087 where the frame is already allocated. The postcondition requires the state to remain unchanged and the frames to not be a subset of the original free frames. I've established that the frame set isn't a subset of the old free frames and verified the state equivalence, but I'm stuck on reconciling whether `frames.subset_of` and `frame_set.subset_of` are actually the same thing in this context.
+
+The real problem is that the contract's `frames` is defined using `set_int_range(...).map(...)`, and I have a lemma showing these are equivalent, but I haven't established that the contract's specific bounds (derived from `region@.start` and `region@.size`) actually equal the `lo` and `hi` values I'm working with in this proof block. Those divisibility facts were proven earlier in the function but aren't in scope here since proof blocks don't share context, so I need to re-assert them locally to make the connection between the contract's frames and my frame_set. The issue might be that Verus treats closures by syntactic identity, so even though `|i| i*ps` and `|i| i*spec_page_size()` are semantically equivalent, they don't match the contract's closure. I should reconstruct frames using the exact closure syntax from the contract to ensure Verus recognizes them as the same.
+
+For the success case at line 1176, I need to prove that the frames subset is actually contained in the old free frames — the coverage loop only showed each frame was unset in the old state, but I haven't connected that to the full subset relationship yet.
+
+The FrameAllocView equality also requires showing that the union and difference operations on frames match what lemma_book_range produces with frame_set. Since I'm asserting frames =~= frame_set(lo, hi), Verus should treat them as extensionally equal sets, which means the union and difference operations will produce the same results. The refcounts Map also needs this equivalence to work out correctly. Verus doesn't support `=~=` for structs generally, so I need to assert each field separately. I'm structuring the proof to compute the frame range bounds, establish that the computed frames match the frame_set via extensional equality, verify the subset property, invoke the lemma to get the view in terms of frame_set, and then assert the three fields of the view equal — particularly the refcounts field where I need to handle the closure equality via `=~=`. Proving map extensionality for the refcounts...
+
+Now I need to handle the subset proof for the success case where frame_set is a subset of the old free frames, and then restructure both the Ok(true) error block and the final Ok block to clean up the proof logic.
+[RESULT ✓] view: 1055.                     proof! {
+1056.                         lemma_view_determined(self, &old_self);
+1057.                         let k: int = index as int;
+1058.                         assert(lo <= k < hi);
+1059.                         assert(self.bitmap@.set_bits.contains(k));
+1060.        ...
+
+────────────────────────────────────────────────────────────
+Turn 337
+────────────────────────────────────────────────────────────
+Let me create helper lemmas in `frame.proof.rs`. First check what's imported there:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm creating a helper proof function that takes region boundaries and proves the frames match the expected frame set by converting the region's start and size into page indices.
+
+Actually, I realize it's cleaner to just inline this logic directly in each block rather than create a separate helper. For the error case, I need to prove that the final state equals the old state and that the allocated frames aren't a subset of the free frames—so I'll reconstruct the frames from the bitmap and show that the frame at the given index is allocated, meaning it can't be free. I'm verifying that the frame set equality holds by confirming the arithmetic: `region@.start / ps == lo` follows from the earlier assertion that `start_frame_number as int == region@.start / ps` and the definition of `lo` as `start_frame_number as int`, while `ps` is defined as `spec_page_size()` so they're definitionally equal. I'll add explicit assertions to help Verus connect these facts, then handle the final `Ok` block similarly.
+
+Now I'm creating a helper proof function that bridges the frame set view from the bitmap lemma to the allocation range contract, handling both the frames equality and the refcount view updates in one place. Finishing the proof by showing the refcounts field matches through the lemma's equivalence, then asserting the full FrameAllocView equality holds once all three fields are verified. I'll create a smaller helper lemma that reconstructs the frames equivalence, which I can reuse in the error blocks to avoid duplicating the witness logic. This lemma takes the region parameters and proves that the mapped set_int_range equals the frame_set, leveraging the existing lemma_map_range_is_frame_set. Then in the error paths, I'll call this helper and inline the frames reconstruction to establish the subset violation without needing the full allocation view proof.
+
+Now I need to handle all three proof locations: the upfront guard check, the Ok(true) branch, and the final Ok case. Before writing the helpers, I should verify that FrameAllocView and the necessary imports are accessible in frame.proof.rs.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use crate::hal::mem::spec_page_size;
+5. use ::bitmap::BitmapView;
+6. use vstd::map::*;
+7. use vstd::set::*;
+8. 
+9. // The kernel targets x86_64, where `usize` is 8 bytes (`MAX_ADDRESS == usize::MAX == 2^64 - 1`).
+10. // Encoding the target word size l...
+
+────────────────────────────────────────────────────────────
+Turn 338
+────────────────────────────────────────────────────────────
+`FrameAllocView`, `Map`, `BitmapView` all in scope. Let me add the two helper lemmas:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 339
+────────────────────────────────────────────────────────────
+Now update the three proof blocks in `alloc_range`. First the upfront guard Err block:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1002.                 lemma_view_determined(self, &old_self);
+1003.                 // Exhibit an in-range frame number `k` that the bitmap does not cover.
+1004.                 let k: int = if start_frame_number >= nbits { lo } else { nbits as int };
+1005.                 assert(lo <= k < hi);
+1006...
+
+────────────────────────────────────────────────────────────
+Turn 340
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 341
+────────────────────────────────────────────────────────────
+Now the Ok(true) Err block:
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 342
+────────────────────────────────────────────────────────────
+Now the final Ok block — replace the manual lemma_book_range call with the comprehensive helper:
+[TOOL] view: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1180. 
+1181.         proof! {
+1182.             assert(self.bitmap@.set_bits == old_self.bitmap@.set_bits.union(
+1183.                 ::bitmap::BitmapView::range_set(lo, hi)));
+1184.             assert forall|j: int| lo <= j < hi implies self.refcount@[j] == 1 by {}
+1185.             assert forall|...
+
+────────────────────────────────────────────────────────────
+Turn 343
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs-bottom-up/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 344
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -E "^error|frame.(

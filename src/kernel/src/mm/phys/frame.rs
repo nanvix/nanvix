@@ -1020,7 +1020,16 @@ impl Inner {
                     }
                 }
                 lemma_map_range_is_frame_set(lo, hi);
-                assert(!frame_set(lo, hi).subset_of(old_self@.free_frames));
+                lemma_region_frames_eq(region@.start, region@.size, lo, hi);
+                assert(region@.start / spec_page_size() == lo);
+                assert((region@.start + region@.size) / spec_page_size() == hi);
+                let frames = vstd::set_lib::set_int_range(
+                    region@.start / spec_page_size(),
+                    (region@.start + region@.size) / spec_page_size())
+                    .map(|i: int| i * spec_page_size());
+                assert(frames =~= frame_set(lo, hi));
+                assert(frames.contains(addr));
+                assert(!frames.subset_of(old_self@.free_frames));
             }
             let reason: &str = "frame index not covered by the bitmap";
             #[cfg(not(verus_keep_ghost))]
@@ -1073,7 +1082,16 @@ impl Inner {
                             }
                         }
                         lemma_map_range_is_frame_set(lo, hi);
-                        assert(!frame_set(lo, hi).subset_of(old_self@.free_frames));
+                        lemma_region_frames_eq(region@.start, region@.size, lo, hi);
+                        assert(region@.start / spec_page_size() == lo);
+                        assert((region@.start + region@.size) / spec_page_size() == hi);
+                        let frames = vstd::set_lib::set_int_range(
+                            region@.start / spec_page_size(),
+                            (region@.start + region@.size) / spec_page_size())
+                            .map(|i: int| i * spec_page_size());
+                        assert(frames =~= frame_set(lo, hi));
+                        assert(frames.contains(addr));
+                        assert(!frames.subset_of(old_self@.free_frames));
                     }
                     let conflicting_addr: usize = index * mem::FRAME_SIZE;
                     let region_start: usize = region.start().into_raw_value();
@@ -1166,12 +1184,11 @@ impl Inner {
             assert forall|j: int| lo <= j < hi implies self.refcount@[j] == 1 by {}
             assert forall|k: int| 0 <= k < self.refcount@.len() && !(lo <= k < hi) implies
                 self.refcount@[k] == old_self.refcount@[k] by {}
-            lemma_book_range(&old_self, self, lo, hi);
+            assert(region@.start / spec_page_size() == lo);
+            assert((region@.start + region@.size) / spec_page_size() == hi);
+            // Establish `internal_inv` and the contract's `frames`-based view transition.
+            lemma_alloc_range_view(&old_self, self, region@.start, region@.size, lo, hi);
             lemma_internal_inv_implies_wf(self);
-            lemma_map_range_is_frame_set(lo, hi);
-            // The contract's `frames` set equals `frame_set(lo, hi)`.
-            assert(region@.start / ps == lo);
-            assert((region@.start + region@.size) / ps == hi);
         }
         Ok(())
     }

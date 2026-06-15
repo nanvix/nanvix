@@ -897,6 +897,98 @@ pub proof fn lemma_map_range_is_frame_set(lo: int, hi: int)
     assert(mapped =~= frame_set(lo, hi));
 }
 
+// Reconstructs the `alloc_range` contract's booked block — phrased as
+// `set_int_range(start/PS, (start+size)/PS).map(|i| i*PS)` — as `frame_set(lo, hi)`.
+pub proof fn lemma_region_frames_eq(region_start: int, region_size: int, lo: int, hi: int)
+    requires
+        lo == region_start / spec_page_size(),
+        hi == (region_start + region_size) / spec_page_size(),
+    ensures
+        vstd::set_lib::set_int_range(
+            region_start / spec_page_size(),
+            (region_start + region_size) / spec_page_size())
+            .map(|i: int| i * spec_page_size()) =~= frame_set(lo, hi),
+{
+    lemma_map_range_is_frame_set(lo, hi);
+}
+
+// Bridges `lemma_book_range`'s `frame_set`-based view transition to `alloc_range`'s contract,
+// which phrases the booked block as `set_int_range(...).map(...)`. Establishes the success-case
+// view equality plus the `frames ⊆ free_frames` subset obligation.
+pub proof fn lemma_alloc_range_view(
+    old_inner: &Inner,
+    new_inner: &Inner,
+    region_start: int,
+    region_size: int,
+    lo: int,
+    hi: int,
+)
+    requires
+        old_inner.inv(),
+        0 <= lo <= hi <= old_inner.bitmap@.num_bits,
+        lo == region_start / spec_page_size(),
+        hi == (region_start + region_size) / spec_page_size(),
+        forall|j: int| lo <= j < hi ==> !old_inner.bitmap@.set_bits.contains(j),
+        new_inner.bitmap.inv(),
+        new_inner.bitmap@.num_bits == old_inner.bitmap@.num_bits,
+        new_inner.bitmap@.set_bits == old_inner.bitmap@.set_bits.union(
+            BitmapView::range_set(lo, hi)),
+        new_inner.refcount@.len() == old_inner.refcount@.len(),
+        forall|j: int| lo <= j < hi ==> new_inner.refcount@[j] == 1,
+        forall|i: int| 0 <= i < new_inner.refcount@.len() && !(lo <= i < hi)
+            ==> new_inner.refcount@[i] == old_inner.refcount@[i],
+    ensures
+        new_inner.internal_inv(),
+        ({
+            let frames = vstd::set_lib::set_int_range(
+                region_start / spec_page_size(),
+                (region_start + region_size) / spec_page_size())
+                .map(|i: int| i * spec_page_size());
+            &&& frames.subset_of(old_inner@.free_frames)
+            &&& new_inner@ == FrameAllocView {
+                allocated_frames: old_inner@.allocated_frames.union(frames),
+                free_frames: old_inner@.free_frames.difference(frames),
+                refcounts: old_inner@.refcounts.union_prefer_right(
+                    Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)),
+            }
+        }),
+{
+    lemma_book_range(old_inner, new_inner, lo, hi);
+    let fs = frame_set(lo, hi);
+    let frames = vstd::set_lib::set_int_range(
+        region_start / spec_page_size(),
+        (region_start + region_size) / spec_page_size())
+        .map(|i: int| i * spec_page_size());
+    lemma_region_frames_eq(region_start, region_size, lo, hi);
+    assert(frames =~= fs);
+
+    // `frames ⊆ free_frames`: every booked frame was unset in `old_inner`.
+    assert forall|addr: int| frames.contains(addr) implies
+        #[trigger] old_inner@.free_frames.contains(addr) by {
+        assert(fs.contains(addr));
+        let j = choose|j: int| lo <= j < hi && addr == #[trigger] frame_addr_of(j);
+        assert(!old_inner.bitmap@.set_bits.contains(j));
+        assert(0 <= j < old_inner.bitmap@.num_bits);
+        assert(addr == frame_addr_of(j));
+    }
+    assert(frames.subset_of(old_inner@.free_frames));
+
+    // Rewrite the `frame_set`-phrased view transition in terms of `frames`.
+    assert(new_inner@.allocated_frames == old_inner@.allocated_frames.union(frames));
+    assert(new_inner@.free_frames == old_inner@.free_frames.difference(frames));
+    assert(new_inner@.refcounts =~= old_inner@.refcounts.union_prefer_right(
+        Map::new(|addr: int| frames.contains(addr), |addr: int| 1int))) by {
+        assert(Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+            =~= Map::new(|addr: int| fs.contains(addr), |addr: int| 1int));
+    }
+    assert(new_inner@ == FrameAllocView {
+        allocated_frames: old_inner@.allocated_frames.union(frames),
+        free_frames: old_inner@.free_frames.difference(frames),
+        refcounts: old_inner@.refcounts.union_prefer_right(
+            Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)),
+    });
+}
+
 
 proof fn lemma_full_no_free(inner: &Inner)
     requires
