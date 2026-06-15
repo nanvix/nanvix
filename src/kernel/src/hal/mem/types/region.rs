@@ -207,6 +207,17 @@ impl<T: Address> MemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
+    // VERUS REWRITE (view-preserving clone): `self.start.clone()` -> `self.start.clone_address()`.
+    // `Clone::clone` has no Verus spec, so the postcondition `result@ == self@.start` cannot be
+    // discharged through the bare `Clone` supertrait. `Address::clone_address` is the required
+    // trait method that carries the verified contract `result@ == self@` (see
+    // src/kernel/src/hal/mem/types/address/phys.rs:277-288). Same value, same complexity as a
+    // `Copy`; purely a view-preserving substitution for a Verus limitation.
+    // Minimal reproducer (confirmed): a generic
+    //   `fn f<T: Clone + View<V = int>>(x: &T) -> (r: T) ensures r@ == x@ { x.clone() }`
+    // fails to verify ("postcondition not satisfied") because `Clone::clone` is unspecified;
+    // replacing the body with `x.clone_address()` (the spec'd trait method) verifies
+    // (1 verified, 0 errors).
     #[verus_spec(result =>
         ensures
             result@ == self@.start,
