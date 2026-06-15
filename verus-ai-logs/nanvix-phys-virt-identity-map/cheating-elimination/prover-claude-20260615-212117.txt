@@ -320,3 +320,132 @@ Working tree shows only harness-generated logs changed — zero source modificat
 [TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -30
 
 [THINKING] The working tree only shows log file changes from the test harness, so there are no actual source modifications to worry about. Since I haven't touched any source code and `verify-kernel` passes, running `make verify` will just check the other crates I didn't modify—but I should run it anyway to ensure there are no regressions. I'll kick it off in the background with a generous timeout since it might take a while.
+[RESULT ✓] bash: Module    : <all>
+  Source dir : /home/ruize/nanvix-phy/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruize/nanvix-phy/build/targets/x86-k...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Full-crate `make verify` passed: **exit 0, assume=0, admit=0, no_decreases=0** — no regressions (zero source changes). 
+
+Now I'll write the report and a verification TODO note.
+[TOOL] bash: cd /home/ruize/nanvix-phy && mkdir -p verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination && ls verus-ai-lo
+
+[THINKING] The verification passed cleanly across all crates and the kernel with no regressions. Now I'm documenting the final metrics: the external_body functions remain at 3 (all sanctioned in tcb-allowed.md), plus 4 external_type_spec entries that are required by the idiom, while all other categories stayed at zero.
+
+I'm being direct about the interpretation here—the task allows tcb-allowed exceptions, and these 3 functions are explicitly listed there, so they're legitimately retained. The AST is unchanged with zero modifications, confirming consistency. I'll write an honest report that explains why each sanctioned item is kept, notes there are no proof gaps to document, and concludes with PASS since all cheating in scope is authorized.
+[RESULT ✓] bash: body_removed_source.rs
+caller-analysis
+caller_analysis.md
+cheating-elimination
+find_callers_lsp_output.md
+pipeline.log
+pipeline_state.json
+proving
+specification
+usage.jsonl
+verification-plan.json
+view-design
+view_design.md
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/verification_todo.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/verification_todo.md with 1377 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md with 4357 characters
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me confirm the in-scope source files are byte-identical to the base branch, backing the AST-consistency claim.
+[TOOL] bash: cd /home/ruize/nanvix-phy && for f in identity_map.rs identity_map.spec.rs identity_map.proof.rs; do p="src/kernel/src/m
+
+[THINKING] I should verify that the source files haven't been modified compared to the base branch to confirm the AST consistency.
+[RESULT ✓] bash: CHANGED: src/kernel/src/mm/virt/identity_map.rs
+CHANGED: src/kernel/src/mm/virt/identity_map.spec.rs
+CHANGED: src/kernel/src/mm/virt/identity_map.proof.rs
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+The files differ from the base branch — but those are prior-phase additions (specs/contracts), not my session. The AST-consistency check concerns **exec code**. Let me verify the exec function bodies are unchanged vs base.
+[TOOL] bash: cd /home/ruize/nanvix-phy && git diff verus-ai/arch-frame-number -- src/kernel/src/mm/virt/identity_map.rs | grep -E "^[
+
+[THINKING] I'm noticing the files have diverged from the base branch, but since I'm on a different branch with prior work on specs and proofs, I need to check whether the actual function implementations changed or if it's just the specification additions causing the diff. The AST consistency check seems to be flagging something about the exec code rather than the new spec/proof content.
+
+Let me examine the identity_map.rs diff specifically to see if the function bodies themselves were modified from the base version.
+[RESULT ✓] bash: +use vstd::prelude::*;
++#[cfg(verus_keep_ghost)]
++include!("identity_map.spec.rs");
++#[cfg(verus_keep_ghost)]
++include!("identity_map.proof.rs");
+-use ::vstd::prelude::*;
++)]
++        match result {
++            Err(_) => true,
++        },
++)]
++        match result {
++            Err(_) => true,
++  ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && echo "=== removed (-) non-comment lines ===" && git diff verus-ai/arch-frame-number -- src/
+
+[THINKING] Looking at the differences between the versions, the import path changed from `::vstd` to `vstd`, which is just a normalization and doesn't affect execution. The spec and proof files are included as ghost-only code, and the match statements I'm seeing are actually inside the contract attributes rather than in the executable bodies themselves.
+[RESULT ✓] bash: === removed (-) non-comment lines ===
+-use ::vstd::prelude::*;
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Only a trivial ghost-import normalization (`::vstd` → `vstd`) was removed; every other diff vs base is purely additive (ghost-gated spec/proof includes + `#[verus_spec]`/`#[verus_verify]` contract attributes). **No exec function-body statement changed.** Let me correct the AST section to be precise.
+[TOOL] edit: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md
+
+[THINKING] The only change to the imports was normalizing the path from `::vstd::prelude::*` to `vstd::prelude::*`, while the exec function body remains completely unchanged. Everything else added is just spec and proof annotations along with contract attributes, so the actual executable code is semantically identical to the original.
+
+Let me refine the AST consistency section in the report to be more precise — the files do differ from the base branch, but only through additive ghost contracts and includes plus that trivial import normalization, while the exec bodies themselves stayed untouched.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Done. Summary of the cheating-elimination phase for `mm::virt::identity_map`:
+
+## Findings
+- **admit() = 0, assume() = 0, assume_specification = 0, cfg-gated exec = 0** — none present in source, spec, or proof files. (Proof-file line 16 referencing `admit()` is a stale comment; the four abstract laws are fully proven.)
+- **external_body = 3** — the in-scope functions `ensure_pt`, `ensure_pte`, `identity_map_page`. All three are **explicitly listed in `verus-ai-logs/tcb-allowed.md`** with genuine Verus-limitation justifications (uninterpreted `identity_map_view()` accessor + raw page-table memory via `arch::Table` + global statics + interior-mutable allocator + `invlpg` inline-asm). They are structurally unverifiable and out of scope per the task's exception clause — not blockers.
+- The 4 `external_type_specification` registrations are the mandatory opaque-external-type idiom (same as the sanctioned `ExLinkedList`/`ExFrameNumber`), classified by the harness as `external_type_spec`, not `external_body`.
+
+## Verification
+- `make verify-kernel MODULE=mm::virt::identity_map` → **exit 0** (assume=0, admit=0)
+- `make verify-kernel` (full kernel) → **exit 0**
+- `make verify` (full crate set) → **exit 0**, no regressions
+
+## AST consistency
+Exec bodies are byte-identical to base; only additive ghost contracts/includes plus a trivial `::vstd`→`vstd` import normalization. **Zero exec mismatches.**
+
+## Result: **PASS**
+No `admit`/`assume`/`assume_specification`/cfg-gated-exec exist, and zero non-sanctioned `external_body`. All retained trust surface is sanctioned by `tcb-allowed.md`.
+
+Reports written to `verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/fix_report.md` and `.../verification_todo.md`.
+
+
+=== Session End ===
+Session: 1be783db-4865-448b-b164-34c7ca7f68ad
+Duration: 290.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/prover-claude-20260615-212117.jsonl
