@@ -869,3 +869,45 @@ f="src/libs/sys/src/sys/mm/address
 [THINKING] The proc-macro expansion approach is getting unwieldy with toolchain compatibility issues. I'm going to pivot and directly compare the implementations instead, which should be more straightforward than trying to expand the macro with the right rustc version.
 
 Looking at the specs more carefully, I notice `from_number` uses `result@ == spec_from_number(...)` while `into_raw_value` uses `result as int == self@` — the casting direction differs. For `new`, I'm using `result@ == value as int`, which calls the `@` operator on `result` of type `Self`. The question is whether `View` is properly in scope for that `@` resolution. `from_number` also uses `result@` successfully, so it should work, but let me verify the `View` impl is accessible in the macro context. I'm going to test with a trivial spec like `ensures true` to isolate whether the issue is the spec itself or something about how `new` is being resolved.
+[RESULT ✓] bash: impl VirtualAddress {
+    #[verus_spec(result =>
+        ensures true,
+    )]
+    pub fn new(value: usize) -> Self {
+        Self(value)
+    }
+--- verifying ---
+error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not...
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+Even `ensures true` fails — it's structural to the macro on `new`. Let me check the original file via git and test the duplicate `use ::vstd::prelude::*;` import theory.
+[TOOL] bash: cd /home/ruize/nanvix-phy; git --no-pager diff --stat HEAD -- src/libs/sys/src/sys/mm/address/virt.rs; echo "=== origina
+
+[THINKING] The issue is structural to the macro itself when applied to a function named `new` — it fails even with `ensures true`, suggesting the problem isn't the spec content but something about how the macro handles `new` specifically. The `from_number` function in phys.rs works fine, so I'm narrowing down what's different: the function name `new` and the body using `Self(value)` as a tuple struct literal seem to be the key structural differences triggering the failure.
+
+I should test whether other inherent methods in the same impl block can be specced, and also check if the duplicate `use ::vstd::prelude::*;` import is the culprit — I need to verify against git whether that import was already there and whether removing it counts as an allowed change for vstd compatibility.
+[RESULT ✓] bash: === original imports (git HEAD) ===
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//=======================================================================...
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+The duplicate ungated `use ::vstd::prelude::*;` is the structural difference from phys.rs. Let me gate it to match phys.rs and retest.
+[TOOL] edit: /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs
+
+[THINKING] I'm noticing the original code has duplicate ungated imports from vstd on lines 8 and 25, while phys.rs gates the second one with `#[cfg(verus_keep_ghost)]`. Let me test if removing the gate from line 25 to match phys.rs resolves the issue.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy/src/libs/sys/src/sys/mm/address/virt.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -8
