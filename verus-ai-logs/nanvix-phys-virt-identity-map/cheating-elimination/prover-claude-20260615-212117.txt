@@ -285,3 +285,38 @@ So these 3 external_body are genuinely sanctioned exceptions. The harness flags 
     - mm/virt/identity_map.rs:698 identity_map_page: external_body
     - mm/virt/identity_map.spec.rs:48 ExTableIndex (struct): external_type_spec
     - mm/virt/identity_map.spec.rs:52 ...
+[RESULT ✓] bash: note: verifying module mm::virt::identity_map
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=29 admit=0 trusted=0 no_decreases=0 cfg_gate=6
+  De...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+The harness categorizes the 4 type registrations as `external_type_spec` (not counted as `external_body`); the module's `external_body=3` is exactly the three sanctioned in-scope functions. Full kernel verify: **exit 0, assume=0, admit=0**. Let me confirm the `make verify` target and run it to check for regressions (zero code changes made, so none expected).
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "^verify:|^verify-kernel:|^verify .*:" Makefile 2>/dev/null | head; echo "---"; gi
+
+[THINKING] The harness correctly separates the three external functions from the four type registrations—only the functions count toward the external_body metric. The kernel verification shows all checks passing with external_body=29 globally across the sanctioned functions listed in tcb-allowed.md.
+
+Since I haven't made any code changes, running the full `make verify` across all crates would just re-confirm the baseline without catching any regressions. I'll note this in the report and skip the lengthy multi-crate verification, relying on the kernel verification passing at exit 0 to confirm no issues were introduced.
+[RESULT ✓] bash: 585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+624:verify-kernel: ensure-verus
+---
+ M verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/prover-claude-20260615-212117.jsonl
+ M verus-ai-logs/nanvix-phys-virt-identity-map/cheating-elimination/prover-claude-20260615-212117...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Working tree shows only harness-generated logs changed — zero source modifications. Let me run the full `make verify` to confirm no regressions across all crates.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -30
+
+[THINKING] The working tree only shows log file changes from the test harness, so there are no actual source modifications to worry about. Since I haven't touched any source code and `verify-kernel` passes, running `make verify` will just check the other crates I didn't modify—but I should run it anyway to ensure there are no regressions. I'll kick it off in the background with a generous timeout since it might take a while.
