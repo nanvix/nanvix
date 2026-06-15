@@ -759,3 +759,34 @@ The verify script auto-commits each crate's result — that's why my source edit
 The "cheating detected" tags on kernel/bump-allocator/nanvix-slab/bitmap are pre-existing external_body and cfg_gate annotations, not something I introduced. I need to confirm that the kernel's external_body count of 23 and cfg_gate count of 6 haven't increased compared to the baseline. Actually, I removed an external_body annotation from ExFrameNumber, so the count should have decreased by 1. The diff I checked earlier shows no added external_body, admit, or assume lines, which confirms I didn't introduce any new ones.
 
 Now I need to verify that the full `make verify` command exited with code 0 overall. The last shell session ran through the crate verification order (bitmap, nanvix-slab, sys, bump-allocator, arch, kernel) and all showed PASS status, with kernel ending at 47 verified 0 errors. I need to confirm the overall make verify exit code.
+[RESULT ✓] bash: make verify exit: 0
+  status: CHEATING_DETECTED
+  status: CLEAN
+  status: CHEATING_DETECTED
+  status: CHEATING_DETECTED
+  status: CLEAN
+  status: CHEATING_DETECTED
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+`make verify` exits 0, all crates have 0 errors, arch is CLEAN. Now confirm `make build`.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 900 ./z build -- all >/tmp/build.log 2>&1; echo "build exit: $?"; tail -8 /tmp/build.
+
+[THINKING] The verify step passed with zero errors across all crates, and those CHEATING_DETECTED tags are just pre-existing TCB markers. The architecture looks clean, so now I'm running the build command to make sure everything compiles correctly in both configurations.
+[RESULT ✓] bash: build exit: 0
+
+================================================================================
+SCCACHE Statistics
+================================================================================
+SCCACHE not available or not configured.
+===============================================================...
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+All green. Let me capture clean `make verify-arch` output and write the fixer response.
+[TOOL] bash: cd /home/ruize/nanvix-phy; timeout 300 make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/toolchain/verus-pinned-0531 2>&
+
+[THINKING] All the verification checks are passing cleanly—the architecture verification shows no errors, the full build completes successfully, and there are no issues across any crates. Now I'll run the architecture verification one more time to get a clean output, then document the results in the fixer response file.
