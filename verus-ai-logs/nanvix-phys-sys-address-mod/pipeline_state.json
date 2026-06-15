@@ -30,6 +30,17 @@
       "review_file": null,
       "duration_s": 192.7,
       "review_rounds": 0
+    },
+    "specification": {
+      "phase": "specification",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "dialogue-RESOLVED",
+      "review_file": null,
+      "duration_s": 2341.0,
+      "review_rounds": 1
     }
   },
   "prover_session_id": "3ddd4ce6-5ab3-41f4-8b93-b925690042db",
@@ -38,7 +49,8 @@
   "verus_branch": "verus-ai/sys-address-mod",
   "phase_boundary_shas": {
     "caller-analysis": "6a85758802b293194940b62e7e28e7fb79c0ebec",
-    "view-design": "ca86359e4efa5ee91104d9dcacec41f9ca05ee0b"
+    "view-design": "ca86359e4efa5ee91104d9dcacec41f9ca05ee0b",
+    "specification": "3db4e83c738cc08f0ee8b0fdfed66d9fbd34451b"
   },
   "phase_start_shas": {
     "caller-analysis": "cb99df31da6f9affc0f035c94bf977064b78b66a",
@@ -74,6 +86,12 @@
       "phase": "specification",
       "event": "start",
       "sha": "ca86359e4efa5ee91104d9dcacec41f9ca05ee0b",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "specification",
+      "event": "end",
+      "sha": "3db4e83c738cc08f0ee8b0fdfed66d9fbd34451b",
       "rollback_iter": 0
     }
   ],
