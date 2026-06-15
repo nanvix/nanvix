@@ -173,3 +173,39 @@ Verification is cached. Let me force a fresh run to confirm the two target funct
 [TOOL] bash: cd /home/ruize/nanvix-phy && touch src/libs/arch/src/x86/mem/paging/frame/number.rs && timeout 600 make verify-arch 2>&1
 
 [THINKING] I'm seeing that the verification ran with a cached result showing exit code 0, and two functions have contracts defined. But the proof file appears empty, which is suspicious—the cache might mean it skipped the actual verification step. I need to force a fresh run to confirm these specs are actually being checked rather than just relying on the cached output.
+[RESULT ✓] bash: Timestamp : 2026-06-15_20-11-41
+
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy/src/libs/arch)
+verification results:: 6 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.05s
+
+=== Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ==...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+Already 6 verified, 0 errors, no admit/assume/external_body. The inline contracts prove cleanly. Let me confirm no `admit`/`assume` in the files and run the full `make verify` for regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -rn "admit\|assume\|external_body" src/libs/arch/src/x86/mem/paging/frame/number*.rs |
+[TOOL] bash: cd /home/ruize/nanvix-phy && grep -nE "verify[-:]" Makefile | head; echo "---targets---"; grep -nE "^verify" Makefile | 
+
+[THINKING] The verification results show all six target functions passing with their inline proofs intact—no `admit()` calls or `assume()` statements anywhere. The proof file is empty because the proofs already exist in the source code itself, so there's nothing left to implement.
+
+Let me verify the specs haven't been weakened by comparing against the backup version. The current file has the full `verus_spec` contracts while the backup shows an earlier version without them, confirming this is the spec'd version that's already complete. Since the cheating check confirms zero admits and zero assumes, I should run the full `make verify` to ensure there are no regressions across the entire codebase.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:9:// contracts and the callers' assumed contracts coincide by construction.
+<shellId: 4 completed with exit code 0>
+[RESULT ✓] bash: 584:.PHONY: verify $(addprefix verify-,$(VERUS_CRATES))
+585:verify: $(addprefix verify-,$(VERUS_CRATES)) verify-kernel
+613:$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+621:	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
+624:verify-kernel: e...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+The only "assume"/"contracts" match is a comment word. No real `admit`/`assume`/`external_body`. Now run the full `make verify` to confirm no regressions.
+[TOOL] bash: cd /home/ruize/nanvix-phy && timeout 1800 make verify 2>&1 | tail -50
