@@ -684,3 +684,42 @@ Turn 42
 Turn 43
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|Results|status:" | head -20
+[RESULT ✓] bash: error[E0425]: cannot find function `new` in this scope
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sys` (lib) due to 1 previous error
+=== Results ===
+  0 verified
+  compilation/setup error (verus did not run)
+  verification: 0 verified, compilation/s...
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Confirmed `new` fails alone. Let me get the full error detail with help/notes.
+[TOOL] bash: cd /home/ruize/nanvix-phy; ls -t verus-ai-logs/verify-sys/verus-logs/*.log | head -1 | xargs sed -n '18,60p'
+
+[THINKING] I'm narrowing down whether the issue is specifically with using `new` as a function pointer in the `.map()` call. The spec annotation seems to be breaking this pattern, so I need to verify if removing the verus_spec from the function definition allows it to work as a pointer.
+[RESULT ✓] bash: --- Full output ---
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy/src/libs/sys)
+error[E0425]: cannot find function `new` in this scope
+  --> src/libs/sys/src/sys/mm/address/virt.rs:53:18
+   |
+53 |     pub const fn new(value: usize) -> Self {
+   |                  ^^^ not found in this scope
+
+For...
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+Let me test the fn-pointer hypothesis by temporarily replacing the `.map(VirtualAddress::new)` usage with a closure (scratch test only).
+[TOOL] bash: cd /home/ruize/nanvix-phy; sed -i 's/mm::align_up(self.0, align).map(VirtualAddress::new)/mm::align_up(self.0, align).ma
+
+[THINKING] The span is pointing to the unqualified `new` identifier in the generated code. I should test whether the fn-pointer approach is the culprit by temporarily swapping out the `.map(VirtualAddress::new)` call at line 81 with a closure instead, then checking if only `new` gets flagged.
+[RESULT ✓] bash: 86:        mm::align_up(self.0, align).map(|v| VirtualAddress::new(v))
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy; make verify-sys 2>&1 | grep -E "error|verified|cannot find|status:" | head -15
