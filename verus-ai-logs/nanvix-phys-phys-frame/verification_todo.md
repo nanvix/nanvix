@@ -8,6 +8,8 @@ The §8 ghost-token attachment (`view_design.md`) that would make this coherent 
 `tracked` ghost state threaded through exec signatures/structs, which the source-integrity
 rules forbid. Eliminated 6 of the original 10 admits (see `cheating-elimination/fix_report.md`);
 `lemma_user_bulk_ok` was the most recent, closed with a real loop-invariant proof.
+Filed as a Context-Dependent bug: `cheating-elimination/bugs.md` and
+`../nanvix-phys-phys-manager/bugs.md` OBS-4.
 
 All four below assert `post == f(pre)` for an *arbitrary* `post` (or an `uninterp` view), so
 they are unprovable as standalone lemmas — and, unlike `lemma_user_bulk_ok`, they remain

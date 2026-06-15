@@ -117,11 +117,18 @@ in question.
 
 Eliminating these four admits requires either (a) human-approved external-bottom
 `axiom`/`assume_specification` for the §8 attachment (the AI must not write these unilaterally),
-or (b) a `tracked` ghost-token redesign of the global-state model plus correcting the
-kernel-path / error-path manager external-top specs — both outside the permitted change
-envelope (no exec/struct signature changes; do-not-weaken external-top specs; do-not-touch
-unlisted manager functions). `external_body` on these proof fns is explicitly disallowed and
-they are not in `tcb-allowed.md`.
+or (b) a `tracked` ghost-token redesign of the global-state model (the deferred "§8 token
+machinery") threaded through the `frame::alloc`/`free`/`alloc_contiguous` exec signatures — both
+outside the permitted change envelope (no exec/struct signature changes; `axiom`/`external_body`
+on proof fns forbidden; not in `tcb-allowed.md`).
+
+The bug-reporting and verus-constraints skills both **forbid weakening the (correct) manager
+contracts to work around the failure**: under the intended §8 attachment (`view_design.md` §8:
+`self@ == phys_view().frames`) these specs are *right* — a global allocation moves a frame in the
+brokered partition. The only defect is the absent token infrastructure, so the sanctioned action
+is to **report it**, not to relax the specs. Filed as a Context-Dependent blocker in
+`verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/bugs.md` (and `…/phys-manager/bugs.md`
+OBS-4).
 
 ## AST Consistency
 
@@ -143,12 +150,18 @@ they are not in `tcb-allowed.md`.
 
 ## Result: BLOCKER
 
-4 `admit()` remain in `manager.proof.rs`. All four are genuinely unprovable under the
-source-integrity / spec-stability constraints: one `uninterp`↔`uninterp` attachment
-(`lemma_manager_attached`), two specs that are false for their implementations
-(`lemma_kernel_alloc_one`/`_contiguous`, whose kernel paths use the global allocator and never
-touch `self.upool`), and one Drop-effect restoration that the new loop invariant proves false
-(`lemma_user_bulk_err_restored`). No sanctioned mechanism (real proof, allowed `external_body`,
-or human-approved axiom) is available to the AI to remove these four without forbidden
-exec/struct changes or external-top spec weakening. The previously-fifth admit
-(`lemma_user_bulk_ok`) was eliminated this session with a real loop-invariant proof.
+4 `admit()` remain in `manager.proof.rs`. All four are gated on the **§8 ghost-token attachment**
+(`self@ == phys_view().frames`, `view_design.md` §8) that the specification phase deferred to the
+proving phase. Under that attachment the manager contracts are correct; the attachment itself
+requires `tracked` ghost state threaded through the `frame::alloc`/`free`/`alloc_contiguous` exec
+signatures, which the cheating-elimination source-integrity rules forbid, and an AI may not
+substitute a bare `axiom`/`assume_specification` (human-approval-only) nor `external_body` on a
+proof fn (banned, not in `tcb-allowed.md`). Per the bug-reporting/verus-constraints skills,
+weakening the contracts to dodge the failure is forbidden, so the sanctioned outcome is a filed
+bug report + honest blocker. Filed: `…/cheating-elimination/bugs.md`, `…/phys-manager/bugs.md`
+OBS-4.
+
+This session eliminated the previously-fifth admit (`lemma_user_bulk_ok`) with a **real**
+loop-invariant proof (no admit/assume/axiom/external_body), reducing the module from 5 → 4 admits
+(10 → 4 across all sessions). The 4 remaining are an irreducible deferred-infrastructure blocker,
+not a proof gap an AI can close within the rules.

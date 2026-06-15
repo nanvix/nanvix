@@ -79,3 +79,17 @@ inexpressible at this abstraction; if a caller ever needs it, the fix is an
 exec-behavior change (make `KernelFrame::new` infallible in the kernel-frame
 context, or convert wrap-failure to a panic) — out of scope for the spec phase.
 
+
+### OBS-4: §8 ghost-token attachment unbuildable under cheating-elimination rules (proving-phase blocker)
+
+The four `manager.proof.rs` `admit()` lemmas (`lemma_manager_attached`,
+`lemma_kernel_alloc_one`, `lemma_kernel_alloc_contiguous`,
+`lemma_user_bulk_err_restored`) all depend on the §8 global-state attachment
+(`self@ == phys_view().frames`). `phys_view()` and the manager/pool views are
+all `uninterp`; relating them across exec calls requires a `tracked` ghost token
+threaded through `frame::alloc`/`free`/`alloc_contiguous` signatures — forbidden
+by the cheating-elimination source-integrity rules, and not expressible as an
+AI-written `axiom`. The lemma specs are correct under the intended attachment; the
+attachment infrastructure is simply absent. Full self-contained write-up:
+`verus-ai-logs/nanvix-phys-phys-frame/cheating-elimination/bugs.md`. Unblock =
+build the §8 token machinery (proving phase) or human-sanction the attachment axiom.
