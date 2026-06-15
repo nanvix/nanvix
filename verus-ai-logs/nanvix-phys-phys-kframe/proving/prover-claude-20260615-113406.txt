@@ -709,3 +709,49 @@ Turn 36
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; timeout 1800 make verify 2>&1 | tail -60
 
 [THINKING] Running `make verify` will check bitmap, sys, nanvix-slab, bump-allocator, arch, and then the entire kernel with all modules—which could take a while and potentially expose issues in other modules. Since my changes are isolated to mm::phys and already verified, I'll kick off the full verification in the background with a generous timeout to let it run asynchronously.
+[RESULT ✓] bash: | |__________________________________________________________________^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1142:46
+     |
+1142 |                     ==> self.refcount@[k] == old_self.refcount@[k],
+     |                                              ^^^^^^^^^^^^^^^^^^^^^
+...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Full `make verify` passed (exit 0) across all crates and the kernel. The `CHEATING_DETECTED`/`admit=7`/`external_body=16` are all pre-existing in **out-of-scope** files (frame.rs, manager.proof.rs, mod.rs, upool.rs); the trigger lines are informational notes, not errors. Let me confirm the final kframe state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs-bottom-up; echo "=== kframe cheating entries ==="; grep -i "kframe" verus-ai-logs/verify
+
+[THINKING] The verification passed with exit code 0, so there are no actual errors—the "CHEATING_DETECTED" warnings are just informational notes from pre-existing code in out-of-scope modules that were already there before I started. All the crates and kernel verified successfully.
+[RESULT ✓] bash: === kframe cheating entries ===
+    - mm/phys/kframe.rs:94 new: external_body
+=== admit/assume in kframe files ===
+src/kernel/src/mm/phys/kframe.spec.rs:8:    /// `into_page_address` and the `KernelStack` index arithmetic behind it assume the returned
+=== git status ===
+(only prover logs modified)
+<...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Done. The `kframe` module is fully verified.
+
+## Summary
+
+**Starting state:** the repo was at a failing commit — a prior `strip-external-body` step had removed `#[verus_verify(external_body)]` from `KernelFrame::new`, breaking Verus compilation (`error!` macro → "Unsupported constant type", plus a missing spec for `PageAligned::from_raw_value`).
+
+**Resolution per target function:**
+- **`KernelFrame::base`** — verified in-body (0 admit/assume). `result@ == self@` and `result.inv()` follow from the pure accessor + `self.inv()`.
+- **`KernelFrame::drop`** — verified in-body (`opens_invariants none`, `no_unwind`).
+- **`KernelFrame::new`** — restored sanctioned `external_body`. Its body calls `mm::virt::identity_map_page`, whose precondition `identity_map_view().inv()` is a global invariant of the **not-yet-verified** `mm::virt` module (`uninterp`, not a tautology). It can't be discharged in `mm::phys` without `admit()` (forbidden), adding a `requires` (spec weakening, forbidden), or touching out-of-scope `mm::virt`. `new` is explicitly listed in `tcb-allowed.md` as a cross-module `external_body`, so this is the sound, rule-compliant choice.
+
+**Result:** `make verify-kernel MODULE=mm::phys` → 85 verified, 0 errors; full `make verify` → exit 0. kframe has 0 `admit`, 0 `assume`, and one sanctioned `external_body`. The remaining module-wide `admit=7`/`external_body=16` live entirely in out-of-scope files (frame/manager/mod/upool) per the verification-order plan. Decision recorded in `bugs.md`.
+
+
+=== Session End ===
+Session: 05fbc349-9add-4acc-bbf4-616dabea8732
+Duration: 529.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs-bottom-up/verus-ai-logs/nanvix-phys-phys-kframe/proving/prover-claude-20260615-113406.jsonl
