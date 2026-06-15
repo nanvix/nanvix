@@ -478,3 +478,9 @@ at `/home/ruize/verus-bin/verus`.
 [2026-06-15 08:34:40] [TOPLEVEL DRIFT] ⚠ Entry fn not found at verus-ai/phys-kframe: src/kernel/src/mm/phys/upool.rs:Upool::alloc (available: []...)
 [2026-06-15 08:34:40] [TOPLEVEL DRIFT] (after specification) ✅ All entry point specs match base branch
 [2026-06-15 08:34:40] [ROLLBACK] specification → view-design (rollback 1/1)
+[2026-06-15 08:34:40] [ABSTRACTION] Using override source for view-design: /home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-frame/body_removed_source.rs
+
+============================================================
+PHASE: view-design
+Module: phys-frame
+============================================================
