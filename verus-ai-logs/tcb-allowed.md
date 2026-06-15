@@ -268,3 +268,42 @@ when `arch`/`sys` are verified.
 - `FrameNumber::from_raw_value` — `Some` iff `value <= spec_max_frame_number()`,
   preserving the index; `None` otherwise.
   (all declared in `src/kernel/src/hal/mem/types/address/phys.spec.rs`.)
+
+## Allowed `assume_specification` — `hal::mem::types::address::frame` library edge
+
+`FrameAddress`'s verified constructors/projections (`from_raw_value`,
+`into_frame_number`) call two workspace-internal trait-impl methods whose home
+`impl` blocks cannot be body-verified in place. Each is specced with
+`assume_specification` in `frame.spec.rs`, mirroring the existing
+`sys::mm::Address` boundaries the codebase already draws
+(`kframe.spec.rs` / `page.spec.rs`) and the `::arch::mem::PAGE_SIZE` boundary
+(`frame.rs`). The contracts state only the load-bearing newtype-identity /
+range / projection facts the proofs rely on; they introduce no new observable
+guarantee and are removed when `hal::mem` (the `Address` trait `impl`s) is
+verified.
+
+- `<crate::hal::mem::types::address::PhysicalAddress as sys::mm::Address>::from_raw_value`
+  (declared in `src/kernel/src/hal/mem/types/address/frame.spec.rs`).
+  `ensures Ok(r) => r@ == value as int && spec_frame_number(r@) <= spec_max_frame_number();
+  Err(_) => true`. The `impl Address for PhysicalAddress` (defined at
+  `src/kernel/src/hal/mem/types/address/phys.rs:230`, unspecced) cannot be
+  body-verified in place because its sibling methods contain `usize as *const u8` /
+  `usize as *mut u8` raw-pointer casts the Verus front-end rejects (`error: Verus
+  does not support this cast: `usize` to `*const u8``; see
+  `verus-ai-logs/verus-unsupported.md`), and per-method `external_body` would pull
+  the whole trait `impl` into scope. The `Err` arm is value-free because the
+  dynamic physical-validity predicate is platform-specific and `from_raw_value`'s
+  sole caller only branches on `Ok`/`Err`. Stated through `PhysicalAddress`'s
+  `View` (`r@`) rather than the universal `spec_addr` to avoid a definitional
+  cycle (`spec_addr<PhysicalAddress>` depends back on this same `impl`).
+  Precedent: the `sys::mm::Address` boundaries at `kframe.spec.rs` / `page.spec.rs`.
+  Removed when `hal::mem` is verified.
+- `<crate::hal::mem::PageAligned<T> as core::ops::Deref>::deref`
+  (declared in `src/kernel/src/hal/mem/types/address/frame.spec.rs`).
+  `ensures spec_addr(result) == addr@`. The auto-deref that resolves
+  `self.0.into_frame_number()` to `PhysicalAddress::into_frame_number`; a method
+  of the external `core::ops::Deref` trait, below this module's verification
+  boundary. Pure projection (the borrowed inner address has the same abstract
+  value as the wrapper). Stated through the universal `spec_addr` projection
+  rather than `result@` because a bare `T: Address` carries no `View<V = int>`
+  bound. Precedent: `page.spec.rs`. Removed when `hal::mem` is verified.
