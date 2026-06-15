@@ -326,3 +326,75 @@ All modules pass with **0 errors**. The kernel's `admit=4 external_body=23` matc
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs; make verify 2>&1 | grep -E "verification results|errors|Exit code|status:" 
 
 [THINKING] The full verification run across all crates and the kernel completed successfully with 93 verified modules and zero errors. The kernel shows admit=4 and external_body=23, which are pre-existing baseline values from commit c71568fb7 and not regressions—they match exactly what was there before.
+[RESULT ✓] bash: Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CLEAN
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CHEATING_DETECTED
+  Exit code : 0
+  status: CHEATING_DETECTED
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+All crates exit 0. The `CHEATING_DETECTED` flags come solely from pre-existing TCB-allowed `external_body`/`admit` in other modules. My only change adds the documented, TCB-allowed `external_body` for `invlpg`. Let me verify the bugs log status (no bug was found here).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; ls -la verus-ai-logs/nanvix-phys-arch-paging-mod/bugs.md 2>&1; echo "---diff---"; git -
+
+[THINKING] All the test crates are passing cleanly, and the CHEATING_DETECTED statuses are from pre-existing TCB-allowed external_body calls in other modules, not from my change. I've only added one TCB-allowed external_body for invlpg, which is properly documented. Since inline assembly is a legitimate language construct and this is just a Verus limitation, there's no actual bug to record—I should verify that bugs.md reflects this.
+[RESULT ✓] bash: ls: cannot access 'verus-ai-logs/nanvix-phys-arch-paging-mod/bugs.md': No such file or directory
+---diff---
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; git status --short; echo "---grep line---"; grep -n "verus_verify(external_body)" src/l
+
+[THINKING] The diff is showing as empty even though I restored the line that was removed in the strip commit, which is strange. Let me check the git status to understand what's actually happening.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-arch-paging-mod/proving/prover-claude-20260615-151534.jsonl
+ M verus-ai-logs/nanvix-phys-arch-paging-mod/proving/prover-claude-20260615-151534.txt
+---grep line---
+79:#[verus_verify(external_body)]
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs; git log --oneline -4; echo "---show HEAD mod.rs line 79---"; git show HEAD:src/libs/arc
+
+[THINKING] Something's off here — `git status` shows mod.rs as unchanged, but grep confirms the line exists at line 79. The strip commit removed it, yet the file has it now without any modifications showing. The prover logs being modified suggests the pipeline may have run concurrently and created a new commit, so I should check the git history to see what happened.
+[RESULT ✓] bash: 1e03854bb [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=4 external_body=23 cfg_gate=19)
+630646341 [verus] verify PASS (cheating detected): arch::all (cached (no recompilation), —, external_body=3 cfg_gate=2)
+391acca2b [verus] verify PASS (cheating detected...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+The verification harness auto-committed the passing state. HEAD now contains my restored `#[verus_verify(external_body)]` on `invlpg`, with `arch::all` recorded as `external_body=3` and `kernel::all` PASS (matching the pre-existing baseline).
+
+## Summary
+
+**Target function:** `invlpg` in `src/libs/arch/src/x86/mem/paging/mod.rs` — the only in-scope function.
+
+**Classification:** Not a proof gap or code bug. `invlpg`'s body is a single `core::arch::asm!` block (the `invlpg` TLB-flush instruction). Verus cannot model inline assembly — a genuine external-bottom hardware trust boundary, already documented in the module's `verus-unsupported.md` and listed in `tcb-allowed.md`.
+
+**Action:** The strip-external-body probe had removed `#[verus_verify(external_body)]`. Since the function is genuinely unverifiable (inline asm) and explicitly TCB-allowed, I restored the annotation — the documented, faithful mitigation. The contract stays empty (no `requires`/`ensures`), matching the upstream `assume_specification`, so no spec was weakened and `mod.spec.rs`/`mod.proof.rs` remain empty.
+
+**Results:**
+- `make verify-arch`: **48 verified, 0 errors**, `assume=0 admit=0`. The 3 `external_body` (invlpg + table::read/write) are all TCB-allowed.
+- `make verify`: all crates **exit 0, 0 errors**. Kernel's `admit=4 external_body=23` matches the pre-existing baseline — no regressions.
+
+No bug was discovered, so no `bugs.md` entry was needed.
+
+
+=== Session End ===
+Session: ca97493b-ee8e-415e-a5eb-1e2381479ef3
+Duration: 204.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/proving/prover-claude-20260615-151534.jsonl

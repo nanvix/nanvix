@@ -6,7 +6,7 @@
   "current_phase_idx": 3,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "ca97493b-ee8e-415e-a5eb-1e2381479ef3",
   "completed": false,
   "base_branch": "verus-ai-prove",
   "verus_branch": "verus-ai-prove",
