@@ -156,3 +156,370 @@ daemon-development
 gdb-debugging
 kernel-development
 l...
+[RESULT ✓] bash: Using Verus installation at /home/ruize/toolchain/verus.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/toolchain/verus:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace -Z build-std=core,alloc,compi...
+
+────────────────────────────────────────────────────────────
+Turn 2
+────────────────────────────────────────────────────────────
+Verification passes (exit 0) but cheating patterns detected globally. I need to scope to the frame module. Let me examine the cheating details, TCB file, and the dependency `phys` module.
+[TOOL] report_intent: Scoping cheating audit to frame module
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== cheating-detail (frame only) ==="; grep -i "frame" verus-ai-logs/verify-ker
+[TOOL] view: /home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md
+
+[THINKING] The verification passed but I'm seeing cheating patterns flagged across the entire kernel crate, so I need to narrow my focus to just the frame module itself. Let me pull the detailed cheating report and check what's specific to the frame module files, then review the TCB allowlist, the phys module, and verify the dependency contracts.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] view: 1. # TCB Allowed List — Nanvix phys-mm
+2. 
+3. Any `external_body` outside this list must be removed.
+4. 
+5. ## Allowed `external_body`
+6. 
+7. - `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+8.   module-level `static mut INSTANCE: MaybeUninit<Inner>` singl...
+[RESULT ✓] bash: === cheating-detail (frame only) ===
+    - mm/phys/frame.rs:1408 instance: external_body
+    - mm/phys/frame.rs:1446 init: external_body
+    - mm/phys/frame.rs:1502 alloc: external_body
+    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1553 free_count: external_body
+...
+
+────────────────────────────────────────────────────────────
+Turn 3
+────────────────────────────────────────────────────────────
+The frame module's own files have no entries in the cheating detail (only `mm/phys/*` and `mm/virt/*` appear). But `frame.spec.rs` contains an `assume_specification` for `PhysicalAddress::from_raw_value`. Let me investigate whether that's a real violation by checking the `phys` module and git state.
+[TOOL] report_intent: Investigating assume_specification and phys deps
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git status ==="; git --no-pager status --short; echo "=== recent log ==="; 
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls src/kernel/src/hal/mem/types/address/; echo "=== phys files ==="; ls src/kernel/sr
+[TOOL] grep: from_raw_value
+
+[THINKING] I'm looking at the cheating counts across the kernel crate—external_body, admit, and cfg_gate all have entries—but none of them reference the frame module files I'm trying to verify. Let me dig deeper into the cheating details to see what's actually being flagged.
+
+The TCB-allowed.md mentions external_body on `from_raw_value` and `into_raw_value` in frame.rs, but when I check the actual source code, those functions only have `#[verus_spec]` with ensures clauses, not the external_body attribute. They're being verified in-body now, so that documentation is outdated but not a problem.
+
+The real question is whether the frame module itself has any cheating—I need to verify there's no admit, external_body, assume, or cfg-gated execution in those three files. The grep results only showed matches in other modules like mm/phys and mm/virt, which is a good sign. But I did spot an `assume_specification` in frame.spec.rs that I need to account for in the global cheating count. I need to figure out what those placeholder variables actually mean so I can properly evaluate the checklist. Looking at the context, `spec_drift_cmd` is the spec drift check tool, `tcb_allowed_file` points to the allowed TCB list, and the various `verus_cmd` variants are for running verification on all modules versus just the current one. Now I should check the phys module to see if `PhysicalAddress::from_raw_value` has gotten a proper spec since that `assume_specification` might be outdated, and I'll look at the git history to understand what changed during this proving phase.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs-171-            lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs-172-        }
+/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/typ...
+[RESULT ✓] bash: aligned
+frame.proof.rs
+frame.rs
+frame.spec.rs
+mod.rs
+page.rs
+pd.rs
+phys.proof.rs
+phys.rs
+phys.spec.rs
+test.rs
+=== phys files ===
+phys.proof.rs
+phys.rs
+phys.spec.rs
+<shellId: 3 completed with exit code 0>
+[RESULT ✓] bash: === git status ===
+ M verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-reviewer-t001-claude-20260615-111027.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-reviewer-t001-claude-20260615-111027.txt
+=== recent log ===
+a7aa960a0 [verus] verify PASS (cheating detected):...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Let me examine the `PhysicalAddress::from_raw_value` implementation to see if it already carries a real spec (which would make the `assume_specification` in frame.spec.rs redundant/drift).
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] I need to check the `PhysicalAddress::from_raw_value` implementation at line 193 in phys.rs to see if it has a `#[verus_spec]` attribute.
+[RESULT ✓] view: 120.     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+121.         Ok(Self(addr))
+122.     }
+123. 
+124.     ///
+125.     /// # Description
+126.     ///
+127.     /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
+128.     ///
+129.     /// # Parameters
+130. ...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+`<PhysicalAddress as Address>::from_raw_value` (phys.rs:193) has **no** `#[verus_spec]` — the `assume_specification` in frame.spec.rs provides its contract. PhysicalAddress is intra-crate (kernel), not std/external. Let me check the spec-drift tooling and build command before finalizing.
+[TOOL] report_intent: Locating spec-drift and build tooling
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls scripts/ | head -40; echo "=== spec drift skill ==="; find . -path '*spec-drift*' 
+
+[THINKING] I'm noticing that `PhysicalAddress`'s `from_raw_value` implementation doesn't have the `#[verus_spec]` attribute—it's just a regular trait implementation for `Address`. The `assume_specification` in frame.spec.rs is providing a contract for this kernel-internal function that hasn't been verified yet, which means this is an intra-crate assumption rather than a boundary trust for external code.
+
+According to the strict checklist, only external-bottom trust boundaries for std/external crates are allowed, so this violates that rule. The reviewer would need to reject this and require either removing the assumption entirely or ensuring the trait implementation itself carries its own specification. The real question is whether `Address::from_raw_value` should be specced in its own module first, or if the frame module needs a different approach to avoid the assumption. I need to step back and systematically work through the entire checklist, marking each item as PASS or FAIL with concrete evidence before identifying the first violation to fix. Let me check what spec-drift detection tools and build commands are available to verify the codebase properly.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: bench
+benchmark.py
+cleanup-nanvixd.sh
+common
+create-release.py
+docker-retry.sh
+generate-l2-initramfs.sh
+generate-l2-snapshot.sh
+generate-manifest.sh
+get-nanvix.sh
+install-containerd.sh
+install-shim.sh
+pipeline.sh
+plot-performance.py
+run-smoke-test.py
+run-uservm.py
+setup
+setup-nanvix.sh
+shell-lint-fi...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== proving dir ==="; ls -R verus-ai-logs/nanvix-phys-hal-frame-address/proving
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find /home/ruize/verus-ai-exp -iname '*spec*drift*' 2>/dev/null | head; echo "=== ski
+
+[THINKING] I'm looking for the spec-drift-check skill in the GitHub workflows directory, but it doesn't seem to be there. Let me trace through the verus-ai setup and check what's in the proving directory, along with examining the body_removed_source.rs file and the specification folder to understand how spec drift comparison works.
+[RESULT ✓] bash: === proving dir ===
+verus-ai-logs/nanvix-phys-hal-frame-address/proving/:
+dialogue
+dialogue-reviewer-t001-claude-20260615-111027.jsonl
+dialogue-reviewer-t001-claude-20260615-111027.txt
+prover-claude-20260615-110811.jsonl
+prover-claude-20260615-110811.txt
+
+verus-ai-logs/nanvix-phys-hal-frame-address/...
+[RESULT ✓] bash: /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check
+/home/ruize/verus-ai-exp/verus-ai/scripts/spec_drift.py
+/home/ruize/verus-ai-exp/verus-ai/scripts/__pycache__/spec_drift.cpython-312.pyc
+/home/ruize/verus-ai-exp/verus-ai-sparse-bitmap-big-change-0416/scripts/spec_drift.py
+/home/ruize/ve...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,80p' /home/ruize/verus-ai-exp/verus-ai/docs/skills/spec-drift-check/SKILL.m
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python scripts/spec_drift.py --help 2>&1 | head -40
+[RESULT ✓] bash: ---
+name: spec-drift-check
+description: "Detect spec weakening via tree-sitter comparison against a baseline SHA. Use in specification, proving, and cheating-elimination phases to enforce that requires/ensures are never silently removed or relaxed."
+---
+
+# Spec Drift Check
+
+## What Is Spec Drift?
+
+S...
+[RESULT ✓] bash: usage: spec_drift.py [-h] {snapshot,diff,check,git-diff} ...
+
+Spec drift detector for Verus verification.
+
+positional arguments:
+  {snapshot,diff,check,git-diff}
+    snapshot            Extract spec snapshot from files
+    diff                Compare two snapshots
+    check               Check spec ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Now let me run the spec-drift check for the frame module (proving phase: specification END → current HEAD).
+[TOOL] report_intent: Running spec-drift check
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/pipeline_state.json 2>/dev/null | python3 -m json.tool 2>/dev/null 
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/spec_drift.py check nanvix-phys-hal-frame-address 2>&1 | head -6
+
+[THINKING] Running the spec drift check on the frame module, which reads the pipeline state automatically to locate the baseline SHA needed for the proving phase.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: 
+<shellId: 9 completed with exit code 0>
+[RESULT ✓] bash: Error: pipeline_state.json not found for module 'nanvix-phys-hal-frame-address'
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && find . -name pipeline_state.json -not -path '*/target/*' 2>/dev/null; echo "==="; cat
+[RESULT ✓] bash: ./verus-ai-logs/nanvix-phys-bump-allocator/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-mod/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-manager/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-upool/pipeline_state.json
+./verus-ai-logs/nanvix-phys-phys-kframe/pipeline_state.json
+...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in src/kernel/src/hal/mem/types/address/frame.rs src/kernel/src/hal/mem/types/a
+
+[THINKING] I've identified the proving phase start commit as `1f6205c56`, which matches the "pipeline COMPLETE: sys-virt-address" commit, and I need to run a manual git-diff against that SHA to check the spec drift. The spec_drift check requires the VERUS_AI_LOG_DIR environment variable to be set, otherwise it defaults to a specific directory, so I'll execute the git-diff command directly.
+[RESULT ✓] bash: ===== src/kernel/src/hal/mem/types/address/frame.rs =====
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contrac...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Spec-drift check: PASS (0 drift since proving start). Let me verify what the prover actually changed and check the base-branch comparison for the entry spec.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== diff since proving start (frame files) ==="; git --no-pager diff --stat 1f6
+
+[THINKING] I'm checking whether there's spec drift during the proving phase by comparing against the proving start commit, which shows no changes. But I should also verify the top-level entry spec against the base branch since the skill requires checking for changes versus the base branch.
+[RESULT ✓] bash: === diff since proving start (frame files) ===
+=== full diff ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Spec-drift is clean and the prover made no changes to frame files during proving (the module was already proven at proving-start). Let me precisely audit the three frame files for cheating patterns.
+[TOOL] report_intent: Auditing frame files for cheating patterns
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cd src/kernel/src/hal/mem/types/address && for f in frame.rs frame.spec.rs frame.proo
+
+[THINKING] The frame files haven't changed since proving started, which means the module was already fully proven before the proving phase even began. That's unexpected—it suggests the specifications were complete enough that no modifications were needed during proving. Let me check what actually changed between the specification baseline and now to get the full picture.
+
+Now I'm systematically going through the checklist items. The spec drift check passes with zero drift reported across all three frame files since proving started. I need to verify there are no remaining `admit()` calls in the frame module files, check for any `external_body` declarations outside the TCB, and look for `assume` or `assume_specification` statements. I found one `assume_specification` for `PhysicalAddress::from_raw_value` in frame.spec.rs—that's intra-crate, so I need to determine if it's allowed under the checklist rules.
+
+For the cfg-gating check, the `#[cfg(verus_keep_ghost)]` attributes in frame.rs gate ghost and spec content, not executable code, which should be acceptable. I'm also auditing the exact counts: zero admits, zero external_body declarations, one assume_specification, and two cfg attributes that gate ghost code. The frame module has no claimed Verus limitations with reproducers, so that item passes vacuously. I still need to evaluate whether the exec rewrites are minimal and semantically sound.
+
+The main issue remains item 4 — the assume_specification on `<PhysicalAddress as Address>::from_raw_value` is problematic because PhysicalAddress is an intra-crate type, not an external-bottom boundary. This violates the strict rule against assume/assume_specification except for std/external crate boundaries. The proper fix would be to add a `#[verus_spec]` annotation to the actual implementation at phys.rs:193 to provide a trusted contract for kernel-internal code.
+
+However, I'm now checking whether this assume_specification might already be documented as acceptable in the TCB-allowed.md file under the section for intra-crate assumptions that are permitted during the HAL address/region layer verification phase. I need to verify if `<PhysicalAddress as Address>::from_raw_value` is explicitly listed there as an allowed exception.
+
+Looking at the actual TCB list, it covers `FrameAddress::from_frame_number`, `PhysicalAddress::into_frame_number`, and a few other methods, but `PhysicalAddress::from_raw_value` isn't included. This means the assume_specification violates the rule that only std/external crate trust boundaries are allowed for assume items — this is an intra-crate assumption that isn't covered by the documented exceptions. So this is a clear failure that needs fixing, though the solution is tricky since removing the assume would leave `frame.rs`'s `from_raw_value` unable to prove its postcondition without a spec on the callee.
+
+The real fix is to add a proper verified `#[verus_spec]` to `PhysicalAddress::from_raw_value` in phys.rs and remove the assume entirely. Interestingly, the TCB-allowed file historically marked `frame.rs::FrameAddress::from_raw_value` as external_body, but the current code has switched to in-body verification using this intra-crate assume — essentially trading one approach for another that violates the stricter assume rules. The proper solution is to give `PhysicalAddress::from_raw_value` a real verified spec rather than relying on an assume.
+
+Now I need to step back and remember my role here — I'm writing a fix request for the prover to address, not fixing it myself. The checklist requires me to walk through every item and determine PASS or FAIL on the first turn, then write a focused fix request for any failures. Let me grep the frame files more carefully for the cheating patterns and verify the assume usage before finalizing the review.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] bash: ===== frame.rs =====
+-- admit --
+-- external_body --
+-- assume --
+40:// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+-- cfg --
+9:#[cfg(verus_keep_ghost)]
+11:#[cfg(verus_keep_ghost)]
+36:#[cfg(verus_keep_ghost)]
+===== frame.spec.rs =====
+-- admit --
+-...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me check whether the real `PhysicalAddress::from_raw_value` could carry a verified spec (to judge the right fix for the `assume_specification`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address && echo "=== from_virtual_address ==="; grep -n 'fr
+
+[THINKING] Looking at the frame module audit results, I'm seeing that most unsafe patterns aren't actually present—there are no `admit` or `external_body` attributes, just one `assume_specification` call in the spec file that references an intra-crate function, and a few `cfg` attributes scattered throughout.
+
+The key issue is that `assume_specification` at frame.spec.rs:20 relies on `PhysicalAddress::from_raw_value`, which lacks a proper spec in phys.rs. Since PhysicalAddress is defined within the same crate, this violates the rule that assumes are only allowed for external crate boundaries, and it's not listed in the approved intra-crate assume list either—so this is a failure.
+
+The fix would be to either add a real `#[verus_spec]` to `PhysicalAddress::from_raw_value` with proper verification, or revert `FrameAddress::from_raw_value` back to `external_body`, which is explicitly allowed in the TCB file. The reviewer would likely demand removing the intra-crate assume and instead ensuring the actual callee carries a verified spec.
+[RESULT ✓] bash: === from_virtual_address ===
+49:    pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
+194:        Self::from_virtual_address(VirtualAddress::from_raw_value(value))
+221:        Self::from_virtual_address(aligned)
+239:        Self::from_virtual_address(self.0.align_down(align)...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && LOG=$(ls -t verus-ai-logs/verify-kernel/verus-logs/verus_*.log | head -1); echo "log:
+
+[THINKING] I'm checking which impl blocks have the `#[verus_verify]` attribute — the one containing `from_virtual_address` and `from_frame_address` around line 30 doesn't seem to have it, while there's a separate verified impl block for `PhysicalAddress` starting around line 88, and the `Address` impl at line 178 has `from_raw_value` without any spec annotation.
+
+Now I'm realizing this touches the physics module, which is a separate verification target, so the frame module reviewer shouldn't necessarily demand re-speccing that code. The real issue is that the `assume_specification` in frame.spec.rs is providing a trusted contract for an intra-crate function, which violates the checklist rule that only std/external crate boundaries are allowed for assume directives. I need to think through the concrete fix options: either add a proper spec and verify `from_raw_value` in-body in phys.rs, or revert to using an approved `external_body` annotation that's already in the TCB allowlist, then remove the problematic assume_specification. The checklist is clear — this assume_specification violates the rule since PhysicalAddress is defined in the kernel crate, not an external one. The comment in the code even indicates the intended fix is to add a proper spec to the phys module's Address implementation. So I need to recommend either adding that spec and removing the assume, or reverting to the TCB-approved external_body form if the phys module can't be specced right now. After that, I should verify the remaining checklist items and check the build for any warnings.
+[RESULT ✓] bash: log: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_11-10-42.log
+=== warnings/errors ===
+=== tail ===
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=19
+  admit=12
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+note: verifying module hal::mem::typ...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Audit complete. The automated checker reports `assume=0` because it counts `assume(...)` calls, not `assume_specification` — so it misses the intra-crate `assume_specification` at `frame.spec.rs:20`. That's the one genuine violation. Let me confirm the phys-address dependency status before writing the verdict.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 -c "import json;d=json.load(open('verus-ai-logs/nanvix-phys-hal-phys-address/
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/ 2>/dev/null; echo "e
+
+[THINKING] The verification ran from cache so there's no fresh compilation to confirm the results, but the previous non-cached run showed 6 verified with 0 errors on the frame module, which is solid confirmation that everything passed.
+
+I'm noticing the automated cheating checker counts `assume(` calls but doesn't flag `assume_specification` — that's a gap in the automated detection, though the manual checklist explicitly calls it out. There's only one `assume_specification` in the entire frame module at line 20 of frame.spec.rs, and none in frame.proof.rs.
+
+For the cross-module regression concern, `make verify-kernel` exits with 0, which means all verified modules pass. The cheating detected in other modules is pre-existing and out of scope for frame's proving work. The checklist item about verified modules passing is satisfied.
+
+Since item 4 fails on the intra-crate `assume_specification`, I can't create the STOP file — I need to write the full review to the dialogue file with all items evaluated and a focused fix request. Let me verify the dialogue directory exists and create the review document now.
+[RESULT ✓] bash: exit:0
+<shellId: 18 completed with exit code 0>
+[RESULT ✓] bash: phys-address completed: False phase: cheating-elimination completed_phases: ['proving', 'cheating-elimination']
+=== is <PhysicalAddress as Address>::from_raw_value specced? ===
+16:    fn from_raw_value(value: usize) -> Result<Self, Error> {
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Confirmed: `phys-address` completed its pipeline but never specced `<PhysicalAddress as Address>::from_raw_value` — so the `assume_specification` in `frame.spec.rs:20` is a trusted contract for an **unverified intra-crate** function. That violates the checklist (only std/external boundaries allowed) and isn't in `tcb-allowed.md`. The automated checker missed it because it counts `assume(` not `assume_specification`.
+
+Writing the full review with all 10 items and the focused fix request.
+[TOOL] report_intent: Writing turn 1 review
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_001_driver.md
+
+[THINKING] I'm noticing that the phys-address module completed its proving and cheating-elimination phases, but the `Address::from_raw_value` trait implementation wasn't actually specified during that verification—only the inherent methods like `from_number` and `into_frame_number` were given specs. This means the `assume_specification` in frame.spec.rs is addressing a real gap where the callee's trait implementation wasn't a verification target in the original module.
+
+The frame module's use of `assume_specification` for an unverified intra-crate function violates the checklist requirement that such specifications should only apply to external or standard library crates. Since phys-address already finished its pipeline without speccing this method, I have two concrete paths forward: either spec the actual `<PhysicalAddress as Address>::from_raw_value` implementation in phys.rs (Option A), or revert `FrameAddress::from_raw_value` to `external_body`, which is already listed as TCB-allowed and would make the module compliant with the checklist (Option B). Option B relocates the trust to an explicitly approved mechanism rather than an intra-crate assume_specification, making it the more defensible choice from a compliance perspective, though Option A avoids introducing new trust entirely.
+
+I'm now compiling the full review against the checklist items: spec drift passes with zero contract changes, remaining admits are zero, external_body usage is clean, but the assume_specification violation needs to be flagged as a failure since it's intra-crate and not in the TCB allowlist. I'll present both options and require the assume_specification be removed either way, then re-run verification and the cheating audit. The cross-module regression check passes with the frame module verified and no new errors. Verification completed successfully with 6 verified items and zero errors, and the build finished clean. I'm now writing up the full review in turn_001_driver.md, documenting the 9 passing items and the single fix needed for item 4.
+[RESULT ✓] report_intent: Intent logged
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_001_driver.md with 7008 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Turn 1 review complete. Wrote the full checklist walkthrough to `turn_001_driver.md`.
+
+**Verdict: 9 PASS, 1 FAIL** — STOP file not created (item #4 unresolved).
+
+**FAIL — #4 Zero assume/assume_specification:**
+`frame.spec.rs:20` has `assume_specification[ <PhysicalAddress as Address>::from_raw_value ]`. `PhysicalAddress` is intra-crate (not std/external), the real method at `phys.rs:193` has no `#[verus_spec]`, the `phys-address` pipeline already finished without speccing it, and it's not in `tcb-allowed.md`. The automated checker reports `assume=0` because it only matches `assume(`, missing `assume_specification` — so this hole is script-invisible.
+
+Fix requested: delete the assume_specification, then either (A) add a verified `#[verus_spec]` to the real `PhysicalAddress::from_raw_value` in `phys.rs`, or (B) restore `FrameAddress::from_raw_value` to the TCB-approved `external_body`. Verify with grep + `make verify-kernel` + spec-drift.
+
+**PASS items (evidence in file):** spec-drift (0 drift, no proving-phase changes), admit=0, external_body=0, no cfg-gated exec (3 ghost-only `cfg(verus_keep_ghost)`), no Verus-limitation claims, no exec rewrites, cross-module `make verify-kernel` exit 0, verification clean.
+
+Awaiting the fixer's changes to item #4.
+
+[THINKING] I've completed the review and item #4 failed, so I'm not creating the STOP file since the instructions require all checklist items to be verified before proceeding. Now I'll wrap up this turn with a summary.
+
+
+=== Session End ===
+Session: 8f7aa82e-5b27-48b5-9518-a7e7d2e1e80c
+Duration: 341.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-reviewer-t001-claude-20260615-111027.jsonl
