@@ -282,3 +282,75 @@ Build clean. Now run full `make verify-kernel` (all modules) to confirm no regre
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 590 make verify-kernel 2>&1 | grep -iA3 "Results\|Summary\|^error\|error:" | 
 
 [THINKING] Let me run the full verification across all modules to check for any regressions and confirm everything passes.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+--
+=== Summary ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body=20 admit=12 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 56/1026 exec functions have contracts
+<shellId: 12 completed with e...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+No regression (exit 0). Let me run the spec-drift check the reviewer requested.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for f in frame.rs frame.spec.rs frame.proof.rs; do echo "=== $f ==="; python3 /home/r
+
+[THINKING] The kernel verification passed with no errors—external_body increased by one as expected from my change, and there's no regression. Now I'm running the spec_drift check to confirm the reviewer's concern about the postcondition is satisfied; the from_raw_value ensures remain unchanged.
+[RESULT ✓] bash: === frame.rs ===
+# Spec Drift Report
+
+## Summary
+
+- Functions with changes: 0
+- **Contract drift (⚠ review required): 0**
+  - Ensures removed: 0
+  - Requires added: 0
+- Proof drift (informational): 0
+- Functions added: 0
+- Functions removed: 0
+
+**✅ No contract drift detected.**
+
+=== frame.spec.rs ==...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+No contract drift. All checks pass. Let me write the fixer response.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_001_fixer.md
+
+[THINKING] The contract is stable across all files—`from_raw_value` stays intact, `external_body` doesn't affect the interface, and removing `assume_specification` isn't a contract change since it was just a dependency marker. Now I'm putting together the fixer response.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue/turn_001_fixer.md with 4256 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Fixed. Summary:
+
+**Reviewer's issue (item #4):** `frame.spec.rs` declared an `assume_specification` for the *intra-crate* `<PhysicalAddress as Address>::from_raw_value` — an unsanctioned trust hole (not in `tcb-allowed.md`).
+
+**Fix (Option B, TCB-sanctioned):**
+- `frame.rs`: marked `FrameAddress::from_raw_value` as `#[verus_verify(external_body)]` (listed in `tcb-allowed.md:137-138`), **keeping its strengthened ensures verbatim** (`fa.inv() && fa@ == raw_addr`).
+- `frame.spec.rs`: deleted the `assume_specification` block.
+
+I chose Option B over the reviewer's preferred Option A because Option A would require modifying `<PhysicalAddress as Address>::from_raw_value` and `from_virtual_address` in the **separate, already-completed `phys` module** — unlisted functions my hard rules forbid touching.
+
+**Verification:**
+- `grep assume_specification\|assume(` → only comment prose, no declarations/calls
+- Module: **5 verified, 0 errors** (exit 0)
+- Full `make verify-kernel`: **exit 0**, no regressions
+- `./z build -- all-kernel`: **clean**
+- spec-drift vs proving-start: **0 contract drift** on all three files (no weakening)
+
+Response written to `turn_001_fixer.md`.
+
+
+=== Session End ===
+Session: 30196b67-c317-4461-8d18-e6a4a95d6c6d
+Duration: 262.4s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/proving/dialogue-fixer-t001-claude-20260615-111608.jsonl
