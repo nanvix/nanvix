@@ -256,3 +256,14 @@ Full `make verify` passes (exit 0, admit=0, assume=0). Let me confirm zero error
 [TOOL] bash: cd /home/ruize/nanvix-phy && grep -E "errors|verified" verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-15_12-50-15.
 
 [THINKING] The full verification suite ran successfully with exit code 0 and no errors detected. The "CHEATING_DETECTED" flag is from pre-existing code in unrelated frame manager files that's outside the scope of my changes, so there's no actual proof of cheating — both the admit and assume counts are zero. Let me verify the error count across all modules to be absolutely certain.
+[RESULT ✓] bash: ---grep results block---
+  Unverified function list written to: verus-ai-logs/verify-sys/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  Unverified function list written to: verus-ai-logs/verify-kernel...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy && make verify 2>&1 | grep -E "Results|verified|errors|Exit code|status:" | head -40
+
+[THINKING] The make verify command is running through multiple verification crates and they're all hitting the cache, so everything exits cleanly. Now I'm pulling together a cleaner summary of the results.
