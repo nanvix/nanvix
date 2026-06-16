@@ -1647,6 +1647,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "libc_assert"
+version = "0.16.80"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_stdlib"
 version = "0.16.80"
 dependencies = [

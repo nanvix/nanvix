@@ -1,0 +1,36 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for assert.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/assert.h.
+
+file = "assert.h"
+brief = "Diagnostics."
+description = """
+Provides the assert() macro for runtime assertions. The underlying
+__assert_func() is implemented by the libc_assert Rust crate and matches
+the signature expected by NewLib's <assert.h>."""
+includes = []
+guard = "_NANVIX_ASSERT_H"
+
+[[sections]]
+title = "Internal Functions (do not call directly)"
+functions = ["__assert_func", "__assert"]
+
+# assert macro lives outside include guard — added as raw trailer.
+[trailer]
+text = """
+/*==================================================================================================
+ * assert Macro
+ *==================================================================================================*/
+
+/* The assert macro must be redefinable, so it lives outside the include guard. */
+#undef assert
+
+#ifdef NDEBUG
+#define assert(expr) ((void)0)
+#else
+#define assert(expr) ((expr) ? (void)0 : __assert_func(__FILE__, __LINE__, __func__, #expr))
+#endif
+"""
