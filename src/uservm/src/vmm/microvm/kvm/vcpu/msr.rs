@@ -29,6 +29,7 @@ use ::log::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::serde::{
     Deserialize,
@@ -327,6 +328,9 @@ impl Msrs {
             },
         };
 
+        // Guarantee that a restored vCPU keeps receiving timer interrupts.
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
         Ok(MsrsState {
             bytes: serialize_fam_struct(&msrs),
         })
@@ -433,6 +437,51 @@ impl Msrs {
         }
 
         Ok(())
+    }
+}
+
+//==================================================================================================
+// Standalone functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// If the `IA32_TSC_DEADLINE` MSR was read back as zero, replaces it with the `IA32_TSC` value.
+///
+/// When a snapshot is taken, the `IA32_TSC_DEADLINE` MSR is sometimes read as zero even though the
+/// APIC timer is armed. Restoring a zero deadline leaves the vCPU without a pending timer interrupt,
+/// so it may never receive TSC-deadline interrupts again after resuming. Seeding the deadline with
+/// the current `IA32_TSC` value guarantees the timer fires promptly on restore. This mirrors
+/// Firecracker's `fix_zero_tsc_deadline_msr`.
+///
+/// # Parameters
+///
+/// - `msrs`: The MSR entries read during snapshot save, modified in place.
+///
+fn fix_zero_tsc_deadline_msr(msrs: &mut ::kvm_bindings::Msrs) {
+    const TSC_INDEX: u32 = MsrIndex::Ia32Tsc.as_u32();
+    const TSC_DEADLINE_INDEX: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+
+    // A correctly-built snapshot contains at most one IA32_TSC entry. Defensively handle a
+    // malformed list with duplicates by picking the maximum, mirroring Firecracker.
+    let tsc_value: Option<u64> = msrs
+        .as_slice()
+        .iter()
+        .filter(|msr| msr.index == TSC_INDEX)
+        .map(|msr| msr.data)
+        .max();
+
+    if let Some(tsc_value) = tsc_value {
+        for msr in msrs.as_mut_slice() {
+            if msr.index == TSC_DEADLINE_INDEX && msr.data == 0 {
+                warn!(
+                    "fix_zero_tsc_deadline_msr(): IA32_TSC_DEADLINE is 0, replacing with \
+                     {tsc_value:#x}"
+                );
+                msr.data = tsc_value;
+            }
+        }
     }
 }
 
@@ -687,6 +736,76 @@ mod tests {
             EXPANDED_MSR_INDICES.last().copied(),
             Some(MsrIndex::Ia32TscDeadline.as_u32()),
             "Ia32TscDeadline must be the last entry in EXPANDED_MSR_INDICES"
+        );
+    }
+
+    // ---- fix_zero_tsc_deadline_msr tests (no KVM required) ----
+
+    /// Builds a `kvm_bindings::Msrs` from `(index, data)` pairs.
+    fn build_msrs(entries: &[(u32, u64)]) -> ::kvm_bindings::Msrs {
+        let entries: Vec<kvm_msr_entry> = entries
+            .iter()
+            .map(|&(index, data)| kvm_msr_entry {
+                index,
+                data,
+                ..Default::default()
+            })
+            .collect();
+        ::kvm_bindings::Msrs::from_entries(&entries).expect("failed to build msrs")
+    }
+
+    /// Returns the `data` for the given MSR index, if present.
+    fn msr_data(msrs: &::kvm_bindings::Msrs, index: u32) -> Option<u64> {
+        msrs.as_slice()
+            .iter()
+            .find(|msr| msr.index == index)
+            .map(|msr| msr.data)
+    }
+
+    /// Verifies that a zero `IA32_TSC_DEADLINE` is replaced with the `IA32_TSC` value.
+    #[test]
+    fn fix_zero_tsc_deadline_seeds_from_tsc() {
+        let tsc: u32 = MsrIndex::Ia32Tsc.as_u32();
+        let deadline: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+        let mut msrs: ::kvm_bindings::Msrs = build_msrs(&[(tsc, 0x1234_5678), (deadline, 0)]);
+
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
+        assert_eq!(
+            msr_data(&msrs, deadline),
+            Some(0x1234_5678),
+            "zero IA32_TSC_DEADLINE should be seeded with the IA32_TSC value"
+        );
+    }
+
+    /// Verifies that a non-zero `IA32_TSC_DEADLINE` is left untouched.
+    #[test]
+    fn fix_zero_tsc_deadline_preserves_nonzero() {
+        let tsc: u32 = MsrIndex::Ia32Tsc.as_u32();
+        let deadline: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+        let mut msrs: ::kvm_bindings::Msrs = build_msrs(&[(tsc, 0x1234_5678), (deadline, 0x9999)]);
+
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
+        assert_eq!(
+            msr_data(&msrs, deadline),
+            Some(0x9999),
+            "non-zero IA32_TSC_DEADLINE must not be modified"
+        );
+    }
+
+    /// Verifies that the deadline is left at zero when no `IA32_TSC` entry is present.
+    #[test]
+    fn fix_zero_tsc_deadline_no_tsc_entry() {
+        let deadline: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+        let mut msrs: ::kvm_bindings::Msrs = build_msrs(&[(deadline, 0)]);
+
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
+        assert_eq!(
+            msr_data(&msrs, deadline),
+            Some(0),
+            "without an IA32_TSC entry the deadline must stay unchanged"
         );
     }
 }

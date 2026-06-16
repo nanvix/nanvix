@@ -1206,6 +1206,7 @@ mod tests {
         0x0613, // PKG_PERF_STATUS
         0x0619, // DRAM_ENERGY_STATUS
         0x061B, // DRAM_PERF_STATUS
+        0x06E0, // IA32_TSC_DEADLINE
     ];
 
     /// Zeroes out the `data` field of every MSR entry whose index is in
