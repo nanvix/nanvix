@@ -15,16 +15,21 @@
 //!    already-reaped child returns `ECHILD`.
 //! 4. **Wait-for-any drain** — `wait()` reaps an arbitrary child; repeated calls drain every child
 //!    and a final call returns `ECHILD`.
+//! 5. **Orphan adoption** — a grandchild whose intermediate parent terminates while the grandchild
+//!    is still alive is re-parented onto the init process (the standalone test process itself), so
+//!    init can subsequently `waitpid()` for it and collect its exit status. Were the orphan not
+//!    adopted, that wait would instead fail with `ECHILD`.
 //!
 //! Each child blocks on an IPC barrier until the parent releases it, so the parent can observe a
-//! live child (for the `WNOHANG` poll) before the child terminates. This turns ordering-dependent
-//! behavior into deterministic assertions rather than timing-dependent flakes.
+//! live child (for the `WNOHANG` poll) before the child terminates, and the orphan stays alive
+//! until after init has reaped its intermediate parent. This turns ordering-dependent behavior into
+//! deterministic assertions rather than timing-dependent flakes.
 //!
 //! The following aspects of the `waitpid()` design are intentionally out of scope here:
 //!
 //! - The non-standalone deployment gate is a compile-time concern.
 //! - Job-control reporting (`WUNTRACED`/`WCONTINUED`) and signal deaths are accepted no-ops.
-//! - Orphan re-parenting and VM-shutdown propagation are daemon-level behaviors exercised by the
+//! - VM-shutdown propagation on init termination is a daemon-level behavior exercised by the
 //!   broader system test suite.
 
 //==================================================================================================
@@ -81,6 +86,14 @@ const CHILD_STATUS_C: c_int = 5;
 /// Exit status used by a child whose IPC barrier unexpectedly failed.
 const CHILD_FAIL: c_int = 111;
 
+/// Exit status used by the intermediate child in the orphan-adoption scenario. It terminates while
+/// its own child (the grandchild) is still alive, leaving the grandchild orphaned.
+const ORPHANING_CHILD_STATUS: c_int = 9;
+
+/// Exit status used by the orphaned grandchild in the orphan-adoption scenario, collected by the
+/// init process once the grandchild has been adopted.
+const ORPHAN_STATUS: c_int = 17;
+
 //==================================================================================================
 // Helpers
 //==================================================================================================
@@ -120,6 +133,33 @@ fn release_child(parent: ProcessIdentifier, child: ProcessIdentifier) -> Result<
     );
     ipc::__kcall_send(&go)?;
     Ok(())
+}
+
+/// Sends `pid` (encoded as a little-endian `i32` in the first four payload bytes) to `to` over IPC.
+/// Used by the intermediate child to hand its grandchild's PID to the init process before exiting,
+/// so init can later release and reap the adopted orphan. The kernel validates the sender field, so
+/// the message is sent from the caller's own PID.
+fn report_pid(to: ProcessIdentifier, pid: ProcessIdentifier) -> Result<(), Error> {
+    let from: ProcessIdentifier = pm::__kcall_getpid()?;
+    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+    payload[0..4].copy_from_slice(&i32::from(pid).to_le_bytes());
+    let report: Message = Message::new(
+        MessageSender::from(from),
+        MessageReceiver::from(to),
+        MessageType::Ipc,
+        None,
+        payload,
+    );
+    ipc::__kcall_send(&report)?;
+    Ok(())
+}
+
+/// Receives a PID previously sent with [`report_pid`] and decodes it from the message payload.
+fn recv_reported_pid() -> Result<ProcessIdentifier, Error> {
+    let report: Message = ipc::__kcall_recv()?;
+    let mut bytes: [u8; 4] = [0u8; 4];
+    bytes.copy_from_slice(&report.payload[0..4]);
+    Ok(ProcessIdentifier::from(i32::from_le_bytes(bytes)))
 }
 
 //==================================================================================================
@@ -255,6 +295,101 @@ fn test_wait_any_drains_children() -> Result<(), Error> {
     Ok(())
 }
 
+/// Verifies that an orphaned process is adopted by the init process.
+///
+/// Builds a three-generation lineage rooted at the standalone test process, which runs as the init
+/// process: the test forks an intermediate child, the intermediate child forks a grandchild that
+/// blocks on an IPC barrier, and the intermediate child then terminates while the grandchild is
+/// still alive. With its parent gone, the grandchild is an orphan that procd must re-parent onto
+/// init. The adoption is observable because init can subsequently release the grandchild and reap
+/// it with `waitpid()`, collecting its exit status — an operation only a parent may perform. Were
+/// the orphan not adopted, that final `waitpid()` would instead fail with `ECHILD`.
+///
+/// The IPC barrier makes the ordering deterministic: the grandchild cannot exit until init releases
+/// it, and init does not release it until after it has reaped the intermediate child. Reaping the
+/// intermediate child guarantees procd has already processed its termination — and therefore the
+/// re-parenting — because the grandchild is recorded as the intermediate child's child before the
+/// intervening `fork()` returns (the fork-sync handshake), so it is always present in the
+/// intermediate child's child list when that child terminates.
+fn test_orphan_adopted_by_init() -> Result<(), Error> {
+    let init: ProcessIdentifier = pm::__kcall_getpid()?;
+
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        // Intermediate child: spawn a grandchild that blocks on its barrier, hand its PID to init,
+        // then terminate immediately. The grandchild is left alive and blocked, so it becomes an
+        // orphan that must be re-parented onto init.
+        let grandchild: ProcessIdentifier = match spawn_blocked_child(ORPHAN_STATUS) {
+            Ok(grandchild) => grandchild,
+            // SAFETY: the child holds no resources requiring cleanup; terminate immediately.
+            Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+        };
+        // Report the grandchild's PID before exiting, so init never blocks awaiting a PID that was
+        // never sent.
+        if report_pid(init, grandchild).is_err() {
+            // SAFETY: as above.
+            unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+        }
+        // SAFETY: as above; exit now to orphan the still-blocked grandchild.
+        unsafe { bindings::_exit::_exit(ORPHANING_CHILD_STATUS) };
+    }
+
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    let child: ProcessIdentifier = ProcessIdentifier::from(ret);
+
+    // Receive the grandchild's PID, reported by the intermediate child before it exits.
+    let grandchild: ProcessIdentifier = recv_reported_pid()?;
+    assert!(
+        grandchild != child && grandchild != init,
+        "grandchild PID must be distinct (grandchild={}, child={}, init={})",
+        i32::from(grandchild),
+        i32::from(child),
+        i32::from(init)
+    );
+
+    // Reap the intermediate child. By the time this returns, procd has processed its termination
+    // and re-parented the still-blocked grandchild onto init.
+    let mut status: c_int = 0;
+    // SAFETY: `status` is a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the intermediate child (ret={}, child={})",
+        reaped,
+        i32::from(child)
+    );
+    assert!(
+        wifexited(status) && wexitstatus(status) == ORPHANING_CHILD_STATUS,
+        "intermediate child exit status mismatch (status={:#x}, expected={})",
+        status,
+        ORPHANING_CHILD_STATUS
+    );
+
+    // Release the now-orphaned grandchild so that it terminates.
+    release_child(init, grandchild)?;
+
+    // Reap the adopted orphan. This succeeds only because the orphan was re-parented onto init: the
+    // test process never forked it directly. A return of `ECHILD` would mean adoption failed.
+    let mut orphan_status: c_int = 0;
+    // SAFETY: `orphan_status` is a valid `c_int`.
+    let reaped_orphan: pid_t =
+        unsafe { bindings::waitpid::waitpid(i32::from(grandchild), &raw mut orphan_status, 0) };
+    assert!(
+        reaped_orphan == i32::from(grandchild),
+        "init must reap the adopted orphan (ret={}, orphan={})",
+        reaped_orphan,
+        i32::from(grandchild)
+    );
+    assert!(
+        wifexited(orphan_status) && wexitstatus(orphan_status) == ORPHAN_STATUS,
+        "adopted orphan exit status mismatch (status={:#x}, expected={})",
+        orphan_status,
+        ORPHAN_STATUS
+    );
+
+    Ok(())
+}
+
 //==================================================================================================
 // Public Entry Point
 //==================================================================================================
@@ -274,6 +409,9 @@ pub fn run() -> Result<(), Error> {
 
     test_wait_any_drains_children()?;
     ::syslog::info!("waitpid-rust: PASS - wait_any_drains_children");
+
+    test_orphan_adopted_by_init()?;
+    ::syslog::info!("waitpid-rust: PASS - orphan_adopted_by_init");
 
     Ok(())
 }
