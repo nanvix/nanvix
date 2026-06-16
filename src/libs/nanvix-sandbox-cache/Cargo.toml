@@ -17,12 +17,12 @@ config = { workspace = true }
 log = { workspace = true }
 nanvix-sandbox = { workspace = true }
 rand = { workspace = true }
+nanvix-sandbox-config = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
 default = ["microvm", "multi-process"]
 multi-process = ["nanvix-sandbox/multi-process"]
-hyperlight = ["config/hyperlight", "nanvix-sandbox/hyperlight"]
 microvm = ["config/microvm", "nanvix-sandbox/microvm"]
 whp = ["config/whp", "nanvix-sandbox/whp"]
 

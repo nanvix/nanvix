@@ -22,51 +22,51 @@ jobs:
     outputs:
       should_run: ${{ steps.evaluate.outputs.should_run }}
     steps:
-    - name: Evaluate dispatcher eligibility
-      id: evaluate
-      env:
-        EVENT: ${{ github.event.workflow_run.event }}
-        CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-        PULL_REQUESTS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        REPOSITORY: ${{ github.repository }}
-      run: |
-        set -euo pipefail
+      - name: Evaluate dispatcher eligibility
+        id: evaluate
+        env:
+          EVENT: ${{ github.event.workflow_run.event }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          PULL_REQUESTS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
 
-        if [[ "${EVENT}" != "pull_request" ]]; then
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if [[ "${EVENT}" != "pull_request" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        if [[ "${CONCLUSION}" == "cancelled" ]]; then
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if [[ "${CONCLUSION}" == "cancelled" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        if [[ -z "${PULL_REQUESTS_JSON}" || "${PULL_REQUESTS_JSON}" == "null" || "${PULL_REQUESTS_JSON}" == "[]" ]]; then
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if [[ -z "${PULL_REQUESTS_JSON}" || "${PULL_REQUESTS_JSON}" == "null" || "${PULL_REQUESTS_JSON}" == "[]" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        pr_number=$(jq -r '.[0].number // ""' <<< "${PULL_REQUESTS_JSON}")
-        if [[ -z "${pr_number}" ]]; then
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          pr_number=$(jq -r '.[0].number // ""' <<< "${PULL_REQUESTS_JSON}")
+          if [[ -z "${pr_number}" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        if ! pr_payload=$(gh api \
-          --header "Accept: application/vnd.github+json" \
-          "/repos/${REPOSITORY}/pulls/${pr_number}"); then
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if ! pr_payload=$(gh api \
+            --header "Accept: application/vnd.github+json" \
+            "/repos/${REPOSITORY}/pulls/${pr_number}"); then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        if jq -e '.draft == true' <<< "${pr_payload}" >/dev/null; then
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if jq -e '.draft == true' <<< "${pr_payload}" >/dev/null; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        echo "should_run=true" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
 
   post-benchmark-comment:
     needs: gate-post-benchmark-comment
@@ -75,68 +75,71 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner-label: [self-hosted, github-hosted]
+        runner-label: [ self-hosted ]
     steps:
-    - name: Download benchmark comment payload
-      id: download
-      uses: dawidd6/action-download-artifact@v20
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        run_id: ${{ github.event.workflow_run.id }}
-        name: benchmark-comment-${{ matrix.runner-label }}-${{ github.event.workflow_run.id }}
-        path: payload
-      continue-on-error: true
+      - name: Download benchmark comment payload
+        id: download
+        uses: dawidd6/action-download-artifact@v21
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          run_id: ${{ github.event.workflow_run.id }}
+          name: benchmark-comment-${{ matrix.runner-label }}-${{
+            github.event.workflow_run.id }}
+          path: payload
+        continue-on-error: true
 
-    - name: Validate payload
-      id: metadata
-      run: |
-        set -euo pipefail
+      - name: Validate payload
+        id: metadata
+        run: |
+          set -euo pipefail
 
-        if [[ "${{ steps.download.outcome }}" != "success" ]]; then
-          echo "needs_comment=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if [[ "${{ steps.download.outcome }}" != "success" ]]; then
+            echo "needs_comment=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        if [[ ! -f payload/metadata.json || ! -f payload/body.md ]]; then
-          echo "needs_comment=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if [[ ! -f payload/metadata.json || ! -f payload/body.md ]]; then
+            echo "needs_comment=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        needs_comment=$(jq -r '.needs_comment // "false"' payload/metadata.json)
-        pr_number=$(jq -r '.pr_number // ""' payload/metadata.json)
+          needs_comment=$(jq -r '.needs_comment // "false"' payload/metadata.json)
+          pr_number=$(jq -r '.pr_number // ""' payload/metadata.json)
 
-        if [[ "${needs_comment}" != "true" || -z "${pr_number}" ]]; then
-          echo "needs_comment=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
+          if [[ "${needs_comment}" != "true" || -z "${pr_number}" ]]; then
+            echo "needs_comment=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-        echo "needs_comment=true" >> "$GITHUB_OUTPUT"
-        echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
-      shell: bash
+          echo "needs_comment=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
+        shell: bash
 
-    - name: Find benchmark comment if it exists
-      if: ${{ steps.metadata.outputs.needs_comment == 'true' }}
-      id: fc
-      uses: peter-evans/find-comment@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        issue-number: ${{ steps.metadata.outputs.pr_number }}
-        comment-author: "github-actions[bot]"
-        body-includes: "🔬 Benchmark Results (${{ matrix.runner-label }})"
+      - name: Find benchmark comment if it exists
+        if: ${{ steps.metadata.outputs.needs_comment == 'true' }}
+        id: fc
+        uses: peter-evans/find-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ steps.metadata.outputs.pr_number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "🔬 Benchmark Results (${{ matrix.runner-label }})"
 
-    - name: Create benchmark comment
-      if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id == '' }}
-      uses: peter-evans/create-or-update-comment@v5
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        issue-number: ${{ steps.metadata.outputs.pr_number }}
-        body-path: payload/body.md
+      - name: Create benchmark comment
+        if: ${{ steps.metadata.outputs.needs_comment == 'true' &&
+          steps.fc.outputs.comment-id == '' }}
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ steps.metadata.outputs.pr_number }}
+          body-path: payload/body.md
 
-    - name: Update benchmark comment
-      if: ${{ steps.metadata.outputs.needs_comment == 'true' && steps.fc.outputs.comment-id != '' }}
-      uses: peter-evans/create-or-update-comment@v5
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        comment-id: ${{ steps.fc.outputs.comment-id }}
-        edit-mode: replace
-        body-path: payload/body.md
+      - name: Update benchmark comment
+        if: ${{ steps.metadata.outputs.needs_comment == 'true' &&
+          steps.fc.outputs.comment-id != '' }}
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          edit-mode: replace
+          body-path: payload/body.md

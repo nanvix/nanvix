@@ -11,8 +11,8 @@ use crate::{
         AddressFamily,
         SocketType,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -41,10 +41,10 @@ pub struct CreateSocketPairRequest {
     pub protocol: Protocol,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(CreateSocketPairRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(CreateSocketPairRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl CreateSocketPairRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<AddressFamily>()
         - mem::size_of::<SocketType>()
         - mem::size_of::<Protocol>();
@@ -58,11 +58,11 @@ impl CreateSocketPairRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -73,13 +73,13 @@ impl CreateSocketPairRequest {
         protocol: Protocol,
     ) -> Message {
         let message: Self = Self::new(domain, typ, protocol);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::CreateSocketPairRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::CreateSocketPairRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            MessageReceiver::from(crate::NETWORK_DESTINATION),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -100,11 +100,11 @@ pub struct CreateSocketPairResponse {
     pub sockfd_1: c_int,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(CreateSocketPairResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(CreateSocketPairResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl CreateSocketPairResponse {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<c_int>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<c_int>();
 
     pub fn new(sockfd_0: c_int, sockfd_1: c_int) -> Self {
         Self {
@@ -114,22 +114,22 @@ impl CreateSocketPairResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, sockfd_0: c_int, sockfd_1: c_int) -> Message {
         let message: Self = Self::new(sockfd_0, sockfd_1);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::CreateSocketPairResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::CreateSocketPairResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(crate::NETWORK_SOURCE),
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

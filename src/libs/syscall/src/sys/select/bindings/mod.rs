@@ -63,7 +63,7 @@ pub unsafe extern "C" fn select(
 ) -> c_int {
     // Check if `nfds` is not valid.
     if nfds < 0 || nfds as usize > FD_SETSIZE {
-        ::syslog::error!(
+        ::syslog::warn!(
             "select(): invalid nfds (nfds={nfds:?}, readfds={readfds:?}, writefds={writefds:?}, \
              errorfds={errorfds:?})"
         );
@@ -80,7 +80,7 @@ pub unsafe extern "C" fn select(
     } else {
         // Check if pointer is misaligned.
         if !(readfds as usize).is_multiple_of(core::mem::align_of::<fd_set>()) {
-            ::syslog::error!("select(): misaligned readfds pointer (readfds={readfds:?})");
+            ::syslog::warn!("select(): misaligned readfds pointer (readfds={readfds:?})");
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
                 *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn select(
     } else {
         // Check if pointer is misaligned.
         if !(writefds as usize).is_multiple_of(core::mem::align_of::<fd_set>()) {
-            ::syslog::error!("select(): misaligned writefds pointer (writefds={writefds:?})");
+            ::syslog::warn!("select(): misaligned writefds pointer (writefds={writefds:?})");
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
                 *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -110,7 +110,7 @@ pub unsafe extern "C" fn select(
     } else {
         // Check if pointer is misaligned.
         if !(errorfds as usize).is_multiple_of(core::mem::align_of::<fd_set>()) {
-            ::syslog::error!("select(): misaligned errorfds pointer (errorfds={errorfds:?})");
+            ::syslog::warn!("select(): misaligned errorfds pointer (errorfds={errorfds:?})");
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
                 *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -132,7 +132,11 @@ pub unsafe extern "C" fn select(
     match syscall::select(nfds as usize, read_ref, write_ref, error_ref, &timeout) {
         Ok(ready_fds) => ready_fds as c_int,
         Err(err) => {
-            ::syslog::error!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+            if err.code == ErrorCode::OperationNotSupported {
+                ::syslog::debug!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+            } else {
+                ::syslog::warn!("select(): syscall failed (nfds={nfds:?}, error={err:?})");
+            }
             // SAFETY: `__errno_location()` returns a valid pointer.
             unsafe {
                 *__errno_location() = err.code.get();

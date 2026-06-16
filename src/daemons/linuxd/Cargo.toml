@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
 libc = { workspace = true }
+net-backend = { workspace = true }
 profiler = { workspace = true }
 rand = { workspace = true }
 signal-hook = { workspace = true }

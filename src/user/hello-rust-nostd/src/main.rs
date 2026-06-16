@@ -10,6 +10,7 @@
 
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::sys::{
     error::Error,
@@ -23,7 +24,7 @@ use ::sys::{
 #[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
     let msg: &str = "Hello, world from Rust!\n";
-    let _ = debug::debug(msg.as_ptr(), msg.len());
+    let _ = debug::__kcall_debug(msg.as_ptr(), msg.len());
 
     Ok(())
 }

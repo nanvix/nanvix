@@ -17,20 +17,21 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: "Build (${{ inputs.timestamp-msg == 'yes' && 'Echo-Breakdown' || 'Standard' }})"
-    shell: bash
-    env:
-      MACHINE_TYPE: ${{ inputs.machine-type }}
-      TIMESTAMP_MSG_FLAG: ${{ inputs.timestamp-msg == 'yes' && 'TIMESTAMP_MSG=yes' || '' }}
-    run: |
-      ./z build \
-        -- \
-        all \
-        "MACHINE=${MACHINE_TYPE}" \
-        TARGET=x86 \
-        LOG_LEVEL=panic \
-        VERBOSE=yes \
-        RELEASE=yes \
-        ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
-        DEPLOYMENT_MODE=l2 \
-        ${TIMESTAMP_MSG_FLAG}
+    - name: "Build (${{ inputs.timestamp-msg == 'yes' && 'Echo-Breakdown' ||
+        'Standard' }})"
+      shell: bash
+      env:
+        MACHINE_TYPE: ${{ inputs.machine-type }}
+        TIMESTAMP_MSG_FLAG: ${{ inputs.timestamp-msg == 'yes' && 'TIMESTAMP_MSG=yes' || '' }}
+      run: |
+        ./z build \
+          -- \
+          all \
+          "MACHINE=${MACHINE_TYPE}" \
+          TARGET=x86 \
+          LOG_LEVEL=panic \
+          VERBOSE=yes \
+          RELEASE=yes \
+          ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
+          DEPLOYMENT_MODE=multi-process \
+          ${TIMESTAMP_MSG_FLAG}

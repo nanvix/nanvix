@@ -5,27 +5,23 @@
 // Modules
 //==================================================================================================
 
+#[cfg(feature = "standalone")]
+mod common;
 pub mod empty;
-#[cfg(unix)]
 pub mod http;
+#[cfg(feature = "standalone")]
+pub mod snapshot_restore;
+#[cfg(feature = "standalone")]
+pub mod snapshot_save_exit;
 pub mod terminal;
+#[cfg(feature = "standalone")]
+pub(crate) use self::common::drain_stream;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use ::anyhow::Result;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Exit code used when we failed to retrieve the exit code and need to skip validation.
-///
-const DEFAULT_EXIT_CODE_SKIP_VALIDATION: i32 = -2;
 
 //==================================================================================================
 // Structures
@@ -53,6 +49,13 @@ pub struct WorkloadSpec<'a> {
     ///
     /// # Description
     ///
+    /// Optional environment variable string forwarded to the workload.
+    /// Formatted as space-separated `KEY=VALUE` pairs.
+    ///
+    program_env: Option<&'a str>,
+    ///
+    /// # Description
+    ///
     /// Optional payload injected into the workload stdin or HTTP stream.
     ///
     input: Option<&'a str>,
@@ -74,15 +77,6 @@ pub struct WorkloadSpec<'a> {
     /// Optional expected exit code that the workload must produce.
     ///
     expected_exit_code: Option<i32>,
-    ///
-    /// # Description
-    ///
-    /// Indicates whether exit code validation should be skipped. This is used on hyperlight where
-    /// the User VM is terminated via SIGKILL and cannot reliably report exit codes.
-    ///
-    /// FIXME (#1010): Remove this workaround once graceful hyperlight interrupt is implemented.
-    ///
-    skip_exit_code_validation: bool,
 }
 
 impl<'a> WorkloadSpec<'a> {
@@ -95,12 +89,12 @@ impl<'a> WorkloadSpec<'a> {
     ///
     /// - `program_path`: Path to the workload binary executed by an executor.
     /// - `program_args`: Optional argument string forwarded to the workload entry point.
+    /// - `program_env`: Optional environment variable string forwarded to the workload.
     /// - `input`: Optional payload injected into the workload stdin or HTTP stream.
     /// - `expected_output`: Optional substring that must appear in the collected stdout payload.
     /// - `expect_empty_output`: Indicates whether the workload should produce an empty stdout
     ///   payload.
     /// - `expected_exit_code`: Optional exit code that the workload must produce.
-    /// - `skip_exit_code_validation`: Indicates whether exit code validation should be skipped.
     ///
     /// # Return Value
     ///
@@ -108,20 +102,20 @@ impl<'a> WorkloadSpec<'a> {
     pub const fn new(
         program_path: &'a str,
         program_args: Option<&'a str>,
+        program_env: Option<&'a str>,
         input: Option<&'a str>,
         expected_output: Option<&'a str>,
         expect_empty_output: bool,
         expected_exit_code: Option<i32>,
-        skip_exit_code_validation: bool,
     ) -> Self {
         Self {
             program_path,
             program_args,
+            program_env,
             input,
             expected_output,
             expect_empty_output,
             expected_exit_code,
-            skip_exit_code_validation,
         }
     }
 
@@ -147,6 +141,18 @@ impl<'a> WorkloadSpec<'a> {
     /// Returns the optional argument string, when provided.
     pub const fn program_args(&self) -> Option<&'a str> {
         self.program_args
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional environment variable string forwarded to the workload.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the optional environment variable string, when provided.
+    pub const fn program_env(&self) -> Option<&'a str> {
+        self.program_env
     }
 
     ///
@@ -200,32 +206,6 @@ impl<'a> WorkloadSpec<'a> {
             None => 0,
         }
     }
-
-    ///
-    /// # Description
-    ///
-    /// Returns `true` when the test explicitly declared an expected exit code.
-    ///
-    /// # Return Value
-    ///
-    /// Returns `true` if `expected_exit_code` was set in the test configuration; otherwise `false`.
-    ///
-    pub const fn has_explicit_expected_exit_code(&self) -> bool {
-        self.expected_exit_code.is_some()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Indicates whether exit code validation should be skipped.
-    ///
-    /// # Return Value
-    ///
-    /// Returns `true` if exit code validation should be skipped; otherwise returns `false`.
-    ///
-    pub const fn skip_exit_code_validation(&self) -> bool {
-        self.skip_exit_code_validation
-    }
 }
 
 //==================================================================================================
@@ -239,6 +219,12 @@ pub enum ExecutorName {
     Empty,
     /// HTTP executor.
     Http,
+    /// Snapshot save / restore executor.
+    #[cfg(feature = "standalone")]
+    SnapshotRestore,
+    /// Snapshot save / host-exit executor.
+    #[cfg(feature = "standalone")]
+    SnapshotSaveExit,
     /// Terminal executor.
     Terminal,
 }
@@ -261,6 +247,10 @@ impl ExecutorName {
         match identifier {
             "empty" => Ok(Self::Empty),
             "http" => Ok(Self::Http),
+            #[cfg(feature = "standalone")]
+            "snapshot-restore" => Ok(Self::SnapshotRestore),
+            #[cfg(feature = "standalone")]
+            "snapshot-save-exit" => Ok(Self::SnapshotSaveExit),
             "terminal" => Ok(Self::Terminal),
             _ => Err(::anyhow::anyhow!(format!("invalid executor name '{identifier}'"))),
         }
@@ -273,14 +263,76 @@ impl ExecutorName {
     ///
     /// # Return Value
     ///
-    /// Returns one of `empty`, `http`, or `terminal` for use when organizing logs.
+    /// Returns one of `empty`, `http`, `terminal`, or (under the `standalone` feature)
+    /// `snapshot-restore` for use when organizing logs.
     ///
     pub const fn to_str(self) -> &'static str {
         match self {
             Self::Empty => "empty",
             Self::Http => "http",
+            #[cfg(feature = "standalone")]
+            Self::SnapshotRestore => "snapshot-restore",
+            #[cfg(feature = "standalone")]
+            Self::SnapshotSaveExit => "snapshot-save-exit",
             Self::Terminal => "terminal",
         }
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Builds a combined argument string using the documented `<args>;<env>` format.
+///
+/// When environment variables are present, they are appended after a `;` separator so that
+/// the kernel's `split_cmdline()` can split them. When only one of args or env is present,
+/// the appropriate prefix or suffix is used. Any literal `;` in either field is escaped to
+/// `\;` so that `split_cmdline()` treats it as data rather than the separator.
+///
+/// Empty strings are normalised to absent (`None`) so that `Some("")` behaves identically
+/// to `None`.
+///
+/// # Contract
+///
+/// Both `args` and `env` must be raw (unescaped) strings. The function performs all necessary
+/// escaping for the `split_cmdline()` wire format. Do not pre-escape `;` in the input — a
+/// literal `\;` in the input represents a raw backslash followed by a raw semicolon, and the
+/// round-trip through `split_cmdline()` will preserve both characters.
+///
+/// # Parameters
+///
+/// - `args`: Optional command-line argument string.
+/// - `env`: Optional environment variable string (space-separated `KEY=VALUE` pairs).
+///
+/// # Return Value
+///
+/// Returns the combined string ready to be passed as `program_args`.
+///
+pub fn combine_args_env(args: Option<&str>, env: Option<&str>) -> String {
+    // Normalise empty strings to absent so that `Some("")` and `None` behave identically.
+    let args: &str = args.unwrap_or("");
+    let env: &str = env.unwrap_or("");
+
+    // Always escape literal `;` in args and env so that split_cmdline()
+    // never mistakes them for the args/env separator.
+    //
+    // A raw `\;` in the input becomes `\\;` after escaping. split_cmdline()
+    // interprets `\\;` as: literal `\` (next char is `\`, not `;`) followed
+    // by `\;` escape → `;`, yielding the original `\;`. This is correct
+    // because the input is always raw (unescaped).
+    let escaped_args: String = args.replace(';', "\\;");
+    let escaped_env: String = env.replace(';', "\\;");
+
+    if escaped_env.is_empty() {
+        escaped_args
+    } else if escaped_args.is_empty() {
+        format!(";{escaped_env}")
+    } else {
+        format!("{escaped_args};{escaped_env}")
     }
 }
 
@@ -295,50 +347,82 @@ mod tests {
     #[test]
     fn workload_spec_expected_exit_code_some() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, true, Some(0));
         assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_none() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, false, None);
         assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_nonzero() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13), false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, true, Some(13));
         assert_eq!(spec.expected_exit_code(), 13);
-    }
-
-    #[test]
-    fn workload_spec_skip_exit_code_validation() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), true);
-        assert!(spec.skip_exit_code_validation());
-        assert_eq!(spec.expected_exit_code(), 0);
     }
 
     #[test]
     fn workload_spec_expected_exit_code_negative() {
         let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1), false);
+            WorkloadSpec::new("./bin/test.elf", None, None, None, None, false, Some(-1));
         assert_eq!(spec.expected_exit_code(), -1);
     }
 
     #[test]
-    fn workload_spec_has_explicit_expected_exit_code_some() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(0), false);
-        assert!(spec.has_explicit_expected_exit_code());
+    fn combine_args_env_no_args_no_env() {
+        assert_eq!(combine_args_env(None, None), "");
     }
 
     #[test]
-    fn workload_spec_has_explicit_expected_exit_code_none() {
-        let spec: WorkloadSpec =
-            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
-        assert!(!spec.has_explicit_expected_exit_code());
+    fn combine_args_env_args_only() {
+        assert_eq!(combine_args_env(Some("arg1 arg2"), None), "arg1 arg2");
+    }
+
+    #[test]
+    fn combine_args_env_env_only() {
+        assert_eq!(combine_args_env(None, Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_args_and_env() {
+        assert_eq!(combine_args_env(Some("arg1"), Some("VAR=x")), "arg1;VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_escapes_semicolons_in_args() {
+        assert_eq!(combine_args_env(Some("a;b"), Some("VAR=x")), "a\\;b;VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_escapes_semicolons_in_env() {
+        assert_eq!(combine_args_env(Some("arg1"), Some("PATH=a;b")), "arg1;PATH=a\\;b");
+    }
+
+    #[test]
+    fn combine_args_env_escapes_semicolons_even_without_env() {
+        assert_eq!(combine_args_env(Some("a;b"), None), "a\\;b");
+    }
+
+    #[test]
+    fn combine_args_env_empty_env_string_treated_as_absent() {
+        assert_eq!(combine_args_env(Some("arg1"), Some("")), "arg1");
+    }
+
+    #[test]
+    fn combine_args_env_empty_args_string_treated_as_absent() {
+        assert_eq!(combine_args_env(Some(""), Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combine_args_env_preserves_backslash_semicolon_in_raw_input() {
+        // Raw input `\;` (literal backslash + literal semicolon) must be preserved.
+        // The `;` is escaped to `\;`, producing `\\;` in the encoded output.
+        // split_cmdline() interprets `\\;` as: literal `\` (next char is `\`, not `;`)
+        // followed by `\;` escape → `;`. Round-trip result: `\;` — original preserved.
+        assert_eq!(combine_args_env(Some("a\\;b"), None), "a\\\\;b");
     }
 }

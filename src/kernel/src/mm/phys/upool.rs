@@ -7,88 +7,10 @@
 
 use crate::{
     hal::mem::FrameAddress,
-    mm::phys::frame::FrameAllocator,
+    mm::phys::frame,
 };
-use ::alloc::{
-    rc::Rc,
-    vec::Vec,
-};
-use ::core::cell::RefCell;
+use ::core::mem::ManuallyDrop;
 use ::sys::error::Error;
-
-//==================================================================================================
-// User Frame Pool Inner
-//==================================================================================================
-
-///
-/// # Description
-///
-/// A structure that describes a pool of user frames.
-///
-#[derive(Debug)]
-struct UpoolInner {
-    /// Underlying frame allocator.
-    frame_allocator: FrameAllocator,
-}
-
-impl UpoolInner {
-    ///
-    /// # Description
-    ///
-    /// Instantiates a user frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `frame_allocator`: Underlying frame allocator.
-    ///
-    /// # Returns
-    ///
-    /// A user frame pool.
-    ///
-    fn new(frame_allocator: FrameAllocator) -> Self {
-        Self { frame_allocator }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Allocates a contiguous range of frames from the user frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `size`: Number of frames to allocate.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, a vector of physical addresses is returned. Upon failure, an error is returned
-    /// instead.
-    fn alloc_many(&mut self, size: usize) -> Result<Vec<FrameAddress>, Error> {
-        let mut pages: Vec<FrameAddress> = Vec::new();
-
-        for _ in 0..size {
-            pages.push(self.frame_allocator.alloc()?);
-        }
-
-        Ok(pages)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Frees a frame that was previously allocated from the user frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `frame_addr`: Physical address of the frame to be freed.
-    ///
-    /// # Returns
-    ///
-    /// On success, `Ok(())` is returned. On failure, an error is returned.
-    ///
-    fn free(&mut self, page_addr: FrameAddress) -> Result<(), Error> {
-        self.frame_allocator.free(page_addr)
-    }
-}
 
 //==================================================================================================
 // User Frame
@@ -114,7 +36,6 @@ impl UserFrame {
     /// # Parameters
     ///
     /// - `addr`: Frame address.
-    /// - `upool`: Back reference to the user frame pool.
     ///
     /// # Returns
     ///
@@ -136,6 +57,63 @@ impl UserFrame {
     pub fn address(&self) -> FrameAddress {
         self.addr
     }
+
+    ///
+    /// # Description
+    ///
+    /// Consumes the user frame without freeing the underlying physical frame.
+    ///
+    /// # Returns
+    ///
+    /// The frame address.
+    ///
+    pub fn leak(self) -> FrameAddress {
+        let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
+        this.addr
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Adds a new reference to the underlying physical frame and returns a fresh
+    /// [`UserFrame`] handle that owns that reference. The two handles share the
+    /// same physical frame, and the frame is only reclaimed once both handles are
+    /// dropped.
+    ///
+    /// This is the building block for copy-on-write sharing: the parent retains
+    /// its handle, the child receives the returned handle.
+    ///
+    /// # Returns
+    ///
+    /// On success, a new [`UserFrame`] that aliases the same physical frame as
+    /// `self`. On failure, an error is returned.
+    ///
+    pub fn share(&self) -> Result<UserFrame, Error> {
+        frame::share(self.addr)?;
+        Ok(Self { addr: self.addr })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the current reference count of the underlying physical frame.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the current reference count of the underlying physical frame is returned.
+    /// Upon failure, an error is returned instead.
+    ///
+    pub fn refcount(&self) -> Result<u8, Error> {
+        frame::refcount(self.addr)
+    }
+}
+
+impl Drop for UserFrame {
+    fn drop(&mut self) {
+        if let Err(e) = frame::free(self.addr) {
+            error!("failed to free user frame: {:?}", e);
+        }
+    }
 }
 
 //==================================================================================================
@@ -145,12 +123,13 @@ impl UserFrame {
 ///
 /// # Description
 ///
-/// A structure that describes a pool of user frames.
+/// Thin facade over the module-level [`frame`](super::frame) allocator. Exists as a distinct type
+/// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
 ///
 #[derive(Debug)]
 pub struct Upool {
-    /// Inner data structure.
-    inner: Rc<RefCell<UpoolInner>>,
+    /// Private field prevents external construction.
+    _private: (),
 }
 
 impl Upool {
@@ -159,50 +138,25 @@ impl Upool {
     ///
     /// Instantiates a user frame pool.
     ///
-    /// # Parameters
-    ///
-    /// - `frame_allocator`: Underlying frame allocator.
-    ///
     /// # Returns
     ///
     /// A user frame pool.
     ///
-    pub fn new(frame_allocator: FrameAllocator) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(UpoolInner::new(frame_allocator))),
-        }
-    }
-
-    pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
-        trace!("nframes={nframes:?}");
-
-        // Attempt to allocate pages.
-        let mut uframes: Vec<FrameAddress> = self.inner.borrow_mut().alloc_many(nframes)?;
-
-        // Create a vector of user pages.
-        let mut upages: Vec<UserFrame> = Vec::new();
-        while let Some(page) = uframes.pop() {
-            let upage: UserFrame = UserFrame::new(page);
-            upages.push(upage);
-        }
-
-        Ok(upages)
+    pub(super) fn new() -> Self {
+        Self { _private: () }
     }
 
     ///
     /// # Description
     ///
-    /// Frees a frame that was previously allocated from the user frame pool.
-    ///
-    /// # Parameters
-    ///
-    /// - `uframe`: User frame to be freed.
+    /// Allocates a single user frame from the user frame pool.
     ///
     /// # Returns
     ///
-    /// On success, empty is returned. On failure, an error is returned instead.
+    /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
-    pub fn free(&mut self, uframe: UserFrame) -> Result<(), Error> {
-        self.inner.borrow_mut().free(uframe.address())
+    pub fn alloc(&mut self) -> Result<UserFrame, Error> {
+        let addr: FrameAddress = frame::alloc()?;
+        Ok(UserFrame::new(addr))
     }
 }

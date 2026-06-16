@@ -77,7 +77,6 @@ RUN RUST_CHANNEL="$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' /t
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --default-toolchain "${RUST_CHANNEL}" \
     && rustup component add rust-src rustfmt clippy \
-    && rustup target add wasm32-wasip1 \
     && rm /tmp/rust-toolchain
 
 # ---------------------------------------------------------------------------

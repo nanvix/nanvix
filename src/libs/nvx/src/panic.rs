@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use ::core::{
+    arch::asm,
     fmt::Write,
-    hint,
     panic::PanicMessage,
 };
 use syslog::{
@@ -34,7 +34,9 @@ pub fn panic_implementation(info: &::core::panic::PanicInfo<'_>) -> ! {
         "PANIC file='{file}', line={line} :: {m}",
     );
 
-    loop {
-        hint::spin_loop()
+    // Trigger an invalid-opcode exception (#UD) so the kernel terminates
+    // this process instead of letting it spin forever.
+    unsafe {
+        asm!("ud2", options(noreturn));
     }
 }

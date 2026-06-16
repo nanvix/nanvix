@@ -17,7 +17,9 @@ use ::syscall::{
         SocketAddr,
         SocketType,
         syscall::{
+            accept,
             bind,
+            connect,
             getsockname,
             listen,
             socket,
@@ -106,6 +108,31 @@ fn test_getsockname_listening_socket(addr: &SocketAddr) -> Result<(), Error> {
     Ok(())
 }
 
+/// Tests if we succeed to accept a connection on a listening socket.
+fn test_accept() -> Result<(), Error> {
+    // Create a server socket bound to an ephemeral port.
+    let server_addr: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), 0));
+    let server_fd: i32 = new_listening_socket(&server_addr)?;
+
+    // Retrieve the actual address assigned by the OS.
+    let mut actual_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+    getsockname(server_fd, &mut actual_addr)?;
+
+    // Create a client socket and connect to the server.
+    let client_fd: i32 = new_unbound_socket()?;
+    connect(client_fd, &actual_addr)?;
+
+    // Accept the incoming connection.
+    let (accepted_fd, _peer_addr) = accept(server_fd)?;
+
+    // Clean up.
+    close(accepted_fd)?;
+    close(client_fd)?;
+    close(server_fd)?;
+    Ok(())
+}
+
 //==================================================================================================
 // Entry Point
 //==================================================================================================
@@ -119,6 +146,7 @@ pub fn run() -> Result<(), Error> {
     test_listen_socket(&addr)?;
     test_getsockname_bound_socket(&addr)?;
     test_getsockname_listening_socket(&addr)?;
+    test_accept()?;
 
     Ok(())
 }

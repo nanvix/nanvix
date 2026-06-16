@@ -17,24 +17,28 @@ libc = { workspace = true }
 log = { workspace = true }
 nanvix-sandbox = { workspace = true, optional = true }
 nanvix-sandbox-cache = { workspace = true, optional = true }
+nanvix-sandbox-config = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
 uservm = { workspace = true, optional = true }
 
 [features]
-default = ["microvm", "multi-process"]
-single-process = ["nanvix-sandbox", "nanvix-sandbox/single-process"]
-multi-process = ["nanvix-sandbox-cache", "nanvix-sandbox-cache/multi-process"]
-standalone = ["config", "uservm"]
-gdb = ["uservm?/gdb"]
+default = ["microvm", "standalone"]
+single-process = [
+    "nanvix-sandbox-config",
+    "nanvix-sandbox-config/single-process",
+    "nanvix-sandbox",
+    "nanvix-sandbox/single-process",
+]
+multi-process = [
+    "nanvix-sandbox-config",
+    "nanvix-sandbox-cache",
+    "nanvix-sandbox-cache/multi-process",
+]
+standalone = ["config", "nanvix-sandbox-config", "uservm"]
+gdb = ["uservm?/gdb", "nanvix-sandbox-config?/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["uservm?/profile-time", "nanvix-sandbox?/profile-time"]
-hyperlight = [
-    "config?/hyperlight",
-    "uservm?/hyperlight",
-    "nanvix-sandbox?/hyperlight",
-    "nanvix-sandbox-cache?/hyperlight",
-]
 microvm = [
     "config?/microvm",
     "uservm?/microvm",

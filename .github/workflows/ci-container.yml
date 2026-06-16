@@ -16,7 +16,7 @@ name: "CI Container Image"
 
 on:
   push:
-    branches: [dev]
+    branches: [ dev ]
     paths:
       - "docker/ci/Dockerfile"
       - "scripts/setup/ubuntu-core.sh"
@@ -26,7 +26,7 @@ on:
       - ".github/workflows/ci-container.yml"
 
   pull_request:
-    branches: [dev]
+    branches: [ dev ]
     paths:
       - "docker/ci/Dockerfile"
       - "scripts/setup/ubuntu-core.sh"

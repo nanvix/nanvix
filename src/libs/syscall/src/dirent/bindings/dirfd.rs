@@ -54,7 +54,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn dirfd(dirp: *mut DirectoryStream) -> c_int {
     // Check if directory stream is invalid.
     if dirp.is_null() {
-        ::syslog::error!("dirfd(): invalid directory stream");
+        ::syslog::warn!("dirfd(): invalid directory stream");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }

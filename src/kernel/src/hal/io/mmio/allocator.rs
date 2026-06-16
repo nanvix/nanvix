@@ -241,8 +241,12 @@ impl IoMemoryAllocator {
                     error!("{reason}");
                     Err(Error::new(ErrorCode::EntryExists, reason))
                 } else {
+                    // NOTE: This is logged at `warn!` level to make absent regions visible during
+                    // optional probes (e.g. RAMFS probe when nanvixd is launched without
+                    // `-ramfs`). Callers receive `ErrorCode::NoSuchEntry` and may still treat this
+                    // as fatal.
                     let reason: &str = "region not registered";
-                    error!("{reason}");
+                    warn!("{reason}: tag={:?}", tag);
                     Err(Error::new(ErrorCode::NoSuchEntry, reason))
                 }
             },

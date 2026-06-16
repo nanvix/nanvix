@@ -10,7 +10,7 @@ use ::core::{
     ptr,
 };
 use ::sys::{
-    kcall::pm::capctl,
+    kcall::pm::__kcall_capctl,
     pm::{
         Capability,
         MutexAddress,
@@ -70,7 +70,7 @@ impl CapabilityGuard {
     /// Fails if the capability cannot be enabled.
     ///
     pub fn enable(capability: Capability) -> Result<Self, StressError> {
-        capctl(capability, true)?;
+        __kcall_capctl(capability, true)?;
         Ok(Self {
             capability,
             released: false,
@@ -92,7 +92,7 @@ impl CapabilityGuard {
     ///
     pub fn disable(&mut self) -> Result<(), StressError> {
         if !self.released {
-            capctl(self.capability, false)?;
+            __kcall_capctl(self.capability, false)?;
             self.released = true;
         }
         Ok(())
@@ -102,7 +102,7 @@ impl CapabilityGuard {
 impl Drop for CapabilityGuard {
     fn drop(&mut self) {
         if !self.released {
-            let _ = capctl(self.capability, false);
+            let _ = __kcall_capctl(self.capability, false);
             self.released = true;
         }
     }

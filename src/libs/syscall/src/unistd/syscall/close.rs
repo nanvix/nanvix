@@ -5,23 +5,26 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::{
-            CloseRequest,
-            CloseResponse,
-        },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+use crate::{
+    unistd::message::{
+        CloseRequest,
+        CloseResponse,
     },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
     },
 };
 
@@ -30,15 +33,11 @@ use {
 //==================================================================================================
 
 pub fn close(fd: i32) -> Result<(), Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // In standalone mode, route based on fd type.
     #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_close(fd).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("close(): VFS close failed (fd={fd}, error={e})");
-                Error::new(code, "vfs close failed")
-            });
+        if crate::is_vfs_fd(fd) {
+            return close_ipc(fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
         }
         use ::sysapi::unistd::{
             STDERR_FILENO,
@@ -48,49 +47,49 @@ pub fn close(fd: i32) -> Result<(), Error> {
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
             return Ok(());
         }
-        Err(Error::new(ErrorCode::OperationNotSupported, "close not available in standalone mode"))
+        if crate::is_socket_fd(fd) {
+            return close_ipc(fd, crate::NETWORK_DESTINATION, MessageType::Ikc);
+        }
+        // Unknown fd: no handler available.
+        ::syslog::warn!("close(): bad file descriptor fd={fd}");
+        Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
     }
 
-    // Forward to linuxd via IPC.
     #[cfg(not(feature = "standalone"))]
-    close_linuxd(fd)
+    {
+        close_ipc(fd, crate::LINUXD, MessageType::Ikc)
+    }
 }
 
-/// Forwards a `close` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn close_linuxd(fd: i32) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+/// Forwards a `close` request via IPC to the given destination.
+fn close_ipc(
+    fd: i32,
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+) -> Result<(), Error> {
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = CloseRequest::build(tid, fd);
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = CloseRequest::build(tid, fd, destination, message_type);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("close(): failed (error={})", error_code);
+        ::syslog::warn!("close(): failed (error={})", error_code);
         Err(Error::new(error_code, "close() failed"))
     } else {
-        // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
-            // Response was successfully parsed.
+        match SystemCallMessage::try_from_bytes(response.payload) {
             Ok(message) => match message.header {
-                // Response was successfully parsed.
-                LinuxDaemonMessageHeader::CloseResponse => {
-                    // Parse response.
+                SystemCallMessageHeader::CloseResponse => {
                     let _: CloseResponse = CloseResponse::from_bytes(message.payload);
-
-                    // Return result.
                     Ok(())
                 },
-                // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },
-            // Response was not successfully parsed.
             _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message")),
         }
     }
@@ -107,7 +106,7 @@ pub mod bindings {
         match crate::unistd::close(fd) {
             Ok(()) => 0,
             Err(error) => {
-                ::syslog::error!("close(): failed ({:?})", error);
+                ::syslog::warn!("close(): failed ({:?})", error);
                 unsafe {
                     *__errno_location() = error.code.get();
                 }

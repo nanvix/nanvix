@@ -15,10 +15,6 @@ use ::core::{
     mem,
     ptr,
 };
-use ::num_enum::{
-    IntoPrimitive,
-    TryFromPrimitive,
-};
 use ::spin::Mutex;
 use ::sys::mm::{
     Address,
@@ -34,6 +30,17 @@ use ::syscall::dlfcn::{
     DlInfo,
 };
 use ::syslog::trace_libcall;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Bitmask for lazy binding mode (relocations are deferred until symbols are first used).
+const DLOPEN_MODE_LAZY_BIT: i32 = 0x1;
+/// Bitmask for eager binding mode (relocations are performed immediately when the object is loaded).
+const DLOPEN_MODE_NOW_BIT: i32 = 0x2;
+/// Bitmask for global symbol visibility (symbols are made available for relocation processing by subsequently loaded objects).
+const DLOPEN_MODE_GLOBAL_BIT: i32 = 0x4;
 
 //==================================================================================================
 // DlError
@@ -86,19 +93,48 @@ impl DlError {
 ///
 /// # Description
 ///
-/// A type that represents the mode in which a dynamic library may be opened.
+/// Bitmask flags controlling how a dynamic library is opened.
 ///
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
-pub enum DlOpenMode {
-    /// Relocations are performed at an implementation-defined time.
-    Local = 0,
-    /// Relocations are performed when the object is loaded.
-    Lazy = 1,
-    /// All symbols are available for relocation processing of other modules.
-    Now = 2,
-    /// All symbols are not made available for relocation processing by other modules.
-    Global = 4,
+/// Per POSIX, `RTLD_NOW` / `RTLD_LAZY` select the binding mode while
+/// `RTLD_GLOBAL` / `RTLD_LOCAL` control symbol visibility.  The two
+/// categories are orthogonal and may be combined with bitwise OR.
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DlOpenMode(i32);
+
+impl DlOpenMode {
+    /// Relocations are deferred until symbols are first used (lazy binding).
+    pub const LAZY: Self = DlOpenMode(DLOPEN_MODE_LAZY_BIT);
+    /// Relocations are performed immediately when the object is loaded (eager binding).
+    pub const NOW: Self = DlOpenMode(DLOPEN_MODE_NOW_BIT);
+    /// Symbols are made available for relocation processing by subsequently loaded objects.
+    pub const GLOBAL: Self = DlOpenMode(DLOPEN_MODE_GLOBAL_BIT);
+
+    /// All valid flag bits.
+    const VALID_MASK: i32 = DLOPEN_MODE_LAZY_BIT | DLOPEN_MODE_NOW_BIT | DLOPEN_MODE_GLOBAL_BIT;
+
+    /// Creates a `DlOpenMode` from a raw integer, returning `None` if any
+    /// invalid bits are set or if neither `LAZY` nor `NOW` is specified.
+    ///
+    /// NOTE: `LAZY | NOW` is accepted (POSIX says this is undefined behavior;
+    /// glibc treats it as `NOW`). Since Nanvix always resolves eagerly, this
+    /// combination is harmless.
+    pub fn from_raw(raw: i32) -> Option<Self> {
+        // Reject unknown bits.
+        if raw & !Self::VALID_MASK != 0 {
+            return None;
+        }
+        // At least one of LAZY or NOW must be set.
+        if raw & (Self::LAZY.0 | Self::NOW.0) == 0 {
+            return None;
+        }
+        Some(DlOpenMode(raw))
+    }
+
+    /// Returns `true` if the `GLOBAL` flag is set.
+    pub fn is_global(self) -> bool {
+        self.0 & Self::GLOBAL.0 != 0
+    }
 }
 
 //==================================================================================================
@@ -144,7 +180,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
     if addr.is_null() {
         let reason: &str = "addr is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dladdr(): {}", reason);
+        ::syslog::warn!("dladdr(): {}", reason);
         return -1;
     }
 
@@ -152,7 +188,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
     if dlip.is_null() {
         let reason: &str = "info is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dladdr(): {}", reason);
+        ::syslog::warn!("dladdr(): {}", reason);
         return -1;
     }
 
@@ -164,7 +200,7 @@ pub unsafe extern "C" fn dladdr(addr: *const c_void, dlip: *mut DlInfo) -> i32 {
         Ok(()) => 0,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dladdr(): {:?}", error);
+            ::syslog::warn!("dladdr(): {:?}", error);
             -1
         },
     }
@@ -201,7 +237,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
     if handle.is_null() {
         let reason: &str = "handle is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlclose(): {}", reason);
+        ::syslog::warn!("dlclose(): {}", reason);
         return -1;
     }
 
@@ -215,7 +251,7 @@ pub unsafe extern "C" fn dlclose(handle: *mut c_void) -> i32 {
         Ok(()) => 0,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dlclose(): {:?}", error);
+            ::syslog::warn!("dlclose(): {:?}", error);
             -1
         },
     }
@@ -290,37 +326,30 @@ pub unsafe extern "C" fn dlopen(filename: *const c_char, mode: c_int) -> *mut c_
         Ok(pathname) => pathname,
         Err(error) => {
             let reason: String = alloc::format!("invalid filename (error={error:?})");
-            ::syslog::error!("dlopen(): {}", reason);
+            ::syslog::warn!("dlopen(): {}", reason);
             DL_LAST_ERROR.lock().set(&reason);
             return ptr::null_mut();
         },
     };
 
     // Attempt to convert `mode` to `DlOpenMode`.
-    let mode: DlOpenMode = match DlOpenMode::try_from(mode) {
-        Ok(mode) => mode,
-        Err(error) => {
-            let reason: String = alloc::format!("invalid mode (error={error:?})");
+    let mode: DlOpenMode = match DlOpenMode::from_raw(mode) {
+        Some(mode) => mode,
+        None => {
+            let reason: String = alloc::format!("invalid mode (mode={mode:#x})");
             DL_LAST_ERROR.lock().set(&reason);
-            ::syslog::error!("dlopen(): {}", reason);
+            ::syslog::warn!("dlopen(): {}", reason);
             return ptr::null_mut();
         },
     };
 
-    // Check if open mode is not supported.
-    if mode == DlOpenMode::Local {
-        let reason: &str = "local mode is not supported";
-        DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlopen(): {}", reason);
-        return ptr::null_mut();
-    }
-
-    // Attempt to open the shared object file.
-    match dlfcn::dlopen(filename) {
+    // Attempt to open the shared object file, forwarding the mode flags
+    // so the syscall layer can handle RTLD_GLOBAL.
+    match dlfcn::dlopen(filename, mode.is_global()) {
         Ok(handle) => handle.as_mut_ptr(),
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dlopen(): {:?}", error);
+            ::syslog::warn!("dlopen(): {:?}", error);
             ptr::null_mut()
         },
     }
@@ -364,7 +393,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
     if symbol.is_null() {
         let reason: &str = "symbol is null";
         DL_LAST_ERROR.lock().set(reason);
-        ::syslog::error!("dlsym(): {}", reason);
+        ::syslog::warn!("dlsym(): {}", reason);
         return ptr::null_mut();
     }
 
@@ -373,7 +402,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
         Ok(symbol) => symbol,
         Err(error) => {
             let reason: String = alloc::format!("invalid symbol (error={error:?})");
-            ::syslog::error!("dlsym(): {}", reason);
+            ::syslog::warn!("dlsym(): {}", reason);
             DL_LAST_ERROR.lock().set(&reason);
             return ptr::null_mut();
         },
@@ -391,7 +420,7 @@ pub unsafe extern "C" fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *m
         Ok(symbol) => symbol.into_raw_value() as *mut c_void,
         Err(error) => {
             DL_LAST_ERROR.lock().set(error.reason);
-            ::syslog::error!("dlsym(): {:?}", error);
+            ::syslog::warn!("dlsym(): {:?}", error);
             ptr::null_mut()
         },
     }

@@ -296,7 +296,14 @@ pub fn init(
                 try_init_xapic_timer(ioports, ioaddresses)?
             };
 
-            let controller = InterruptController::new(pic, xapic, ioapic, intmap, eoi_xapic)?;
+            // When xAPIC-only mode is active (eoi_xapic is Some), the PIC, xAPIC,
+            // and IOAPIC must not be passed to the controller — it handles timer
+            // delivery and EOI entirely through the LAPIC.
+            let controller = if eoi_xapic.is_some() {
+                InterruptController::new(None, None, None, intmap, eoi_xapic)?
+            } else {
+                InterruptController::new(pic, xapic, ioapic, intmap, eoi_xapic)?
+            };
             Ok((controller, xapic_timer))
         },
 
@@ -309,8 +316,13 @@ pub fn init(
                     let intmap: InterruptMap = InterruptMap::new();
                     // Try to create an xAPIC timer from a platform-registered LAPIC MMIO region.
                     let (eoi_xapic, xapic_timer) = try_init_xapic_timer(ioports, ioaddresses)?;
-                    let controller =
-                        InterruptController::new(Some(pic), None, None, intmap, eoi_xapic)?;
+                    // When xAPIC-only mode is active (eoi_xapic is Some), skip the
+                    // PIC — the LAPIC handles timer delivery and EOI entirely.
+                    let controller = if eoi_xapic.is_some() {
+                        InterruptController::new(None, None, None, intmap, eoi_xapic)?
+                    } else {
+                        InterruptController::new(Some(pic), None, None, intmap, eoi_xapic)?
+                    };
                     Ok((controller, xapic_timer))
                 },
                 Err(e) => {

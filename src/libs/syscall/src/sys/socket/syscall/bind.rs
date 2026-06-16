@@ -11,8 +11,8 @@ use crate::{
         sockaddr,
         SocketAddr,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -28,27 +28,17 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, sockaddr);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "bind not available in standalone mode",
-        ));
-    }
-
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let sockaddr: sockaddr = sockaddr::from(sockaddr);
 
     // Build request and send it.
     let request: Message = BindSocketRequest::build(tid, sockfd, &sockaddr);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -59,11 +49,11 @@ pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::BindSocketResponse => Ok(()),
+                SystemCallMessageHeader::BindSocketResponse => Ok(()),
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },

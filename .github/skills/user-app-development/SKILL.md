@@ -13,10 +13,6 @@ Nanvix.  User applications are programs that run inside the Nanvix guest environ
 | Application        | Path                         | Lang       | Runtime    |
 |--------------------|------------------------------|------------|------------|
 | `hello-rust-nostd` | `src/user/hello-rust-nostd/` | Rust       | Bare-metal |
-| `hello-js`         | `src/user/hello-js/`         | JavaScript | QuickJS    |
-| `hello-python`     | `src/user/hello-python/`     | Python     | Python 3   |
-| `hello-wasm`       | `src/user/hello-wasm/`       | Rust/WASM  | wasmd      |
-| `webpage-js`       | `src/user/webpage-js/`       | JavaScript | QuickJS    |
 
 ## Running Applications
 
@@ -38,6 +34,13 @@ Nanvix.  User applications are programs that run inside the Nanvix guest environ
     -console-file /dev/stdout \
     -- ./bin/echo-rust-nostd.elf \
     "arg1 arg2;VAR1=foo VAR2=bar"
+
+# Pass arguments, environment variables, and kernel arguments.
+# Format: "<app args>;<env vars>;<kernel args>"
+./bin/nanvixd.elf \
+    -console-file /dev/stdout \
+    -- ./bin/echo-rust-nostd.elf \
+    "arg1 arg2;VAR1=foo;feature1 feature2"
 ```
 
 ### HTTP Mode (for multi-application scenarios)
@@ -146,13 +149,6 @@ For low-level debugging, the standalone UserVM is still available:
 3. Write source files using the Nanvix POSIX layer (`#include <nanvix/...>`).
 4. The application links against `libposix.a`, `libc.a`, and the custom linker script at
    `build/user/linker/x86/user.ld`.
-
-## Creating a WASM Application
-
-1. Create directory at `src/user/<name>/` or `src/benchmarks/<name>/`.
-2. Set target to `wasm32-wasip1` in `Cargo.toml`.
-3. Add to `ALL_WASM_BINARIES` in the `Makefile`.
-4. WASM binaries are executed by the `wasmd` daemon.
 
 ## Logging
 

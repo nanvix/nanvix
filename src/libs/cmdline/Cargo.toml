@@ -1,0 +1,28 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "cmdline"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+description = "Command-line argument and environment variable parsing for Nanvix"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { workspace = true, optional = true }
+
+[dev-dependencies]
+
+[features]
+default = []
+std = []
+rustc-dep-of-std = ["core", "compiler_builtins"]
+
+[lints]
+workspace = true

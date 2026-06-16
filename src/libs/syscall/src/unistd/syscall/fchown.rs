@@ -5,26 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::FileChownRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     gid_t,
     uid_t,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::FileChownRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -49,35 +46,35 @@ use {
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
     #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
-        }
-        Err(Error::new(ErrorCode::OperationNotSupported, "fchown not available in standalone mode"))
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("fchown(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(
+            ErrorCode::BadFile,
+            "fchown: fd is not a VFS fd in standalone mode",
+        ));
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchown_linuxd(fd, owner, group)
-}
-
-/// Forwards a `fchown` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message = FileChownRequest::build(tid, fd, owner, group);
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = FileChownRequest::build(
+        tid,
+        fd,
+        owner,
+        group,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "fchown(): failed (fd={:?}, owner={:?}, group={:?}, status={:?})",
             fd,
             owner,
@@ -93,13 +90,13 @@ fn fchown_linuxd(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<()
         }
     } else {
         // System call succeeded, parse response.
-        let message = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileChownResponse => Ok(()),
+            SystemCallMessageHeader::FileChownResponse => Ok(()),
             // Invalid response.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchown(): invalid response (fd={:?}, owner={:?}, group={:?}, header={:?})",
                     fd,
                     owner,

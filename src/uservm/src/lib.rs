@@ -49,6 +49,7 @@ pub mod args;
 pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
+pub mod guest_profiler;
 #[cfg(target_os = "linux")]
 pub mod io_thread;
 pub mod memory_thread;
@@ -60,18 +61,9 @@ pub mod standalone;
 pub mod vmm;
 
 //==================================================================================================
-// Private Modules
-//==================================================================================================
-
-#[cfg(feature = "hyperlight")]
-mod handles;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "hyperlight")]
-use crate::handles::UserVmHandles;
 #[cfg(feature = "profile-time")]
 use crate::perf::PerfTimings;
 use crate::{
@@ -106,6 +98,7 @@ use ::anyhow::Result;
 use ::log::{
     error,
     trace,
+    warn,
 };
 #[cfg(feature = "profile-time")]
 use ::std::time::Instant;
@@ -123,11 +116,6 @@ use ::sys::ipc::{
     MessageReceiver,
     MessageSender,
     MessageType,
-};
-#[cfg(feature = "hyperlight")]
-use ::sys::pm::{
-    ProcessIdentifier,
-    ThreadIdentifier,
 };
 use ::tokio::{
     sync::{
@@ -179,6 +167,8 @@ pub struct UserVmArgs {
     pub initrd_filename: Option<String>,
     /// Optional string of arguments forwarded to the initrd payload.
     pub initrd_args: Option<String>,
+    /// Optional string of kernel arguments written to guest control registers.
+    pub kernel_args: Option<String>,
     /// Optional path to a RAM filesystem image exposed to the guest.
     pub ramfs_filename: Option<String>,
     /// Optional path to a file used to capture the guest's stderr stream.
@@ -201,6 +191,8 @@ pub struct UserVmArgs {
     /// Performance timings collector for fine-grained startup breakdown.
     #[cfg(feature = "profile-time")]
     pub perf_timings: PerfTimings,
+    /// When set, enable guest stack profiling and write folded stacks to this path.
+    pub guest_profile_path: Option<String>,
 }
 
 //==================================================================================================
@@ -239,6 +231,8 @@ impl UserVm {
         #[cfg(feature = "profile-time")]
         let perf_timings: PerfTimings = args.perf_timings.clone();
 
+        let args_guest_profile_path: Option<String> = args.guest_profile_path.clone();
+
         #[cfg(feature = "profile-time")]
         let run_start: Instant = Instant::now();
 
@@ -265,7 +259,6 @@ impl UserVm {
             Receiver<VcpuControlResponse>,
         ) = mpsc::channel::<VcpuControlResponse>(CHANNEL_CAPACITY);
 
-        #[cfg(not(feature = "hyperlight"))]
         let vmm_stderr_fn: Box<dyn Write + Send> = match get_stderr_writer(args.stderr.clone()) {
             Ok(vmm_stderr_fn) => vmm_stderr_fn,
             Err(e) => {
@@ -281,66 +274,30 @@ impl UserVm {
         // Move the stdout sender out of args so no extra clone keeps the
         // data_rx channel alive after the VMM thread finishes.
         // Output function used for emulating I/O port writes.
-        #[cfg(feature = "hyperlight")]
-        let bulk_stdout_tx: Sender<IkcFrame> = args.vcpu_thread_stdout_tx.clone();
         let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx);
 
         // Input function used for emulating I/O port reads.
-        #[cfg(not(feature = "hyperlight"))]
         let ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool> =
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        #[cfg(not(feature = "hyperlight"))]
         let vmm_stdin_fn: Box<StdinFn> =
             build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), ikc_pending.clone());
 
-        #[cfg(feature = "hyperlight")]
-        let handles: UserVmHandles = handles::UserVmHandles::default();
-
-        // Bulk output function for hyperlight VmbusBulkWrite host function.
-        #[cfg(feature = "hyperlight")]
-        let vmm_bulk_stdout_fn: Box<crate::vmm::BulkStdoutFn> =
-            bulk_output_fn(bulk_stdout_tx, handles.clone());
-
-        // Shared buffer for pending bulk read data (VmbusBulkRead host function).
-        #[cfg(feature = "hyperlight")]
-        let pending_bulk_data: Arc<std::sync::Mutex<Vec<u8>>> =
-            Arc::new(std::sync::Mutex::new(Vec::new()));
-
-        #[cfg(feature = "hyperlight")]
-        let vmm_stdin_fn: Box<StdinFn> = build_input_fn(
-            vcpu_thread_stdin_rx,
-            args.counters.clone(),
-            handles.clone(),
-            pending_bulk_data.clone(),
-        );
-
-        // Bulk input function for hyperlight VmbusBulkRead host function.
-        #[cfg(feature = "hyperlight")]
-        let vmm_bulk_stdin_fn: Box<crate::vmm::BulkStdinFn> =
-            build_bulk_input_fn(pending_bulk_data.clone());
-
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_channel_setup(channel_setup_start.elapsed().as_micros() as u64);
 
-        let microvm: Vmm = Vmm::new(MicroVmArgs {
+        let mut microvm: Vmm = Vmm::new(MicroVmArgs {
             input: vmm_stdin_fn,
             output: vmm_stdout_fn,
-            #[cfg(feature = "hyperlight")]
-            bulk_output: vmm_bulk_stdout_fn,
-            #[cfg(feature = "hyperlight")]
-            bulk_input: vmm_bulk_stdin_fn,
-            #[cfg(not(feature = "hyperlight"))]
             stderr: vmm_stderr_fn,
-            #[cfg(feature = "hyperlight")]
-            stderr_path: args.stderr.clone(),
             control_rx: vcpu_thread_control_rx,
             control_tx: vcpu_thread_control_tx,
             kernel_filename: args.kernel_filename,
             initrd_filename: args.initrd_filename.clone(),
             initrd_args: args.initrd_args.clone(),
+            kernel_args: args.kernel_args.clone(),
             ramfs_filename: args.ramfs_filename.clone(),
             restoring_from_snapshot: args.snapshot_path.is_some(),
-            #[cfg(all(feature = "microvm", not(feature = "hyperlight")))]
             ikc_pending: ikc_pending.clone(),
             #[cfg(feature = "gdb")]
             gdb_port: args.gdb_port,
@@ -350,18 +307,53 @@ impl UserVm {
 
         // If a snapshot path is provided, restore VM state from the snapshot.
         if let Some(snapshot_path) = args.snapshot_path {
+            #[cfg(feature = "profile-time")]
+            let snapshot_restore_start: Instant = Instant::now();
+
             microvm.load_snapshot(snapshot_path).await?;
+
+            #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
+            perf_timings.set_snapshot_restore(snapshot_restore_start.elapsed().as_micros() as u64);
         }
+
+        // Enable guest profiler if requested.
+        let guest_profiler = if args_guest_profile_path.is_some() {
+            Some(microvm.enable_guest_profiler())
+        } else {
+            None
+        };
+
+        // Start host kernel tracing session if profiling is enabled.
+        // If an error causes an early return below, the session's Drop impl
+        // cancels the trace (via `wpr -cancel`) which is the desired cleanup
+        // behavior — we don't want a stale WPR session left running.
+        let mut kernel_session = if args_guest_profile_path.is_some() {
+            let trace_path = format!(
+                "{}.{}",
+                args_guest_profile_path
+                    .as_deref()
+                    .unwrap_or("guest-profile"),
+                if cfg!(target_os = "windows") {
+                    "etl"
+                } else {
+                    "perf.data"
+                }
+            );
+            let mut session = crate::guest_profiler::HostKernelSession::new(&trace_path);
+            match session.start() {
+                Ok(()) => Some(session),
+                Err(e) => {
+                    warn!("Host kernel tracing failed to start: {e}");
+                    None
+                },
+            }
+        } else {
+            None
+        };
 
         let vmem: Arc<Mutex<VirtualMemory>> = microvm.vmem();
         let guest: Arc<Mutex<Guest>> = microvm.guest();
-
-        // Set hyperlight handles in counters for this UserVM instance.
-        #[cfg(feature = "hyperlight")]
-        {
-            handles.set_guest_handle(guest.clone()).await;
-            handles.set_vmem_handle(vmem.clone()).await;
-        }
 
         // Phase: Thread spawning.
         #[cfg(feature = "profile-time")]
@@ -373,12 +365,7 @@ impl UserVm {
             memory_thread_data_tx,
             memory_thread_control_rx,
             memory_thread_control_tx,
-            add_credit_fn(
-                guest.clone(),
-                vmem.clone(),
-                #[cfg(not(feature = "hyperlight"))]
-                microvm.ikc_notifier(),
-            ),
+            add_credit_fn(guest.clone(), vmem.clone(), microvm.ikc_notifier()),
             args.counters.clone(),
         );
         let memory_thread: JoinHandle<()> = memory_thread.spawn();
@@ -420,6 +407,7 @@ impl UserVm {
         let orchestrator_thread_handle: JoinHandle<Result<()>> = orchestrator_thread.spawn();
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_thread_spawn(thread_spawn_start.elapsed().as_micros() as u64);
 
         let exit_code: Result<u16> = match vmm_thread.await {
@@ -442,7 +430,44 @@ impl UserVm {
         }
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_total(run_start.elapsed().as_micros() as u64);
+
+        // Stop host kernel trace session before post-processing so the
+        // trace does not include symbol resolution / file I/O work.
+        if let Some(ref mut session) = kernel_session {
+            match session.stop() {
+                Ok(trace_path) => {
+                    eprintln!("PROFILER: host trace saved to {}", trace_path);
+                },
+                Err(e) => warn!("Host kernel session stop failed: {e}"),
+            }
+        }
+
+        // Write guest profiler folded stacks if profiling was enabled.
+        if let (Some(profiler), Some(path)) = (guest_profiler, &args_guest_profile_path) {
+            let mut sym_paths: Vec<std::path::PathBuf> = Vec::new();
+            if let Ok(p) = std::env::var("NANVIX_KERNEL_SYMBOLS") {
+                sym_paths.push(std::path::PathBuf::from(p));
+            }
+            if let Ok(p) = std::env::var("NANVIX_USER_SYMBOLS") {
+                sym_paths.push(std::path::PathBuf::from(p));
+            }
+            let sym_refs: Vec<&std::path::Path> = sym_paths.iter().map(|p| p.as_path()).collect();
+            let resolver = crate::guest_profiler::SymbolResolver::from_elf_files(&sym_refs);
+
+            // Drain samples once and use for both folded output and timestamp log.
+            let guest_sample_vec = profiler.drain_samples();
+
+            // Write folded stacks from the drained samples.
+            if let Err(e) = profiler
+                .write_folded_from_samples(path, &guest_sample_vec, |addr| resolver.resolve(addr))
+            {
+                error!("Failed to write guest profile: {e:?}");
+            } else {
+                eprintln!("GUEST_PROFILE: wrote {} samples to {}", guest_sample_vec.len(), path);
+            }
+        }
 
         exit_code
     }
@@ -497,12 +522,11 @@ fn shutdown_vcpu_fn(vmm: Vmm) -> Box<ShutdownVcpuFn> {
 fn add_credit_fn(
     guest: Arc<Mutex<Guest>>,
     vmem: Arc<Mutex<VirtualMemory>>,
-    #[cfg(not(feature = "hyperlight"))] notifier: crate::vmm::IkcNotifier,
+    notifier: crate::vmm::IkcNotifier,
 ) -> Box<AddCreditFn> {
     Box::new(move || {
         let guest: Arc<Mutex<Guest>> = guest.clone();
         let vmem: Arc<Mutex<VirtualMemory>> = vmem.clone();
-        #[cfg(not(feature = "hyperlight"))]
         let notifier: crate::vmm::IkcNotifier = notifier.clone();
         Box::pin(async move {
             // Scope the locks so they are released before the IRQ injection.
@@ -514,7 +538,6 @@ fn add_credit_fn(
             // Inject an edge-triggered IRQ to wake the guest from HLT
             // immediately, rather than waiting for the next PIT timer tick.
             // This is lock-free — the notifier uses a duplicated VM fd.
-            #[cfg(not(feature = "hyperlight"))]
             notifier.notify()?;
             Ok(())
         })
@@ -528,7 +551,7 @@ fn add_credit_fn(
 ///
 /// # Description
 ///
-/// Obtains a buffered writer for the virtual machine's standard error device.
+/// Obtains a writer for the virtual machine's standard error device.
 ///
 /// When a file path is provided the writer targets the specified file, creating or truncating it
 /// as needed. Otherwise the host process' standard error stream is used.
@@ -539,12 +562,21 @@ fn add_credit_fn(
 ///
 /// # Returns
 ///
-/// On success, the function returns a buffered writer for the virtual machine's standard error
+/// On success, the function returns a writer for the virtual machine's standard error
 /// stream. An error is returned when the target file cannot be created.
 ///
 pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Send>> {
-    // Obtain a buffered writer for the virtual machine's standard error device.
+    // Obtain a writer for the virtual machine's standard error device.
     let file_writer: Box<dyn Write + Send> = if let Some(vm_stderr) = vm_stderr {
+        // On Windows the path is first inspected via `is_windows_named_pipe`: if it points at a
+        // named pipe (`\\.\pipe\…` or `\\?\pipe\…`) the file is opened in write-only mode
+        // without `create`/`truncate`, because Windows' `CreateFile` rejects those flags on a
+        // named pipe with `ERROR_INVALID_PARAMETER` (os error 87).
+        #[cfg(windows)]
+        if is_windows_named_pipe(&vm_stderr) {
+            let file: File = File::options().read(false).write(true).open(&vm_stderr)?;
+            return Ok(Box::new(file));
+        }
         // Standard error was set to a file. Attempt to open file and create a writer.
         let file = File::options()
             .read(false)
@@ -563,6 +595,49 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 ///
 /// # Description
 ///
+/// Returns whether the given path points at a Windows named pipe.
+///
+/// Recognises both the canonical `\\.\pipe\` prefix and the rarer long-path `\\?\pipe\` form.
+/// Matching is case-insensitive on the prefix only -- Windows accepts pipe paths like
+/// `\\.\PIPE\foo`, `\\.\Pipe\foo`, etc. as equivalent to the lower-case form -- but the pipe name
+/// itself is forwarded verbatim to `CreateFile`.
+///
+/// # Out of scope
+///
+/// Remote UNC pipe paths (`\\<server>\pipe\<name>`) and forward-slash variants (`//./pipe/<name>`)
+/// are intentionally not recognised: the in-tree callers (the containerd shim and friends) always
+/// supply local-machine, backslash- canonical paths. If a future caller needs remote pipes, the
+/// helper should be extended together with the test suite below.
+///
+/// # Parameters
+///
+/// - `path`: Path to inspect.
+///
+/// # Returns
+///
+/// `true` if the path begins with a Windows named-pipe prefix, `false` otherwise.
+///
+#[cfg(windows)]
+fn is_windows_named_pipe(path: &str) -> bool {
+    // Only inspect the prefix bytes: pipe names themselves should be passed verbatim to
+    // `CreateFile`, and large paths should not allocate just to be classified.
+    const PREFIX: &[u8] = br"\\.\pipe\";
+    const LONG_PREFIX: &[u8] = br"\\?\pipe\";
+    // Both recognised prefixes must have the same length so the single `head` slice below can be
+    // compared against either of them.
+    ::static_assert::assert_eq!(PREFIX.len() == LONG_PREFIX.len());
+    const PREFIX_LEN: usize = PREFIX.len();
+    let bytes: &[u8] = path.as_bytes();
+    if bytes.len() < PREFIX_LEN {
+        return false;
+    }
+    let head: &[u8] = &bytes[..PREFIX_LEN];
+    head.eq_ignore_ascii_case(PREFIX) || head.eq_ignore_ascii_case(LONG_PREFIX)
+}
+
+///
+/// # Description
+///
 /// Builds an input callback that delivers messages from the Linux daemon to the virtual machine.
 ///
 /// # Parameters
@@ -570,13 +645,11 @@ pub fn get_stderr_writer(vm_stderr: Option<String>) -> Result<Box<dyn Write + Se
 /// - `input_queue` - Channel used to receive emulated port-I/O requests originating from the
 ///   Linux daemon.
 /// - `counters` - Shared counters for tracking message flow across threads.
-/// - `handles` - Shared handles for guest and virtual memory manager (hyperlight only).
 ///
 /// # Returns
 ///
 /// A boxed closure compatible with the VMM's stdin handler implementation.
 ///
-#[cfg(not(feature = "hyperlight"))]
 pub fn build_input_fn(
     mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
@@ -605,7 +678,7 @@ pub fn build_input_fn(
                         // Label: uservm::lib::vm_input::vm_exit()
                         profiler::timestamp_message!(
                             &mut msg.payload,
-                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            mem::offset_of!(syscall::SystemCallMessage, payload)
                                 + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                         );
 
@@ -617,7 +690,7 @@ pub fn build_input_fn(
                         // Label: uservm::lib::vm_input::vm_write_bytes()
                         profiler::timestamp_message!(
                             &mut msg.payload,
-                            mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                            mem::offset_of!(syscall::SystemCallMessage, payload)
                                 + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
                         );
 
@@ -695,172 +768,6 @@ pub fn build_input_fn(
     Box::new(input)
 }
 
-#[cfg(feature = "hyperlight")]
-pub fn build_input_fn(
-    mut input_queue: Receiver<IkcFrame>,
-    counters: MessageCounters,
-    handles: UserVmHandles,
-    pending_bulk_data: Arc<std::sync::Mutex<Vec<u8>>>,
-) -> Box<StdinFn> {
-    let input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
-        on_input_function_called(&counters);
-        match input_queue.blocking_recv() {
-            Some(IkcFrame::Message(mut msg)) => {
-                // Label: uservm::lib::vm_input::vm_exit()
-                profiler::timestamp_message!(
-                    &mut msg.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
-
-                on_message_received_from_memory_thread(&counters);
-                msg.message_type = MessageType::Ikc;
-
-                let guest_arc: Arc<Mutex<Guest>> = handles.get_guest_handle().ok_or_else(|| {
-                    let reason: &str = "guest handle not set in UserVmHandles";
-                    error!("input(): {reason}");
-                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                })?;
-
-                let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
-
-                let vmem_arc: Arc<Mutex<VirtualMemory>> =
-                    handles.get_vmem_handle().ok_or_else(|| {
-                        let reason: &str = "vmem handle not set in UserVmHandles";
-                        error!("input(): {reason}");
-                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?;
-
-                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
-
-                // Label: uservm::lib::vm_input::vm_write_bytes()
-                profiler::timestamp_message!(
-                    &mut msg.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                );
-
-                locked_guest.consume_credit(&mut locked_vmem)?;
-                Ok(msg.to_bytes().to_vec())
-            },
-            Some(IkcFrame::Bulk(mut bulk)) => {
-                // Handle data chunk transfer: store the bulk payload in the shared
-                // pending_bulk_data buffer and return only the PullResponse notification
-                // message (64 bytes). The kernel will then call VmbusBulkRead in a loop
-                // to retrieve the bulk data in small chunks that fit in the slab allocator.
-                on_message_received_from_memory_thread(&counters);
-
-                // Label: uservm::lib::vm_input::vmexit()
-                profiler::timestamp_message!(bulk.data_mut(), 0);
-
-                let guest_arc: Arc<Mutex<Guest>> = handles.get_guest_handle().ok_or_else(|| {
-                    let reason: &str = "guest handle not set in UserVmHandles";
-                    error!("input(): {reason}");
-                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                })?;
-                let vmem_arc: Arc<Mutex<VirtualMemory>> =
-                    handles.get_vmem_handle().ok_or_else(|| {
-                        let reason: &str = "vmem handle not set in UserVmHandles";
-                        error!("input(): {reason}");
-                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?;
-
-                let mut locked_guest: MutexGuard<'_, Guest> = guest_arc.blocking_lock();
-                let mut locked_vmem: MutexGuard<'_, VirtualMemory> = vmem_arc.blocking_lock();
-
-                let actual_len: usize = bulk.data().len();
-                trace!("input(): storing {actual_len} bulk bytes for VmbusBulkRead");
-
-                // Extract header fields before consuming the bulk data.
-                let source_pid: ProcessIdentifier = bulk.header().source_pid();
-                let source_tid: ThreadIdentifier = bulk.header().source_tid();
-                let dest_pid: ProcessIdentifier = bulk.header().destination_pid();
-                let dest_tid: ThreadIdentifier = bulk.header().destination_tid();
-                let data_addr: u32 = bulk.header().data_addr();
-
-                // Store the bulk data in the shared buffer for VmbusBulkRead to consume.
-                {
-                    let mut buf = pending_bulk_data.lock().map_err(|e| {
-                        let reason: String = format!("failed to lock pending_bulk_data: {e}");
-                        error!("input(): {reason}");
-                        hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                    })?;
-                    *buf = bulk.into_data();
-                }
-
-                // Construct a PullResponse notification message (fits in Slab128).
-                let actual_len_u32: u32 = u32::try_from(actual_len).map_err(|e| {
-                    let reason: String = format!("bulk data length exceeds u32: {e}");
-                    error!("input(): {reason}");
-                    hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-                })?;
-                let completion_header: DataChunkHeader = DataChunkHeader::new(
-                    source_pid,
-                    source_tid,
-                    dest_pid,
-                    dest_tid,
-                    data_addr,
-                    actual_len_u32,
-                );
-                let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-                payload[..DataChunkHeader::SIZE].copy_from_slice(&completion_header.to_bytes());
-                let completion_msg: Message = Message::new(
-                    MessageSender::KERNEL,
-                    MessageReceiver::KERNEL,
-                    MessageType::PullResponse,
-                    None,
-                    payload,
-                );
-
-                locked_guest.consume_credit(&mut locked_vmem)?;
-                Ok(completion_msg.to_bytes().to_vec())
-            },
-
-            // Channel has disconnected.
-            None => {
-                let reason: String = "channel has been disconnected".to_string();
-                error!("input(): {reason}");
-                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
-            },
-        }
-    };
-
-    Box::new(input)
-}
-
-/// Builds a bulk input callback for the hyperlight `VmbusBulkRead` host function.
-///
-/// Each call drains up to `MAX_CHUNK` bytes from the shared pending bulk data buffer.
-/// Returns an empty `Vec` when all data has been consumed, signalling the kernel to stop.
-#[cfg(feature = "hyperlight")]
-fn build_bulk_input_fn(
-    pending_bulk_data: Arc<std::sync::Mutex<Vec<u8>>>,
-) -> Box<crate::vmm::BulkStdinFn> {
-    /// Maximum chunk size returned per VmbusBulkRead call. Must stay under the kernel's
-    /// 512-byte slab ceiling after FlatBuffer serialization overhead (~100 bytes).
-    /// FIXME (#1779): relying on the 512-byte slab tier is fragile — consider targeting 256-byte.
-    const MAX_CHUNK: usize = 400;
-
-    let bulk_input = move || -> Result<Vec<u8>, hyperlight_host::HyperlightError> {
-        let mut buf = pending_bulk_data.lock().map_err(|e| {
-            let reason: String = format!("failed to lock pending_bulk_data: {e}");
-            error!("build_bulk_input_fn(): {reason}");
-            hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-        })?;
-
-        if buf.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let chunk_len: usize = buf.len().min(MAX_CHUNK);
-        let chunk: Vec<u8> = buf.drain(..chunk_len).collect();
-        trace!("VmbusBulkRead: returning {} bytes ({} remaining)", chunk_len, buf.len());
-        Ok(chunk)
-    };
-
-    Box::new(bulk_input)
-}
-
 ///
 /// # Description
 ///
@@ -880,7 +787,6 @@ fn build_bulk_input_fn(
 ///
 pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
     // Output function used for emulating I/O port writes.
-    #[cfg(not(feature = "hyperlight"))]
     let output =
         move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &::sys::ipc::VmBusMessage| -> Result<()> {
             use std::mem;
@@ -904,7 +810,7 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
                 // Label: uservm::lib::vm_output::send()
                 profiler::timestamp_message!(
                     &mut message.payload,
-                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                    std::mem::offset_of!(syscall::SystemCallMessage, payload)
                         + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
                 );
 
@@ -952,148 +858,6 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
 
             Ok(())
         };
-
-    #[cfg(feature = "hyperlight")]
-    let output = move |data: Vec<u8>| -> Result<i32, hyperlight_host::HyperlightError> {
-        let bytes: &[u8] = data.as_slice();
-        let expected_length: usize = ::core::mem::size_of::<Message>();
-        let payload: [u8; ::core::mem::size_of::<Message>()] = match bytes.try_into() {
-            Ok(value) => value,
-            Err(_) => {
-                let reason: String = format!(
-                    "failed to convert payload: expected {} bytes, got {}",
-                    expected_length,
-                    bytes.len()
-                );
-                error!("output(): {}", reason);
-                return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
-                    reason,
-                )));
-            },
-        };
-
-        let mut message: Message = match Message::try_from_bytes(payload) {
-            Ok(message) => message,
-            Err(err) => {
-                let reason: String = format!("failed to parse message: {:?}", err);
-                error!("output(): {}", reason);
-                return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(
-                    reason,
-                )));
-            },
-        };
-
-        // Label: uservm::lib::vm_output::send()
-        profiler::timestamp_message!(
-            &mut message.payload,
-            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
-        );
-
-        if let Err(e) = queue.blocking_send(IkcFrame::Message(message)) {
-            let reason: String = format!("failed to send message: {:?}", e);
-            error!("output(): {}", reason);
-            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
-        }
-
-        match i32::try_from(data.len()) {
-            Ok(length) => Ok(length),
-            Err(_) => {
-                let reason: String =
-                    format!("failed to convert payload length {} to i32", data.len());
-                error!("output(): {}", reason);
-                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
-            },
-        }
-    };
-
-    Box::new(output)
-}
-
-///
-/// # Description
-///
-/// Builds a bulk output callback for the hyperlight VmbusBulkWrite host function. The kernel
-/// sends only the serialized [`DataChunkHeader`] (24 bytes). This callback reads the actual
-/// bulk payload from guest shared memory using the GPA stored in the header's `data_addr` field,
-/// then constructs a [`IkcFrame::Bulk`] that is forwarded to linuxd via the standard transfer
-/// queue.
-///
-/// # Parameters
-///
-/// - `queue` - Channel used to forward transfers emitted by the virtual machine to the Linux
-///   daemon.
-/// - `handles` - Shared handles for guest and virtual memory manager for reading guest memory.
-///
-/// # Returns
-///
-/// A boxed closure compatible with the VMM's bulk output handler implementation.
-///
-#[cfg(feature = "hyperlight")]
-pub fn bulk_output_fn(
-    queue: Sender<IkcFrame>,
-    _handles: UserVmHandles,
-) -> Box<crate::vmm::BulkStdoutFn> {
-    let output = move |data: Vec<u8>| -> Result<i32, hyperlight_host::HyperlightError> {
-        // The kernel sends header + payload combined (via __phys_memcpy).
-        if data.len() < DataChunkHeader::SIZE {
-            let reason: String = format!(
-                "bulk output data too short: expected at least {} bytes, got {}",
-                DataChunkHeader::SIZE,
-                data.len()
-            );
-            error!("bulk_output(): {reason}");
-            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
-        }
-
-        let mut header_bytes: [u8; DataChunkHeader::SIZE] = [0u8; DataChunkHeader::SIZE];
-        header_bytes.copy_from_slice(&data[..DataChunkHeader::SIZE]);
-        let header: DataChunkHeader =
-            DataChunkHeader::try_from_bytes(header_bytes).map_err(|e| {
-                let reason: String = format!("failed to parse data chunk transfer header: {e:?}");
-                error!("bulk_output(): {reason}");
-                hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason))
-            })?;
-
-        // Extract the inline payload that follows the header, validating its length
-        // against the header's data_len field.
-        let expected_len: usize = header.data_len() as usize;
-        let actual_len: usize = data.len() - DataChunkHeader::SIZE;
-        if actual_len < expected_len {
-            let reason: String = format!(
-                "bulk output payload truncated: header expects {} bytes, got {}",
-                expected_len, actual_len
-            );
-            error!("bulk_output(): {reason}");
-            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
-        }
-        let mut payload_data: Vec<u8> =
-            data[DataChunkHeader::SIZE..DataChunkHeader::SIZE + expected_len].to_vec();
-
-        // Label: uservm::lib::vm_output::send()
-        profiler::timestamp_message!(&mut payload_data, 0);
-
-        let data_len: usize = payload_data.len();
-        let bulk: DataChunk = DataChunk::new(header, payload_data);
-
-        trace!("bulk_output(): forwarding data chunk transfer ({data_len} bytes)");
-        if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
-            let reason: String = format!("failed to send data chunk transfer: {e:?}");
-            error!("bulk_output(): {reason}");
-            return Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)));
-        }
-
-        // Return the total logical size (header + data) to signal success to the kernel.
-        let total_len: usize = DataChunkHeader::SIZE + data_len;
-        match i32::try_from(total_len) {
-            Ok(length) => Ok(length),
-            Err(_) => {
-                let reason: String = format!("failed to convert payload length {total_len} to i32");
-                error!("bulk_output(): {reason}");
-                Err(hyperlight_host::HyperlightError::AnyhowError(anyhow::Error::msg(reason)))
-            },
-        }
-    };
 
     Box::new(output)
 }
@@ -1233,5 +997,75 @@ mod tests {
         let result: AnyResult<Box<dyn Write + Send>> =
             get_stderr_writer(Some(file_path.to_string_lossy().into_owned()));
         assert!(result.is_err(), "expected failure when parent directory does not exist");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_recognises_canonical_prefix() {
+        use super::is_windows_named_pipe;
+        assert!(is_windows_named_pipe(r"\\.\pipe\foo"));
+        assert!(is_windows_named_pipe(r"\\.\pipe\containerd-shim-abc"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_recognises_long_path_prefix() {
+        use super::is_windows_named_pipe;
+        assert!(is_windows_named_pipe(r"\\?\pipe\foo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_rejects_regular_paths() {
+        use super::is_windows_named_pipe;
+        assert!(!is_windows_named_pipe(r"C:\temp\foo.log"));
+        assert!(!is_windows_named_pipe(r"foo.log"));
+        assert!(!is_windows_named_pipe(r"\\server\share\foo"));
+        assert!(!is_windows_named_pipe(""));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_requires_trailing_separator() {
+        use super::is_windows_named_pipe;
+        // The prefix must include the trailing backslash; "\\.\pipefoo" is not a pipe path.
+        assert!(!is_windows_named_pipe(r"\\.\pipefoo"));
+        assert!(!is_windows_named_pipe(r"\\?\pipefoo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_recognises_case_variants() {
+        use super::is_windows_named_pipe;
+        // Windows treats pipe paths as case-insensitive: callers may legitimately
+        // pass mixed-case prefixes.
+        assert!(is_windows_named_pipe(r"\\.\PIPE\foo"));
+        assert!(is_windows_named_pipe(r"\\.\Pipe\containerd-shim"));
+        assert!(is_windows_named_pipe(r"\\?\PIPE\foo"));
+        assert!(is_windows_named_pipe(r"\\?\PiPe\foo"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_handles_short_inputs() {
+        use super::is_windows_named_pipe;
+        // Inputs shorter than the prefix must not panic.
+        assert!(!is_windows_named_pipe(r"\\.\pipe"));
+        assert!(!is_windows_named_pipe(r"\\.\"));
+        assert!(!is_windows_named_pipe(r"\"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_windows_named_pipe_rejects_out_of_scope_variants() {
+        use super::is_windows_named_pipe;
+        // Remote UNC pipe paths (\\<server>\pipe\<name>) and forward-slash
+        // variants are intentionally out of scope: in-tree callers always
+        // supply local-machine, backslash-canonical paths. These tests pin
+        // the current behavior so a future contributor extending the helper
+        // to cover them also updates this test.
+        assert!(!is_windows_named_pipe(r"\\myserver\pipe\foo"));
+        assert!(!is_windows_named_pipe("//./pipe/foo"));
+        assert!(!is_windows_named_pipe("//?/pipe/foo"));
     }
 }

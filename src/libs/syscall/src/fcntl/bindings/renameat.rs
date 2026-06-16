@@ -57,7 +57,7 @@ pub unsafe extern "C" fn renameat(
 ) -> c_int {
     // Check if `oldpath` is null.
     if oldpath.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "renameat(): oldpath is null (olddirfd={olddirfd:?}, newdirfd={newdirfd:?}, \
              oldpath={oldpath:?}, newpath={newpath:?})"
         );
@@ -67,7 +67,7 @@ pub unsafe extern "C" fn renameat(
 
     // Check if `newpath` is null.
     if newpath.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "renameat(): newpath is null (olddirfd={olddirfd:?}, newdirfd={newdirfd:?}, \
              oldpath={oldpath:?}, newpath={newpath:?})"
         );
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn renameat(
     let old_pathname: &str = match ffi::CStr::from_ptr(oldpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "renameat(): invalid old pathname (olddirfd={olddirfd:?}, newdirfd={newdirfd:?}, \
                  oldpath={oldpath:?}, newpath={newpath:?})"
             );
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn renameat(
     let new_pathname: &str = match ffi::CStr::from_ptr(newpath).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "renameat(): invalid new pathname (olddirfd={olddirfd:?}, newdirfd={newdirfd:?}, \
                  oldpath={old_pathname:?}, newpath={newpath:?})"
             );
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn renameat(
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "renameat(): {error:?} (olddirfd={olddirfd:?}, oldpath={old_pathname:?}, \
                  newdirfd={newdirfd:?}, newpath={new_pathname:?}, error={error:?})"
             );

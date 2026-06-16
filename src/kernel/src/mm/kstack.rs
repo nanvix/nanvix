@@ -8,6 +8,7 @@
 use crate::{
     hal::mem::PageAligned,
     mm::{
+        phys::KernelFrame,
         KernelPage,
         VirtMemoryManager,
     },
@@ -16,13 +17,7 @@ use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_ALIGNMENT;
 #[cfg(debug_assertions)]
 use ::config::kernel::KSTACK_GUARD_PATTERN;
-use ::core::{
-    fmt,
-    sync::atomic::{
-        AtomicU32,
-        Ordering,
-    },
-};
+use ::core::fmt;
 #[cfg(debug_assertions)]
 use ::sys::error::ErrorCode;
 use ::sys::{
@@ -37,6 +32,7 @@ use ::sys::{
 // Constants
 //==================================================================================================
 
+#[cfg(feature = "exception-stack-guard")]
 use ::arch::cpu::excp::Exception;
 
 //==================================================================================================
@@ -50,8 +46,10 @@ use ::arch::cpu::excp::Exception;
 ///
 /// TODO (#1665): this is a single global, so it is only correct on uniprocessor builds. For SMP,
 /// replace with a per-core variable (e.g., indexed by APIC ID or stored in per-core data).
+#[cfg(feature = "exception-stack-guard")]
 #[unsafe(no_mangle)]
-pub static EXCP_STACK_GUARD: AtomicU32 = AtomicU32::new(0);
+pub static EXCP_STACK_GUARD: ::core::sync::atomic::AtomicU32 =
+    ::core::sync::atomic::AtomicU32::new(0);
 
 //==================================================================================================
 // Structures
@@ -65,6 +63,7 @@ pub static EXCP_STACK_GUARD: AtomicU32 = AtomicU32::new(0);
 pub struct KernelStack {
     kpages: Vec<KernelPage>,
     /// Lowest safe ESP value for this stack (base + CONTEXT_HW_SIZE).
+    #[cfg(feature = "exception-stack-guard")]
     guard_threshold: u32,
 }
 
@@ -91,14 +90,18 @@ impl KernelStack {
     /// Upon success, the function returns the new kernel stack. Upon failure, an error is returned.
     ///
     pub fn new(mm: &mut VirtMemoryManager) -> Result<Self, Error> {
-        let kpages: Vec<KernelPage> =
-            mm.alloc_kpages(true, config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE)?;
+        let count: usize = config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE;
+        let mut kframes: Vec<KernelFrame> = Vec::with_capacity(count);
+        mm.alloc_kpages(true, count, &mut kframes)?;
+        let kpages: Vec<KernelPage> = kframes.into_iter().map(KernelPage::new).collect();
 
+        #[cfg(feature = "exception-stack-guard")]
         let guard_threshold: u32 =
             (kpages[0].base().into_raw_value() + Exception::CONTEXT_HW_SIZE) as u32;
 
         let stack: Self = Self {
             kpages,
+            #[cfg(feature = "exception-stack-guard")]
             guard_threshold,
         };
 
@@ -119,6 +122,7 @@ impl KernelStack {
     ///
     /// The guard threshold value.
     ///
+    #[cfg(feature = "exception-stack-guard")]
     pub fn guard_threshold(&self) -> u32 {
         self.guard_threshold
     }
@@ -132,7 +136,7 @@ impl KernelStack {
     ///
     /// The size of the target kernel stack.
     ///
-    fn size(&self) -> usize {
+    pub(crate) fn size(&self) -> usize {
         config::kernel::KSTACK_SIZE
     }
 
@@ -149,7 +153,7 @@ impl KernelStack {
     ///
     /// As stacks grow downwards, the base address is the highest address of the stack.
     ///
-    fn base(&self) -> PageAligned<VirtualAddress> {
+    pub(crate) fn base(&self) -> PageAligned<VirtualAddress> {
         PageAligned::from_raw_value(self.kpages[0].base().into_raw_value()).unwrap()
     }
 
@@ -187,9 +191,9 @@ impl KernelStack {
         let word_count: usize = ::arch::mem::PAGE_SIZE / ::core::mem::size_of::<u32>();
         let guard_ptr: *mut u32 = guard_base as *mut u32;
         for i in 0..word_count {
-            // SAFETY: The guard page is within allocated kernel memory and no other references
-            // to this memory exist at this point, so writing through a raw pointer derived from
-            // the page base address is sound.
+            // SAFETY: The guard page is within allocated kernel memory and no other
+            // references to this memory exist at this point, so writing through a
+            // raw pointer derived from the page base address is sound.
             unsafe {
                 guard_ptr.add(i).write_volatile(KSTACK_GUARD_PATTERN);
             }
@@ -270,13 +274,11 @@ fn check_guard_page(guard_base: usize) -> Result<(), Error> {
 /// `mm::init()`, the corruption may have been overwritten by later stack frames shrinking. The
 /// check is best-effort and may not detect all early-boot overflows.
 ///
+#[cfg(feature = "exception-stack-guard")]
 pub fn check_boot_stack_guard() -> Result<(), Error> {
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            unsafe extern "C" {
-                static kstack_guard: u8;
-            }
-            let guard_base: usize = unsafe { &kstack_guard as *const u8 as usize };
+            let guard_base: usize = crate::hal::platform::get_kstack_guard_base();
             check_guard_page(guard_base)
         } else {
             Ok(())
@@ -294,8 +296,9 @@ pub fn check_boot_stack_guard() -> Result<(), Error> {
 ///
 /// - `threshold`: The guard threshold (lowest safe ESP) for the new active stack.
 ///
+#[cfg(feature = "exception-stack-guard")]
 pub fn set_active_guard(threshold: u32) {
-    EXCP_STACK_GUARD.store(threshold, Ordering::Release);
+    EXCP_STACK_GUARD.store(threshold, core::sync::atomic::Ordering::Release);
 }
 
 //==================================================================================================
@@ -320,11 +323,12 @@ impl Drop for KernelStack {
 
         // If this stack was the active one, clear the guard so a stale threshold is never
         // checked against a freed stack region.
+        #[cfg(feature = "exception-stack-guard")]
         let _ = EXCP_STACK_GUARD.compare_exchange(
             self.guard_threshold,
             0,
-            Ordering::Release,
-            Ordering::Relaxed,
+            core::sync::atomic::Ordering::Release,
+            core::sync::atomic::Ordering::Relaxed,
         );
 
         while let Some(kpage) = self.kpages.pop() {

@@ -70,7 +70,7 @@ pub unsafe extern "C" fn recv(
 ) -> c_ssize_t {
     // Check if `buf` is valid.
     if buf.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "recv(): invalid buffer (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn recv(
 
     // Check if `len` is valid.
     if len == 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "recv(): invalid buffer length (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
              flags={flags:?})"
         );
@@ -89,7 +89,7 @@ pub unsafe extern "C" fn recv(
 
     // Check if `flags` is valid.
     if flags != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "recv(): unsupported flags (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
              flags={flags:?})"
         );
@@ -101,7 +101,7 @@ pub unsafe extern "C" fn recv(
     let len: usize = match len.try_into() {
         Ok(len) => len,
         Err(_error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "recv(): failed to convert length (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
                  flags={flags:?})"
             );
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn recv(
         Ok(bytes_received) => match bytes_received.try_into() {
             Ok(bytes_received) => bytes_received,
             Err(_error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "recv(): failed to convert bytes received (sockfd={sockfd:?}, buf={buf:?}, \
                      len={len:?}, flags={flags:?})"
                 );
@@ -126,7 +126,7 @@ pub unsafe extern "C" fn recv(
             },
         },
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "recv(): {error:?} (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, flags={flags:?})"
             );
             *__errno_location() = error.code.get();

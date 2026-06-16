@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -17,7 +17,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -32,10 +35,10 @@ pub struct SeekRequest {
     pub whence: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(SeekRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SeekRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl SeekRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<i64>()
         - mem::size_of::<i32>();
@@ -49,22 +52,29 @@ impl SeekRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: i32, offset: i64, whence: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        offset: i64,
+        whence: i32,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: SeekRequest = SeekRequest::new(fd, offset, whence);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::SeekRequest, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::SeekRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -82,10 +92,10 @@ pub struct SeekResponse {
     pub offset: i64,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(SeekResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SeekResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl SeekResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i64>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i64>();
 
     fn new(offset: i64) -> Self {
         Self {
@@ -94,22 +104,27 @@ impl SeekResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, offset: i64) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        offset: i64,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: SeekResponse = SeekResponse::new(offset);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::SeekResponse, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::SeekResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

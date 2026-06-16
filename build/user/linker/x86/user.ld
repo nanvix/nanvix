@@ -33,6 +33,24 @@ SECTIONS
 		*(.data*)
 	}
 
+	/* Global constructors. */
+	.ctors : ALIGN(4)
+	{
+		KEEP(*crtbegin*.o(.ctors))
+		KEEP(*(EXCLUDE_FILE(*crtend*.o) .ctors))
+		KEEP(*(SORT(.ctors.*)))
+		KEEP(*crtend*.o(.ctors))
+	}
+
+	/* Global destructors. */
+	.dtors : ALIGN(4)
+	{
+		KEEP(*crtbegin*.o(.dtors))
+		KEEP(*(EXCLUDE_FILE(*crtend*.o) .dtors))
+		KEEP(*(SORT(.dtors.*)))
+		KEEP(*crtend*.o(.dtors))
+	}
+
 	/* Uninitialized data section. */
 	.bss :
 	{

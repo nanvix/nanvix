@@ -281,7 +281,7 @@ global_asm!(
     // Kernel Call Hook
     // =================================================================
     //
-    // On entry (from int 0x80):
+    // On entry (from int 0x81, the kcall trap vector):
     //  - RAX: kernel call number
     //  - RDI: arg0
     //  - RSI: arg1

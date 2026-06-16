@@ -69,14 +69,14 @@ pub fn reserve(length: usize) -> Result<VirtualAddress, Error> {
     // Reject zero-length reservations.
     if length == 0 {
         let reason: &str = "length must be greater than zero";
-        ::syslog::error!("vaddr::reserve(): {reason} (length={length})");
+        ::syslog::warn!("vaddr::reserve(): {reason} (length={length})");
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
     // Align up length to page size.
     let length: usize = mm::align_up(length, PAGE_ALIGNMENT).ok_or_else(|| {
         let reason: &str = "align_up overflow";
-        ::syslog::error!("vaddr::reserve(): {reason} (length={length})");
+        ::syslog::warn!("vaddr::reserve(): {reason} (length={length})");
         Error::new(ErrorCode::InvalidArgument, reason)
     })?;
 
@@ -86,14 +86,14 @@ pub fn reserve(length: usize) -> Result<VirtualAddress, Error> {
     let base_raw: usize = locked_next.into_raw_value();
     let new_base_raw: usize = base_raw.checked_add(length).ok_or_else(|| {
         let reason: &str = "address overflow when reserving virtual address space";
-        ::syslog::error!("vaddr::reserve(): {reason} (length={length})");
+        ::syslog::warn!("vaddr::reserve(): {reason} (length={length})");
         Error::new(ErrorCode::OutOfMemory, reason)
     })?;
 
     // Check if we have enough space.
     if new_base_raw > MMAP_END_RAW {
         let reason: &str = "not enough virtual address space for reservation";
-        ::syslog::error!("vaddr::reserve(): {reason} (length={length})");
+        ::syslog::warn!("vaddr::reserve(): {reason} (length={length})");
         return Err(Error::new(ErrorCode::OutOfMemory, reason));
     }
 

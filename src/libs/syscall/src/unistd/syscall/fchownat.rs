@@ -5,27 +5,26 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::FileChownAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
 use ::sysapi::{
     ffi::c_int,
     sys_types::{
         gid_t,
         uid_t,
-    },
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::FileChownAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
     },
 };
 
@@ -66,47 +65,23 @@ pub fn fchownat(
         flag
     );
 
-    // In standalone mode, forward to VFS.
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_fchownat(dirfd, path, owner, group, flag).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!(
-                "fchownat(): VFS fchownat failed (dirfd={dirfd:?}, path={path:?}, error={e})"
-            );
-            Error::new(code, "vfs fchownat failed")
-        })
-    }
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchownat_linuxd(dirfd, path, owner, group, flag)
-}
+    let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, &path)?;
 
-/// Forwards a `fchownat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchownat_linuxd(
-    dirfd: c_int,
-    path: &str,
-    owner: uid_t,
-    group: gid_t,
-    flag: c_int,
-) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
-
-    let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, path)?;
-
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "fchownat(): failed (dirfd={:?}, path={:?}, owner={:?}, group={:?}, flag={:?}, \
              error_code={:?})",
             dirfd,
@@ -123,12 +98,12 @@ fn fchownat_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::FileChownAtResponse => Ok(()),
+            SystemCallMessageHeader::FileChownAtResponse => Ok(()),
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \
                      group={:?}, flag={:?}, header={:?})",
                     dirfd,

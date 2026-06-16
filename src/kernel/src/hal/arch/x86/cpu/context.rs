@@ -95,6 +95,7 @@ impl ContextInformation {
     pub const CONTEXT_SW_SIZE: u32 = Self::CONTEXT_ERR;
 
     /// Size of the hardware-saved portion of the context (bytes from `err` onward).
+    #[cfg(feature = "exception-stack-guard")]
     pub const CONTEXT_HW_SIZE: u32 = core::mem::size_of::<Self>() as u32 - Self::CONTEXT_ERR;
 
     pub fn new(cr3: u32, esp: u32, esp0: u32) -> Self {

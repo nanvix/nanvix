@@ -55,7 +55,7 @@ pub unsafe extern "C" fn pthread_create(
 ) -> c_int {
     // Check if `thread` is not valid.
     if thread.is_null() {
-        ::syslog::error!("pthread_create(): invalid thread pointer");
+        ::syslog::warn!("pthread_create(): invalid thread pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

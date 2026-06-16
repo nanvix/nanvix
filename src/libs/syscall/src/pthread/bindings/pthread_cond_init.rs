@@ -49,7 +49,7 @@ pub unsafe extern "C" fn pthread_cond_init(
 ) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::syslog::error!("pthread_cond_init(): invalid condition variable pointer");
+        ::syslog::warn!("pthread_cond_init(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

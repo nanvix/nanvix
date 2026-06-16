@@ -17,7 +17,15 @@ pub mod message;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
-       pub  mod syscall;
+        #[cfg(feature = "standalone")]
+        pub mod fork;
+        pub mod exec;
+        pub use self::exec::{
+            do_execv,
+            execv_from_c,
+            execv_inherit_env_from_c,
+        };
+        pub mod syscall;
         pub use self::syscall::{
             faccessat,
             chdir,
@@ -32,6 +40,7 @@ cfg_if::cfg_if! {
             geteuid,
             getgid,
             getpid,
+            getppid,
             getuid,
             gethostname,
             link,
@@ -51,6 +60,6 @@ cfg_if::cfg_if! {
             fchdir,
             isatty,
         };
-       pub mod bindings;
+        pub mod bindings;
     }
 }

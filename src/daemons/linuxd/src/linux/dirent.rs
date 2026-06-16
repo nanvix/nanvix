@@ -26,7 +26,10 @@ use ::log::{
 use ::std::ffi::CStr;
 use ::sys::{
     error::ErrorCode,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ThreadIdentifier,
 };
 use ::syscall::{
@@ -217,7 +220,7 @@ pub fn do_getdents<T>(
 
     // Build response and check for errors.
     let response: GetDirectoryEntriesResponse = GetDirectoryEntriesResponse::new(buf);
-    match response.into_parts(tid) {
+    match response.into_parts(tid, ::syscall::LINUXD, MessageType::Ikc) {
         Ok(messages) => Ok(messages),
         Err(error) => {
             warn!("do_getdents(): failed to build response (error={error:?})");

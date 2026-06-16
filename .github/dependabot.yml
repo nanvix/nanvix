@@ -10,3 +10,19 @@ updates:
     open-pull-requests-limit: 20
     pull-request-branch-name:
       separator: "-"
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "03:00"
+    labels:
+      - "devops::build"
+    open-pull-requests-limit: 20
+    pull-request-branch-name:
+      separator: "-"
+    ignore:
+      - dependency-name: "fatfs"
+      - dependency-name: "spin"
+      - dependency-name: "talc"
+      - dependency-name: "vstd"

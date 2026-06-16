@@ -1,0 +1,46 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "vfsd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Virtual File System Daemon"
+homepage.workspace = true
+
+[[bin]]
+name = "vfsd"
+
+[dependencies]
+arch = { workspace = true }
+config = { workspace = true }
+hostfs-api = { workspace = true }
+sys = { workspace = true }
+nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
+proc = { workspace = true, features = ["syscall"] }
+vfs = { workspace = true }
+multiimage = { workspace = true }
+syscall = { workspace = true }
+sysapi = { workspace = true }
+libc_string = { workspace = true }
+syslog = { workspace = true, default-features = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "syslog/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "syslog/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "syslog/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "syslog/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "syslog/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "syslog/panic", "nvx-crt0/panic"]
+
+[lints]
+workspace = true

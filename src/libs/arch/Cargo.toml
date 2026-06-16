@@ -10,12 +10,16 @@ authors.workspace = true
 description = "Architecture-Specific Library"
 homepage.workspace = true
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
 cfg-if = { workspace = true }
 config = { workspace = true }
 error = { workspace = true }
 static_assert = { workspace = true }
 sys = { workspace = true }
+vstd = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 
@@ -36,19 +40,6 @@ rustc-dep-of-std = [
 ]
 
 # Machine Types
-hyperlight = [
-    "putb",
-    "puts",
-    "stdio",
-    "acpi",
-    "cpuid",
-    "ioapic",
-    "madt",
-    "msr",
-    "pic",
-    "pit",
-    "xapic",
-]
 microvm = [
     "putb",
     "stdio",

@@ -7,6 +7,7 @@
 
 use crate::hal::arch::x86::cpu::tss::TssRef;
 use ::alloc::boxed::Box;
+pub use ::arch::mem::gdt::GDTE_ALIGNMENT;
 use ::arch::mem::gdt::{
     AccessAccessed,
     AccessConforming,
@@ -31,7 +32,10 @@ use ::core::{
     mem,
     pin::Pin,
 };
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Structures
@@ -68,16 +72,19 @@ pub enum SegmentSelector {
 }
 
 //===================================================================================================
-// Global Variables
+// Constants
 //===================================================================================================
 
-/// Global descriptor table.
+/// Number of entries in the GDT.
+pub const GDT_NUM_ENTRIES: usize = 7;
+
+/// Default GDT entries used to populate platform-provided backing storage.
 ///
 /// In x86_64 long mode:
 /// - Code segments must have L=1, D=0.
 /// - Data segments ignore L and D bits.
 /// - The TSS descriptor is 16 bytes (two GDT entries): TssLow + TssHigh.
-static mut GDT: [Gdte; 7] = [
+pub const DEFAULT_ENTRIES: [Gdte; GDT_NUM_ENTRIES] = [
     // Null entry.
     Gdte::new(
         0x0,
@@ -179,11 +186,63 @@ static mut GDT: [Gdte; 7] = [
     Gdte::default(),
 ];
 
+//===================================================================================================
+// Global Variables
+//===================================================================================================
+
+/// Pointer to the platform-provided GDT backing storage.
+///
+/// Initialized by [`Gdt::set_backing_storage()`] before [`Gdt::init()`]. On microvm the storage
+/// is a BSS-allocated static array.
+static mut GDT: *mut Gdte = core::ptr::null_mut();
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl Gdt {
+    ///
+    /// # Description
+    ///
+    /// Installs platform-provided backing storage for the GDT.
+    ///
+    /// The caller is responsible for populating the storage with the correct descriptor entries
+    /// (e.g., by copying [`DEFAULT_ENTRIES`]) before this function is called. This function only
+    /// records the pointer; it does not write any entries.
+    ///
+    /// Must be called exactly once before [`Gdt::init()`].
+    ///
+    /// # Parameters
+    ///
+    /// - `storage`: Pointer to at least [`GDT_NUM_ENTRIES`] contiguous [`Gdte`] slots whose
+    ///   lifetime exceeds all subsequent GDT operations. Must be aligned to [`GDTE_ALIGNMENT`].
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the backing storage was successfully installed.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::InvalidArgument`] if `storage` is not aligned to [`GDTE_ALIGNMENT`].
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it sets a global raw pointer that all GDT operations
+    /// depend on. The caller must ensure:
+    /// - `storage` is non-null and points to at least [`GDT_NUM_ENTRIES`] entries.
+    /// - The backing memory outlives all GDT usage.
+    /// - This function is called at most once.
+    ///
+    pub unsafe fn set_backing_storage(storage: *mut Gdte) -> Result<(), Error> {
+        if !::sys::mm::is_aligned(storage as usize, GDTE_ALIGNMENT) {
+            let reason: &str = "GDT backing storage pointer is not properly aligned";
+            error!("{}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        GDT = storage;
+        Ok(())
+    }
+
     #[inline(never)]
     pub unsafe fn load(ptr: *const ::arch::mem::gdtr::Gdtr) {
         // In x86_64 long mode, we use a far return (lretq) to reload CS because
@@ -212,6 +271,10 @@ impl Gdt {
     }
 
     pub unsafe fn init(kstack: *const u8) -> Result<(GdtPtr, TssRef), Error> {
+        debug_assert!(
+            !GDT.is_null(),
+            "GDT backing storage not installed; call set_backing_storage() first"
+        );
         trace!("initializing gdt...");
         let rsp0: u64 = kstack as u64;
         trace!("rsp0={:x}", rsp0);
@@ -220,7 +283,7 @@ impl Gdt {
         // Overwrite TSS low entry (first 8 bytes of the 16-byte TSS descriptor).
         let tss_addr: usize = tss.address();
         let tss_size: usize = tss.size();
-        GDT[GdtEntries::TssLow as usize] = Gdte::new(
+        *GDT.add(GdtEntries::TssLow as usize) = Gdte::new(
             tss_addr as u32,
             tss_size as u32 - 1,
             GdteAccessByte::new(
@@ -240,15 +303,14 @@ impl Gdt {
         );
 
         // Overwrite TSS high entry (second 8 bytes: upper 32 bits of TSS base address).
-        let tss_high_ptr: *mut u32 =
-            &mut GDT[GdtEntries::TssHigh as usize] as *mut Gdte as *mut u32;
+        let tss_high_ptr: *mut u32 = GDT.add(GdtEntries::TssHigh as usize) as *mut u32;
         *tss_high_ptr = (tss_addr >> 32) as u32;
         *tss_high_ptr.add(1) = 0;
 
         // Set the GDTPTR.
         let gdtr = GdtPtr(Pin::new(Box::new(::arch::mem::gdtr::Gdtr::new(
-            GDT.as_ptr() as u64,
-            (mem::size_of_val(&GDT)) as u16,
+            GDT as u64,
+            (GDT_NUM_ENTRIES * mem::size_of::<Gdte>()) as u16,
         ))));
 
         info!("loading the GDT...");

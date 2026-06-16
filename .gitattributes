@@ -47,7 +47,6 @@ Dockerfile* text eol=lf
 
 # Binary files — do not normalize.
 *.elf binary
-*.wasm binary
 *.o binary
 *.a binary
 *.so binary

@@ -262,21 +262,6 @@ class TestParseCli(unittest.TestCase):
         _, cfg = zmod.parse_cli(["build", "--", "SYSROOT_DIR=/opt/sysroot"])
         self.assertEqual(cfg.sysroot_dir, "/opt/sysroot")
 
-    def test_key_value_wasm_binary(self) -> None:
-        """WASM_BINARY=foo.wasm in make_args sets cfg.wasm_binary."""
-        _, cfg = zmod.parse_cli(["build", "--", "WASM_BINARY=foo.wasm"])
-        self.assertEqual(cfg.wasm_binary, "foo.wasm")
-
-    def test_key_value_wasm_binary_args(self) -> None:
-        """WASM_BINARY_ARGS=--arg1 in make_args sets cfg.wasm_binary_args."""
-        _, cfg = zmod.parse_cli(["build", "--", "WASM_BINARY_ARGS=--arg1"])
-        self.assertEqual(cfg.wasm_binary_args, "--arg1")
-
-    def test_key_value_wasmd_sockaddr(self) -> None:
-        """WASMD_SOCKADDR=127.0.0.1:9999 in make_args sets cfg.wasmd_sockaddr."""
-        _, cfg = zmod.parse_cli(["build", "--", "WASMD_SOCKADDR=127.0.0.1:9999"])
-        self.assertEqual(cfg.wasmd_sockaddr, "127.0.0.1:9999")
-
     def test_passthrough_vars_do_not_change_config(self) -> None:
         """SCCACHE, MAKE_NO_PRINT, CLH_DIR, VERUS_EXECUTABLE_DIR are pass-through."""
         _, cfg = zmod.parse_cli(
@@ -424,12 +409,6 @@ class TestBuildConfig(unittest.TestCase):
         cfg.apply_platform_defaults(_windows_plat())
         self.assertTrue(cfg.whp)
 
-    def test_windows_no_whp_for_hyperlight(self) -> None:
-        """On Windows with machine=hyperlight, WHP is not auto-enabled."""
-        cfg = zmod.BuildConfig(machine="hyperlight")
-        cfg.apply_platform_defaults(_windows_plat())
-        self.assertFalse(cfg.whp)
-
     # --- --profile implies release + profiler ---
 
     def test_profile_implies_release_and_profiler(self) -> None:
@@ -541,12 +520,6 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
         cfg = zmod.BuildConfig(machine="microvm", make_args=["all"])
         injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertIn("WHP=yes", injected)
-
-    def test_windows_no_whp_for_hyperlight(self) -> None:
-        """On Windows with machine=hyperlight, WHP=yes is not injected."""
-        cfg = zmod.BuildConfig(machine="hyperlight", make_args=["all"])
-        injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
-        self.assertNotIn("WHP=yes", injected)
 
     def test_windows_no_duplicate_deployment_mode(self) -> None:
         """User-supplied DEPLOYMENT_MODE= should not be overridden."""
@@ -1226,12 +1199,6 @@ class TestCmdHelp(unittest.TestCase):
 
 class TestParseMakeVar(unittest.TestCase):
     """Tests for _parse_make_var."""
-
-    def test_machine_hyperlight(self) -> None:
-        """Parsing MACHINE=hyperlight sets cfg.machine to 'hyperlight'."""
-        cfg = zmod.BuildConfig()
-        zmod._parse_make_var(cfg, "MACHINE", "hyperlight")
-        self.assertEqual(cfg.machine, "hyperlight")
 
     def test_valid_deployment_modes(self) -> None:
         """All values in VALID_DEPLOYMENT_MODES are accepted by _parse_make_var."""

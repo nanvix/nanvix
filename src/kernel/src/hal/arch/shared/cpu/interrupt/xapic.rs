@@ -540,11 +540,9 @@ impl UninitXapicTimer {
             // ticks_per_ms = elapsed × (target / actual) so the result is independent
             // of TSC frequency errors. Guard against tsc_elapsed == 0 (TSC did not
             // advance); the ticks_per_ms == 0 fallback below handles the result.
-            let tpm: u32 = if tsc_elapsed > 0 {
-                ((elapsed_ticks as u64 * tsc_ticks_per_ms) / tsc_elapsed) as u32
-            } else {
-                0
-            };
+            let tpm: u32 = (elapsed_ticks as u64 * tsc_ticks_per_ms)
+                .checked_div(tsc_elapsed)
+                .unwrap_or(0) as u32;
 
             info!(
                 "lapic timer calibration (rdtsc): elapsed_ticks={}, ticks_per_ms={}, \

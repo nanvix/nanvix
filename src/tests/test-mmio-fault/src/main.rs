@@ -14,6 +14,7 @@
 
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::arch::mem::PAGE_SIZE;
 use ::sys::{
@@ -58,13 +59,13 @@ const RAMFS_MMIO_TAG: u64 = u64::from_be_bytes(*b"RAMFS   ");
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
     // Acquire IO management capability.
-    pm::capctl(Capability::IoManagement, true)?;
+    pm::__kcall_capctl(Capability::IoManagement, true)?;
 
     // Allocate the RAMFS MMIO region so its pages are mapped.
-    mm::mmio_alloc(RAMFS_MMIO_TAG)?;
+    mm::__kcall_mmio_alloc(RAMFS_MMIO_TAG)?;
 
     // Query the region's base address and size.
-    let info: ::sys::mm::MmioRegionInfo = mm::mmio_info(RAMFS_MMIO_TAG)?;
+    let info: ::sys::mm::MmioRegionInfo = mm::__kcall_mmio_info(RAMFS_MMIO_TAG)?;
     let base_addr: usize = info.base().into_raw_value();
     let size: usize = info.size();
 

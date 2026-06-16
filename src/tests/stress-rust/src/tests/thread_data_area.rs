@@ -10,8 +10,8 @@ use super::common::{
     raw_pointer_address,
 };
 use ::sys::kcall::pm::{
-    get_thread_data_area,
-    set_thread_data_area,
+    __kcall_get_thread_data_area,
+    __kcall_set_thread_data_area,
 };
 
 //==================================================================================================
@@ -29,15 +29,15 @@ use ::sys::kcall::pm::{
 /// `Ok(())` on success or an error if thread data area operations fail.
 ///
 pub fn run() -> Result<(), StressError> {
-    let saved_tda: *mut u8 = get_thread_data_area()?;
+    let saved_tda: *mut u8 = __kcall_get_thread_data_area()?;
 
     let inner_result: Result<(), StressError> = (|| {
         let mut scratch: [u8; 64] = [0; 64];
         scratch.fill(0xbc);
         let scratch_ptr: *mut u8 = scratch.as_mut_ptr();
-        set_thread_data_area(scratch_ptr)?;
+        __kcall_set_thread_data_area(scratch_ptr)?;
 
-        let observed: *mut u8 = get_thread_data_area()?;
+        let observed: *mut u8 = __kcall_get_thread_data_area()?;
         let scratch_addr: usize = raw_pointer_address(scratch_ptr);
         let observed_addr: usize = raw_pointer_address(observed);
 
@@ -46,7 +46,7 @@ pub fn run() -> Result<(), StressError> {
         Ok(())
     })();
 
-    let restore_result: Result<(), StressError> = set_thread_data_area(saved_tda);
+    let restore_result: Result<(), StressError> = __kcall_set_thread_data_area(saved_tda);
     inner_result?;
     restore_result
 }

@@ -59,7 +59,7 @@ pub unsafe extern "C" fn fchdir(fd: c_int) -> c_int {
     match unistd::fchdir(fd) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("fchdir(): {error:?} (fd={fd:?})");
+            ::syslog::warn!("fchdir(): {error:?} (fd={fd:?})");
             *__errno_location() = error.code.get();
             -1
         },

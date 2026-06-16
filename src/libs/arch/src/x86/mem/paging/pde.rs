@@ -5,20 +5,22 @@
 // Imports
 //==================================================================================================
 
-use crate::x86::mem::paging::{
-    flags::{
-        AccessedFlag,
-        DirtyFlag,
-        PageCacheDisableFlag,
-        PageSizeFlag,
-        PageWriteThroughFlag,
-        PresentFlag,
-        ReadWriteFlag,
-        UserSupervisorFlag,
+use crate::{
+    mem::paging::TableEntry,
+    x86::mem::paging::{
+        flags::{
+            AccessedFlag,
+            DirtyFlag,
+            PageCacheDisableFlag,
+            PageSizeFlag,
+            PageWriteThroughFlag,
+            PresentFlag,
+            ReadWriteFlag,
+            UserSupervisorFlag,
+        },
+        frame::FrameNumber,
+        PteWord,
     },
-    frame::FrameNumber,
-    pte::PageTableEntryFlags,
-    PteWord,
 };
 
 //==================================================================================================
@@ -204,7 +206,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
-    pub(crate) fn from_raw_value(value: PteWord) -> Self {
+    fn from_raw_value(value: PteWord) -> Self {
         Self {
             present: PresentFlag::from_raw_value(value),
             read_write: ReadWriteFlag::from_raw_value(value),
@@ -226,7 +228,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// The raw value.
     ///
-    pub(crate) fn into_raw_value(self) -> PteWord {
+    fn into_raw_value(self) -> PteWord {
         let mut value: PteWord = 0;
 
         value |= self.present.into_raw_value();
@@ -239,30 +241,6 @@ impl PageDirectoryEntryFlags {
         value |= self.page_size.into_raw_value();
 
         value
-    }
-
-    /// Converts PDE flags to PTE flags (dropping the page-size flag).
-    pub fn to_pte_flags(&self) -> PageTableEntryFlags {
-        PageTableEntryFlags::new(
-            self.present,
-            self.read_write,
-            self.user_supervisor,
-            self.page_write_through,
-            self.page_cache_disable,
-            self.accessed,
-            self.dirty,
-        )
-    }
-}
-
-impl From<PageTableEntryFlags> for PageDirectoryEntryFlags {
-    /// Converts PTE flags to PDE flags with [`PageSizeFlag::Standard`].
-    fn from(f: PageTableEntryFlags) -> Self {
-        // Round-trip through raw value to avoid accessing private PTE fields.
-        let mut raw: PteWord = f.into_raw_value();
-        // Clear the PS bit (bit 7) to ensure Standard page size.
-        raw &= !(1 << 7);
-        Self::from_raw_value(raw)
     }
 }
 
@@ -284,6 +262,9 @@ pub struct PageDirectoryEntry {
 }
 
 impl PageDirectoryEntry {
+    /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
+    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+
     ///
     /// # Description
     ///
@@ -300,6 +281,45 @@ impl PageDirectoryEntry {
     ///
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
         Self { flags, frame }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PageDirectoryEntry`] from a raw 32-bit value.
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: The raw value.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(`[`PageDirectoryEntry`]`)`: If the raw value is valid.
+    /// - `None`: Otherwise.
+    ///
+    pub fn from_raw_value(value: PteWord) -> Option<Self> {
+        Some(Self {
+            flags: PageDirectoryEntryFlags::from_raw_value(value),
+            frame: FrameNumber::from_raw_value(value as usize >> crate::mem::FRAME_SHIFT)?,
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a [`PageDirectoryEntry`] into a raw 32-bit value.
+    ///
+    /// # Returns
+    ///
+    /// The raw value.
+    ///
+    pub fn into_raw_value(self) -> PteWord {
+        let mut value: PteWord = 0;
+
+        value |= self.flags.into_raw_value();
+        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
+
+        value
     }
 
     ///
@@ -406,79 +426,9 @@ impl PageDirectoryEntry {
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.flags.set_user_supervisor(user_supervisor);
     }
-
-    /// Returns a copy with the user flag set if `user` is `true` and not already set.
-    pub fn ensure_user(mut self, user: bool) -> Self {
-        if user && !self.flags.is_user() {
-            self.flags.set_user_supervisor(UserSupervisorFlag::User);
-        }
-        self
-    }
-
-    /// Returns the PDE flags converted to PTE-compatible flags (without page size).
-    pub fn flags_without_ps(&self) -> PageTableEntryFlags {
-        self.flags.to_pte_flags()
-    }
 }
 
-//==================================================================================================
-// Raw Value Serialization
-//==================================================================================================
-
-impl PageDirectoryEntry {
-    /// Size in bytes of the hardware page directory entry representation.
-    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PageDirectoryEntry`] from a raw value.
-    ///
-    /// # Parameters
-    ///
-    /// - `value`: The raw value.
-    ///
-    /// # Returns
-    ///
-    /// - `Some(`[`PageDirectoryEntry`]`)`: If the raw value is valid.
-    /// - `None`: Otherwise.
-    ///
-    pub fn from_raw_value(value: PteWord) -> Option<Self> {
-        use crate::x86::mem::paging::PHYS_ADDR_MASK;
-        Some(Self {
-            flags: PageDirectoryEntryFlags::from_raw_value(value),
-            frame: FrameNumber::from_raw_value(
-                (value & PHYS_ADDR_MASK) as usize >> crate::mem::FRAME_SHIFT,
-            )?,
-        })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Converts a [`PageDirectoryEntry`] into a raw value.
-    ///
-    /// # Returns
-    ///
-    /// The raw value.
-    ///
-    pub fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
-
-        value
-    }
-
-    /// Returns the physical base address of a large page.
-    pub fn large_page_address(&self) -> u64 {
-        use crate::x86::mem::paging::LARGE_PAGE_ADDR_MASK;
-        (self.into_raw_value() as u64) & (LARGE_PAGE_ADDR_MASK as u64)
-    }
-}
-
-impl crate::x86::mem::paging::table::TableEntry for PageDirectoryEntry {
+impl TableEntry for PageDirectoryEntry {
     fn from_raw(raw: PteWord) -> Option<Self> {
         Self::from_raw_value(raw)
     }

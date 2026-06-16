@@ -36,12 +36,11 @@ The pipeline runs these steps in order:
 ### Machine-Dependent Steps
 
 `scripts/pipeline.sh` executes machine-dependent
-steps for `microvm` and `hyperlight`.
+steps for `microvm`.
 
 | Machine       | Build Types    | Deployment Types              |
 |---------------|----------------|-------------------------------|
 | `microvm`     | debug, release | standalone, single, multi, l2 |
-| `hyperlight`  | debug, release | single, multi, l2             |
 
 ### Build Parameter Mapping
 
@@ -74,16 +73,17 @@ steps for `microvm` and `hyperlight`.
 ## GitHub Actions Workflows
 
 Workflows are defined in `.github/workflows/`. They follow the same quality gates as the local
-pipeline, but matrix coverage is split across multiple jobs (including dedicated L2 jobs) and run on
-pull requests and pushes to `dev`.
+pipeline, but matrix coverage is split across multiple jobs and run on pull requests and pushes to
+`dev`.
 
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`: `microvm` and `hyperlight` with `standalone`,
+- `lint`, `verify`, `ci-build`: `microvm` with `standalone`,
   `single-process`, and `multi-process`.
-- `ci-test`: same matrix, excluding `hyperlight + standalone`.
-- `ci-l2`: separate L2 jobs for `microvm` and `hyperlight`.
+- `ci-test`: same matrix.
+
+> **Note:** The local pipeline covers the `l2` deployment type, but CI does not run L2 jobs.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
 > and runs a smoke test using nanvixd in standalone interactive mode on WHP-enabled runners.
@@ -98,10 +98,20 @@ Matrix coverage in GitHub Actions:
 # nanvix-<ver>-<machine>-<deploy>-<mode>-<log>.tar.bz2
 ```
 
-Minor releases can be created with:
+Releases can be created with:
 
 ```bash
-./scripts/create-minor-release.sh
+# Patch release (X.Y.Z -> X.Y.(Z+1))
+python3 scripts/create-release.py --patch   # Linux / macOS
+python scripts/create-release.py --patch    # Windows
+
+# Minor release (X.Y.Z -> X.(Y+1).0)
+python3 scripts/create-release.py --minor   # Linux / macOS
+python scripts/create-release.py --minor    # Windows
+
+# Major release (X.Y.Z -> (X+1).0.0)
+python3 scripts/create-release.py --major   # Linux / macOS
+python scripts/create-release.py --major    # Windows
 ```
 
 ## Pipeline Output

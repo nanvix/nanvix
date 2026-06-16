@@ -5,8 +5,6 @@
 // Modules
 //==================================================================================================
 
-#[cfg(feature = "hyperlight")]
-pub(crate) mod hyperlight;
 #[cfg(feature = "microvm")]
 mod microvm;
 pub mod region_names;
@@ -22,14 +20,8 @@ pub mod pit;
 #[cfg(feature = "microvm")]
 pub use microvm::*;
 
-#[cfg(feature = "hyperlight")]
-pub use hyperlight::*;
-
 #[cfg(feature = "microvm")]
 use microvm::do_shutdown;
-
-#[cfg(feature = "hyperlight")]
-use hyperlight::do_shutdown;
 
 pub mod acpi;
 pub mod bootinfo;

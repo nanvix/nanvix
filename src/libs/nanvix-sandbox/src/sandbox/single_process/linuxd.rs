@@ -132,9 +132,21 @@ impl LinuxDaemon {
 
         // Create a new Linux Daemon instance.
         let syscall_table: ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>> =
-            args.syscall_table().unwrap_or_else(|| {
-                ::std::sync::Arc::new(::linuxd::syscalls::SyscallTable::new(T::default()))
-            });
+            match args.syscall_table() {
+                Some(table) => table,
+                None => {
+                    let table: ::linuxd::syscalls::SyscallTable<T> =
+                        ::linuxd::syscalls::SyscallTable::new(
+                            T::default(),
+                            args.networking_enabled(),
+                        )
+                        .map_err(|e| {
+                            error!("spawn(): failed to create syscall table (error={e:?})");
+                            anyhow::anyhow!("failed to create syscall table: {e:?}")
+                        })?;
+                    ::std::sync::Arc::new(table)
+                },
+            };
 
         let linuxd: EmbeddedLinuxd<T> = EmbeddedLinuxd::init(
             syscall_table,
@@ -145,8 +157,9 @@ impl LinuxDaemon {
             args.l2(),
         )
         .map_err(|e| {
-            error!("spawn(): failed to initialize linuxd (error={e:?})");
-            anyhow::anyhow!("failed to initialize linuxd")
+            let reason: &str = "failed to initialize linuxd";
+            error!("spawn(): {reason} (error={e:?})");
+            anyhow::anyhow!("{reason}")
         })?;
 
         // Spawn a task to run the Linux Daemon.

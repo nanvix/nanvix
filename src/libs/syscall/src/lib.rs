@@ -7,8 +7,8 @@
 
 #![deny(clippy::all)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(never_type)] // pthread requires this.
-#![feature(c_variadic)] // fcntl requires this.
+#![cfg_attr(feature = "syscall", feature(never_type))] // pthread requires this.
+#![cfg_attr(feature = "syscall", feature(c_variadic))] // fcntl requires this.
 
 //==================================================================================================
 // Modules
@@ -84,6 +84,13 @@ pub mod sys;
 /// Definitions for I/O polling.
 pub mod poll;
 
+/// Standard library functions.
+pub mod stdlib;
+
+/// Client-side path utilities (tilde expansion).
+#[cfg(feature = "syscall")]
+pub(crate) mod path;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
@@ -92,6 +99,11 @@ pub mod safe;
 // Imports
 //==================================================================================================
 
+pub use ::config::fds::{
+    is_socket_fd,
+    is_vfs_fd,
+    SOCKET_FD_BASE,
+};
 use ::core::{
     convert::TryFrom,
     mem,
@@ -109,9 +121,9 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
-pub enum LinuxDaemonMessageHeader {
+pub enum SystemCallMessageHeader {
     OpenAtRequestPart,
     OpenAtResponse,
     UnlinkAtRequestPart,
@@ -210,13 +222,64 @@ pub enum LinuxDaemonMessageHeader {
     PollResponsePart,
     SelectRequest,
     SelectResponse,
+    HostFsOpenRequest,
+    HostFsOpenResponse,
+    HostFsCloseRequest,
+    HostFsCloseResponse,
+    HostFsReadRequest,
+    HostFsReadResponse,
+    HostFsWriteRequest,
+    HostFsWriteResponse,
+    HostFsStatRequest,
+    HostFsStatResponse,
+    HostFsReadDirRequest,
+    HostFsReadDirResponse,
+    HostFsMkdirRequest,
+    HostFsMkdirResponse,
+    HostFsRmdirRequest,
+    HostFsRmdirResponse,
+    HostFsUnlinkRequest,
+    HostFsUnlinkResponse,
+    HostFsRenameRequest,
+    HostFsRenameResponse,
+    HostFsLseekRequest,
+    HostFsLseekResponse,
+    HostFsTruncateRequest,
+    HostFsTruncateResponse,
+    HostFsFlushRequest,
+    HostFsFlushResponse,
+    HostFsOpenRequestPart,
+    HostFsRenameRequestPart,
+    HostFsUnlinkRequestPart,
+    HostFsMkdirRequestPart,
+    HostFsRmdirRequestPart,
+    HostFsSymlinkRequestPart,
+    HostFsSymlinkResponse,
+    HostFsReadlinkRequest,
+    HostFsReadlinkRequestPart,
+    HostFsReadlinkResponse,
+    HostFsReadlinkResponsePart,
+    HostFsLstatRequest,
+    HostFsLstatRequestPart,
+    HostFsLstatResponse,
+    HostFsPathStatRequest,
+    HostFsPathStatRequestPart,
+    HostFsPathStatResponse,
+    HostMountRequestPart,
+    HostMountResponse,
+    HostUmountRequestPart,
+    HostUmountResponse,
+    // New variants must be appended here to preserve the on-the-wire discriminant
+    // values of existing variants (this enum is `#[repr(u16)]` with implicit,
+    // sequential discriminants used directly as IPC/IKC message tags).
+    HostFsReadDirResponsePart,
 }
-// Manual TryFrom<u16> implementation for LinuxDaemonMessageHeader
-impl TryFrom<u16> for LinuxDaemonMessageHeader {
+// Manual TryFrom<u16> implementation for SystemCallMessageHeader
+impl TryFrom<u16> for SystemCallMessageHeader {
     type Error = ();
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        use LinuxDaemonMessageHeader::*;
+        use SystemCallMessageHeader::*;
         match value {
             x if x == OpenAtRequestPart as u16 => Ok(OpenAtRequestPart),
             x if x == OpenAtResponse as u16 => Ok(OpenAtResponse),
@@ -324,19 +387,199 @@ impl TryFrom<u16> for LinuxDaemonMessageHeader {
             x if x == PollResponsePart as u16 => Ok(PollResponsePart),
             x if x == SelectRequest as u16 => Ok(SelectRequest),
             x if x == SelectResponse as u16 => Ok(SelectResponse),
+            x if x == HostMountRequestPart as u16 => Ok(HostMountRequestPart),
+            x if x == HostMountResponse as u16 => Ok(HostMountResponse),
+            x if x == HostUmountRequestPart as u16 => Ok(HostUmountRequestPart),
+            x if x == HostUmountResponse as u16 => Ok(HostUmountResponse),
+            x if x == HostFsOpenRequest as u16 => Ok(HostFsOpenRequest),
+            x if x == HostFsOpenResponse as u16 => Ok(HostFsOpenResponse),
+            x if x == HostFsCloseRequest as u16 => Ok(HostFsCloseRequest),
+            x if x == HostFsCloseResponse as u16 => Ok(HostFsCloseResponse),
+            x if x == HostFsReadRequest as u16 => Ok(HostFsReadRequest),
+            x if x == HostFsReadResponse as u16 => Ok(HostFsReadResponse),
+            x if x == HostFsWriteRequest as u16 => Ok(HostFsWriteRequest),
+            x if x == HostFsWriteResponse as u16 => Ok(HostFsWriteResponse),
+            x if x == HostFsStatRequest as u16 => Ok(HostFsStatRequest),
+            x if x == HostFsStatResponse as u16 => Ok(HostFsStatResponse),
+            x if x == HostFsReadDirRequest as u16 => Ok(HostFsReadDirRequest),
+            x if x == HostFsReadDirResponse as u16 => Ok(HostFsReadDirResponse),
+            x if x == HostFsReadDirResponsePart as u16 => Ok(HostFsReadDirResponsePart),
+            x if x == HostFsMkdirRequest as u16 => Ok(HostFsMkdirRequest),
+            x if x == HostFsMkdirResponse as u16 => Ok(HostFsMkdirResponse),
+            x if x == HostFsRmdirRequest as u16 => Ok(HostFsRmdirRequest),
+            x if x == HostFsRmdirResponse as u16 => Ok(HostFsRmdirResponse),
+            x if x == HostFsUnlinkRequest as u16 => Ok(HostFsUnlinkRequest),
+            x if x == HostFsUnlinkResponse as u16 => Ok(HostFsUnlinkResponse),
+            x if x == HostFsRenameRequest as u16 => Ok(HostFsRenameRequest),
+            x if x == HostFsRenameResponse as u16 => Ok(HostFsRenameResponse),
+            x if x == HostFsLseekRequest as u16 => Ok(HostFsLseekRequest),
+            x if x == HostFsLseekResponse as u16 => Ok(HostFsLseekResponse),
+            x if x == HostFsTruncateRequest as u16 => Ok(HostFsTruncateRequest),
+            x if x == HostFsTruncateResponse as u16 => Ok(HostFsTruncateResponse),
+            x if x == HostFsFlushRequest as u16 => Ok(HostFsFlushRequest),
+            x if x == HostFsFlushResponse as u16 => Ok(HostFsFlushResponse),
+            x if x == HostFsOpenRequestPart as u16 => Ok(HostFsOpenRequestPart),
+            x if x == HostFsRenameRequestPart as u16 => Ok(HostFsRenameRequestPart),
+            x if x == HostFsUnlinkRequestPart as u16 => Ok(HostFsUnlinkRequestPart),
+            x if x == HostFsMkdirRequestPart as u16 => Ok(HostFsMkdirRequestPart),
+            x if x == HostFsRmdirRequestPart as u16 => Ok(HostFsRmdirRequestPart),
+            x if x == HostFsSymlinkRequestPart as u16 => Ok(HostFsSymlinkRequestPart),
+            x if x == HostFsSymlinkResponse as u16 => Ok(HostFsSymlinkResponse),
+            x if x == HostFsReadlinkRequest as u16 => Ok(HostFsReadlinkRequest),
+            x if x == HostFsReadlinkRequestPart as u16 => Ok(HostFsReadlinkRequestPart),
+            x if x == HostFsReadlinkResponse as u16 => Ok(HostFsReadlinkResponse),
+            x if x == HostFsReadlinkResponsePart as u16 => Ok(HostFsReadlinkResponsePart),
+            x if x == HostFsLstatRequest as u16 => Ok(HostFsLstatRequest),
+            x if x == HostFsLstatRequestPart as u16 => Ok(HostFsLstatRequestPart),
+            x if x == HostFsLstatResponse as u16 => Ok(HostFsLstatResponse),
+            x if x == HostFsPathStatRequest as u16 => Ok(HostFsPathStatRequest),
+            x if x == HostFsPathStatRequestPart as u16 => Ok(HostFsPathStatRequestPart),
+            x if x == HostFsPathStatResponse as u16 => Ok(HostFsPathStatResponse),
             _ => Err(()),
         }
     }
 }
 
+impl SystemCallMessageHeader {
+    /// Returns `true` if this header identifies a host filesystem operation.
+    pub fn is_hostfs(&self) -> bool {
+        matches!(
+            self,
+            Self::HostFsOpenRequest
+                | Self::HostFsOpenResponse
+                | Self::HostFsCloseRequest
+                | Self::HostFsCloseResponse
+                | Self::HostFsReadRequest
+                | Self::HostFsReadResponse
+                | Self::HostFsWriteRequest
+                | Self::HostFsWriteResponse
+                | Self::HostFsStatRequest
+                | Self::HostFsStatResponse
+                | Self::HostFsReadDirRequest
+                | Self::HostFsReadDirResponse
+                | Self::HostFsReadDirResponsePart
+                | Self::HostFsMkdirRequest
+                | Self::HostFsMkdirResponse
+                | Self::HostFsRmdirRequest
+                | Self::HostFsRmdirResponse
+                | Self::HostFsUnlinkRequest
+                | Self::HostFsUnlinkResponse
+                | Self::HostFsRenameRequest
+                | Self::HostFsRenameResponse
+                | Self::HostFsLseekRequest
+                | Self::HostFsLseekResponse
+                | Self::HostFsTruncateRequest
+                | Self::HostFsTruncateResponse
+                | Self::HostFsFlushRequest
+                | Self::HostFsFlushResponse
+                | Self::HostFsOpenRequestPart
+                | Self::HostFsRenameRequestPart
+                | Self::HostFsUnlinkRequestPart
+                | Self::HostFsMkdirRequestPart
+                | Self::HostFsRmdirRequestPart
+                | Self::HostFsSymlinkRequestPart
+                | Self::HostFsSymlinkResponse
+                | Self::HostFsReadlinkRequest
+                | Self::HostFsReadlinkRequestPart
+                | Self::HostFsReadlinkResponse
+                | Self::HostFsReadlinkResponsePart
+                | Self::HostFsLstatRequest
+                | Self::HostFsLstatRequestPart
+                | Self::HostFsLstatResponse
+                | Self::HostFsPathStatRequest
+                | Self::HostFsPathStatRequestPart
+                | Self::HostFsPathStatResponse
+        )
+    }
+
+    /// Returns the corresponding response header for a hostfs request header.
+    ///
+    /// This provides an explicit mapping instead of relying on enum discriminant arithmetic.
+    /// Returns `None` if the header is not a hostfs request.
+    pub fn hostfs_response_header(&self) -> Option<Self> {
+        match self {
+            Self::HostFsOpenRequest | Self::HostFsOpenRequestPart => Some(Self::HostFsOpenResponse),
+            Self::HostFsCloseRequest => Some(Self::HostFsCloseResponse),
+            Self::HostFsReadRequest => Some(Self::HostFsReadResponse),
+            Self::HostFsWriteRequest => Some(Self::HostFsWriteResponse),
+            Self::HostFsStatRequest => Some(Self::HostFsStatResponse),
+            Self::HostFsReadDirRequest => Some(Self::HostFsReadDirResponse),
+            Self::HostFsMkdirRequest | Self::HostFsMkdirRequestPart => {
+                Some(Self::HostFsMkdirResponse)
+            },
+            Self::HostFsRmdirRequest | Self::HostFsRmdirRequestPart => {
+                Some(Self::HostFsRmdirResponse)
+            },
+            Self::HostFsUnlinkRequest | Self::HostFsUnlinkRequestPart => {
+                Some(Self::HostFsUnlinkResponse)
+            },
+            Self::HostFsRenameRequest | Self::HostFsRenameRequestPart => {
+                Some(Self::HostFsRenameResponse)
+            },
+            Self::HostFsLseekRequest => Some(Self::HostFsLseekResponse),
+            Self::HostFsTruncateRequest => Some(Self::HostFsTruncateResponse),
+            Self::HostFsFlushRequest => Some(Self::HostFsFlushResponse),
+            Self::HostFsSymlinkRequestPart => Some(Self::HostFsSymlinkResponse),
+            Self::HostFsReadlinkRequest | Self::HostFsReadlinkRequestPart => {
+                Some(Self::HostFsReadlinkResponse)
+            },
+            Self::HostFsLstatRequest | Self::HostFsLstatRequestPart => {
+                Some(Self::HostFsLstatResponse)
+            },
+            Self::HostFsPathStatRequest | Self::HostFsPathStatRequestPart => {
+                Some(Self::HostFsPathStatResponse)
+            },
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if this header is a hostfs response variant.
+    ///
+    /// Note: `HostFsReadlinkResponsePart` and `HostFsReadDirResponsePart` are
+    /// intentionally excluded because of their framing, not because vfsd lacks a
+    /// multi-part assembler (it now has one). For these parts, bytes `[2..6]` carry
+    /// `total_parts`/`part_number`, while the logical op_id lives in the first 4 bytes
+    /// of the assembled body. Treating them as regular hostfs responses would make
+    /// `get_op_id` read the framing bytes and remove the wrong entry from the pending
+    /// queue. They are dispatched through `is_hostfs_multipart_response` and the
+    /// dedicated assemblers in vfsd.
+    pub fn is_hostfs_response(&self) -> bool {
+        matches!(
+            self,
+            Self::HostFsOpenResponse
+                | Self::HostFsCloseResponse
+                | Self::HostFsReadResponse
+                | Self::HostFsWriteResponse
+                | Self::HostFsStatResponse
+                | Self::HostFsReadDirResponse
+                | Self::HostFsMkdirResponse
+                | Self::HostFsRmdirResponse
+                | Self::HostFsUnlinkResponse
+                | Self::HostFsRenameResponse
+                | Self::HostFsLseekResponse
+                | Self::HostFsTruncateResponse
+                | Self::HostFsFlushResponse
+                | Self::HostFsSymlinkResponse
+                | Self::HostFsReadlinkResponse
+                | Self::HostFsLstatResponse
+                | Self::HostFsPathStatResponse
+        )
+    }
+
+    /// Returns `true` if this header represents a *part* of a multi-part hostfs *response* stream.
+    pub fn is_hostfs_multipart_response(&self) -> bool {
+        matches!(self, Self::HostFsReadlinkResponsePart | Self::HostFsReadDirResponsePart)
+    }
+}
+
 #[repr(C, packed)]
-pub struct LinuxDaemonMessage {
+pub struct SystemCallMessage {
     /// Message header.
-    pub header: LinuxDaemonMessageHeader,
+    pub header: SystemCallMessageHeader,
     /// Message payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
-::static_assert::assert_eq_size!(LinuxDaemonMessage, Message::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(SystemCallMessage, Message::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Constants
@@ -345,29 +588,91 @@ pub struct LinuxDaemonMessage {
 ///
 /// # Description
 ///
-/// Process identifier of the Linux Daemon Service
+/// Process identifier of the system call provider.
 ///
 pub const LINUXD: ProcessIdentifier = ProcessIdentifier::KERNEL;
+
+///
+/// # Description
+///
+/// Process identifier of the network daemon.
+///
+pub const NETWORKD: ProcessIdentifier = ProcessIdentifier::NETWORKD;
+
+/// Destination process for networking system call requests.
+#[cfg(feature = "standalone")]
+pub const NETWORK_DESTINATION: ProcessIdentifier = NETWORKD;
+#[cfg(not(feature = "standalone"))]
+pub const NETWORK_DESTINATION: ProcessIdentifier = LINUXD;
+
+/// Source process for networking system call responses.
+///
+/// Must match the daemon that actually handles the request so that responses
+/// carry the correct origin in both deployment modes.
+#[cfg(feature = "standalone")]
+pub const NETWORK_SOURCE: ProcessIdentifier = NETWORKD;
+#[cfg(not(feature = "standalone"))]
+pub const NETWORK_SOURCE: ProcessIdentifier = LINUXD;
+
+///
+/// # Description
+///
+/// Process identifier of the VFS daemon.
+///
+pub const VFSD: ProcessIdentifier = ProcessIdentifier::VFSD;
+
+/// Destination process for VFS/filesystem system call requests.
+///
+/// In standalone mode, requests are routed to the guest-side vfsd daemon.
+/// In non-standalone modes, requests are routed to linuxd on the host.
+#[cfg(feature = "standalone")]
+pub const VFS_DESTINATION: ProcessIdentifier = VFSD;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_DESTINATION: ProcessIdentifier = LINUXD;
+
+/// Message type for VFS/filesystem system call requests.
+///
+/// In standalone mode, messages use local IPC (routed within the guest kernel).
+/// In non-standalone modes, messages use IKC (routed to the host via kernel stdio).
+#[cfg(feature = "standalone")]
+pub const VFS_MESSAGE_TYPE: ::sys::ipc::MessageType = ::sys::ipc::MessageType::Ipc;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_MESSAGE_TYPE: ::sys::ipc::MessageType = ::sys::ipc::MessageType::Ikc;
+
+/// Process identifier for push/pull data transfers in VFS operations.
+///
+/// In standalone mode, data is transferred directly between the caller and vfsd via rendezvous.
+/// In non-standalone modes, data goes through kernel stdio to linuxd.
+#[cfg(feature = "standalone")]
+pub const VFS_PUSH_PULL_PID: ProcessIdentifier = ProcessIdentifier::VFSD;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_PUSH_PULL_PID: ProcessIdentifier = ProcessIdentifier::KERNEL;
+
+/// Thread identifier for push/pull data transfers in VFS operations.
+#[cfg(feature = "standalone")]
+pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIdentifier::VFSD;
+#[cfg(not(feature = "standalone"))]
+pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIdentifier::KERNEL;
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl LinuxDaemonMessage {
+impl SystemCallMessage {
     pub const PAYLOAD_SIZE: usize =
-        Message::PAYLOAD_SIZE - mem::size_of::<LinuxDaemonMessageHeader>();
+        Message::PAYLOAD_SIZE - mem::size_of::<SystemCallMessageHeader>();
 
-    pub fn new(header: LinuxDaemonMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
+    pub fn new(header: SystemCallMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
         Self { header, payload }
     }
 
     pub fn try_from_bytes(bytes: [u8; Message::PAYLOAD_SIZE]) -> Result<Self, Error> {
         // Check if message header is valid.
-        let _header: LinuxDaemonMessageHeader =
-            LinuxDaemonMessageHeader::try_from(u16::from_ne_bytes([bytes[0], bytes[1]]))
+        let _header: SystemCallMessageHeader =
+            SystemCallMessageHeader::try_from(u16::from_ne_bytes([bytes[0], bytes[1]]))
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid message header"))?;
 
-        let message: LinuxDaemonMessage = unsafe { mem::transmute(bytes) };
+        let message: SystemCallMessage = unsafe { mem::transmute(bytes) };
 
         Ok(message)
     }

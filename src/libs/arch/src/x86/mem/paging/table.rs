@@ -65,30 +65,6 @@ impl TableIndex {
     }
 }
 
-/// Error returned when a `usize` exceeds the valid page table index range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TableIndexError;
-
-impl ::core::fmt::Display for TableIndexError {
-    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-        write!(f, "table index out of bounds")
-    }
-}
-
-impl From<TableIndexError> for ::error::Error {
-    fn from(_: TableIndexError) -> Self {
-        Self::new(::error::ErrorCode::InvalidArgument, "table index out of bounds")
-    }
-}
-
-impl TryFrom<usize> for TableIndex {
-    type Error = TableIndexError;
-
-    fn try_from(index: usize) -> Result<Self, Self::Error> {
-        Self::new(index).ok_or(TableIndexError)
-    }
-}
-
 //==================================================================================================
 // Virtual Address Index Extraction
 //==================================================================================================

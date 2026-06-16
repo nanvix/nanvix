@@ -127,4 +127,26 @@ impl InterruptedThread {
     pub fn join_cond(&self) -> Condvar {
         self.state.join_cond()
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the interrupted thread is detached.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `true` if the thread is detached, `false` otherwise.
+    ///
+    pub fn is_detached(&self) -> bool {
+        self.state.is_detached()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Marks the interrupted thread as detached.
+    ///
+    pub fn set_detached(&mut self) {
+        self.state.set_detached();
+    }
 }

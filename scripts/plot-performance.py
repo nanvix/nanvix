@@ -7,12 +7,18 @@
 Generate performance plots for Nanvix benchmarks.
 
 The script auto-discovers ``nanvix_bench_*.csv`` files under the data
-directory's ``baremetal/`` subdirectory (for self-hosted runner results) and
-``github/`` subdirectory (for GitHub runner results), keeps only the last *N*
-commits (default 100), and produces PNG plots for each benchmark: single-series
-benchmarks generate one PNG per benchmark, while sized benchmarks generate one
-PNG per message size.  Runner-specific plots are saved with ``github_`` and
-``baremetal_`` prefixes.
+directory's four subdirectories:
+
+- ``baremetal/`` — Linux self-hosted runner results
+- ``github/`` — Linux GitHub runner results
+- ``windows-baremetal/`` — Windows self-hosted runner results
+- ``windows-github/`` — Windows GitHub runner results
+
+It keeps only the last *N* commits (default 100) and produces PNG plots for
+each benchmark: single-series benchmarks generate one PNG per benchmark, while
+sized benchmarks generate one PNG per message size.  Platform- and
+runner-specific plots are saved with ``linux_baremetal_``, ``linux_github_``,
+``windows_baremetal_``, and ``windows_github_`` prefixes.
 
 Benchmarks whose CSV files follow the ``commit,p50,p95,p99`` schema and the
 ``commit,size,p50,p95,p99`` schema (e.g. ``round_trip_latency``) are
@@ -65,6 +71,8 @@ MAX_COMMITS: int = 100
 DATA_DIR: str = "data"
 BAREMETAL_SUBDIR: str = "baremetal"
 GITHUB_SUBDIR: str = "github"
+WINDOWS_BAREMETAL_SUBDIR: str = "windows-baremetal"
+WINDOWS_GITHUB_SUBDIR: str = "windows-github"
 OUTPUT_DIR: str = "plots"
 SHORT_SHA_LEN: int = 7
 
@@ -353,7 +361,7 @@ def plot_benchmark_multiplot(
     """Plot a benchmark with one subplot per percentile and one line per machine.
 
     Produces a figure with three vertically-stacked subplots (p50, p95, p99).
-    Each subplot contains one line per machine (e.g. Microvm, Hyperlight).
+    Each subplot contains one line per machine (e.g. Microvm).
 
     # Parameters
 
@@ -374,9 +382,17 @@ def plot_benchmark_multiplot(
     for info in csv_infos:
         _, rows = read_csv(info.file_path)
         if rows:
-            machine_rows[info.machine] = rows
+            valid_rows: list[list[str]] = []
             for row in rows:
+                if len(row) < 4:
+                    print(
+                        f"WARNING: skipping malformed row in '{info.file_path}': {row}"
+                    )
+                    continue
+                valid_rows.append(row)
                 all_commit_shas.add(row[0])
+            if valid_rows:
+                machine_rows[info.machine] = valid_rows
 
     if not machine_rows:
         print(f"WARNING: no data for '{bench_name}', skipping.")
@@ -475,13 +491,21 @@ def plot_sized_benchmark_multiplot(
     for info in csv_infos:
         _, rows = read_csv(info.file_path)
         if rows:
-            machine_rows[info.machine] = rows
+            valid_rows: list[list[str]] = []
             for row in rows:
+                if len(row) < 5:
+                    print(
+                        f"WARNING: skipping malformed row in '{info.file_path}': {row}"
+                    )
+                    continue
+                valid_rows.append(row)
                 all_commit_shas.add(row[0])
                 size_val: str = row[1]
                 if size_val not in seen_sizes:
                     seen_sizes.add(size_val)
                     all_sizes_ordered.append(size_val)
+            if valid_rows:
+                machine_rows[info.machine] = valid_rows
 
     if not machine_rows:
         print(f"WARNING: no data for '{bench_name}', skipping.")
@@ -659,32 +683,71 @@ def _plot_csv_files(
     return generated
 
 
+def _discover_subdir(data_dir: str, subdir: str) -> list[CsvFileInfo]:
+    """Discover benchmark CSV files in a subdirectory of *data_dir*.
+
+    # Parameters
+
+    - ``data_dir``: Root data directory.
+    - ``subdir``: Subdirectory name to scan.
+
+    # Returns
+
+    A list of ``CsvFileInfo`` objects, or an empty list if the
+    subdirectory does not exist.
+    """
+    path: str = os.path.join(data_dir, subdir)
+    if os.path.isdir(path):
+        return discover_csv_files(path)
+    return []
+
+
 def main() -> None:
     """Entry point: discover CSVs, generate plots, and report results."""
     args: argparse.Namespace = parse_args()
 
-    # Discover bare-metal (self-hosted runner) benchmark data.
-    baremetal_dir: str = os.path.join(args.data_dir, BAREMETAL_SUBDIR)
-    csv_files: list[CsvFileInfo] = []
-    if os.path.isdir(baremetal_dir):
-        csv_files = discover_csv_files(baremetal_dir)
+    # Discover benchmark data from all platform/runner subdirectories.
+    sources: list[tuple[str, str, list[CsvFileInfo]]] = [
+        (
+            "Linux bare-metal",
+            "linux_baremetal_",
+            _discover_subdir(args.data_dir, BAREMETAL_SUBDIR),
+        ),
+        (
+            "Linux GitHub runner",
+            "linux_github_",
+            _discover_subdir(args.data_dir, GITHUB_SUBDIR),
+        ),
+        (
+            "Windows bare-metal",
+            "windows_baremetal_",
+            _discover_subdir(args.data_dir, WINDOWS_BAREMETAL_SUBDIR),
+        ),
+        (
+            "Windows GitHub runner",
+            "windows_github_",
+            _discover_subdir(args.data_dir, WINDOWS_GITHUB_SUBDIR),
+        ),
+    ]
 
-    # Discover GitHub runner benchmark data.
-    github_dir: str = os.path.join(args.data_dir, GITHUB_SUBDIR)
-    github_csv_files: list[CsvFileInfo] = []
-    if os.path.isdir(github_dir):
-        github_csv_files = discover_csv_files(github_dir)
+    # If no known subdirectories were found, try data_dir itself as a
+    # flat directory containing CSV files (e.g. when the user points
+    # directly at a single subdirectory).
+    if not any(csv_files for _, _, csv_files in sources):
+        flat_files: list[CsvFileInfo] = discover_csv_files(args.data_dir)
+        if flat_files:
+            sources = [("custom", "", flat_files)]
 
-    if not csv_files and not github_csv_files:
+    if not any(csv_files for _, _, csv_files in sources):
         print(f"ERROR: no CSV files found in '{args.data_dir}'.")
         sys.exit(1)
 
     # If the user requested specific benchmarks, filter the discovered files.
     all_supported: set[str] = set(SUPPORTED_BENCHMARKS) | set(SIZED_BENCHMARKS)
     if args.benchmarks:
-        all_known: set[str] = {i.bench_name for i in csv_files} | {
-            i.bench_name for i in github_csv_files
-        }
+        all_known: set[str] = set()
+        for _, _, csv_files in sources:
+            all_known |= {i.bench_name for i in csv_files}
         unknown: list[str] = [b for b in args.benchmarks if b not in all_known]
         if unknown:
             print(f"WARNING: unknown benchmarks ignored: {unknown}")
@@ -694,39 +757,29 @@ def main() -> None:
         if unsupported:
             print(f"WARNING: unsupported benchmarks skipped: {unsupported}")
         bench_set: set[str] = set(args.benchmarks)
-        csv_files = [i for i in csv_files if i.bench_name in bench_set]
-        github_csv_files = [i for i in github_csv_files if i.bench_name in bench_set]
+        sources = [
+            (label, prefix, [i for i in csv_files if i.bench_name in bench_set])
+            for label, prefix, csv_files in sources
+        ]
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     generated: list[str] = []
 
-    # Plot bare-metal benchmark data.
-    if csv_files:
-        print("--- Bare-metal benchmarks ---")
-        generated.extend(
-            _plot_csv_files(
-                csv_files,
-                args.output_dir,
-                args.max_commits,
-                file_prefix="baremetal_",
+    for label, prefix, csv_files in sources:
+        if csv_files:
+            print(f"--- {label} benchmarks ---")
+            generated.extend(
+                _plot_csv_files(
+                    csv_files,
+                    args.output_dir,
+                    args.max_commits,
+                    file_prefix=prefix,
+                )
             )
-        )
-
-    # Plot GitHub runner benchmark data.
-    if github_csv_files:
-        print("\n--- GitHub runner benchmarks ---")
-        generated.extend(
-            _plot_csv_files(
-                github_csv_files,
-                args.output_dir,
-                args.max_commits,
-                file_prefix="github_",
-            )
-        )
 
     if generated:
-        print(f"\nGenerated {len(generated)} plot(s) in '{args.output_dir}/':")
+        print(f"Generated {len(generated)} plot(s) in '{args.output_dir}/':")
         for path in generated:
             print(f"  - {path}")
     else:

@@ -5,7 +5,95 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/nanvix/nanvix)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/nanvix/nanvix/ci.yml?branch=dev&label=tests)
 
-Nanvix is a microkernel-based research operating system.
+Nanvix is a sandboxing technology for running untrusted applications in a hardware-isolated
+environment with minimal overhead.
+
+> **Note**: This repository contains the implementation of the sandbox. If you are looking to use
+> Nanvix, refer to [nanvix-python](https://github.com/nanvix/nanvix-python), a Python distribution
+> of Nanvix.
+
+## Overview
+
+Nanvix features a **unique co-designed architecture** that combines two key innovations:
+
+- A **purpose-built Micro-VM** that provides hardware-enforced isolation with minimal overhead. This
+  Micro-VM is designed to be as lightweight as possible, exposing only a virtual processor and
+  memory to the guest and stripping away all device emulation and other features that add latency.
+
+- A **multikernel OS** that enables flexible system component placement and sharing. This design
+  splits the OS across two kernels: a guest-side Microkernel that runs inside the Micro-VM and
+  provides essential OS features; and a host-side Macro-Kernel that runs on the host platform and
+  provides network and storage software switches. System components run as special processes on top
+  of either kernel, depending on the deployment configuration.
+
+Read more about this architecture in our paper: [Nanvix: A Multikernel OS Design for High-Density
+Serverless Deployments](https://arxiv.org/abs/2604.11669).
+
+```plain
+   ┌─────────────────────────────────────┐
+   │               Micro-VM              │   Microkernel on Micro-VM runs:
+   │              Microkernel            │     • The untrusted application.
+   │                                     │     • Essential system services (scheduler, etc.).
+   │   ┌─────────────┐ ┌──────────────┐  │     • Optional in-guest components (e.g. filesystem).
+   │   │ Application │ │  Filesystem  │  │
+   │   └─────────────┘ └──────────────┘  │
+   └──────────────────┬──────────────────┘
+                      │  selected I/O
+                      │  (e.g. network)
+                      ▼
+   ┌─────────────────────────────────────┐
+   │             Macro-Kernel            │   Macro-Kernel on host platform runs:
+   │              (host OS)              │     • Network software switch.
+   │                                     │     • Storage software switch.
+   │           ┌──────────────┐          │     • Host-side system components (e.g. network stack).
+   │           │   Network    │          │
+   │           └──────────────┘          │
+   └─────────────────────────────────────┘
+```
+
+### Key Features
+
+- **Lightweight Virtual Machine**: Hardware isolation with minimal overhead — no device
+  emulation, just a virtual processor and memory.
+- **Custom Guest Microkernel**: A thin kernel exposing a rich feature set and POSIX API to support a
+  wide range of applications (see our software [catalog](https://github.com/nanvix/catalog)).
+- **Flexible Placement of System Components**: Components like filesystem and networking stack can
+  run either on the guest-side or the host-side.
+- **Cross-Platform Support**: Runs on both Linux and Windows hosts.
+- **Fast Startup Times**: Application startup in the double-digit millisecond range, suitable for
+  serverless and agentic workloads.
+- **Low Memory Footprint**: Tens of megabytes of memory consumption per Micro-VM, friendly to
+  resource-constrained environments and high-density deployments.
+
+### Quick Comparison
+
+| Feature                      | Nanvix | Unikraft | Firecracker | gVisor  | Docker | WebAssembly |
+| ---------------------------- | ------ | -------- | ----------- | ------- | ------ | ----------- |
+| Flexible Component Placement | ✅     | ❌       | ❌          | ❌      | ❌     | ❌          |
+| Multiple Guest Processes     | ✅     | ❌       | ✅          | ✅      | ✅     | ❌          |
+| Hardware Isolation           | ✅     | ✅       | ✅          | ❌      | ❌     | ❌          |
+| Startup Time                 | ~30ms  | ~320ms   | ~70ms       | ~160ms  | ~1s    | ~1ms        |
+| Memory Footprint             | ~10MB  | ~10MB    | 10–100MB    | 10–50MB | ~100MB | ~1MB        |
+| Deployment Density           | ~10k   | ~1k      | ~1k         | ~1k     | ~100   | ~10k        |
+| Full Linux Compatibility     | ❌     | ❌       | ✅          | ✅      | ✅     | ❌          |
+
+> Startup time is the p50 latency to serve the first HTTP echo request; memory footprint is the
+> per-instance contribution to host memory for the same workload, measured via `MemAvailable` in
+> `/proc/meminfo`. Nanvix and Firecracker use snapshot-restore (the production serverless
+> configuration); Unikraft and gVisor use cold start (no production snapshot path available). Ranges
+> span cold boot and snapshot-restore variants where applicable. Docker and WebAssembly are
+> approximate community values. See [arXiv:2604.11669](https://arxiv.org/abs/2604.11669) for more
+> on the methodology.
+
+### Trade-Offs
+
+- **Linux Compatibility**: Nanvix provides a POSIX API with 150+ system calls, but it is not fully
+  compatible with all Linux applications and may require some modifications to run certain
+  applications.
+- **Growing Software Ecosystem**: The catalog of ready-to-run applications is growing, so bringing
+  up new workloads typically requires porting and cross-compiling them against the Nanvix toolchain.
+  See the [catalog](https://github.com/nanvix/catalog) for a list of applications that have already
+  been ported.
 
 ## Quick Start
 

@@ -2,7 +2,8 @@
 # Licensed under the MIT License.
 
 name: "Prepare Test Artifacts"
-description: "Download build artifacts, make binaries executable, and recreate sysroot symlink"
+description: "Download build artifacts, make binaries executable, and recreate
+  sysroot symlink"
 
 inputs:
   build-type:
@@ -25,7 +26,8 @@ runs:
     - name: "Download Build Artifacts"
       uses: actions/download-artifact@v7
       with:
-        name: ci-build-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{ inputs.deployment-type }}-${{ inputs.memory-size }}mb
+        name: ci-build-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{
+          inputs.deployment-type }}-${{ inputs.memory-size }}mb
         path: .
 
     - name: "Make binaries executable"
@@ -33,7 +35,7 @@ runs:
       run: chmod +x bin/*.elf 2>/dev/null || true
 
     - name: "Recreate sysroot symlink"
-      if: inputs.machine-type == 'microvm' || inputs.machine-type == 'hyperlight'
+      if: inputs.machine-type == 'microvm'
       shell: bash
       run: |
         # The sysroot symlink created during build uses an absolute path that

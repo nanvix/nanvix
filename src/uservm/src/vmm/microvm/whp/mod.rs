@@ -37,13 +37,17 @@ use crate::{
         guest::{
             Guest,
             GuestState,
+            PreparedInitrd,
         },
-        microvm::whp::vcpu::{
-            VirtualProcessor,
-            VirtualProcessorExitContext,
-            VirtualProcessorExitReasonRef,
+        microvm::{
+            ramfs,
+            ramfs::RamFs,
+            whp::vcpu::{
+                VirtualProcessor,
+                VirtualProcessorExitContext,
+                VirtualProcessorExitReasonRef,
+            },
         },
-        ramfs::RamFs,
     },
 };
 use ::anyhow::Result;
@@ -293,15 +297,19 @@ impl IkcNotifier {
 
 /// Serializable WHP snapshot holding guest metadata and vCPU register state.
 ///
-/// Memory is saved separately via the sparse snapshot APIs
-/// [`vmem::VirtualMemory::save_snapshot_sparse`] and
-/// [`vmem::VirtualMemory::load_snapshot_sparse`].
+/// Memory is saved separately via the dense snapshot APIs
+/// [`vmem::VirtualMemory::save_snapshot_dense`] and
+/// [`vmem::VirtualMemory::load_snapshot_cow`].
 #[derive(Serialize, Deserialize)]
 struct WhpSnapshot {
     /// Guest metadata (kernel/initrd locations, credits, entry point).
     guest_state: GuestState,
     /// Full vCPU register and LAPIC state.
     vcpu_state: vcpu::VcpuState,
+    /// Pvclock `system_time` value (nanoseconds) at the moment the snapshot was taken.
+    /// On restore, this becomes the time base so the guest sees monotonically advancing time.
+    #[serde(default)]
+    pvclock_time_ns: u64,
 }
 
 //==================================================================================================
@@ -336,9 +344,18 @@ pub struct Vmm {
     shutdown_flag: Arc<AtomicBool>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
+    /// Pvclock time base in nanoseconds. When restoring from a snapshot, this is set to
+    /// the `system_time` value at snapshot time so that the guest sees monotonically
+    /// increasing time (base + run-loop elapsed).
+    pvclock_time_base_ns: Arc<std::sync::atomic::AtomicU64>,
+    /// Last pvclock `system_time` value (nanoseconds) written to the guest. Used by
+    /// `create_snapshot` to persist the current time without needing access to `loop_start`.
+    pvclock_last_written_ns: Arc<std::sync::atomic::AtomicU64>,
     /// Performance timings collector for fine-grained startup breakdown.
     #[cfg(feature = "profile-time")]
     perf_timings: PerfTimings,
+    /// Guest stack profiler (active when guest_profile_path is set).
+    guest_profiler: Option<Arc<std::sync::Mutex<Vec<crate::guest_profiler::StackSample>>>>,
 }
 
 ///
@@ -360,6 +377,9 @@ struct InteriorWhpHandle {
     kernel_filename: String,
     /// When true, the next guest-initiated snapshot request is silently skipped.
     skip_next_snapshot: bool,
+    /// When true, the guest is entitled to take exactly one snapshot.
+    /// Set from the `snapshot` kernel option; consumed on the first successful request.
+    snapshot_allowed: bool,
 }
 
 //==================================================================================================
@@ -425,6 +445,11 @@ impl Vmm {
         #[cfg(feature = "profile-time")]
         perf_timings.set_vcpu_create(vcpu_create_start.elapsed().as_micros() as u64);
 
+        // Determine whether the snapshot kernel option is present.
+        let snapshot_allowed: bool = args.kernel_args.as_deref().is_some_and(|kargs| {
+            ::koptions::parse(kargs).contains(&::koptions::KernelOption::Snapshot)
+        });
+
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             Arc::new(Mutex::new(Guest::default()))
         } else {
@@ -439,47 +464,114 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
 
+            // Write kernel arguments to guest control registers. These registers reside in
+            // the kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default, so
+            // this write must happen after it. (With the `nightly-performance-optimizations`
+            // feature the loader skips that zeroing and relies on the freshly allocated guest
+            // memory already being zero, but writing after `load_kernel()` remains correct.)
+            if let Some(ref kargs) = args.kernel_args {
+                Guest::write_kernel_args(&mut vmem, kargs)?;
+            }
+
             // Phase: Initrd loading.
+            // When a RAMFS will also be loaded, prepare the initrd for zero-copy mapping
+            // so it can be combined with the RAMFS into a single remap_files_at() call.
             #[cfg(feature = "profile-time")]
             let initrd_load_start: Instant = Instant::now();
 
-            args.initrd_filename
-                .as_ref()
-                .map(|initrd_filename| {
-                    guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
-                })
-                .transpose()?;
+            let has_ramfs: bool = args.ramfs_filename.is_some();
+
+            // When RAMFS is present, page-aligned initrd files can be included in the
+            // combined zero-copy remap.  Non-page-aligned files fall back to copy-based
+            // loading because `CreateFileMappingW(PAGE_WRITECOPY)` constrains the section's
+            // maximum size to the raw file size, which cannot match a page-granular
+            // placeholder required by `MapViewOfFile3(MEM_REPLACE_PLACEHOLDER)`.
+            let prepared_initrd: Option<PreparedInitrd> = if has_ramfs {
+                if let Some(ref initrd_filename) = args.initrd_filename {
+                    let file_len: u64 = std::fs::metadata(initrd_filename)
+                        .map_err(|e| anyhow::anyhow!("failed to query initrd metadata: {e}"))?
+                        .len();
+                    if (file_len as usize).is_multiple_of(::arch::mem::PAGE_SIZE) {
+                        // Page-aligned: defer to combined zero-copy remap.
+                        Some(guest.prepare_initrd(
+                            &vmem,
+                            initrd_filename,
+                            args.initrd_args.clone(),
+                        )?)
+                    } else {
+                        // Not page-aligned: fall back to copy-based loading.
+                        guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args.clone())?;
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                // No RAMFS to combine with: fall back to the copy-based path.
+                args.initrd_filename
+                    .as_ref()
+                    .map(|initrd_filename| {
+                        guest.load_initrd(&mut vmem, initrd_filename, args.initrd_args)
+                    })
+                    .transpose()?;
+                None
+            };
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
 
-            // Phase: RamFS loading.
+            // Phase: RamFS loading (with optional combined initrd zero-copy remap).
             #[cfg(feature = "profile-time")]
             let ramfs_load_start: Instant = Instant::now();
 
-            let ramfs_region: Option<(usize, usize)> =
-                if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
-                    let initrd_end: usize = match guest.initrd_region() {
-                        Some((base, size)) => match base.checked_add(size) {
-                            Some(end) => end,
-                            None => {
-                                let reason: String = "initrd region overflowed while computing \
-                                                      ramfs placement"
-                                    .to_string();
-                                error!("new(): {reason}");
-                                anyhow::bail!(reason)
-                            },
+            let ramfs_region: Option<(usize, usize)> = {
+                let initrd_end: usize = match guest.initrd_region() {
+                    Some((base, size)) => match base.checked_add(size) {
+                        Some(end) => end,
+                        None => {
+                            let reason: String = "initrd region overflowed while computing ramfs \
+                                                  placement"
+                                .to_string();
+                            error!("new(): {reason}");
+                            anyhow::bail!(reason)
                         },
-                        None => ::config::microvm::DEFAULT_INITRD_BASE,
-                    };
-
-                    let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
-                    let (ramfs_base, ramfs_size) =
-                        ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
-                    Some((ramfs_base, ramfs_size))
-                } else {
-                    None
+                    },
+                    None => ::config::microvm::DEFAULT_INITRD_BASE,
                 };
+
+                // Build the extra remap regions list from the prepared initrd (if any).
+                let initrd_remap: Vec<(usize, &std::fs::File)> = prepared_initrd
+                    .as_ref()
+                    .map(|pi| vec![(pi.base, &pi.file)])
+                    .unwrap_or_default();
+
+                let loaded: ramfs::LoadedRamFs = ramfs::load_ramfs(
+                    &mut vmem,
+                    initrd_end,
+                    args.ramfs_filename.as_deref(),
+                    &initrd_remap,
+                )?;
+
+                match loaded {
+                    ramfs::LoadedRamFs::Single { base, size, .. } => Some((base, size)),
+                    ramfs::LoadedRamFs::None => None,
+                }
+            };
+
+            // Finalize initrd arguments: write them into the gap memory between
+            // the initrd view and the ramfs view, which was re-committed by the
+            // combined remap.
+            if let Some(ref pi) = prepared_initrd
+                && let Some(ref initrd_args_str) = pi.args
+            {
+                guest.write_args(&mut vmem, initrd_args_str)?;
+            }
+
+            // Keep the initrd file handle alive for the VM's lifetime so the
+            // file-backed mapping remains valid.
+            if let Some(pi) = prepared_initrd {
+                vmem.attach_backing_files(vec![pi.file]);
+            }
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
@@ -502,12 +594,36 @@ impl Vmm {
             guest.reset(&mut vmem, &mut vcpu)?;
 
             // Populate the pvclock page so the kernel uses TSC-based time instead
-            // of PIT tick counting. This must run AFTER load_kernel() because the
-            // ELF loader zero-fills the page at DEFAULT_PVCLOCK_PAGE.
+            // of PIT tick counting. The page at DEFAULT_PVCLOCK_PAGE resides in the
+            // kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default,
+            // so this must run after it. (With the `nightly-performance-optimizations`
+            // feature the loader skips that zeroing and relies on the freshly allocated
+            // guest memory already being zero, but running after `load_kernel()` remains
+            // correct.)
             Self::setup_pvclock(&mut vmem)?;
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
+
+            // Phase: EPT pre-population.
+            // Pre-populate EPT entries for the kernel and ramfs regions so the hypervisor resolves
+            // SLAT entries from the host side before guest execution.  This avoids costly EPT
+            // violations during WHvRunVirtualProcessor.
+            #[cfg(feature = "profile-time")]
+            let ept_populate_start: Instant = Instant::now();
+
+            vmem.populate_ept(&guest.ept_populate_ranges()?)?;
+
+            // Pre-populate file-backed initrd pages with read-only access. This brings the
+            // pages into the working set and SLAT without triggering copy-on-write on the
+            // PAGE_WRITECOPY mapping.
+            let read_ranges: Vec<(u64, u64)> = guest.ept_populate_read_ranges();
+            if !read_ranges.is_empty() {
+                vmem.populate_ept_read(&read_ranges)?;
+            }
+
+            #[cfg(feature = "profile-time")]
+            perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
 
             Arc::new(Mutex::new(guest))
         };
@@ -539,9 +655,13 @@ impl Vmm {
                 control_tx: args.control_tx,
                 kernel_filename: args.kernel_filename,
                 skip_next_snapshot: false,
+                snapshot_allowed,
             })),
+            pvclock_time_base_ns: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            pvclock_last_written_ns: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             #[cfg(feature = "profile-time")]
             perf_timings,
+            guest_profiler: None,
         })
     }
 
@@ -611,6 +731,35 @@ impl Vmm {
         // providing pvclock updates once user-space is running.
         let mut timer_started: bool = false;
 
+        // Guest profiler: start a dedicated cancel timer for periodic sampling.
+        // Deferred slightly to avoid interfering with the first VP entry.
+        // Uses a dedicated `AtomicBool` flag so only profiler-driven cancels
+        // trigger sampling (not pvclock or other `Interrupted` exits).
+        let profiler_cancel_pending = Arc::new(AtomicBool::new(false));
+        let profiler_stop = Arc::new(AtomicBool::new(false));
+        let mut profiler_thread: Option<std::thread::JoinHandle<()>> = None;
+        let mut profiler_timer_started: bool = false;
+        /// Number of VM exits to skip before starting the profiler timer,
+        /// avoiding interference with the initial vCPU entry sequence.
+        const PROFILER_START_DELAY_EXITS: u64 = 5;
+        let mut exit_count: u64 = 0;
+
+        // Per-exit-type counters for profiling.
+        #[cfg(feature = "profile-time")]
+        let mut exit_pmio_out_fast: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_pmio_in_fast: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_pmio_slow: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_interrupted: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_halt: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_mmio: u64 = 0;
+        #[cfg(feature = "profile-time")]
+        let mut exit_intwin: u64 = 0;
+
         // PIT channel 2 state for LAPIC timer calibration. The guest
         // programs PIT ch2 in one-shot mode and polls port 0x61 bit 5
         // to detect when the countdown expires.
@@ -634,18 +783,56 @@ impl Vmm {
             // exits. The guest kernel tolerates stale system_time values
             // within a few milliseconds.
             if last_pvclock_update.elapsed() >= PVCLOCK_UPDATE_INTERVAL {
+                let pvclock_base: u64 = self
+                    .pvclock_time_base_ns
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                let system_time_ns: u64 = pvclock_base + loop_start.elapsed().as_nanos() as u64;
                 Self::update_pvclock(
                     &mut self.vmem.blocking_lock(),
                     &mut pvclock_version,
-                    loop_start.elapsed().as_nanos() as u64,
+                    system_time_ns,
                 );
+                self.pvclock_last_written_ns
+                    .store(system_time_ns, std::sync::atomic::Ordering::Relaxed);
                 last_pvclock_update = Instant::now();
             }
 
             // Consume pending IKC notification.  to prevent re-delivery on the next loop iteration.
             let _ = self.ikc_notifier.take_pending();
 
-            let exit_context = {
+            // Start profiler cancel timer after a few exits to avoid the first-entry cost.
+            exit_count += 1;
+            if self.guest_profiler.is_some()
+                && !profiler_timer_started
+                && exit_count > PROFILER_START_DELAY_EXITS
+            {
+                let stop = profiler_stop.clone();
+                let pending = profiler_cancel_pending.clone();
+                let partition = self.partition_handle;
+                profiler_thread = Some(std::thread::spawn(move || {
+                    unsafe { timer::timeBeginPeriod(1) };
+                    // Target ~1 kHz sampling. Actual rate is approximate due to
+                    // Windows scheduler granularity, even with timeBeginPeriod(1).
+                    let period = std::time::Duration::from_micros(1000);
+                    while !stop.load(Ordering::Relaxed) {
+                        std::thread::sleep(period);
+                        if stop.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        pending.store(true, Ordering::Release);
+                        unsafe {
+                            let _ =
+                                windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
+                                    partition, 0, 0,
+                                );
+                        }
+                    }
+                    unsafe { timer::timeEndPeriod(1) };
+                }));
+                profiler_timer_started = true;
+            }
+
+            let (exit_context, profile_regs) = {
                 let mut locked_vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
                 // Exit if the vCPU is no longer online.
                 if !locked_vcpu.is_online() {
@@ -665,8 +852,39 @@ impl Vmm {
                 {
                     guest_time_acc_us += run_start.elapsed().as_micros() as u64;
                 }
-                ctx
+
+                // Guest profiler: read registers only when our profiler timer fired.
+                let regs = if self.guest_profiler.is_some()
+                    && profiler_cancel_pending.swap(false, Ordering::Acquire)
+                    && matches!(ctx.reason_ref(), VirtualProcessorExitReasonRef::Interrupted)
+                {
+                    locked_vcpu.get_profile_regs().ok()
+                } else {
+                    None
+                };
+
+                (ctx, regs)
             };
+
+            // Guest profiler: capture sample after vcpu lock is released.
+            //
+            // Safety: The vCPU is stopped at this point — WHvRunVirtualProcessor
+            // returned with an Interrupted exit, and the next run() call hasn't
+            // been issued yet. Guest memory (page tables, stack) cannot change
+            // while the vCPU is not executing, so reading vmem here is safe.
+            if let (Some(profiler_samples), Some((eip, ebp, cr3))) =
+                (&self.guest_profiler, profile_regs)
+            {
+                let vmem_guard = self.vmem.blocking_lock();
+                crate::guest_profiler::GuestProfiler::capture_sample(
+                    profiler_samples,
+                    vmem_guard.get_raw_ptr(),
+                    vmem_guard.get_size(),
+                    eip,
+                    ebp,
+                    cr3,
+                );
+            }
 
             // Parse exit reason.
             match exit_context.reason_ref() {
@@ -677,16 +895,28 @@ impl Vmm {
                         match *port {
                             // PIT control register: track channel 2 programming.
                             0x43 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 pit_ch2.handle_ctrl_write(*data as u8);
                                 continue;
                             },
                             // PIT channel 2 data register.
                             0x42 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 pit_ch2.handle_data_write(*data as u8);
                                 continue;
                             },
                             // Speaker/gate control: track gate enable.
                             0x61 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 pit_ch2.handle_speaker_write(*data as u8);
                                 continue;
                             },
@@ -702,6 +932,10 @@ impl Vmm {
                             | 0x70
                             | 0x71
                             | 0x3F8..=0x3FF => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_out_fast += 1;
+                                }
                                 continue;
                             },
                             _ => {},
@@ -711,8 +945,12 @@ impl Vmm {
                         match *port {
                             // PIT channel 2 output: return gate/OUT2 status.
                             0x61 => {
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_in_fast += 1;
+                                }
                                 let value: u8 = pit_ch2.read_speaker();
-                                Self::set_guest_rax(self.partition_handle, value as u64);
+                                self.vcpu.blocking_lock().set_rip_and_rax(value as u64);
                                 continue;
                             },
                             // Other legacy ports: return zero.
@@ -728,7 +966,11 @@ impl Vmm {
                             | 0x3F8..=0x3FF
                             | 0xCF8
                             | 0xCFC..=0xCFF => {
-                                Self::set_guest_rax(self.partition_handle, 0);
+                                #[cfg(feature = "profile-time")]
+                                {
+                                    exit_pmio_in_fast += 1;
+                                }
+                                self.vcpu.blocking_lock().set_rip_and_rax(0);
                                 continue;
                             },
                             _ => {},
@@ -736,6 +978,12 @@ impl Vmm {
                     }
 
                     // Slow path: application-level I/O (stdout, stdin, VMM port).
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_pmio_slow += 1;
+                    }
+                    // Flush any deferred RIP advance for reads that reach the slow path.
+                    self.vcpu.blocking_lock().flush_pending_rip();
 
                     let exit_status: Option<u16> = match self
                         .inner
@@ -771,9 +1019,24 @@ impl Vmm {
                                 }
                             }
                         } else if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
-                            if let Err(e) = Handle::current().block_on(self.handle_snapshot()) {
-                                error!("VMM exit: snapshot error (error={e:?})");
-                                break Err(e);
+                            // One-shot "save and exit" flow: once the snapshot files are
+                            // durable on disk, shut the VM down with exit code 0 so the
+                            // standalone daemon returns to its caller instead of running the
+                            // guest on. `handle_snapshot()` returns `false` for the OUT that is
+                            // absorbed via `skip_next_snapshot` after a restore; in that case
+                            // keep running the restored guest.
+                            let took_snapshot: bool =
+                                match Handle::current().block_on(self.handle_snapshot()) {
+                                    Ok(took) => took,
+                                    Err(e) => {
+                                        error!("VMM exit: snapshot error (error={e:?})");
+                                        break Err(e);
+                                    },
+                                };
+                            if took_snapshot {
+                                let exit_status: u16 = 0;
+                                Handle::current().block_on(self.handle_shutdown(exit_status));
+                                break Ok(exit_status);
                             }
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             warn!(
@@ -795,6 +1058,10 @@ impl Vmm {
                 // HLT: with LAPIC emulation enabled, HLT is handled internally by the LAPIC and
                 // shouldn't cause VM exits.  If it does, log and re-enter the vCPU loop.
                 VirtualProcessorExitReasonRef::Halt => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_halt += 1;
+                    }
                     warn!("VMM exit: HLT");
                     continue;
                 },
@@ -803,12 +1070,20 @@ impl Vmm {
                 // timer thread). Re-enter after pvclock update
                 // (handled at top of loop).
                 VirtualProcessorExitReasonRef::Interrupted => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_interrupted += 1;
+                    }
                     continue;
                 },
 
                 // InterruptWindow: IF just became 1. With LAPIC-based
                 // delivery, interrupts are handled by the LAPIC emulator.
                 VirtualProcessorExitReasonRef::InterruptWindow => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_intwin += 1;
+                    }
                     continue;
                 },
 
@@ -820,6 +1095,10 @@ impl Vmm {
 
                 // Guest accessed a memory-mapped address.
                 VirtualProcessorExitReasonRef::MmioAccess(gpa) => {
+                    #[cfg(feature = "profile-time")]
+                    {
+                        exit_mmio += 1;
+                    }
                     // Check if access falls within the LAPIC page.
                     let page_gpa: u64 = gpa & !(::arch::mem::PAGE_SIZE as u64 - 1);
                     if page_gpa == ::config::microvm::DEFAULT_LAPIC_BASE as u64 {
@@ -838,6 +1117,12 @@ impl Vmm {
 
         self.timer.lock().unwrap().stop();
 
+        // Stop profiler timer if running.
+        profiler_stop.store(true, Ordering::Relaxed);
+        if let Some(t) = profiler_thread.take() {
+            let _ = t.join();
+        }
+
         // Record guest vs exit-handling time breakdown.
         #[cfg(feature = "profile-time")]
         {
@@ -845,6 +1130,17 @@ impl Vmm {
             self.perf_timings.set_guest_exec(guest_time_acc_us);
             self.perf_timings
                 .set_exit_handling(loop_total_us.saturating_sub(guest_time_acc_us));
+            self.perf_timings.set_exit_count_total(exit_count);
+            self.perf_timings
+                .set_exit_count_pmio_out_fast(exit_pmio_out_fast);
+            self.perf_timings
+                .set_exit_count_pmio_in_fast(exit_pmio_in_fast);
+            self.perf_timings.set_exit_count_pmio_slow(exit_pmio_slow);
+            self.perf_timings
+                .set_exit_count_interrupted(exit_interrupted);
+            self.perf_timings.set_exit_count_halt(exit_halt);
+            self.perf_timings.set_exit_count_mmio(exit_mmio);
+            self.perf_timings.set_exit_count_intwin(exit_intwin);
         }
 
         warn!("VMM run loop finished (result={result:?}, elapsed={:?})", loop_start.elapsed());
@@ -867,6 +1163,16 @@ impl Vmm {
     ///
     pub fn guest(&self) -> Arc<Mutex<Guest>> {
         self.guest.clone()
+    }
+
+    /// Enables guest stack profiling. Returns the profiler handle for
+    /// reading samples after VM exit.
+    pub fn enable_guest_profiler(&mut self) -> crate::guest_profiler::GuestProfiler {
+        let profiler = crate::guest_profiler::GuestProfiler::new(
+            crate::guest_profiler::DEFAULT_SAMPLE_CAPACITY,
+        );
+        self.guest_profiler = Some(profiler.handle());
+        profiler
     }
 
     /// Returns a clone of the IKC notifier for use by the memory thread.
@@ -912,6 +1218,9 @@ impl Vmm {
     /// Upon successful completion, an empty result is returned. Otherwise, it returns an error.
     ///
     pub async fn create_snapshot(&self, filepath: String) -> Result<()> {
+        #[cfg(feature = "profile-time")]
+        let snapshot_creation_start: Instant = Instant::now();
+
         let (vmem_filepath, whp_filepath) = Self::make_snapshot_paths(&filepath);
 
         // Ensure snapshots directory exists.
@@ -919,24 +1228,41 @@ impl Vmm {
             std::fs::create_dir_all(parent)?;
         }
 
-        // Save guest memory (sparse format: only non-zero pages).
-        if let Err(e) = self.vmem.lock().await.save_snapshot_sparse(&vmem_filepath) {
+        // Save guest memory (dense format: raw image for COW-mapped restore).
+        if let Err(e) = self.vmem.lock().await.save_snapshot_dense(&vmem_filepath) {
             let reason: String = format!("failed creating virtual memory snapshot (error={e:?})");
             error!("create_snapshot(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Save vCPU and guest state.
+        // Capture the last pvclock system_time written to the guest so restore can
+        // use it as the time base, ensuring monotonically advancing guest time.
+        let pvclock_time_ns: u64 = self
+            .pvclock_last_written_ns
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        // Save vCPU, guest state, and pvclock time.
         let whp_snapshot = WhpSnapshot {
             guest_state: self.guest.lock().await.save_state()?,
             vcpu_state: self.vcpu.lock().await.save_state()?,
+            pvclock_time_ns,
         };
 
         let mut file: File = File::create(&whp_filepath)?;
         match ::serde_cbor::to_vec(&whp_snapshot) {
             Ok(buffer) => {
                 file.write_all(&buffer)?;
-                trace!("create_snapshot(): wrote {} bytes to WHP snapshot file", buffer.len());
+                trace!(
+                    "create_snapshot(): wrote {} bytes to WHP snapshot file \
+                     (pvclock_ns={pvclock_time_ns})",
+                    buffer.len()
+                );
+                #[cfg(feature = "profile-time")]
+                {
+                    #![allow(clippy::cast_possible_truncation)]
+                    let elapsed_us: u64 = snapshot_creation_start.elapsed().as_micros() as u64;
+                    self.perf_timings.set_snapshot_creation(elapsed_us);
+                }
                 Ok(())
             },
             Err(e) => {
@@ -963,8 +1289,8 @@ impl Vmm {
     pub async fn load_snapshot(&self, filepath: String) -> Result<()> {
         let (vmem_filepath, whp_filepath) = Self::make_snapshot_paths(&filepath);
 
-        // Load guest memory (sparse format).
-        if let Err(e) = self.vmem.lock().await.load_snapshot_sparse(&vmem_filepath) {
+        // Load guest memory (COW-mapped from dense snapshot file).
+        if let Err(e) = self.vmem.lock().await.load_snapshot_cow(&vmem_filepath) {
             let reason: String = format!("failed loading virtual memory snapshot (error={e:?})");
             error!("load_snapshot(): {reason}");
             anyhow::bail!(reason)
@@ -1001,6 +1327,15 @@ impl Vmm {
             .lock()
             .await
             .load_state(&whp_snapshot.vcpu_state)?;
+
+        // Restore pvclock time base so the run loop resumes with monotonically advancing
+        // time: system_time = snapshot_time + new_loop_elapsed.
+        let restored_time_ns: u64 = whp_snapshot.pvclock_time_ns;
+        self.pvclock_time_base_ns
+            .store(restored_time_ns, std::sync::atomic::Ordering::Relaxed);
+        self.pvclock_last_written_ns
+            .store(restored_time_ns, std::sync::atomic::Ordering::Relaxed);
+        trace!("load_snapshot(): restored pvclock_time_base_ns={restored_time_ns}");
 
         Ok(())
     }
@@ -1048,20 +1383,31 @@ impl Vmm {
     /// WHP advances RIP before delivering port-I/O exits, so the saved
     /// state already points past the `out` instruction. Unlike KVM, no
     /// `skip_next_snapshot` guard is needed to prevent re-triggering.
-    async fn handle_snapshot(&self) -> Result<()> {
+    async fn handle_snapshot(&self) -> Result<bool> {
+        // Scope the lock to avoid deadlock: `create_snapshot` re-acquires `self.inner`.
+        // Safety: no concurrent snapshot requests can race here because snapshot is triggered
+        // by a single vCPU VMEXIT which is processed sequentially on the VMM run loop.
         let kernel_filename: String = {
             let mut locked_inner: MutexGuard<'_, InteriorWhpHandle> = self.inner.lock().await;
             if locked_inner.skip_next_snapshot {
                 trace!("handle_snapshot(): skipping snapshot (restored from snapshot)");
                 locked_inner.skip_next_snapshot = false;
-                return Ok(());
+                return Ok(false);
+            }
+            if !locked_inner.snapshot_allowed {
+                error!("handle_snapshot(): snapshot refused (not enabled or already consumed)");
+                anyhow::bail!(
+                    "snapshot refused: not enabled via kernel option or already consumed"
+                );
             }
             locked_inner.kernel_filename.clone()
         };
         match self.create_snapshot(kernel_filename).await {
             Ok(()) => {
+                // Consume the one-shot permission only after a successful snapshot.
+                self.inner.lock().await.snapshot_allowed = false;
                 trace!("handle_snapshot(): snapshot created successfully");
-                Ok(())
+                Ok(true)
             },
             Err(error) => {
                 error!("handle_snapshot(): failed to create snapshot: {error:?}");
@@ -1152,33 +1498,6 @@ impl Vmm {
             Err(error) => {
                 warn!("handle_shutdown(): failed to notify orchestrator thread (error={error:?})");
             },
-        }
-    }
-
-    /// Sets the guest vCPU's RAX register. Used to return data for
-    /// emulated PmioIn instructions (RIP is already advanced by the
-    /// vCPU exit handler).
-    fn set_guest_rax(
-        partition: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
-        value: u64,
-    ) {
-        use windows::Win32::System::Hypervisor::{
-            WHV_REGISTER_NAME,
-            WHV_REGISTER_VALUE,
-            WHvSetVirtualProcessorRegisters,
-        };
-        const WHV_X64_REGISTER_RAX: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0);
-        let reg_names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RAX];
-        let mut reg_values: [WHV_REGISTER_VALUE; 1] = [unsafe { std::mem::zeroed() }];
-        reg_values[0].Reg64 = value;
-        unsafe {
-            let _ = WHvSetVirtualProcessorRegisters(
-                partition,
-                0,
-                reg_names.as_ptr(),
-                1,
-                reg_values.as_ptr(),
-            );
         }
     }
 

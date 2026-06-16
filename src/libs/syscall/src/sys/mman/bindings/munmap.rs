@@ -54,7 +54,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn munmap(addr: *mut c_void, length: c_size_t) -> isize {
     // Check if address is invalid.
     if addr.is_null() {
-        ::syslog::error!("munmap(): invalid base address (addr={addr:?}, length={length})");
+        ::syslog::warn!("munmap(): invalid base address (addr={addr:?}, length={length})");
         unsafe {
             *__errno_location() = ErrorCode::InvalidArgument.get();
         }
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn munmap(addr: *mut c_void, length: c_size_t) -> isize {
 
     // Check if mapping length is invalid.
     if length == 0 {
-        ::syslog::error!("munmap(): invalid mapping length (addr={addr:?}, length={length})");
+        ::syslog::warn!("munmap(): invalid mapping length (addr={addr:?}, length={length})");
         unsafe {
             *__errno_location() = ErrorCode::InvalidArgument.get();
         }
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn munmap(addr: *mut c_void, length: c_size_t) -> isize {
     let length: usize = match TryFrom::try_from(length) {
         Ok(length) => length,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "munmap(): invalid mapping length (addr={addr:?}, length={length}), \
                  error={error:?}"
             );
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn munmap(addr: *mut c_void, length: c_size_t) -> isize {
             0
         },
         Err(error) => {
-            ::syslog::error!("munmap(): failed (addr={addr:?}, length={length}), error={error:?}");
+            ::syslog::warn!("munmap(): failed (addr={addr:?}, length={length}), error={error:?}");
             unsafe {
                 *__errno_location() = error.code.get();
             }

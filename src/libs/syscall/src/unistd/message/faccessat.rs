@@ -7,13 +7,13 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::{
@@ -37,7 +37,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::ffi::c_int;
 use sysapi::limits::PATH_MAX;
@@ -234,15 +237,19 @@ impl MessagePartitioner for FileAccessAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::FileAccessAtRequestPart,
+            SystemCallMessageHeader::FileAccessAtRequestPart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -256,10 +263,10 @@ impl MessagePartitioner for FileAccessAtRequest {
 pub struct FileAccessAtResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileAccessAtResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileAccessAtResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileAccessAtResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -267,20 +274,24 @@ impl FileAccessAtResponse {
         }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileAccessAtResponse = FileAccessAtResponse::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileAccessAtResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::FileAccessAtResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

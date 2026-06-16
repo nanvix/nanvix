@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -34,11 +34,11 @@ pub struct ListenSocketRequest {
     pub backlog: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ListenSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ListenSocketRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ListenSocketRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<i32>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<i32>();
 
     pub fn new(sockfd: i32, backlog: i32) -> Self {
         Self {
@@ -48,23 +48,23 @@ impl ListenSocketRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, sockfd: i32, backlog: i32) -> Message {
         let message: Self = Self::new(sockfd, backlog);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ListenSocketRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ListenSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            MessageReceiver::from(crate::NETWORK_DESTINATION),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -83,10 +83,10 @@ impl ListenSocketRequest {
 pub struct ListenSocketResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ListenSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ListenSocketResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ListenSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -94,22 +94,22 @@ impl ListenSocketResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ListenSocketResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ListenSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(crate::NETWORK_SOURCE),
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

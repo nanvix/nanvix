@@ -7,8 +7,8 @@
 
 use crate::{
     sys::socket::Shutdown,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -35,11 +35,11 @@ pub struct ShutdownSocketRequest {
     pub how: Shutdown,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ShutdownSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ShutdownSocketRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ShutdownSocketRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<Shutdown>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<Shutdown>();
 
     pub fn new(sockfd: i32, how: Shutdown) -> Self {
         Self {
@@ -49,24 +49,24 @@ impl ShutdownSocketRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, sockfd: i32, how: Shutdown) -> Message {
         let message: Self = Self::new(sockfd, how);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ShutdownSocketRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ShutdownSocketRequest,
             message.into_bytes(),
         );
 
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            MessageReceiver::from(crate::NETWORK_DESTINATION),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -85,10 +85,10 @@ impl ShutdownSocketRequest {
 pub struct ShutdownSocketResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ShutdownSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ShutdownSocketResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ShutdownSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -96,22 +96,22 @@ impl ShutdownSocketResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ShutdownSocketResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ShutdownSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(crate::NETWORK_SOURCE),
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

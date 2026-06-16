@@ -238,125 +238,6 @@ pub struct VirtualProcessorState {
     msrs_state: MsrsState,
 }
 
-impl VirtualProcessorState {
-    ///
-    /// # Description
-    ///
-    /// Validates the snapshot's vCPU state for structural integrity and host compatibility.
-    ///
-    /// This method checks:
-    /// - CPUID data can be deserialized and contains the required features leaf.
-    /// - CPUID feature bits are a subset of the host's supported features.
-    /// - TSC frequency is non-zero.
-    /// - FPU/XSAVE state size is compatible with the host.
-    /// - MSR data is structurally valid.
-    ///
-    /// # Parameters
-    ///
-    /// - `kvm`: Handle to the KVM hypervisor for querying host capabilities.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
-    ///
-    pub(crate) fn validate(&self, kvm: &Kvm) -> Result<()> {
-        trace!("VirtualProcessorState::validate()");
-
-        // Validate CPUID structural integrity.
-        let cpuid: CpuId = deserialize_cpuid(&self.cpuid)?;
-
-        // Verify that the essential CPUID features leaf (function 0x1) is present.
-        let has_features_leaf: bool = cpuid
-            .as_slice()
-            .iter()
-            .any(|e| e.function == CPUID_FEATURES);
-        if !has_features_leaf {
-            let reason: &str = "snapshot CPUID is missing the features leaf (function 0x1)";
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        // Validate CPUID feature compatibility against the host.
-        // Combine supported and emulated CPUID features: KVM can set emulated features
-        // (e.g., DS, ACPI, SS, TM) on a vCPU even if they are not in get_supported_cpuid.
-        let host_cpuid: CpuId = match kvm.get_supported_cpuid(KVM_MAX_CPUID_ENTRIES) {
-            Ok(v) => v,
-            Err(e) => {
-                let reason: String = format!("failed getting host supported cpuid (error={e:?})");
-                error!("validate(): {reason}");
-                anyhow::bail!(reason)
-            },
-        };
-        let emulated_cpuid: Option<CpuId> = kvm.get_emulated_cpuid(KVM_MAX_CPUID_ENTRIES).ok();
-
-        for snapshot_entry in cpuid.as_slice() {
-            if snapshot_entry.function != CPUID_FEATURES {
-                continue;
-            }
-            // Find the matching host entry (same function and index).
-            let host_entry: Option<&kvm_cpuid_entry2> = host_cpuid
-                .as_slice()
-                .iter()
-                .find(|h| h.function == snapshot_entry.function && h.index == snapshot_entry.index);
-            match host_entry {
-                Some(host) => {
-                    // Merge in emulated features so KVM-emulated bits are not rejected.
-                    let emulated_entry: Option<&kvm_cpuid_entry2> =
-                        emulated_cpuid.as_ref().and_then(|ec| {
-                            ec.as_slice().iter().find(|e| {
-                                e.function == snapshot_entry.function
-                                    && e.index == snapshot_entry.index
-                            })
-                        });
-                    let allowed_ecx: u32 = host.ecx | emulated_entry.map_or(0, |e| e.ecx);
-                    let allowed_edx: u32 = host.edx | emulated_entry.map_or(0, |e| e.edx);
-
-                    // Check that snapshot feature bits are a subset of host features.
-                    // This is a warning rather than an error because KVM allows setting
-                    // additional emulated features (e.g., DS, ACPI, SS, TM) on a vCPU
-                    // that are not reported by get_supported_cpuid or get_emulated_cpuid.
-                    let unsupported_ecx: u32 = snapshot_entry.ecx & !allowed_ecx;
-                    let unsupported_edx: u32 = snapshot_entry.edx & !allowed_edx;
-                    if unsupported_ecx != 0 {
-                        warn!(
-                            "validate(): snapshot CPUID leaf 0x1 has ECX features {:#010x} not \
-                             reported as supported/emulated by host",
-                            unsupported_ecx
-                        );
-                    }
-                    if unsupported_edx != 0 {
-                        warn!(
-                            "validate(): snapshot CPUID leaf 0x1 has EDX features {:#010x} not \
-                             reported as supported/emulated by host",
-                            unsupported_edx
-                        );
-                    }
-                },
-                None => {
-                    let reason: &str = "host does not support CPUID features leaf (function 0x1)";
-                    error!("validate(): {reason}");
-                    anyhow::bail!(reason);
-                },
-            }
-        }
-
-        // Validate TSC frequency.
-        if self.tsc_khz == 0 {
-            let reason: &str = "snapshot TSC frequency is zero";
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        // Validate FPU/XSAVE state.
-        self.fpu_ext.validate(kvm)?;
-
-        // Validate MSR state.
-        self.msrs_state.validate()?;
-
-        Ok(())
-    }
-}
-
 impl VirtualProcessor {
     ///
     /// # Description
@@ -577,7 +458,6 @@ impl VirtualProcessor {
     }
 
     /// Returns the current general-purpose registers of the virtual processor.
-    #[cfg(feature = "gdb")]
     pub fn get_regs(&self) -> Result<kvm_regs> {
         self.fd
             .get_regs()
@@ -593,7 +473,6 @@ impl VirtualProcessor {
     }
 
     /// Returns the current segment and control registers of the virtual processor.
-    #[cfg(feature = "gdb")]
     pub fn get_sregs(&self) -> Result<kvm_sregs> {
         self.fd
             .get_sregs()
@@ -790,11 +669,12 @@ impl VirtualProcessor {
                     VirtualProcessorExitContext::Unknown
                 },
             },
-            // vCPU thread was interrupted by a signal from the host.
-            // This is the expected mechanism for orchestrator-driven shutdown
-            // (SIGUSR1 handler sets SHUTDOWN), so it is not an unexpected exit.
+            // vCPU thread was interrupted by a signal from the host.  This is the expected
+            // mechanism for both orchestrator-driven shutdown (SIGUSR1) and profiler sampling
+            // (SIGUSR2). Use trace! to avoid flooding logs when the profiler runs at high frequency
+            // (e.g., 10kHz).
             Err(e) if e.errno() == libc::EINTR => {
-                warn!("run(): interrupted");
+                trace!("run(): interrupted");
                 VirtualProcessorExitContext::Interrupted
             },
             Err(error) => {
@@ -1063,18 +943,21 @@ impl VirtualProcessor {
     /// returns an error.
     ///
     pub fn load_state(&mut self, state: &VirtualProcessorState) -> Result<()> {
-        // Ordering requirements between `kvm_set` calls:
-        // https://github.com/firecracker-microvm/firecracker/blob/f0691f8253d4bde225b9f70ecabf39b7ad796935/src/vmm/src/arch/x86_64/vcpu.rs#L556
+        // Ordering requirements between `kvm_set` calls (mirrors Firecracker — see
+        // https://github.com/firecracker-microvm/firecracker/blob/f0691f8253d4bde225b9f70ecabf39b7ad796935/src/vmm/src/arch/x86_64/vcpu.rs#L654):
+        //
+        // - SET_CPUID and SET_MP_STATE depend on kvm_vcpu_is_bsp() and must therefore run before
+        //   anything else.
+        // - SET_REGS clears pending exceptions unconditionally, so it must come before
+        //   SET_VCPU_EVENTS (which restores them).
+        // - SET_LAPIC must come after SET_SREGS (which restores the APIC base MSR) and before
+        //   SET_MSRS (the TSC deadline MSR only restores successfully when the LAPIC is
+        //   already configured). Setting MSRs before the LAPIC silently leaves the TSC
+        //   deadline at zero, firing the timer IRQ immediately on resume and
+        //   deterministically panicking the kernel.
         trace!("load_state()");
 
-        // Restore system registers first (some MSRs depend on sregs).
-        if let Err(e) = self.fd.set_sregs(&state.sregs) {
-            let reason: String = format!("failed setting sregs (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore CPUID.
+        // 1. CPUID first (BSP dependency).
         let cpuid: CpuId = deserialize_cpuid(&state.cpuid)?;
         if let Err(e) = self.fd.set_cpuid2(&cpuid) {
             let reason: String = format!("failed setting cpuid (error={e:?})");
@@ -1082,65 +965,72 @@ impl VirtualProcessor {
             anyhow::bail!(reason)
         }
 
-        // Restore MSRs (after sregs).
-        if let Err(e) = self.msrs.load_state(&self.fd, &state.msrs_state) {
-            let reason: String = format!("failed setting msrs (error={e:?})");
+        // 2. MP state (BSP dependency).
+        if let Err(e) = self.fd.set_mp_state(state.mp_state) {
+            let reason: String = format!("failed setting mp_state (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore general purpose registers.
+        // 3. General purpose registers (must precede SET_VCPU_EVENTS).
         if let Err(e) = self.fd.set_regs(&state.regs) {
             let reason: String = format!("failed setting regs (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore LAPIC.
-        if let Err(e) = self.fd.set_lapic(&state.lapic) {
-            let reason: String = format!("failed setting lapic (error={e:?})");
+        // 4. System registers (must precede SET_LAPIC because it restores the APIC base MSR).
+        if let Err(e) = self.fd.set_sregs(&state.sregs) {
+            let reason: String = format!("failed setting sregs (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore TSC frequency.
-        if let Err(e) = self.fd.set_tsc_khz(state.tsc_khz) {
-            let reason: String = format!("failed setting tsc_khz (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore debug registers.
-        if let Err(e) = self.fd.set_debug_regs(&state.debugregs) {
-            let reason: String = format!("failed setting debugregs (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore extended control registers.
-        if let Err(e) = self.fd.set_xcrs(&state.xcrs) {
-            let reason: String = format!("failed setting xcrs (error={e:?})");
-            error!("load_state(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Restore FPU/XSAVE state.
+        // 5. FPU/XSAVE state.
         if let Err(e) = self.fpu.load_state(&self.fd, &state.fpu_ext) {
             let reason: String = format!("failed setting fpu state (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore vCPU events.
-        if let Err(e) = self.fd.set_vcpu_events(&state.vcpu_events) {
-            let reason: String = format!("failed setting vcpu_events (error={e:?})");
+        // 6. Extended control registers (XCR0).
+        if let Err(e) = self.fd.set_xcrs(&state.xcrs) {
+            let reason: String = format!("failed setting xcrs (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Restore MP state last (setting it to runnable starts execution).
-        if let Err(e) = self.fd.set_mp_state(state.mp_state) {
-            let reason: String = format!("failed setting mp_state (error={e:?})");
+        // 7. Debug registers.
+        if let Err(e) = self.fd.set_debug_regs(&state.debugregs) {
+            let reason: String = format!("failed setting debugregs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 8. LAPIC (after sregs, before msrs).
+        if let Err(e) = self.fd.set_lapic(&state.lapic) {
+            let reason: String = format!("failed setting lapic (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 9. TSC frequency (before msrs — IA32_TSC restore relies on the freq being set).
+        if let Err(e) = self.fd.set_tsc_khz(state.tsc_khz) {
+            let reason: String = format!("failed setting tsc_khz (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 10. MSRs (after lapic, after tsc_khz).
+        if let Err(e) = self.msrs.load_state(&self.fd, &state.msrs_state) {
+            let reason: String = format!("failed setting msrs (error={e:?})");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // 11. vCPU events last (after regs cleared exceptions).
+        if let Err(e) = self.fd.set_vcpu_events(&state.vcpu_events) {
+            let reason: String = format!("failed setting vcpu_events (error={e:?})");
             error!("load_state(): {reason}");
             anyhow::bail!(reason)
         }
@@ -1336,6 +1226,7 @@ mod tests {
         0x0613, // PKG_PERF_STATUS
         0x0619, // DRAM_ENERGY_STATUS
         0x061B, // DRAM_PERF_STATUS
+        0x06E0, // IA32_TSC_DEADLINE
     ];
 
     /// Zeroes out the `data` field of every MSR entry whose index is in
@@ -1471,40 +1362,63 @@ mod tests {
         Ok(())
     }
 
-    /// Verifies that `validate` accepts a valid vCPU state snapshot.
-    #[test]
-    fn validate_accepts_valid_snapshot() -> AnyResult<()> {
-        let (kvm, _vm, vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+    /// LAPIC register array offset of the LVT timer entry.
+    const LAPIC_LVT_TIMER_OFFSET: usize = 0x320;
 
-        let state: VirtualProcessorState = vcpu.save_state(&kvm).expect("save_state failed");
-        state
-            .validate(&kvm)
-            .expect("validate should accept a valid vCPU snapshot");
+    /// LVT timer value placing the timer in TSC-deadline mode (bits 17:18 = 0b10) with vector
+    /// `0x40` and the mask bit cleared. The mode bits in this register are the canonical signal
+    /// that `KVM_SET_LAPIC` was actually applied to the in-kernel APIC.
+    const LVT_TIMER_TSC_DEADLINE_MODE: u32 = 0x0004_0040;
 
-        Ok(())
+    /// Reads the four LVT-timer bytes back from the in-kernel LAPIC.
+    fn read_lvt_timer(fd: &::kvm_ioctls::VcpuFd) -> u32 {
+        let lapic: ::kvm_bindings::kvm_lapic_state = fd.get_lapic().expect("get_lapic failed");
+        let bytes: [u8; 4] = [
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET] as u8,
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET + 1] as u8,
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET + 2] as u8,
+            lapic.regs[LAPIC_LVT_TIMER_OFFSET + 3] as u8,
+        ];
+        u32::from_ne_bytes(bytes)
     }
 
-    /// Verifies that `validate` rejects a snapshot with corrupted CPUID data.
+    /// Contract test: `load_state` must invoke `KVM_SET_LAPIC` as part of the restore pipeline,
+    /// and the LAPIC bytes carried by the snapshot must survive every subsequent vCPU ioctl in
+    /// the sequence. This guards against accidental removal/reordering of `set_lapic` and against
+    /// any future ioctl in `load_state` overwriting LAPIC state.
+    ///
+    /// Note: this test does NOT specifically detect a `SET_MSRS`-before-`SET_LAPIC` ordering
+    /// regression — its symptom (spurious early timer IRQ on resume) only surfaces while the
+    /// guest is executing. The integration/benchmark-level coverage in
+    /// `nanvix-bench -benchmark snapshot-restore` is the authoritative regression guard for it.
     #[test]
-    fn validate_rejects_corrupted_cpuid() -> AnyResult<()> {
-        let (kvm, _vm, vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+    fn load_state_applies_lapic_after_other_vcpu_ioctls() -> AnyResult<()> {
+        let (kvm, _vm, mut vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
 
         let mut state: VirtualProcessorState = vcpu.save_state(&kvm).expect("save_state failed");
-        // Truncate CPUID data to make it invalid.
-        state.cpuid = vec![0u8; 4];
-        assert!(state.validate(&kvm).is_err(), "validate should reject corrupted CPUID data");
 
-        Ok(())
-    }
+        // Stamp the LVT timer register with a distinctive value in the snapshot.
+        let lvt_bytes: [u8; 4] = LVT_TIMER_TSC_DEADLINE_MODE.to_ne_bytes();
+        for (i, b) in lvt_bytes.iter().enumerate() {
+            state.lapic.regs[LAPIC_LVT_TIMER_OFFSET + i] = (*b).cast_signed();
+        }
 
-    /// Verifies that `validate` rejects a snapshot with zero TSC frequency.
-    #[test]
-    fn validate_rejects_zero_tsc() -> AnyResult<()> {
-        let (kvm, _vm, vcpu): (Kvm, VmFd, VirtualProcessor) = create_test_vcpu()?;
+        // Sanity-check: ensure the LVT is *not* already in this configuration on a fresh vCPU.
+        // Otherwise the test cannot tell whether `load_state` actually wrote the LAPIC.
+        let lvt_before: u32 = read_lvt_timer(&vcpu.fd);
+        assert_ne!(
+            lvt_before, LVT_TIMER_TSC_DEADLINE_MODE,
+            "test setup is invalid: fresh vCPU already has the fingerprint LVT value"
+        );
 
-        let mut state: VirtualProcessorState = vcpu.save_state(&kvm).expect("save_state failed");
-        state.tsc_khz = 0;
-        assert!(state.validate(&kvm).is_err(), "validate should reject zero TSC frequency");
+        vcpu.load_state(&state).expect("load_state failed");
+
+        let lvt_after: u32 = read_lvt_timer(&vcpu.fd);
+        assert_eq!(
+            lvt_after, LVT_TIMER_TSC_DEADLINE_MODE,
+            "LAPIC LVT-timer fingerprint not present after load_state — KVM_SET_LAPIC was either \
+             skipped or overwritten by a subsequent ioctl"
+        );
 
         Ok(())
     }

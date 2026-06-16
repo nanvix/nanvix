@@ -148,37 +148,37 @@ impl<'a> TryFrom<(c_int, VaList<'a>)> for FileControlRequest {
         let (cmd, mut arg) = value;
         match cmd {
             F_DUPFD => {
-                let fd: c_int = unsafe { arg.arg() };
+                let fd: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_DUPFD: fd={fd:?}");
                 Ok(FileControlRequest::Duplicate(fd))
             },
             F_DUPFD_CLOEXEC => {
-                let fd: c_int = unsafe { arg.arg() };
+                let fd: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_DUPFD_CLOEXEC: fd={fd:?}");
                 Ok(FileControlRequest::DuplicateWithCloseOnExec(fd))
             },
             F_DUPFD_CLOFORK => {
-                let fd: c_int = unsafe { arg.arg() };
+                let fd: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_DUPFD_CLOFORK: fd={fd:?}");
                 Ok(FileControlRequest::DuplicateWithCloseOnFork(fd))
             },
             F_GETFD => Ok(FileControlRequest::GetFileDescriptorFlags),
             F_SETFD => {
-                let flags: c_int = unsafe { arg.arg() };
+                let flags: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_SETFD: flags={flags:?}");
                 let fd_flags: FileDescriptorFlags = FileDescriptorFlags::try_from(flags)?;
                 Ok(FileControlRequest::SetFileDescriptorFlags(fd_flags))
             },
             F_GETFL => Ok(FileControlRequest::GetFileStatusFlags),
             F_SETFL => {
-                let flags: c_int = unsafe { arg.arg() };
+                let flags: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_SETFL: flags={flags:?}");
                 let status_flags: FileStatusFlags = FileStatusFlags::try_from(flags)?;
                 Ok(FileControlRequest::SetFileStatusFlags(status_flags))
             },
             F_GETOWN => Ok(FileControlRequest::GetSocketOwner),
             F_SETOWN => {
-                let owner: c_int = unsafe { arg.arg() };
+                let owner: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_SETOWN: owner={owner:?}");
                 Ok(FileControlRequest::SetSocketOwner(SocketOwner::from(owner)))
             },

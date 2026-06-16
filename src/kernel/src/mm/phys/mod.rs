@@ -5,17 +5,19 @@
 // Modules
 //==================================================================================================
 
-mod frame;
-mod kpool;
+pub(crate) mod frame;
+mod kframe;
 mod manager;
 mod upool;
+
+#[cfg(feature = "test")]
+mod test;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use crate::{
-    collections::RawArray,
     hal::mem::{
         Address,
         PageAligned,
@@ -23,46 +25,28 @@ use crate::{
         TruncatedMemoryRegion,
         VirtualAddress,
     },
-    mm::phys::{
-        frame::FrameAllocator,
-        upool::Upool,
-    },
+    mm::phys::upool::Upool,
 };
 use ::alloc::collections::LinkedList;
 use ::arch::mem;
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
+use ::bitmap::Bitmap;
+use ::sys::error::Error;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
 pub use self::{
-    kpool::{
-        KernelFrame,
-        Kpool,
-    },
+    kframe::KernelFrame,
     manager::PhysMemoryManager,
     upool::UserFrame,
 };
-
-//==================================================================================================
-// Global Variables
-//==================================================================================================
-
-/// Frame allocator storage.
-static mut FRAME_ALLOCATOR_STORAGE: [u8; config::kernel::MEMORY_SIZE
-    / (mem::FRAME_SIZE * u8::BITS as usize)] =
-    [0; config::kernel::MEMORY_SIZE / (mem::FRAME_SIZE * u8::BITS as usize)];
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
 fn book_physical_memory_regions(
-    frame_allocator: &mut FrameAllocator,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
 ) -> Result<(), Error> {
     info!("booking physical memory regions ...");
@@ -70,14 +54,13 @@ fn book_physical_memory_regions(
     // Book physical memory that is not usable.
     for region in physical_memory_regions.iter() {
         info!("booking: {:?}", region);
-        frame_allocator.alloc_range(region)?;
+        frame::alloc_range(region)?;
     }
 
     Ok(())
 }
 
 fn book_mmio_regions(
-    frame_allocator: &mut FrameAllocator,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
 ) -> Result<(), Error> {
     info!("booking memory-mapped i/o regions ...");
@@ -88,22 +71,18 @@ fn book_mmio_regions(
         let mut start: usize = region.start().into_raw_value();
         let end: usize = start + (region.size() - 1);
         while start < end {
-            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(start);
+            let mmio_addr: usize = crate::hal::platform::gva_to_gpa(start);
             let phys_addr: PageAligned<PhysicalAddress> = PageAligned::from_address(unsafe {
-                PhysicalAddress::from_mmio_address(mmio_addr)?
+                // MMIO GPAs may legitimately lie outside tracked RAM, so they must not go through
+                // the regular physical-address validator here.
+                PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
             })?;
 
-            // Attempt to book underlying frame.
-            match frame_allocator.book(phys_addr) {
-                // Frame successfully booked.
-                Ok(()) => {},
-                // Frame lies outside addressable physical memory.
-                Err(e) if e.code == ErrorCode::InvalidArgument => {},
-                // Something went wrong.
-                Err(e) => {
-                    warn!("failed to book frame for mmio region {:?} ({:?})", region, e);
-                    return Err(e);
-                },
+            // Only book frames that the frame allocator actually tracks.
+            // MMIO regions above RAM (e.g. the LAPIC at 0xFEE0_0000) are not
+            // covered by the bitmap and must be skipped.
+            if frame::is_covered(phys_addr) {
+                frame::book(phys_addr)?;
             }
             start += mem::FRAME_SIZE;
         }
@@ -112,33 +91,54 @@ fn book_mmio_regions(
     Ok(())
 }
 
+///
+/// # Description
+///
+/// Initializes the physical memory manager.
+///
+/// # Parameters
+///
+/// - `physical_memory_regions`: Physical memory regions to book.
+/// - `mmio_regions`: Memory-mapped I/O regions to book.
+/// - `physical_memory_layout`: Physical memory layout bitmap.
+///
+/// # Returns
+///
+/// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+///
 pub fn init(
-    kpool: TruncatedMemoryRegion<PhysicalAddress>,
     physical_memory_regions: LinkedList<TruncatedMemoryRegion<PhysicalAddress>>,
     mmio_regions: &LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-) -> Result<PhysMemoryManager, Error> {
-    // Initialize frame allocator.
+    physical_memory_layout: Bitmap,
+) -> Result<(), Error> {
+    // Initialize frame allocator singleton.
     info!("initializing the frame allocator ...");
-    let mut frame_allocator: FrameAllocator = {
-        // Safety: the frame allocator storage is valid and has a static lifetime.
-        let storage: RawArray<u8> = unsafe {
-            let (ptr, len): (*mut u8, usize) =
-                (FRAME_ALLOCATOR_STORAGE.as_mut_ptr(), FRAME_ALLOCATOR_STORAGE.len());
-            RawArray::from_raw_parts(ptr, len)?
-        };
-        FrameAllocator::from_raw_storage(storage)?
-    };
-    book_physical_memory_regions(&mut frame_allocator, physical_memory_regions)?;
+    // Safety: called exactly once during single-threaded boot.
+    unsafe { frame::init(physical_memory_layout)? };
+    book_physical_memory_regions(physical_memory_regions)?;
 
-    book_mmio_regions(&mut frame_allocator, mmio_regions)?;
-
-    // Initialize kernel page pool.
-    info!("initializing the kernel page pool ...");
-    let kpool: Kpool = Kpool::new(kpool)?;
+    book_mmio_regions(mmio_regions)?;
 
     // Initialize user page pool.
     info!("initializing the user page pool ...");
-    let upool: Upool = Upool::new(frame_allocator);
+    let upool: Upool = Upool::new();
 
-    Ok(PhysMemoryManager::new(kpool, upool))
+    // Initialize physical memory manager singleton.
+    info!("initializing the physical memory manager ...");
+    PhysMemoryManager::init(upool)?;
+
+    Ok(())
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+#[cfg(feature = "test")]
+pub fn test() -> bool {
+    let mut passed = true;
+
+    passed &= test::test();
+
+    passed
 }

@@ -16,9 +16,9 @@ use ::sys::{
     pm::ThreadIdentifier,
 };
 use ::syscall::message::{
-    LinuxDaemonLongMessage,
-    LinuxDaemonMessagePart,
     MessagePartitioner,
+    SystemCallLongMessage,
+    SystemCallMessagePart,
 };
 
 //==================================================================================================
@@ -38,7 +38,7 @@ impl RequestAssembler {
     pub fn assemble_and_take<S, T: RequestAssemblerTrait<S>>(
         &mut self,
         source: ThreadIdentifier,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<Option<T>, WorkerThreadError> {
         match self.assemble_and_take_internal::<S, T>(source, part) {
             Ok(request) => Ok(request),
@@ -53,7 +53,7 @@ impl RequestAssembler {
     fn assemble_and_take_internal<S, T: RequestAssemblerTrait<S>>(
         &mut self,
         source: ThreadIdentifier,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<Option<T>, WorkerThreadError> {
         let message_complete: bool = {
             match self.assemble_parts::<S, T>(source, part) {
@@ -77,7 +77,7 @@ impl RequestAssembler {
     fn assemble_parts<S, T: RequestAssemblerTrait<S>>(
         &mut self,
         source: ThreadIdentifier,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<bool, WorkerThreadError> {
         let assembler: &mut RequestAssemblerType = self
             .inflight
@@ -96,27 +96,27 @@ impl RequestAssembler {
             .remove(&source)
             .expect("inflight request does exist");
 
-        let parts: Vec<LinuxDaemonMessagePart> = T::take_parts(assembler);
+        let parts: Vec<SystemCallMessagePart> = T::take_parts(assembler);
         Ok(T::from_parts(&parts)?)
     }
 }
 
 #[allow(clippy::enum_variant_names)]
 pub enum RequestAssemblerType {
-    FileStatAtRequest(LinuxDaemonLongMessage),
-    SymbolicLinkAtRequest(LinuxDaemonLongMessage),
-    LinkAtRequest(LinuxDaemonLongMessage),
-    ReadLinkAtRequest(LinuxDaemonLongMessage),
-    MakeDirectoryAtRequest(LinuxDaemonLongMessage),
-    UpdateFileAccessTimeAtRequest(LinuxDaemonLongMessage),
-    FileChownAtRequest(LinuxDaemonLongMessage),
-    FileChmodAtRequest(LinuxDaemonLongMessage),
-    OpenAtRequest(LinuxDaemonLongMessage),
-    RenameAtRequest(LinuxDaemonLongMessage),
-    UnlinkAtRequest(LinuxDaemonLongMessage),
-    ChangeDirectoryRequest(LinuxDaemonLongMessage),
-    FileAccessAtRequest(LinuxDaemonLongMessage),
-    PollRequest(LinuxDaemonLongMessage),
+    FileStatAtRequest(SystemCallLongMessage),
+    SymbolicLinkAtRequest(SystemCallLongMessage),
+    LinkAtRequest(SystemCallLongMessage),
+    ReadLinkAtRequest(SystemCallLongMessage),
+    MakeDirectoryAtRequest(SystemCallLongMessage),
+    UpdateFileAccessTimeAtRequest(SystemCallLongMessage),
+    FileChownAtRequest(SystemCallLongMessage),
+    FileChmodAtRequest(SystemCallLongMessage),
+    OpenAtRequest(SystemCallLongMessage),
+    RenameAtRequest(SystemCallLongMessage),
+    UnlinkAtRequest(SystemCallLongMessage),
+    ChangeDirectoryRequest(SystemCallLongMessage),
+    FileAccessAtRequest(SystemCallLongMessage),
+    PollRequest(SystemCallLongMessage),
 }
 
 pub trait RequestAssemblerTrait<T>
@@ -128,12 +128,12 @@ where
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError>;
 
     fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error>;
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart>;
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart>;
 
     fn process_request(
         syscall_table: &SyscallTable<T>,
@@ -156,24 +156,24 @@ mod tests {
             Instant,
         },
     };
+    use ::sys::ipc::MessageType;
     use ::syscall::{
         fcntl::message::OpenAtRequest,
         message::MessagePartitioner,
-        LinuxDaemonMessage,
+        SystemCallMessage,
     };
     use ::tokio::sync::Mutex;
 
-    /// Extracts `LinuxDaemonMessagePart` payloads from the IPC `Message` objects
+    /// Extracts `SystemCallMessagePart` payloads from the IPC `Message` objects
     /// produced by `MessagePartitioner::into_parts()`.
     #[allow(clippy::expect_used)]
-    fn extract_parts(messages: Vec<Message>) -> Vec<LinuxDaemonMessagePart> {
+    fn extract_parts(messages: Vec<Message>) -> Vec<SystemCallMessagePart> {
         messages
             .into_iter()
             .map(|msg| {
-                let daemon_msg: LinuxDaemonMessage =
-                    LinuxDaemonMessage::try_from_bytes(msg.payload)
-                        .expect("valid LinuxDaemonMessage");
-                LinuxDaemonMessagePart::from_bytes(daemon_msg.payload)
+                let daemon_msg: SystemCallMessage = SystemCallMessage::try_from_bytes(msg.payload)
+                    .expect("valid SystemCallMessage");
+                SystemCallMessagePart::from_bytes(daemon_msg.payload)
             })
             .collect()
     }
@@ -190,8 +190,11 @@ mod tests {
         let original: OpenAtRequest =
             OpenAtRequest::new(-100, "/tmp/test.txt", 0x41, 0o644).expect("valid OpenAtRequest");
 
-        let parts: Vec<LinuxDaemonMessagePart> =
-            extract_parts(original.into_parts(source).expect("valid parts"));
+        let parts: Vec<SystemCallMessagePart> = extract_parts(
+            original
+                .into_parts(source, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
 
         let mut assembler: RequestAssembler = RequestAssembler::default();
 
@@ -234,14 +237,20 @@ mod tests {
         let source_a: ThreadIdentifier = ThreadIdentifier::from(1_i32);
         let request_a: OpenAtRequest =
             OpenAtRequest::new(-100, "/tmp/a.txt", 0x41, 0o644).expect("valid OpenAtRequest");
-        let parts_a: Vec<LinuxDaemonMessagePart> =
-            extract_parts(request_a.into_parts(source_a).expect("valid parts"));
+        let parts_a: Vec<SystemCallMessagePart> = extract_parts(
+            request_a
+                .into_parts(source_a, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
 
         let source_b: ThreadIdentifier = ThreadIdentifier::from(2_i32);
         let request_b: OpenAtRequest =
             OpenAtRequest::new(-100, "/tmp/b.txt", 0x41, 0o644).expect("valid OpenAtRequest");
-        let parts_b: Vec<LinuxDaemonMessagePart> =
-            extract_parts(request_b.into_parts(source_b).expect("valid parts"));
+        let parts_b: Vec<SystemCallMessagePart> = extract_parts(
+            request_b
+                .into_parts(source_b, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
 
         // Barrier: signal when Thread A has released the lock.
         let lock_released: Arc<tokio::sync::Notify> = Arc::new(tokio::sync::Notify::new());

@@ -35,9 +35,7 @@ sysroot
 *.log
 *.o
 *.obj
-*.wasm
 .z.cache
-Cargo.lock
 linuxd.stdout
 linuxd.stderr
 
@@ -55,6 +53,7 @@ __pycache__/
 *.vscode/
 snapshots/*.vmem
 snapshots/*.kvm.json
+snapshots/*.whp.cbor
 
 # Third-party tools (cloned locally)
 tools/

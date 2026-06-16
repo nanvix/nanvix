@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -33,10 +33,10 @@ pub struct ReceiveSocketRequest {
     pub flags: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ReceiveSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReceiveSocketRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<u32>()
         - mem::size_of::<i32>();
@@ -50,23 +50,23 @@ impl ReceiveSocketRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, sockfd: i32, count: u32, flags: i32) -> Message {
         let message: ReceiveSocketRequest = ReceiveSocketRequest::new(sockfd, count, flags);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ReceiveSocketRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ReceiveSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            MessageReceiver::from(crate::NETWORK_DESTINATION),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -85,20 +85,20 @@ pub struct ReceiveSocketResponse {
     pub count: c_size_t,
     pub buffer: [u8; Self::BUFFER_SIZE],
 }
-::static_assert::assert_eq_size!(ReceiveSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ReceiveSocketResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketResponse {
-    pub const BUFFER_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_size_t>();
+    pub const BUFFER_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_size_t>();
 
     pub fn new(count: c_size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
         Self { count, buffer }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -108,12 +108,12 @@ impl ReceiveSocketResponse {
         buffer: [u8; Self::BUFFER_SIZE],
     ) -> Message {
         let message: ReceiveSocketResponse = ReceiveSocketResponse::new(count, buffer);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ReceiveSocketResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ReceiveSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(crate::NETWORK_SOURCE),
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

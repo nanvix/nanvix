@@ -66,7 +66,7 @@ pub unsafe extern "C" fn pread(
 ) -> c_ssize_t {
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pread(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
              offset={offset:?})"
         );
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn pread(
     match unistd::pread(fd, buffer, offset) {
         Ok(bytes_read) => bytes_read as c_ssize_t,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pread(): {error:?}, (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
                  offset={offset:?})"
             );

@@ -95,7 +95,7 @@ pub unsafe extern "C" fn linkat(
     let oldpath: &str = {
         // Check if `oldpath` is invalid.
         if oldpath.is_null() {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "linkat(): invalid oldpath (olddirfd={olddirfd:?}, oldpath={oldpath:?}, \
                  newdirfd={newdirfd:?}, newpath={newpath:?}, flags={flags:?})"
             );
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn linkat(
         match ffi::CStr::from_ptr(oldpath).to_str() {
             Ok(pathname) => pathname,
             Err(_error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "linkat(): invalid oldpath (olddirfd={olddirfd:?}, oldpath={oldpath:?}, \
                      newdirfd={newdirfd:?}, newpath={newpath:?}, flags={flags:?})"
                 );
@@ -121,7 +121,7 @@ pub unsafe extern "C" fn linkat(
     let newpath: &str = {
         // Check if `newpath` is invalid.
         if newpath.is_null() {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "linkat(): invalid newpath (olddirfd={olddirfd:?}, oldpath={oldpath:?}, \
                  newdirfd={newdirfd:?}, newpath={newpath:?}, flags={flags:?})"
             );
@@ -133,7 +133,7 @@ pub unsafe extern "C" fn linkat(
         match ffi::CStr::from_ptr(newpath).to_str() {
             Ok(pathname) => pathname,
             Err(_error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "linkat(): invalid newpath (olddirfd={olddirfd:?}, oldpath={oldpath:?}, \
                      newdirfd={newdirfd:?}, newpath={newpath:?}, flags={flags:?})"
                 );
@@ -147,7 +147,7 @@ pub unsafe extern "C" fn linkat(
     match unistd::linkat(olddirfd, oldpath, newdirfd, newpath, flags) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "linkat(): {error:?} (olddirfd={olddirfd:?}, oldpath={oldpath:?}, \
                  newdirfd={newdirfd:?}, newpath={newpath:?}, flags={flags:?})"
             );

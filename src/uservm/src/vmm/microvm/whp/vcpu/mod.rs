@@ -169,6 +169,8 @@ pub struct VirtualProcessor {
     online: bool,
     /// Exit status code.
     exit_status: u16,
+    /// Deferred RIP value for PMIO reads (batched with RAX write).
+    pending_new_rip: Option<u64>,
 }
 
 // SAFETY: `VirtualProcessor` only stores a `WHV_PARTITION_HANDLE` (an opaque OS handle) and
@@ -249,6 +251,7 @@ impl VirtualProcessor {
             index,
             online: false,
             exit_status: 0,
+            pending_new_rip: None,
         })
     }
 
@@ -520,6 +523,29 @@ impl VirtualProcessor {
         Ok(unsafe { values[0].Reg64 })
     }
 
+    /// Reads guest EIP, EBP, and CR3 for stack profiling.
+    pub fn get_profile_regs(&self) -> Result<(u32, u32, u32)> {
+        const WHV_X64_REGISTER_RBP: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x05);
+        const WHV_X64_REGISTER_CR3: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x1E);
+        let names: [WHV_REGISTER_NAME; 3] = [
+            WHV_X64_REGISTER_RIP,
+            WHV_X64_REGISTER_RBP,
+            WHV_X64_REGISTER_CR3,
+        ];
+        let mut values: [WHV_REGISTER_VALUE; 3] = [unsafe { mem::zeroed() }; 3];
+        unsafe {
+            whp_get_registers(self.partition, self.index, &names, &mut values)
+                .map_err(|e| anyhow::anyhow!("failed to get profile regs (error={e:?})"))?;
+        }
+        let eip = u32::try_from(unsafe { values[0].Reg64 })
+            .map_err(|_| anyhow::anyhow!("RIP value exceeds u32 range"))?;
+        let ebp = u32::try_from(unsafe { values[1].Reg64 })
+            .map_err(|_| anyhow::anyhow!("RBP value exceeds u32 range"))?;
+        let cr3 = u32::try_from(unsafe { values[2].Reg64 })
+            .map_err(|_| anyhow::anyhow!("CR3 value exceeds u32 range"))?;
+        Ok((eip, ebp, cr3))
+    }
+
     /// Sets the RIP register to the given value.
     pub fn set_rip(&mut self, rip: u64) -> Result<()> {
         let names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RIP];
@@ -633,7 +659,8 @@ impl VirtualProcessor {
                     VirtualProcessorExitContext::Pmio(exit::PmioAccess::PmioOut(port, value, width))
                 } else {
                     let data: Vec<u8> = vec![0u8; access_size as usize];
-                    self.advance_rip(exit_context);
+                    // Defer RIP advance for reads — batched with RAX write.
+                    self.pending_new_rip = Some(Self::next_rip(exit_context));
                     VirtualProcessorExitContext::Pmio(exit::PmioAccess::PmioIn(port, data))
                 }
             },
@@ -657,13 +684,17 @@ impl VirtualProcessor {
         }
     }
 
-    /// Advances the instruction pointer past the current instruction after handling a VM exit.
-    fn advance_rip(&mut self, exit_context: &WHV_RUN_VP_EXIT_CONTEXT) {
+    /// Computes the RIP value after the current instruction from the exit context.
+    fn next_rip(exit_context: &WHV_RUN_VP_EXIT_CONTEXT) -> u64 {
         // InstructionLength is packed in the lower 4 bits of VpContext._bitfield
         // (the InstructionLengthCr8 byte), NOT in ExecutionState._bitfield.
         let instruction_length: u64 = u64::from(exit_context.VpContext._bitfield & 0xF);
-        let current_rip: u64 = exit_context.VpContext.Rip;
-        let new_rip: u64 = current_rip + instruction_length;
+        exit_context.VpContext.Rip + instruction_length
+    }
+
+    /// Advances the instruction pointer past the current instruction after handling a VM exit.
+    fn advance_rip(&mut self, exit_context: &WHV_RUN_VP_EXIT_CONTEXT) {
+        let new_rip: u64 = Self::next_rip(exit_context);
 
         let reg_names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RIP];
         let mut reg_values: [WHV_REGISTER_VALUE; 1] = [unsafe { mem::zeroed() }];
@@ -672,6 +703,52 @@ impl VirtualProcessor {
         unsafe {
             if let Err(e) = whp_set_registers(self.partition, self.index, &reg_names, &reg_values) {
                 warn!("advance_rip(): failed to advance RIP (error={e:?})");
+            }
+        }
+    }
+
+    /// Sets RAX and flushes any deferred RIP advance in a single WHvSet call.
+    pub fn set_rip_and_rax(&mut self, rax_value: u64) {
+        if let Some(new_rip) = self.pending_new_rip.take() {
+            let reg_names: [WHV_REGISTER_NAME; 2] = [WHV_X64_REGISTER_RIP, WHV_X64_REGISTER_RAX];
+            let mut reg_values: [WHV_REGISTER_VALUE; 2] =
+                [unsafe { mem::zeroed() }, unsafe { mem::zeroed() }];
+            reg_values[0].Reg64 = new_rip;
+            reg_values[1].Reg64 = rax_value;
+            unsafe {
+                if let Err(e) =
+                    whp_set_registers(self.partition, self.index, &reg_names, &reg_values)
+                {
+                    warn!("set_rip_and_rax(): failed (error={e:?})");
+                }
+            }
+        } else {
+            // No pending RIP — just set RAX.
+            let reg_names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RAX];
+            let mut reg_values: [WHV_REGISTER_VALUE; 1] = [unsafe { mem::zeroed() }];
+            reg_values[0].Reg64 = rax_value;
+            unsafe {
+                if let Err(e) =
+                    whp_set_registers(self.partition, self.index, &reg_names, &reg_values)
+                {
+                    warn!("set_rip_and_rax(): failed to set RAX (error={e:?})");
+                }
+            }
+        }
+    }
+
+    /// Flushes any deferred RIP advance (for exits handled without setting RAX).
+    pub fn flush_pending_rip(&mut self) {
+        if let Some(new_rip) = self.pending_new_rip.take() {
+            let reg_names: [WHV_REGISTER_NAME; 1] = [WHV_X64_REGISTER_RIP];
+            let mut reg_values: [WHV_REGISTER_VALUE; 1] = [unsafe { mem::zeroed() }];
+            reg_values[0].Reg64 = new_rip;
+            unsafe {
+                if let Err(e) =
+                    whp_set_registers(self.partition, self.index, &reg_names, &reg_values)
+                {
+                    warn!("flush_pending_rip(): failed (error={e:?})");
+                }
             }
         }
     }

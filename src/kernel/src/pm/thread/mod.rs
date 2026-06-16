@@ -90,6 +90,26 @@ impl<'a> ThreadRef<'a> {
             ThreadRef::Zombie(thread) => thread.thread_state(),
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the referenced thread is detached.
+    ///
+    /// # Return Value
+    ///
+    /// This function returns `true` if the thread is detached, `false` otherwise.
+    ///
+    #[cfg(feature = "test")]
+    pub fn is_detached(&self) -> bool {
+        match self {
+            ThreadRef::Ready(thread) => thread.is_detached(),
+            ThreadRef::Running(thread) => thread.is_detached(),
+            ThreadRef::Sleeping(thread) => thread.is_detached(),
+            ThreadRef::Interrupted(thread) => thread.is_detached(),
+            ThreadRef::Zombie(thread) => thread.is_detached(),
+        }
+    }
 }
 
 //==================================================================================================
@@ -147,6 +167,9 @@ impl<'a> ThreadRefMut<'a> {
 pub struct ThreadManager {
     /// Next thread identifier to be assigned.
     next_id: ThreadIdentifier,
+    /// Number of threads that have been created but not yet reaped (joined or harvested).
+    /// Initialized to 1 to account for the kernel thread created in [`ThreadManager::new()`].
+    live_count: usize,
 }
 
 impl ThreadManager {
@@ -175,6 +198,7 @@ impl ThreadManager {
             kernel,
             Self {
                 next_id: From::<i32>::from(1),
+                live_count: 1,
             },
         )
     }
@@ -200,6 +224,17 @@ impl ThreadManager {
     ///   `create_thread` calls can exhaust the identifier space.
     ///
     pub(crate) fn try_next_tid(&self) -> Result<(ThreadIdentifier, ThreadIdentifier), Error> {
+        // Reject if the system-wide thread cap would be exceeded.
+        if self.live_count >= ::config::kernel::MAX_THREADS {
+            let reason: &str = "system-wide thread limit reached";
+            error!(
+                "{reason} (live_count={}, max_threads={})",
+                self.live_count,
+                ::config::kernel::MAX_THREADS
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
         let id: ThreadIdentifier = self.next_id;
         let raw_id: i32 = <i32>::from(self.next_id);
         let next_raw_id: i32 = match raw_id.checked_add(1) {
@@ -224,6 +259,25 @@ impl ThreadManager {
     ///
     pub(crate) fn commit_next_tid(&mut self, next_tid: ThreadIdentifier) {
         self.next_id = next_tid;
+        self.live_count += 1;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Notifies the thread manager that a thread has been reaped (joined or harvested as a zombie).
+    /// This decrements the live thread count, freeing a slot for future thread creation.
+    ///
+    pub(crate) fn on_thread_reaped(&mut self) {
+        // Use a runtime assert (not debug_assert) so that an accounting bug in release builds
+        // panics instead of silently wrapping usize and permanently breaking admission control.
+        // The kernel thread is never reaped, so live_count must be at least 2 here (the kernel
+        // thread plus the thread being reaped).
+        assert!(
+            self.live_count > 1,
+            "live_count underflow: kernel thread must always remain counted"
+        );
+        self.live_count -= 1;
     }
 
     ///

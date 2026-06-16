@@ -6,15 +6,16 @@ resolver = "2"
 default-members = ["src/utils/nanvixd"]
 members = [
         "src/benchmarks/echo-rust-nostd",
-        "src/benchmarks/echo-wasm-rust",
+        "src/benchmarks/mount-bench-nostd",
         "src/benchmarks/noop-rust-nostd",
-        "src/benchmarks/noop-wasm-rust",
         "src/benchmarks/snapshot-rust-nostd",
         "src/benchmarks/vfs-bench-nostd",
+        "src/daemons/hostfsd",
         "src/daemons/linuxd",
         "src/daemons/memd",
+        "src/daemons/networkd",
         "src/daemons/procd",
-        "src/daemons/wasmd",
+        "src/daemons/vfsd",
         "src/kernel",
         "src/libs/arch",
         "src/libs/bitmap",
@@ -25,15 +26,17 @@ members = [
         "src/libs/elf",
         "src/libs/error",
         "src/libs/fat32",
+        "src/libs/hostfs-api",
         "src/libs/hwloc",
         "src/libs/nanvix",
         "src/libs/nanvix-http",
-        "src/libs/nanvix-registry",
         "src/libs/nanvix-sandbox",
         "src/libs/nanvix-sandbox-cache",
+        "src/libs/nanvix-sandbox-config",
         "src/libs/nanvix-terminal",
         "src/libs/no_fail",
         "src/libs/nvx",
+        "src/libs/nvx-crt0",
         "src/libs/posix",
         "src/libs/proc",
         "src/libs/profiler",
@@ -49,7 +52,11 @@ members = [
         "src/libs/syslog-macros",
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
+        "src/libs/cache",
+        "src/libs/cmdline",
+        "src/libs/koptions",
         "src/libs/multibin",
+        "src/libs/multiimage",
         "src/libs/mmio-tag",
         "src/libs/sys",
         "src/libs/type-safe",
@@ -58,12 +65,26 @@ members = [
         "src/libs/vfs-bench-common",
         "src/tests/arch-rust",
         "src/tests/c-bindings-rust",
+        "src/tests/cmdline-len-rust",
+        "src/tests/cmdline-env-rust-nostd",
         "src/tests/dlfcn-rust",
+        "src/tests/env-rust-nostd",
+        "src/tests/execv-big-target",
+        "src/tests/execv-target",
+        "src/tests/execv-test",
         "src/tests/file-rust",
+        "src/tests/test-fork-guestfs",
+        "src/tests/test-fork-hostfs",
+        "src/tests/test-fork-kcall",
+        "src/tests/waitpid-rust",
         "src/tests/linux-app",
         "src/tests/memory-rust",
         "src/tests/misc-rust",
+        "src/tests/mount-test",
+        "src/tests/mount-multipart-test",
         "src/tests/network-rust",
+        "src/tests/setenv-rust",
+        "src/tests/snapshot-test",
         "src/tests/stress-rust",
         "src/tests/test-kernel",
         "src/tests/test-mmio-fault",
@@ -72,7 +93,6 @@ members = [
         "src/tests/vfs-test",
         "src/uservm",
         "src/user/hello-rust-nostd",
-        "src/user/hello-wasm",
         "src/utils/echo-client",
         "src/utils/mkimage",
         "src/utils/mkramfs",
@@ -80,6 +100,7 @@ members = [
         "src/utils/nanvix-test",
         "src/utils/nanvixd",
         "src/utils/strace",
+        "src/libs/net-backend",
         "src/libs/nanvix-oci",
         "src/libs/nanvix-shim-core",
         "src/libs/nanvix-shim-proto",
@@ -88,7 +109,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.12.410"
+version = "0.16.79"
 license-file = "LICENSE.txt"
 authors = ["The Maintainers of Nanvix"]
 edition = "2021"
@@ -103,16 +124,16 @@ bitmap = { path = "src/libs/bitmap", default-features = false }
 bump-allocator = { path = "src/libs/bump_allocator", default-features = false }
 build-utils = { path = "src/libs/build-utils" }
 bytes = "1.11.1"
-cc = "1.2.60"
+cc = "1.2.63"
 cfg-if = "1.0.4"
-chrono = "0.4.44"
-clap = { version = "4.6.0", default-features = false, features = [
+chrono = "0.4.45"
+clap = { version = "4.6.1", default-features = false, features = [
         "derive",
         "std",
 ] }
 compiler_builtins = "0.1.160"
 config = { path = "src/libs/config", default-features = false }
-containerd-shim-protos = { version = "0.10.0", features = ["async", "sandbox"] }
+containerd-shim-protos = { version = "0.11.0", features = ["async", "sandbox"] }
 control-plane-api = { path = "src/libs/control-plane-api", default-features = false }
 dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
@@ -122,44 +143,39 @@ fat32 = { path = "src/libs/fat32", default-features = false }
 # fatfs: pinned to a git revision because the crate is not published on
 # crates.io and we need the no_std + alloc feature set.
 fatfs = { git = "https://github.com/rafalh/rust-fatfs", rev = "4eccb50d011146fbed20e133d33b22f3c27292e7", default-features = false }
-flexi_logger = "0.31.8"
+flexi_logger = "0.31.9"
 globset = { version = "0.4.18", default-features = false }
 gdbstub = { version = "0.7", default-features = false, features = ["std"] }
 gdbstub_arch = { version = "0.3", default-features = false }
-goblin = { version = "0.10.5", default-features = false }
+goblin = { version = "0.10.7", default-features = false }
 indexmap = "2.14.0"
 indicatif = "0.18.4"
-http = "1.4.0"
+http = "1.4.2"
 http-body-util = "0.1.3"
-hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "934a2d58653840bee529d14c0ed95b1691ed9107", default-features = false, features = [
-        "nanvix-unstable",
-] }
-hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "934a2d58653840bee529d14c0ed95b1691ed9107", default-features = false, features = [
-        "kvm",
-        "mshv3",
-        "hw-interrupts",
-        "executable_heap",
-        "nanvix-unstable",
-] }
-hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "934a2d58653840bee529d14c0ed95b1691ed9107", default-features = false, features = [
-        "nanvix-unstable",
-] }
-hyper = { version = "1.9.0", default-features = false }
+hyper = { version = "1.10.1", default-features = false }
 hyper-util = { version = "0.1.20", default-features = false }
+hostfs-api = { path = "src/libs/hostfs-api", default-features = false }
+hostfsd = { path = "src/daemons/hostfsd", default-features = false }
 hwloc = { path = "src/libs/hwloc", default-features = false }
 kvm-bindings = "0.14.0"
 kvm-ioctls = "0.24.0"
-libc = "0.2.184"
+libc = "0.2.186"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
-log = "0.4.29"
+log = "0.4.32"
+cache = { path = "src/libs/cache", default-features = false }
+cmdline = { path = "src/libs/cmdline", default-features = false }
+koptions = { path = "src/libs/koptions", default-features = false }
 mkramfs = { path = "src/utils/mkramfs" }
 multibin = { path = "src/libs/multibin", default-features = false }
+multiimage = { path = "src/libs/multiimage", default-features = false }
 nanvix = { path = "src/libs/nanvix", default-features = false }
 nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
+net-backend = { path = "src/libs/net-backend", default-features = false }
+networkd = { path = "src/daemons/networkd", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }
-nanvix-registry = { path = "src/libs/nanvix-registry", default-features = false }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
 nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
+nanvix-sandbox-config = { path = "src/libs/nanvix-sandbox-config", default-features = false }
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
 nanvix-shim-standalone = { path = "src/libs/nanvix-shim-standalone" }
@@ -169,7 +185,8 @@ nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
 num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
-oci-spec = "0.9.0"
+nvx-crt0 = { path = "src/libs/nvx-crt0", default-features = false }
+oci-spec = "0.10.0"
 profiler = { path = "src/libs/profiler", default-features = false }
 protobuf = "3.7"
 portpicker = "0.1"
@@ -183,13 +200,13 @@ serde_cbor = { version = "0.11.2", default-features = false, features = [
         "alloc",
         "std",
 ] }
-serde_json = { version = "1.0.149", default-features = false, features = [
+serde_json = { version = "1.0.150", default-features = false, features = [
         "alloc",
 ] }
 sha2 = "0.11.0"
 shell-words = "1.1"
 signal-hook = "0.4.4"
-slab = { path = "src/libs/slab", default-features = false }
+slab = { path = "src/libs/slab", package = "nanvix-slab", default-features = false }
 sorted-vec = { path = "src/libs/sorted-vec", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
@@ -206,7 +223,8 @@ syslog-macros = { path = "src/libs/syslog-macros", default-features = false }
 tempfile = "3"
 talc = { git = "https://github.com/nanvix/talc", rev = "12e66643796be912933a369a2d556aaac4c68771", default-features = false, package = "talc" }
 thiserror = "2"
-tokio = { version = "1.51.1", default-features = false }
+tokio = { version = "1.52.3", default-features = false }
+tokio-util = { version = "0.7.18", default-features = false }
 toml = { version = "1.1.2", default-features = false, features = [
         "parse",
         "serde",
@@ -214,13 +232,12 @@ toml = { version = "1.1.2", default-features = false, features = [
 ttrpc = { version = "0.9.0", features = ["async"] }
 type-safe = { path = "src/libs/type-safe", default-features = false }
 uservm = { path = "src/uservm", default-features = false }
-uuid = { version = "1.23.0", default-features = false }
+uuid = { version = "1.23.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
 vfs-bench-common = { path = "src/libs/vfs-bench-common", default-features = false }
-vstd = { version = "=0.0.0-2026-04-12-0118", default-features = false }
+vstd = { version = "=0.0.0-2026-05-31-0205", default-features = false }
 vmm-sys-util = { version = "0.15.0", default-features = false }
-wasmi = { version = "1.0.9", default-features = false }
 windows = { version = "0.62", features = [
         "Win32_Foundation",
         "Win32_Security",
@@ -253,15 +270,12 @@ incremental = false
 codegen-units = 1
 rpath = false
 
-[profile.dev-wasm]
-inherits = "dev"
-opt-level = "z"
-lto = true
-
-[profile.release-wasm]
+# Profiling build: release performance with symbols and frame pointers.
+# Use: cargo build --profile release-profiling
+[profile.release-profiling]
 inherits = "release"
-opt-level = "z"
-lto = true
+strip = false
+debug = "line-tables-only"
 
 [workspace.lints.rust]
 warnings = "deny"

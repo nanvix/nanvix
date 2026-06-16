@@ -14,10 +14,12 @@ homepage.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
+config = { workspace = true }
 error = { workspace = true }
 fat32 = { workspace = true }
 fatfs = { workspace = true, features = ["alloc", "lfn"] }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
+sys = { workspace = true }
 sysapi = { workspace = true }
 
 [features]

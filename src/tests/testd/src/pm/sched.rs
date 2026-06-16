@@ -15,7 +15,7 @@
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_sched_yield() -> bool {
-    matches!(::sys::kcall::sched::sched_yield(), Ok(()))
+    matches!(::sys::kcall::sched::__kcall_sched_yield(), Ok(()))
 }
 
 //==================================================================================================

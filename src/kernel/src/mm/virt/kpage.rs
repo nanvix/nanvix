@@ -6,10 +6,7 @@
 //==================================================================================================
 
 use crate::{
-    hal::mem::{
-        FrameAddress,
-        PageAddress,
-    },
+    hal::mem::PageAddress,
     mm::phys::KernelFrame,
 };
 
@@ -73,7 +70,7 @@ impl KernelPage {
     ///
     /// The frame address of the target kernel page.
     ///
-    pub fn frame_address(&self) -> FrameAddress {
+    pub fn frame_address(&self) -> crate::hal::mem::FrameAddress {
         self.kframe.base()
     }
 }

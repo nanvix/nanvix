@@ -67,84 +67,6 @@ pub struct FpuState {
 // Implementations
 //==================================================================================================
 
-impl FpuState {
-    ///
-    /// # Description
-    ///
-    /// Validates the FPU/XSAVE state from a snapshot against the current host's capabilities.
-    ///
-    /// # Parameters
-    ///
-    /// - `kvm`: Handle to the KVM hypervisor for querying host XSAVE support.
-    ///
-    /// # Return Value
-    ///
-    /// On success, this function returns empty. On failure, an error describing the incompatibility
-    /// is returned.
-    ///
-    pub(crate) fn validate(&self, kvm: &Kvm) -> Result<()> {
-        trace!("FpuState::validate()");
-
-        if self.xsave_bytes.is_empty() {
-            let reason: &str = "snapshot XSAVE state is empty";
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        let xsave2_size: usize = match kvm.check_extension_int(Cap::Xsave2) {
-            size if size > 0 => size as usize,
-            _ => 0,
-        };
-
-        if xsave2_size > 0 {
-            // Host supports extended XSAVE — snapshot must have at least the kvm_xsave2 header.
-            // Note: kvm_xsave2 wraps kvm_xsave with an additional `len: usize` field, so its
-            // size_of is larger than the raw XSAVE area reported by Cap::Xsave2.
-            let header_size: usize = mem::size_of::<kvm_bindings::kvm_xsave2>();
-            if self.xsave_bytes.len() < header_size {
-                let reason: String = format!(
-                    "snapshot XSAVE data too short for xsave2 header: expected at least {}, got {}",
-                    header_size,
-                    self.xsave_bytes.len()
-                );
-                error!("validate(): {reason}");
-                anyhow::bail!(reason);
-            }
-            // Compute the maximum valid serialized size.  Cap::Xsave2 returns the kernel XSAVE
-            // buffer size; the serialized form additionally includes the kvm_xsave2 wrapper header.
-            // FAM entries (u32) hold any extra bytes beyond the header, rounded up.
-            // Note: if xsave2_size < header_size (unusual), saturating_sub yields 0, so
-            // max_serialized_size == header_size and any extra data is correctly rejected.
-            let fam_bytes: usize = xsave2_size.saturating_sub(header_size);
-            let fam_units: usize = fam_bytes.div_ceil(mem::size_of::<u32>());
-            let max_serialized_size: usize = header_size + fam_units * mem::size_of::<u32>();
-            if self.xsave_bytes.len() > max_serialized_size {
-                let reason: String = format!(
-                    "snapshot XSAVE data ({} bytes) exceeds host XSAVE2 capacity ({} bytes)",
-                    self.xsave_bytes.len(),
-                    max_serialized_size
-                );
-                error!("validate(): {reason}");
-                anyhow::bail!(reason);
-            }
-        } else {
-            // Host only supports legacy kvm_xsave — size must match exactly.
-            let expected: usize = mem::size_of::<kvm_xsave>();
-            if self.xsave_bytes.len() != expected {
-                let reason: String = format!(
-                    "snapshot XSAVE data size mismatch: expected {}, got {}",
-                    expected,
-                    self.xsave_bytes.len()
-                );
-                error!("validate(): {reason}");
-                anyhow::bail!(reason);
-            }
-        }
-
-        Ok(())
-    }
-}
-
 impl Fpu {
     ///
     /// # Description
@@ -386,39 +308,5 @@ mod tests {
         assert!(result.is_err(), "load_state should reject truncated data");
 
         Ok(())
-    }
-
-    /// Verifies that `validate` accepts a well-formed FPU/XSAVE snapshot.
-    #[test]
-    fn validate_accepts_valid_snapshot() -> AnyResult<()> {
-        let (kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
-        let fpu: Fpu = Fpu::new(&kvm, &vcpu_fd).expect("failed to create FPU");
-
-        let state: FpuState = fpu.save_state(&vcpu_fd).expect("save_state failed");
-        state
-            .validate(&kvm)
-            .expect("validate should accept a valid FPU snapshot");
-
-        Ok(())
-    }
-
-    /// Verifies that `validate` rejects an empty XSAVE state.
-    #[test]
-    fn validate_rejects_empty_xsave() {
-        let kvm: Kvm = Kvm::new().expect("failed to open /dev/kvm");
-        let bad_state: FpuState = FpuState {
-            xsave_bytes: vec![],
-        };
-        assert!(bad_state.validate(&kvm).is_err(), "validate should reject empty XSAVE data");
-    }
-
-    /// Verifies that `validate` rejects XSAVE data that is too short for the header.
-    #[test]
-    fn validate_rejects_truncated_xsave() {
-        let kvm: Kvm = Kvm::new().expect("failed to open /dev/kvm");
-        let bad_state: FpuState = FpuState {
-            xsave_bytes: vec![0u8; 4],
-        };
-        assert!(bad_state.validate(&kvm).is_err(), "validate should reject truncated XSAVE data");
     }
 }

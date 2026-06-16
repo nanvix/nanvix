@@ -17,10 +17,12 @@ pub struct UnknownMode(String);
 
 /// Create an execution mode by name.
 ///
-/// For V1, only `"standalone"` is supported. Future modes (e.g., "hyperlight",
-/// "distributed") will be added here.
+/// This function does not provide any built-in execution modes.
+/// Callers should use [`ModeRegistry`] to register and create modes such as
+/// `"standalone"`.
 ///
-/// The caller (proto layer) passes the mode name from `NanvixRuntimeConfig::execution_mode`.
+/// The caller (proto layer) passes the mode name from
+/// `NanvixRuntimeConfig::execution_mode`.
 pub fn create_execution_mode(
     mode: &str,
     _id: &str,

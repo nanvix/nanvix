@@ -10,8 +10,8 @@ use crate::{
         SelectRequest,
         SelectResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -83,19 +83,27 @@ pub fn select(
         ));
     }
 
-    let tid: ThreadIdentifier = pm::gettid()?;
+    let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message =
-        SelectRequest::build(tid, nfds, &readfds, &writefds, &errorfds, timeout)?;
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = SelectRequest::build(
+        tid,
+        nfds,
+        &readfds,
+        &writefds,
+        &errorfds,
+        timeout,
+        crate::LINUXD,
+        ::sys::ipc::MessageType::Ikc,
+    )?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "select(): failed (nfds={:?}, timeout={:?}, status={:?})",
             nfds,
             timeout,
@@ -108,7 +116,7 @@ pub fn select(
             Ok(error_code) => Err(Error::new(error_code, "select() failed")),
             // Error was not parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "select(): {error:?} (nfds={:?}, timeout={:?}, status={:?})",
                     nfds,
                     timeout,
@@ -119,11 +127,11 @@ pub fn select(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::SelectResponse => {
+            SystemCallMessageHeader::SelectResponse => {
                 let response: SelectResponse = SelectResponse::from_bytes(message.payload);
 
                 for (fd_set, dest) in [
@@ -141,7 +149,7 @@ pub fn select(
             // Response was not parsed.
             header => {
                 let reason: &'static str = "invalid response";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "select(): {reason} (header={header:?}, nfds={:?}, timeout={:?}, status={:?})",
                     nfds,
                     timeout,

@@ -5,7 +5,7 @@
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(all(feature = "syscall", feature = "staticlib"))]
+#[cfg(feature = "syscall")]
 mod bindings {
     use crate::errno::__errno_location;
     use ::sys::error::ErrorCode;
@@ -49,7 +49,7 @@ mod bindings {
     pub unsafe extern "C" fn utime(filename: *const c_char, times: *const utimbuf) -> c_int {
         // Check if `times` is invalid.
         if times.is_null() {
-            ::syslog::error!("utime(): invalid times (filename={:?}, times={:?})", filename, times);
+            ::syslog::warn!("utime(): invalid times (filename={:?}, times={:?})", filename, times);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         }

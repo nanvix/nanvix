@@ -25,10 +25,10 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        create_thread,
-        getpid,
-        gettid,
-        join_thread,
+        __kcall_create_thread,
+        __kcall_getpid,
+        __kcall_gettid,
+        __kcall_join_thread,
     },
     pm::{
         ProcessIdentifier,
@@ -70,15 +70,15 @@ pub fn run() -> Result<(), StressError> {
     THREAD_IDENTITY_PID.store(0, Ordering::Relaxed);
     THREAD_IDENTITY_TID.store(0, Ordering::Relaxed);
 
-    let main_pid: ProcessIdentifier = getpid()?;
-    let main_tid: ThreadIdentifier = gettid()?;
+    let main_pid: ProcessIdentifier = __kcall_getpid()?;
+    let main_tid: ThreadIdentifier = __kcall_gettid()?;
 
     let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = thread_args(&stack, thread_identity_worker, 0);
-    let tid: ThreadIdentifier = create_thread(&mut args)?;
+    let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
 
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
     drop(stack);
 
     if retval == IDENTITY_FAILURE {
@@ -146,8 +146,8 @@ extern "C" fn thread_identity_worker(_: usize) -> usize {
 ///
 /// `Ok(tag)` on success where `tag` encodes the identity completion marker.
 fn thread_identity_worker_impl() -> Result<usize, Error> {
-    let pid: ProcessIdentifier = getpid()?;
-    let tid: ThreadIdentifier = gettid()?;
+    let pid: ProcessIdentifier = __kcall_getpid()?;
+    let tid: ThreadIdentifier = __kcall_gettid()?;
 
     THREAD_IDENTITY_PID.store(usize::try_from(pid)?, Ordering::Release);
     THREAD_IDENTITY_TID.store(usize::try_from(tid)?, Ordering::Release);

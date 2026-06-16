@@ -14,7 +14,7 @@
 //==================================================================================================
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "std", feature(test))]
+#![cfg_attr(all(feature = "std", test), feature(test))]
 #![deny(clippy::all)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::unwrap_used)]
@@ -38,6 +38,8 @@ extern crate core;
 
 mod unaligned_pointer;
 
+mod utils;
+
 mod vec_deque;
 
 //==================================================================================================
@@ -45,4 +47,5 @@ mod vec_deque;
 //==================================================================================================
 
 pub use unaligned_pointer::*;
+pub use utils::*;
 pub use vec_deque::*;

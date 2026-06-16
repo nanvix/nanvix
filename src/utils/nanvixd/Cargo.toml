@@ -19,8 +19,11 @@ rand = { workspace = true }
 serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "standalone"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into Nanvix Daemon (nanvixd).
 single-process = ["nanvix/single-process"]
@@ -29,7 +32,6 @@ standalone = ["nanvix/standalone"]
 gdb = ["nanvix/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix/profile-time"]
-hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 whp = ["nanvix/whp"]
 

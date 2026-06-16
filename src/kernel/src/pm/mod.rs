@@ -9,6 +9,8 @@ pub(crate) mod clock;
 mod kcall;
 mod process;
 pub mod sync;
+#[cfg(feature = "test")]
+mod test;
 pub mod thread;
 
 //==================================================================================================
@@ -61,19 +63,30 @@ pub use thread::InterruptReason;
 ///
 /// Interrupt handler for IKC (inter-kernel communication) notifications.
 ///
-/// The VMM injects this interrupt (IRQ 9) whenever a new message is enqueued for the guest.
-/// The handler polls IKC messages immediately so the kernel does not have to wait for the
-/// next timer tick to process newly arrived messages.
+/// The VMM injects this interrupt (IRQ 9) whenever a new message is enqueued for the guest. Its
+/// sole purpose is to break the CPU out of `HLT` early so the kernel does not have to wait for the
+/// next timer tick before it returns to its idle loop.
+///
+/// The handler is intentionally *ack-only*: it does not poll IKC messages here. Message polling
+/// mutates scheduler state (it posts messages and wakes threads, moving processes between run
+/// queues) and is only safe at the kernel's controlled scheduling points — the idle-loop poll and
+/// the kcall trailing-poll — where the running process is the kernel idle context. IRQ 9, by
+/// contrast, is delivered whenever interrupts are enabled, i.e. while a *user* process is the
+/// running process; polling from that context corrupts run-queue bookkeeping and leaks a process
+/// from the scheduler. Acknowledging the interrupt and letting the idle loop perform the poll
+/// preserves the wake-from-`HLT` latency benefit without re-entering the scheduler from interrupt
+/// context.
 ///
 /// # Safety
 ///
-/// Called from interrupt context with interrupts disabled on a single-core system.
-/// At that point the CPU was halted (HLT), so no mutable references to kernel state
-/// are alive and it is safe to re-enter the process manager.
+/// Called from interrupt context with interrupts disabled on a single-core system. The handler
+/// touches no kernel state, so it is safe to invoke regardless of what the interrupted code was
+/// doing.
 ///
 #[cfg(feature = "microvm")]
 unsafe fn ikc_interrupt_handler(_intnum: InterruptNumber) {
-    crate::kcall::poll_ikc_messages();
+    // Ack-only: the actual IKC polling happens at the kernel's controlled scheduling points (idle
+    // loop and kcall trailing-poll). Do not re-enter the scheduler from interrupt context.
 }
 
 //==================================================================================================
@@ -133,6 +146,12 @@ pub fn init(root: Vmem) -> Result<(), Error> {
     info!("initializing the thread manager...");
     let (kernel, tm): (ReadyThread, ThreadManager) = thread::init();
     ProcessManager::init(interrupt_capable, kernel, root, tm);
+
+    #[cfg(feature = "test")]
+    {
+        let passed: bool = test::test();
+        assert!(passed, "pm in-kernel tests failed");
+    }
 
     Ok(())
 }

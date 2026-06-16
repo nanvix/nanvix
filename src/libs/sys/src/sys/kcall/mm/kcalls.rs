@@ -12,6 +12,7 @@ use crate::{
     },
     kcall2,
     kcall3,
+    kcall4,
     mm::{
         AccessPermission,
         Address,
@@ -33,18 +34,23 @@ fn split_tag(tag: u64) -> (u32, u32) {
 }
 
 //==================================================================================================
-// Map Memory Page
+// Map Memory Pages
 //==================================================================================================
 
-pub fn mmap(
+#[unsafe(no_mangle)]
+pub fn __kcall_mmap(
     pid: ProcessIdentifier,
     vaddr: VirtualAddress,
+    npages: usize,
     access: AccessPermission,
 ) -> Result<(), Error> {
-    let result: i64 = kcall3!(
+    let npages_u32: u32 = u32::try_from(npages)
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "npages exceeds u32 range"))?;
+    let result: i64 = kcall4!(
         KcallNumber::MemoryMap.into(),
         pid.try_into()?,
         vaddr.into_raw_value() as u32,
+        npages_u32,
         access.into()
     );
 
@@ -59,7 +65,8 @@ pub fn mmap(
 // Unmap Memory Page
 //==================================================================================================
 
-pub fn munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(), Error> {
     let result: i64 =
         kcall2!(KcallNumber::MemoryUnmap.into(), pid.try_into()?, vaddr.into_raw_value() as u32);
 
@@ -74,7 +81,8 @@ pub fn munmap(pid: ProcessIdentifier, vaddr: VirtualAddress) -> Result<(), Error
 // Change Memory Protection
 //==================================================================================================
 
-pub fn mprotect(
+#[unsafe(no_mangle)]
+pub fn __kcall_mprotect(
     pid: ProcessIdentifier,
     vaddr: VirtualAddress,
     access: AccessPermission,
@@ -112,7 +120,8 @@ pub fn mprotect(
 ///
 /// `Ok(())` on success, or an error describing why the allocation failed.
 ///
-pub fn mmio_alloc(tag: u64) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_mmio_alloc(tag: u64) -> Result<(), Error> {
     let (lower, upper): (u32, u32) = split_tag(tag);
     let result: i64 = kcall2!(KcallNumber::AllocMmio.into(), lower, upper);
 
@@ -141,7 +150,8 @@ pub fn mmio_alloc(tag: u64) -> Result<(), Error> {
 ///
 /// `Ok(())` on success, or an error describing why the release failed.
 ///
-pub fn mmio_free(tag: u64) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_mmio_free(tag: u64) -> Result<(), Error> {
     let (lower, upper): (u32, u32) = split_tag(tag);
     let result: i64 = kcall2!(KcallNumber::FreeMmio.into(), lower, upper);
 
@@ -170,7 +180,8 @@ pub fn mmio_free(tag: u64) -> Result<(), Error> {
 ///
 /// On success, returns an [`MmioRegionInfo`] structure populated by the kernel.
 ///
-pub fn mmio_info(tag: u64) -> Result<MmioRegionInfo, Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_mmio_info(tag: u64) -> Result<MmioRegionInfo, Error> {
     let (lower, upper): (u32, u32) = split_tag(tag);
     let mut info: MmioRegionInfo = MmioRegionInfo::default();
     let buffer: *mut MmioRegionInfo = &mut info;

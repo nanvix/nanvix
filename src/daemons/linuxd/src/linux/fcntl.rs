@@ -26,7 +26,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::{
@@ -193,7 +196,12 @@ pub fn do_openat<T>(
     } {
         fd if fd >= 0 => {
             debug!("libc::openat(): fd={fd:?}");
-            Ok(vec![OpenAtResponse::build(tid, fd)])
+            Ok(vec![OpenAtResponse::build(
+                tid,
+                fd,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -255,7 +263,12 @@ pub fn do_unlinkat<T>(
     } {
         ret if ret == 0 => {
             debug!("libc::unlinkat(): success");
-            Ok(vec![UnlinkAtResponse::build(tid, ret)])
+            Ok(vec![UnlinkAtResponse::build(
+                tid,
+                ret,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         errno => {
             // Check if the thread has been interrupted.
@@ -321,7 +334,12 @@ pub fn do_renameat<T>(
     } {
         ret if ret == 0 => {
             debug!("libc::renameat(): success");
-            Ok(vec![RenameAtResponse::build(tid, ret)])
+            Ok(vec![RenameAtResponse::build(
+                tid,
+                ret,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         errno => {
             debug!("libc::renameat(): errno={errno:?}");
@@ -431,7 +449,7 @@ pub fn do_fstat_at<T>(
             debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
             let response = FileStatAtResponse::new(stat);
 
-            match response.into_parts(tid) {
+            match response.into_parts(tid, ::syscall::LINUXD, MessageType::Ikc) {
                 Ok(messages) => Ok(messages),
                 Err(e) => Ok(vec![crate::build_error(tid, e.code)]),
             }
@@ -478,7 +496,7 @@ pub fn do_posix_fallocate<T>(
     match unsafe { handle_posix_fallocate(syscall_table, fd, offset, len) } {
         0 => {
             debug!("libc::posix_fallocate(): success");
-            Ok(FileSpaceControlResponse::build(tid, 0))
+            Ok(FileSpaceControlResponse::build(tid, 0, ::syscall::LINUXD, MessageType::Ikc))
         },
         errno => {
             // Check if the thread has been interrupted.
@@ -530,7 +548,7 @@ pub fn do_posix_fadvise<T>(
     match unsafe { handle_posix_fadvise(syscall_table, fd, offset, len, advice.inner()) } {
         0 => {
             debug!("libc::posix_fadvise(): success");
-            Ok(FileAdvisoryInformationResponse::build(tid, 0))
+            Ok(FileAdvisoryInformationResponse::build(tid, 0, ::syscall::LINUXD, MessageType::Ikc))
         },
         errno => {
             // Check if the thread has been interrupted.
@@ -621,7 +639,7 @@ pub fn do_fstat<T>(
             debug!("libc::fstatat(): size of stat={:?}", core::mem::size_of::<stat>());
             let response = FileStatAtResponse::new(stat);
 
-            match response.into_parts(tid) {
+            match response.into_parts(tid, ::syscall::LINUXD, MessageType::Ikc) {
                 Ok(messages) => Ok(messages),
                 Err(e) => Ok(vec![crate::build_error(tid, e.code)]),
             }
@@ -682,7 +700,12 @@ pub fn do_symlinkat<T>(
     } {
         0 => {
             debug!("libc::symlinkat(): success");
-            Ok(vec![SymbolicLinkAtResponse::build(tid, 0)])
+            Ok(vec![SymbolicLinkAtResponse::build(
+                tid,
+                0,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -753,7 +776,7 @@ pub fn do_readlinkat<T>(
                 Err(e) => return Ok(vec![crate::build_error(tid, e.code)]),
             };
 
-            match response.into_parts(tid) {
+            match response.into_parts(tid, ::syscall::LINUXD, MessageType::Ikc) {
                 Ok(messages) => Ok(messages),
                 Err(e) => Ok(vec![crate::build_error(tid, e.code)]),
             }
@@ -813,7 +836,12 @@ pub fn do_mkdirat<T>(
     match unsafe { handle_mkdirat(syscall_table, dirfd.inner(), pathname.as_ptr(), mode.inner()) } {
         0 => {
             debug!("libc::mkdirat(): success");
-            Ok(vec![MakeDirectoryAtResponse::build(tid, 0)])
+            Ok(vec![MakeDirectoryAtResponse::build(
+                tid,
+                0,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -885,7 +913,12 @@ pub fn do_utimensat<T>(
     } {
         0 => {
             debug!("libc::utimensat(): success");
-            Ok(vec![UpdateFileAccessTimeAtResponse::build(tid, 0)])
+            Ok(vec![UpdateFileAccessTimeAtResponse::build(
+                tid,
+                0,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -938,7 +971,7 @@ pub fn do_futimens<T>(
     match unsafe { handle_futimens(syscall_table, fd, libc_times.as_ptr()) } {
         0 => {
             debug!("libc::futimens(): success");
-            Ok(UpdateFileAccessTimeResponse::build(tid, 0))
+            Ok(UpdateFileAccessTimeResponse::build(tid, 0, ::syscall::LINUXD, MessageType::Ikc))
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };
@@ -1051,7 +1084,7 @@ pub fn do_fcntl<T>(
         libc::F_DUPFD | libc::F_DUPFD_CLOEXEC => {
             if ret >= 0 {
                 debug!("libc::fcntl(): F_DUPFD | F_DUPFD_CLOEXEC success");
-                Ok(FileControlResponse::build(tid, ret))
+                Ok(FileControlResponse::build(tid, ret, ::syscall::LINUXD, MessageType::Ikc))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -1079,7 +1112,12 @@ pub fn do_fcntl<T>(
                 let nanvix_file_descritor_flags: c_int = LibcFileDescriptorFlags(ret)
                     .try_into_nanvix_flags()
                     .unwrap_or_else(|_| panic!("unexpected file descriptor flags: {ret:?}"));
-                Ok(FileControlResponse::build(tid, nanvix_file_descritor_flags))
+                Ok(FileControlResponse::build(
+                    tid,
+                    nanvix_file_descritor_flags,
+                    ::syscall::LINUXD,
+                    MessageType::Ikc,
+                ))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -1131,6 +1169,8 @@ pub fn do_fcntl<T>(
                 Ok(FileControlResponse::build(
                     tid,
                     nanvix_file_status_flags | nanvix_file_creation_flags,
+                    ::syscall::LINUXD,
+                    MessageType::Ikc,
                 ))
             } else {
                 let errno: i32 = unsafe { *libc::__errno_location() };
@@ -1156,7 +1196,7 @@ pub fn do_fcntl<T>(
         libc::F_GETOWN => {
             if ret != -1 {
                 debug!("libc::fcntl(): F_GETOWN success");
-                Ok(FileControlResponse::build(tid, ret))
+                Ok(FileControlResponse::build(tid, ret, ::syscall::LINUXD, MessageType::Ikc))
             } else {
                 // The following statement is unreachable because `libc::fcntl()` should never
                 // return -1 for `F_GETOWN`.
@@ -1169,7 +1209,7 @@ pub fn do_fcntl<T>(
         libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN => {
             if ret == 0 {
                 debug!("libc::fcntl(): libc::F_SETFD | libc::F_SETFL | libc::F_SETOWN success");
-                Ok(FileControlResponse::build(tid, ret))
+                Ok(FileControlResponse::build(tid, ret, ::syscall::LINUXD, MessageType::Ikc))
             } else if ret == -1 {
                 let errno: i32 = unsafe { *libc::__errno_location() };
 
@@ -1242,7 +1282,11 @@ pub fn do_fchownat<T>(
     } {
         0 => {
             debug!("libc::fchownat(): success");
-            Ok(vec![FileChownAtResponse::build(tid)])
+            Ok(vec![FileChownAtResponse::build(
+                tid,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         _ => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -1283,7 +1327,7 @@ pub fn do_fchmod<T>(
 
     debug!("libc::fchmod(): fd={fd:?}, mode={mode:?}");
     match unsafe { handle_fchmod(syscall_table, fd, mode) } {
-        0 => Ok(FileChmodResponse::build(tid)),
+        0 => Ok(FileChmodResponse::build(tid, ::syscall::LINUXD, MessageType::Ikc)),
         ret if ret == -1 => {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
@@ -1341,7 +1385,11 @@ pub fn do_fchmodat<T>(
     } {
         0 => {
             debug!("libc::fchmodat(): success");
-            Ok(vec![FileChmodAtResponse::build(tid)])
+            Ok(vec![FileChmodAtResponse::build(
+                tid,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            )])
         },
         _ => {
             let errno: i32 = unsafe { *libc::__errno_location() };

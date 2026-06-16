@@ -272,6 +272,7 @@ impl UserVm {
                         kernel_filename,
                         initrd_filename: Some(initrd_filename.clone()),
                         initrd_args,
+                        kernel_args: None,
                         ramfs_filename,
                         stderr: stderr_file,
                         vcpu_thread_stdout_tx,
@@ -284,6 +285,7 @@ impl UserVm {
                         gdb_port: None,
                         #[cfg(feature = "profile-time")]
                         perf_timings: ::uservm::perf::PerfTimings::new(),
+                        guest_profile_path: None,
                     });
 
                 // Wait for VMM thread to finish.

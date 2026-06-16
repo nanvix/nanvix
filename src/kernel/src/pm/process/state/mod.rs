@@ -16,6 +16,8 @@ mod interrupted;
 mod runnable;
 mod running;
 mod sleeping;
+#[cfg(feature = "test")]
+mod test_detach;
 mod zombie;
 
 //==================================================================================================
@@ -81,6 +83,16 @@ pub use runnable::RunnableProcess;
 pub use running::RunningProcess;
 pub use sleeping::SleepingProcess;
 pub use zombie::ZombieProcess;
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+/// Runs all in-kernel unit tests for the process state module.
+#[cfg(feature = "test")]
+pub(super) fn test() -> bool {
+    test_detach::test()
+}
 
 //==================================================================================================
 // ProcessRefMut
@@ -184,6 +196,8 @@ impl ProcessRef<'_> {
 pub struct ProcessState {
     /// Process identifier.
     pid: ProcessIdentifier,
+    /// Process identifier of the parent process.
+    parent: ProcessIdentifier,
     /// Capabilities.
     capabilities: Capabilities,
     /// Memory address space.
@@ -205,9 +219,10 @@ pub struct ProcessState {
 }
 
 impl ProcessState {
-    pub fn new(pid: ProcessIdentifier, vmem: Vmem) -> Self {
+    pub fn new(pid: ProcessIdentifier, parent: ProcessIdentifier, vmem: Vmem) -> Self {
         Self {
             pid,
+            parent,
             capabilities: Capabilities::default(),
             vmem,
             events: LinkedList::new(),
@@ -222,6 +237,10 @@ impl ProcessState {
 
     pub fn pid(&self) -> ProcessIdentifier {
         self.pid
+    }
+
+    pub fn ppid(&self) -> ProcessIdentifier {
+        self.parent
     }
 
     ///
@@ -281,6 +300,66 @@ impl ProcessState {
         &mut self.vmem
     }
 
+    ///
+    /// # Description
+    ///
+    /// Replaces the process's address space with `vmem`, returning the previous one.
+    ///
+    /// This is used by `execv()` to install a freshly built image's address space while keeping
+    /// the rest of the process state (identity, capabilities) intact. The caller is responsible
+    /// for reclaiming the returned address space once it is no longer the active one (i.e. after
+    /// the context switch into the new image has loaded the new page directory).
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: The new address space to install.
+    ///
+    /// # Returns
+    ///
+    /// The address space that was previously installed.
+    ///
+    pub fn replace_vmem(&mut self, vmem: Vmem) -> Vmem {
+        core::mem::replace(&mut self.vmem, vmem)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether the process owns any "special" resources that prevent it from being
+    /// safely duplicated. A process is considered to own special resources when it holds any
+    /// of the following:
+    ///
+    /// - One or more allocated memory-mapped I/O regions.
+    /// - One or more allocated port-mapped I/O ports.
+    /// - One or more event ownerships.
+    /// - One or more in-flight (buffered) inter-process messages in its mailbox.
+    ///
+    /// Mutexes and condition variables are intentionally excluded because their addresses
+    /// alias user-space objects and are recreated lazily on access from the cloned address
+    /// space. Resources covered above, by contrast, are uniquely owned by the parent and
+    /// cannot be safely transferred to a child via address-space cloning alone.
+    ///
+    /// # Scope
+    ///
+    /// This predicate only inspects per-process state. It does **not** inspect global state
+    /// such as the rendezvous lists used by `push`/`pull`; threads belonging to this process
+    /// that are currently sleeping on a rendezvous are not tracked here. Such pending
+    /// rendezvous reference user buffers in the parent's address space only, so they remain
+    /// correct after duplication: copy-on-write resolution on the kernel-side write paths
+    /// (`vmcopy_user_to_user`, `copy_to_user_unaligned`) ensures wake-up writes hit the
+    /// parent's private frames, not the child's.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the process owns any of the resources listed above, otherwise `false`.
+    ///
+    pub fn has_special_resources(&self) -> bool {
+        !self.mmio.is_empty()
+            || !self.pmio.is_empty()
+            || !self.events.is_empty()
+            || !self.mailbox.is_empty()
+    }
+
     pub fn copy_from_user_unaligned(
         &self,
         dst: VirtualAddress,
@@ -291,7 +370,7 @@ impl ProcessState {
     }
 
     pub fn copy_to_user_unaligned(
-        &self,
+        &mut self,
         dst: VirtualAddress,
         src: VirtualAddress,
         size: usize,

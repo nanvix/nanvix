@@ -17,7 +17,7 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
 };
-use ::syslog::error;
+use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn posix_memalign(
 ) -> c_int {
     // Check if `memptr` is null.
     if memptr.is_null() {
-        error!("posix_memalign(): null storage (alignment={alignment:?}, size={size:?})");
+        warn!("posix_memalign(): null storage (alignment={alignment:?}, size={size:?})");
         return EINVAL;
     }
 
@@ -71,7 +71,7 @@ pub unsafe extern "C" fn posix_memalign(
     if size == 0 {
         // Zero-size allocations have implementation-defined behavior,
         // thus log a warning message and return error.
-        error!("posix_memalign(): zero-size allocation (alignment={alignment:?}, size={size:?})");
+        warn!("posix_memalign(): zero-size allocation (alignment={alignment:?}, size={size:?})");
         return EINVAL;
     }
 
@@ -79,20 +79,20 @@ pub unsafe extern "C" fn posix_memalign(
     if alignment == 0 {
         // Zero-size alignments have implementation-defined behavior,
         // thus log a warning message and return error.
-        error!("posix_memalign(): zero-size alignment (alignment={alignment:?}, size={size:?})");
+        warn!("posix_memalign(): zero-size alignment (alignment={alignment:?}, size={size:?})");
         return EINVAL;
     }
 
     // Check for invalid alignment.
     if !alignment.is_multiple_of(size_of::<*mut c_void>()) || !alignment.is_power_of_two() {
-        error!("posix_memalign(): invalid alignment (alignment={alignment:?}, size={size:?})");
+        warn!("posix_memalign(): invalid alignment (alignment={alignment:?}, size={size:?})");
         return EINVAL;
     }
 
     // Allocate memory and check for errors.
     let ptr: *mut u8 = BlockHeader::alloc(size, Some(alignment));
     if ptr.is_null() {
-        error!("posix_memalign(): allocation failed (alignment={alignment:?}, size={size:?})");
+        warn!("posix_memalign(): allocation failed (alignment={alignment:?}, size={size:?})");
         return ENOMEM;
     }
 

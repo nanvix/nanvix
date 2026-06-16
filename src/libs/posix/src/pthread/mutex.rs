@@ -116,13 +116,13 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
 ) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_mutex_timedlock(): invalid mutex pointer");
+        ::syslog::warn!("pthread_mutex_timedlock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `abstime` is not valid.
     if abstime.is_null() {
-        ::syslog::error!("pthread_mutex_timedlock(): invalid abstime pointer");
+        ::syslog::warn!("pthread_mutex_timedlock(): invalid abstime pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -131,7 +131,7 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
         match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
             Some(timeout) => timeout,
             None => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "pthread_mutex_timedlock(): invalid timeout (abstime={:?})",
                     abstime
                 );
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
     match pthread::pthread_mutex_timedlock(&mut *mutex, Some(timeout)) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pthread_mutex_timedlock(): failed to lock mutex (abstime={:?}, error={:?})",
                 abstime,
                 error
@@ -182,14 +182,14 @@ pub unsafe extern "C" fn pthread_mutex_timedlock(
 pub unsafe extern "C" fn pthread_mutex_trylock(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_mutex_trylock(): invalid mutex pointer");
+        ::syslog::warn!("pthread_mutex_trylock(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     match pthread::pthread_mutex_trylock(&mut *mutex) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
+            ::syslog::warn!("pthread_mutex_trylock(): failed to lock mutex (error={:?})", error);
             error.code.get()
         },
     }

@@ -32,7 +32,7 @@ pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
             Some(addr) => Ok(VirtualAddress::from_raw_value(addr)),
             None => {
                 let reason: &str = "symbol not found in global scope";
-                ::syslog::error!("dlsym(): {}", reason);
+                ::syslog::warn!("dlsym(): {}", reason);
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         };
@@ -47,14 +47,14 @@ pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
                 Some((base, offset)) => Ok(VirtualAddress::from_raw_value(base + offset)),
                 None => {
                     let reason: &str = "symbol not found";
-                    ::syslog::error!("dlsym(): {}", reason);
+                    ::syslog::warn!("dlsym(): {}", reason);
                     Err(Error::new(ErrorCode::NoSuchEntry, reason))
                 },
             }
         },
         None => {
             let reason: &str = "dynamic library file not open";
-            ::syslog::error!("dlinfo(): {}", reason);
+            ::syslog::warn!("dlinfo(): {}", reason);
             Err(Error::new(ErrorCode::BadFile, reason))
         },
     }

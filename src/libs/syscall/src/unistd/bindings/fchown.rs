@@ -70,7 +70,7 @@ pub unsafe extern "C" fn fchown(fd: c_int, owner: uid_t, group: gid_t) -> c_int 
     match crate::unistd::fchown(fd, owner, group) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("fchown(): {error:?} (fd={fd:?}, owner={owner:?}, group={group:?})");
+            ::syslog::warn!("fchown(): {error:?} (fd={fd:?}, owner={owner:?}, group={group:?})");
             *__errno_location() = error.code.get();
             -1
         },

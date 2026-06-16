@@ -18,7 +18,7 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::error;
+use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -56,7 +56,7 @@ pub unsafe extern "C" fn calloc(nmemb: c_size_t, size: c_size_t) -> *mut c_void 
     if nmemb == 0 || size == 0 {
         // Zero-size allocations have implementation-defined behavior,
         // thus log a warning message and return null.
-        error!("calloc(): zero-size allocation (nmemb={nmemb:?}, size={size:?})");
+        warn!("calloc(): zero-size allocation (nmemb={nmemb:?}, size={size:?})");
         set_errno(EINVAL);
         return null_mut();
     }
@@ -67,7 +67,7 @@ pub unsafe extern "C" fn calloc(nmemb: c_size_t, size: c_size_t) -> *mut c_void 
     let total: usize = match nmemb.checked_mul(size) {
         Some(t) => t,
         None => {
-            error!("calloc(): size overflow (nmemb={nmemb:?}, size={size:?})");
+            warn!("calloc(): size overflow (nmemb={nmemb:?}, size={size:?})");
             set_errno(ENOMEM);
             return null_mut();
         },
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn calloc(nmemb: c_size_t, size: c_size_t) -> *mut c_void 
     // Allocate memory and check for errors.
     let ptr: *mut u8 = BlockHeader::alloc(total, None);
     if ptr.is_null() {
-        error!("calloc(): allocation failed (nmemb={nmemb:?}, size={size:?})");
+        warn!("calloc(): allocation failed (nmemb={nmemb:?}, size={size:?})");
         set_errno(ENOMEM);
         return null_mut();
     }

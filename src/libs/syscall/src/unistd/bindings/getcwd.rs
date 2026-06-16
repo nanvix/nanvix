@@ -71,14 +71,14 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char {
     // Check if the buffer is valid.
     if buf.is_null() {
-        ::syslog::error!("getcwd(): invalid buffer (buf={buf:?}, size={size:?})");
+        ::syslog::warn!("getcwd(): invalid buffer (buf={buf:?}, size={size:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return core::ptr::null_mut();
     }
 
     // Check if the buffer size is invalid.
     if size == 0 {
-        ::syslog::error!("getcwd(): buffer size is zero (buf={buf:?}, size={size:?})");
+        ::syslog::warn!("getcwd(): buffer size is zero (buf={buf:?}, size={size:?})");
         *__errno_location() = ErrorCode::ValueOutOfRange.get();
         return core::ptr::null_mut();
     }
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char
             let cstr: CString = match CString::new(cwd) {
                 Ok(cstr) => cstr,
                 Err(_) => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "getcwd(): invalid current working directory (buf={buf:?}, size={size:?})"
                     );
                     *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char
 
             // Check if the buffer is large enough.
             if buf.len() < cwd.len() {
-                ::syslog::error!("getcwd(): buffer is too small (buf={buf:?}, size={size:?})");
+                ::syslog::warn!("getcwd(): buffer is too small (buf={buf:?}, size={size:?})");
                 *__errno_location() = ErrorCode::ValueOutOfRange.get();
                 return core::ptr::null_mut();
             }
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char
         },
         // Failure.
         Err(error) => {
-            ::syslog::error!("getcwd(): {error:?} (buf={buf:?}, size={size:?})");
+            ::syslog::warn!("getcwd(): {error:?} (buf={buf:?}, size={size:?})");
             *__errno_location() = error.code.get();
             core::ptr::null_mut()
         },

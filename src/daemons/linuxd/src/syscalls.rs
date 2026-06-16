@@ -2,6 +2,15 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::net_backend::{
+    error::NetError,
+    NetBackend,
+};
+
+//==================================================================================================
 // Function Type Aliases
 //==================================================================================================
 
@@ -81,47 +90,6 @@ pub type PipeFn<T> = unsafe fn(&T, *mut libc::c_int) -> libc::c_int;
 
 /// Type alias for `getdents()` system call function.
 pub type GetdentsFn<T> = unsafe fn(&T, libc::c_int, *mut u8, libc::size_t) -> libc::c_long;
-
-/// Type alias for `socket()` system call function.
-pub type SocketFn<T> = unsafe fn(&T, libc::c_int, libc::c_int, libc::c_int) -> libc::c_int;
-
-/// Type alias for `socketpair()` system call function.
-pub type SocketpairFn<T> =
-    unsafe fn(&T, libc::c_int, libc::c_int, libc::c_int, *mut libc::c_int) -> libc::c_int;
-
-/// Type alias for `bind()` system call function.
-pub type BindFn<T> =
-    unsafe fn(&T, libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
-
-/// Type alias for `connect()` system call function.
-pub type ConnectFn<T> =
-    unsafe fn(&T, libc::c_int, *const libc::sockaddr, libc::socklen_t) -> libc::c_int;
-
-/// Type alias for `listen()` system call function.
-pub type ListenFn<T> = unsafe fn(&T, libc::c_int, libc::c_int) -> libc::c_int;
-
-/// Type alias for `getpeername()` system call function.
-pub type GetpeernameFn<T> =
-    unsafe fn(&T, libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
-
-/// Type alias for `getsockname()` system call function.
-pub type GetsocknameFn<T> =
-    unsafe fn(&T, libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
-
-/// Type alias for `accept()` system call function.
-pub type AcceptFn<T> =
-    unsafe fn(&T, libc::c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int;
-
-/// Type alias for `recv()` system call function.
-pub type RecvFn<T> =
-    unsafe fn(&T, libc::c_int, *mut libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t;
-
-/// Type alias for `send()` system call function.
-pub type SendFn<T> =
-    unsafe fn(&T, libc::c_int, *const libc::c_void, libc::size_t, libc::c_int) -> libc::ssize_t;
-
-/// Type alias for `shutdown()` system call function.
-pub type ShutdownFn<T> = unsafe fn(&T, libc::c_int, libc::c_int) -> libc::c_int;
 
 /// Type alias for `select()` system call function.
 pub type SelectFn<T> = unsafe fn(
@@ -1238,331 +1206,6 @@ pub unsafe fn default_getdents<T>(
 }
 
 //==================================================================================================
-// Default Implementations - socket.rs
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Default implementation for `socket()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `domain`: Domain.
-/// - `type_`: Type.
-/// - `protocol`: Protocol.
-///
-/// # Returns
-///
-/// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// This function is safe to call as it does not access any pointers.
-///
-pub unsafe fn default_socket<T>(
-    _state: &T,
-    domain: libc::c_int,
-    type_: libc::c_int,
-    protocol: libc::c_int,
-) -> libc::c_int {
-    libc::socket(domain, type_, protocol)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `socketpair()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `domain`: Domain.
-/// - `type_`: Type.
-/// - `protocol`: Protocol.
-/// - `sv`: Socket pair.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sv` is a valid pointer to writable memory for at least 2 integers.
-///
-pub unsafe fn default_socketpair<T>(
-    _state: &T,
-    domain: libc::c_int,
-    type_: libc::c_int,
-    protocol: libc::c_int,
-    sv: *mut libc::c_int,
-) -> libc::c_int {
-    libc::socketpair(domain, type_, protocol, sv)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `bind()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `addr`: Address.
-/// - `addrlen`: Address length.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor and `addr` is a valid pointer to readable memory of at least `addrlen` bytes.
-///
-pub unsafe fn default_bind<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    addr: *const libc::sockaddr,
-    addrlen: libc::socklen_t,
-) -> libc::c_int {
-    libc::bind(sockfd, addr, addrlen)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `connect()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `addr`: Address.
-/// - `addrlen`: Address length.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor and `addr` is a valid pointer to readable memory of at least `addrlen` bytes.
-///
-pub unsafe fn default_connect<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    addr: *const libc::sockaddr,
-    addrlen: libc::socklen_t,
-) -> libc::c_int {
-    libc::connect(sockfd, addr, addrlen)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `listen()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `backlog`: Backlog.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor.
-///
-pub unsafe fn default_listen<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    backlog: libc::c_int,
-) -> libc::c_int {
-    libc::listen(sockfd, backlog)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `getpeername()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `addr`: Address.
-/// - `addrlen`: Address length.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor, `addr` is a valid pointer to writable memory, and `addrlen` is a valid pointer to writable memory.
-///
-pub unsafe fn default_getpeername<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    addr: *mut libc::sockaddr,
-    addrlen: *mut libc::socklen_t,
-) -> libc::c_int {
-    libc::getpeername(sockfd, addr, addrlen)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `getsockname()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `addr`: Address.
-/// - `addrlen`: Address length.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor, `addr` is a valid pointer to writable memory, and `addrlen` is a valid pointer to writable memory.
-///
-pub unsafe fn default_getsockname<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    addr: *mut libc::sockaddr,
-    addrlen: *mut libc::socklen_t,
-) -> libc::c_int {
-    libc::getsockname(sockfd, addr, addrlen)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `accept()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `addr`: Address.
-/// - `addrlen`: Address length.
-///
-/// # Returns
-///
-/// Upon successful completion, a file descriptor is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor, and if `addr` is not NULL, it must be a valid pointer to writable memory and `addrlen` must be a valid pointer to writable memory.
-///
-pub unsafe fn default_accept<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    addr: *mut libc::sockaddr,
-    addrlen: *mut libc::socklen_t,
-) -> libc::c_int {
-    libc::accept(sockfd, addr, addrlen)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `recv()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `buf`: Buffer.
-/// - `len`: Length.
-/// - `flags`: Flags.
-///
-/// # Returns
-///
-/// Upon successful completion, the number of bytes received is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor and `buf` is a valid pointer to writable memory of at least `len` bytes.
-///
-pub unsafe fn default_recv<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    buf: *mut libc::c_void,
-    len: libc::size_t,
-    flags: libc::c_int,
-) -> libc::ssize_t {
-    libc::recv(sockfd, buf, len, flags)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `send()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `buf`: Buffer.
-/// - `len`: Length.
-/// - `flags`: Flags.
-///
-/// # Returns
-///
-/// Upon successful completion, the number of bytes sent is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor and `buf` is a valid pointer to readable memory of at least `len` bytes.
-///
-pub unsafe fn default_send<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    buf: *const libc::c_void,
-    len: libc::size_t,
-    flags: libc::c_int,
-) -> libc::ssize_t {
-    libc::send(sockfd, buf, len, flags)
-}
-
-///
-/// # Description
-///
-/// Default implementation for `shutdown()` system call.
-///
-/// # Parameters
-///
-/// - `_state`: Immutable reference to state (unused in default implementation).
-/// - `sockfd`: Socket file descriptor.
-/// - `how`: How.
-///
-/// # Returns
-///
-/// Upon successful completion, zero is returned. Otherwise, -1 is returned and `errno` is set.
-///
-/// # Safety
-///
-/// The caller must ensure that `sockfd` is a valid socket file descriptor.
-///
-pub unsafe fn default_shutdown<T>(
-    _state: &T,
-    sockfd: libc::c_int,
-    how: libc::c_int,
-) -> libc::c_int {
-    libc::shutdown(sockfd, how)
-}
-
-//==================================================================================================
 // Default Implementations - poll.rs
 //==================================================================================================
 
@@ -1674,11 +1317,14 @@ pub enum SyscallAction<F> {
 ///
 /// System call routing table.
 ///
-/// This structure holds the configuration for how system calls should be handled. Each system
-/// call can be either blocked or forwarded to a handler function. The generic type parameter `T`
-/// represents custom state that is passed as a reference to each system call handler, allowing
-/// implementations to maintain context-specific information (e.g., file descriptor tables,
-/// process state, or other runtime data).
+/// This structure holds the configuration for how system calls should be handled. Most system
+/// calls can be either blocked or forwarded to a handler function via [`SyscallAction`]. Socket
+/// operations are handled separately through the [`NetBackend`] field, which provides a
+/// type-safe networking API and is not subject to the block/forward routing mechanism.
+///
+/// The generic type parameter `T` represents custom state that is passed as a reference to each
+/// system call handler, allowing implementations to maintain context-specific information (e.g.,
+/// file descriptor tables, process state, or other runtime data).
 ///
 /// # Type Parameters
 ///
@@ -1688,6 +1334,10 @@ pub enum SyscallAction<F> {
 pub struct SyscallTable<T> {
     /// State that is passed to each system call action function.
     pub state: T,
+
+    /// Networking backend for socket operations.
+    /// When `None`, all socket system calls are blocked (networking disabled).
+    pub net_backend: Option<NetBackend>,
 
     // unistd.rs system calls.
     pub chdir: SyscallAction<ChdirFn<T>>,
@@ -1732,19 +1382,6 @@ pub struct SyscallTable<T> {
     // dirent.rs system calls.
     pub getdents: SyscallAction<GetdentsFn<T>>,
 
-    // socket.rs system calls.
-    pub accept: SyscallAction<AcceptFn<T>>,
-    pub bind: SyscallAction<BindFn<T>>,
-    pub connect: SyscallAction<ConnectFn<T>>,
-    pub getpeername: SyscallAction<GetpeernameFn<T>>,
-    pub getsockname: SyscallAction<GetsocknameFn<T>>,
-    pub listen: SyscallAction<ListenFn<T>>,
-    pub recv: SyscallAction<RecvFn<T>>,
-    pub send: SyscallAction<SendFn<T>>,
-    pub shutdown: SyscallAction<ShutdownFn<T>>,
-    pub socket: SyscallAction<SocketFn<T>>,
-    pub socketpair: SyscallAction<SocketpairFn<T>>,
-
     // poll.rs system calls.
     pub poll: SyscallAction<PollFn<T>>,
 
@@ -1764,14 +1401,29 @@ impl<T> SyscallTable<T> {
     /// # Parameters
     ///
     /// - `state`: State that is passed to each system call action function.
+    /// - `networking_enabled`: If `true`, socket operations are forwarded to the networking
+    ///   backend. If `false`, all socket system calls are blocked.
     ///
     /// # Returns
     ///
-    /// A new syscall table.
+    /// Upon success, a new syscall table is returned. Upon failure, a `NetError` is returned.
     ///
-    pub fn new(state: T) -> Self {
-        Self {
+    /// # Errors
+    ///
+    /// Returns `NetError` if platform networking initialization fails.
+    ///
+    pub fn new(state: T, networking_enabled: bool) -> Result<Self, NetError> {
+        let net_backend: Option<NetBackend> = if networking_enabled {
+            Some(NetBackend::new()?)
+        } else {
+            None
+        };
+
+        Ok(Self {
             state,
+
+            // Networking backend.
+            net_backend,
 
             // unistd.rs system calls.
             chdir: SyscallAction::Forward(default_chdir),
@@ -1816,19 +1468,6 @@ impl<T> SyscallTable<T> {
             // dirent.rs system calls.
             getdents: SyscallAction::Forward(default_getdents),
 
-            // socket.rs system calls.
-            accept: SyscallAction::Forward(default_accept),
-            bind: SyscallAction::Forward(default_bind),
-            connect: SyscallAction::Forward(default_connect),
-            getpeername: SyscallAction::Forward(default_getpeername),
-            getsockname: SyscallAction::Forward(default_getsockname),
-            listen: SyscallAction::Forward(default_listen),
-            recv: SyscallAction::Forward(default_recv),
-            send: SyscallAction::Forward(default_send),
-            shutdown: SyscallAction::Forward(default_shutdown),
-            socket: SyscallAction::Forward(default_socket),
-            socketpair: SyscallAction::Forward(default_socketpair),
-
             // poll.rs system calls.
             poll: SyscallAction::Forward(default_poll),
 
@@ -1837,12 +1476,6 @@ impl<T> SyscallTable<T> {
 
             // times.rs system calls.
             times: SyscallAction::Forward(default_times),
-        }
-    }
-}
-
-impl Default for SyscallTable<()> {
-    fn default() -> Self {
-        Self::new(())
+        })
     }
 }

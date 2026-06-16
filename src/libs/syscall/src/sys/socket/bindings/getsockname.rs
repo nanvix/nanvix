@@ -69,7 +69,7 @@ pub unsafe extern "C" fn getsockname(
 ) -> c_int {
     // Check if the address is valid.
     if sockaddr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "getsockname(): invalid socket address (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
              len={len:?})"
         );
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn getsockname(
 
     // Check if the length is valid.
     if len.is_null() || *len < mem::size_of::<sockaddr>() as socklen_t {
-        ::syslog::error!(
+        ::syslog::warn!(
             "getsockname(): invalid socket address length (sockfd={sockfd:?}, \
              sockaddr={sockaddr:?}, len={len:?})"
         );
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn getsockname(
             0
         },
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "getsockname(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
             );
             *__errno_location() = error.code.get();

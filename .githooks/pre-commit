@@ -61,7 +61,7 @@ source "${IMPORT_DIR}/logging.sh"
 #===================================================================================================
 
 # Configuration matrix matching CI (ci.yml).
-declare -a MACHINE_TYPES=("microvm" "hyperlight")
+declare -a MACHINE_TYPES=("microvm")
 declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process")
 
 #===================================================================================================

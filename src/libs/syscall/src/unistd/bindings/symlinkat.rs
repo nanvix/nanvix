@@ -53,13 +53,13 @@ pub unsafe extern "C" fn symlinkat(
     dirfd: c_int,
     linkpath: *const c_char,
 ) -> c_int {
-    ::syslog::error!("symlinkat(): target={target:?}, dirfd={dirfd}, linkpath={linkpath:?}",);
+    ::syslog::trace!("symlinkat(): target={target:?}, dirfd={dirfd}, linkpath={linkpath:?}",);
 
     // Attempt to convert `target`.
     let target: &str = {
         // Check if `target` is invalid.
         if target.is_null() {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "symlinkat(): target is null (target={target:?}, dirfd={dirfd}, \
                  linkpath={linkpath:?})"
             );
@@ -70,7 +70,7 @@ pub unsafe extern "C" fn symlinkat(
         match ffi::CStr::from_ptr(target).to_str() {
             Ok(pathname) => pathname,
             Err(_) => {
-                ::syslog::error!("symlinkat(): invalid target");
+                ::syslog::warn!("symlinkat(): invalid target");
                 *__errno_location() = ErrorCode::InvalidArgument.get();
                 return -1;
             },
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn symlinkat(
     let linkpath: &str = {
         // Check if `linkpath` is invalid.
         if linkpath.is_null() {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "symlinkat(): linkpath is null (target={target:?}, dirfd={dirfd}, \
                  linkpath={linkpath:?})"
             );
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn symlinkat(
         match ffi::CStr::from_ptr(linkpath).to_str() {
             Ok(pathname) => pathname,
             Err(_) => {
-                ::syslog::error!("symlinkat(): invalid linkpath");
+                ::syslog::warn!("symlinkat(): invalid linkpath");
                 *__errno_location() = ErrorCode::InvalidArgument.get();
                 return -1;
             },
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn symlinkat(
     match unistd::symlinkat(target, dirfd, linkpath) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "symlinkat(): {error:?} (target={target:?}, dirfd={dirfd}, linkpath={linkpath:?})"
             );
             *__errno_location() = error.code.get();

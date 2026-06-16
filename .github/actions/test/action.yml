@@ -29,33 +29,33 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - id: deployment
-    uses: ./.github/actions/deployment-features
-    with:
-      deployment-type: "${{ inputs.deployment-type }}"
+    - id: deployment
+      uses: ./.github/actions/deployment-features
+      with:
+        deployment-type: "${{ inputs.deployment-type }}"
 
-  - name: "Unit Tests (${{ inputs.machine-type }})"
-    shell: bash
-    run: |
-      ./z build \
-        -- \
-        run-unit-tests \
-        "MACHINE=${{ inputs.machine-type }}" \
-        TARGET=${{ inputs.target-arch }} \
-        "LOG_LEVEL=${{ inputs.log-level }}" \
-        VERBOSE=yes \
-        ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-        ${{ steps.deployment.outputs.make-flags }}
+    - name: "Unit Tests (${{ inputs.machine-type }})"
+      shell: bash
+      run: |
+        ./z build \
+          -- \
+          run-unit-tests \
+          "MACHINE=${{ inputs.machine-type }}" \
+          TARGET=${{ inputs.target-arch }} \
+          "LOG_LEVEL=${{ inputs.log-level }}" \
+          VERBOSE=yes \
+          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
+          ${{ steps.deployment.outputs.make-flags }}
 
-  - name: "Integration Tests (${{ inputs.machine-type }})"
-    shell: bash
-    run: |
-      ./z build \
-        -- \
-        run-nanvix-tests \
-        "MACHINE=${{ inputs.machine-type }}" \
-        TARGET=${{ inputs.target-arch }} \
-        "LOG_LEVEL=${{ inputs.log-level }}" \
-        VERBOSE=yes \
-        ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-        ${{ steps.deployment.outputs.make-flags }}
+    - name: "Integration Tests (${{ inputs.machine-type }})"
+      shell: bash
+      run: |
+        ./z build \
+          -- \
+          run-nanvix-tests \
+          "MACHINE=${{ inputs.machine-type }}" \
+          TARGET=${{ inputs.target-arch }} \
+          "LOG_LEVEL=${{ inputs.log-level }}" \
+          VERBOSE=yes \
+          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
+          ${{ steps.deployment.outputs.make-flags }}

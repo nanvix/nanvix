@@ -521,6 +521,12 @@ impl DirEntry {
 /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
 pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Root of a mount always exists — return AlreadyExists (mirrors stat()).
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
@@ -544,6 +550,12 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotADirectory`] if path is a file.
 pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Cannot remove the root of a mount.
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
@@ -566,6 +578,12 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotAFile`] if path is a directory.
 pub fn unlink(path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Root of a mount is a directory, not a file.
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     check_writable(mount_idx)?;
 
     state::with_vfs_mut(|vfs| {
@@ -631,6 +649,11 @@ pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
     let (old_idx, old_rel) = resolve_path(old_path)?;
     let (new_idx, new_rel) = resolve_path(new_path)?;
 
+    // Cannot rename mount roots.
+    if old_rel.is_empty() || new_rel.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+
     // Both must be on the same mount.
     if old_idx != new_idx {
         return Err(Fat32Error::InvalidPath);
@@ -654,7 +677,12 @@ pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 pub fn cwd() -> Result<String, Fat32Error> {
-    state::with_vfs(|vfs| Ok(String::from(vfs.cwd())))
+    // The working directory now lives in the per-process registry rather than on the `Vfs`, but the
+    // documented contract still requires the filesystem to be initialized first.
+    if !state::is_initialized() {
+        return Err(Fat32Error::NotInitialized);
+    }
+    Ok(crate::fd::current_cwd())
 }
 
 /// Changes the current working directory.
@@ -669,7 +697,20 @@ pub fn cwd() -> Result<String, Fat32Error> {
 /// - [`Fat32Error::InvalidPath`] if the path is malformed.
 /// - [`Fat32Error::NotFound`] if no mount handles this path.
 pub fn chdir(path: &str) -> Result<(), Fat32Error> {
-    state::with_vfs_mut(|vfs| vfs.set_cwd(path))
+    // The working directory lives solely in the per-process registry. Normalize against the
+    // process's current working directory and validate that some mount handles the target (root is
+    // always valid), then persist it so it survives context switches and is inherited by forked
+    // children.
+    let cwd: String = crate::fd::current_cwd();
+    let normalized: String = state::with_vfs_mut(|vfs| {
+        let normalized: String = vfs.normalize_path(path, &cwd)?;
+        if !normalized.is_empty() && normalized != "/" {
+            let _ = vfs.resolve(&normalized, &cwd)?;
+        }
+        Ok(normalized)
+    })?;
+    crate::fd::set_current_cwd(normalized);
+    Ok(())
 }
 
 /// Normalizes a path to an absolute path using the current working directory.
@@ -687,7 +728,8 @@ pub fn chdir(path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::InvalidPath`] if the path is malformed.
 pub fn normalize(path: &str) -> Result<String, Fat32Error> {
-    state::with_vfs(|vfs| vfs.normalize_path(path))
+    let cwd: String = crate::fd::current_cwd();
+    state::with_vfs(|vfs| vfs.normalize_path(path, &cwd))
 }
 
 //==================================================================================================
@@ -704,7 +746,8 @@ pub fn normalize(path: &str) -> Result<String, Fat32Error> {
 ///
 /// A tuple of `(mount_index, relative_path)`.
 fn resolve_path(path: &str) -> Result<(usize, String), Fat32Error> {
-    state::with_vfs(|vfs| vfs.resolve(path))
+    let cwd: String = crate::fd::current_cwd();
+    state::with_vfs_mut(|vfs| vfs.resolve(path, &cwd))
 }
 
 /// Returns [`Fat32Error::ReadOnly`] if the mount at `mount_idx` is read-only.
@@ -739,6 +782,11 @@ fn open_with_options(
     truncate: bool,
 ) -> Result<File, Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(path)?;
+
+    // Root of a mount is a directory, not a file — cannot be opened as a file.
+    if relative_path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
 
     // Reject write/create/truncate on read-only mounts.
     // NOTE: This gate is also what keeps the negative cache consistent —

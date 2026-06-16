@@ -40,8 +40,8 @@ pub struct PhysicalAddress(VirtualAddress);
 
 impl PhysicalAddress {
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
-        // Check if `addr` lies outside of the physical address space.
-        if addr >= VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE) {
+        // Delegate to the per-platform validator to support sparse physical memory layouts.
+        if !crate::hal::platform::is_valid_physical_address(addr) {
             return Err(Error::new(
                 ErrorCode::BadAddress,
                 "address out of bounds of physical memory",
@@ -98,7 +98,9 @@ impl PhysicalAddress {
     pub fn into_frame_number(self) -> FrameNumber {
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
-        // Safety: the following unwrap is safe because a physical address has a valid frame number.
+        // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
+        // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
+        // every address in the space.
         FrameNumber::from_raw_value(frame_number).unwrap()
     }
 
@@ -218,7 +220,7 @@ impl Address for PhysicalAddress {
     /// The maximum [`PhysicalAddress`].
     ///
     fn max_addr() -> usize {
-        config::kernel::MEMORY_SIZE - 1
+        crate::hal::platform::max_physical_address()
     }
 
     fn into_raw_value(self) -> usize {

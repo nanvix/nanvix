@@ -56,7 +56,7 @@ pub unsafe extern "C" fn clock_getres(clock_id: clockid_t, res: *mut timespec) -
         Ok(()) => 0,
         // System call failed.
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "clock_getres(): failed (clock_id={:?}, res={:?}, error={:?})",
                 clock_id,
                 res,

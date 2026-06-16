@@ -119,7 +119,7 @@ fn main() {
     generate_dense_fat_image(&img_path, build_utils::memory_size() / 2);
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=build/kernel_config.toml");
+    println!("cargo:rerun-if-env-changed=MEMORY_SIZE_BYTES");
 }
 
 //==================================================================================================
@@ -144,7 +144,7 @@ fn generate_dense_fat_image(path: &Path, image_size: usize) {
         (tree_budget / TARGET_TREE_FILES).clamp(MIN_FILE_SIZE, MAX_FILE_SIZE_CAP);
 
     // Create and format a zeroed FAT image.
-    mkramfs::mkfatfs(path, image_size);
+    mkramfs::mkfatfs(path, image_size).expect("failed to create/format FAT image");
 
     let file = std::fs::OpenOptions::new()
         .read(true)

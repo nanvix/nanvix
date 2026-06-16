@@ -32,8 +32,8 @@ use ::nanvix_sandbox_cache::{
         WriteAll,
     },
     SandboxCache,
-    SandboxCacheConfig,
 };
+use ::nanvix_sandbox_config::SandboxCacheConfig;
 use ::std::{
     io::{
         ErrorKind,
@@ -361,6 +361,14 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
     fn get_current_user_name() -> Result<String> {
         let username: String = ::std::env::var("USER")
             .or_else(|_| ::std::env::var("USERNAME"))
+            .or_else(|_| {
+                ::std::process::Command::new("whoami")
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .map(|s| s.trim().to_string())
+                    .ok_or(::std::env::VarError::NotPresent)
+            })
             .map_err(|error| ::anyhow::anyhow!("failed to get current user name: {}", error))?;
         Ok(username)
     }

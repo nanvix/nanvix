@@ -13,9 +13,10 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        create_thread,
-        gettime,
-        join_thread,
+        __kcall_create_thread,
+        __kcall_detach_thread,
+        __kcall_gettime,
+        __kcall_join_thread,
     },
     pm::{
         ThreadCreateArgs,
@@ -55,7 +56,7 @@ impl KernelThread {
             user_tda: None,
         };
 
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
 
         Ok(Self {
             tid: Some(tid),
@@ -70,16 +71,34 @@ impl KernelThread {
             .tid
             .take()
             .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "thread handle missing"))?;
-        join_thread(tid, &mut retval)?;
+        __kcall_join_thread(tid, &mut retval)?;
         drop(self.stack.take());
         Ok(retval)
+    }
+
+    /// Detaches the thread so it is auto-harvested when it exits.
+    ///
+    /// The caller's `Stack` handle is intentionally leaked because the thread may still be
+    /// using it. The kernel will unmap the thread's stack pages once the detached thread
+    /// terminates (and, in the worst case, on process teardown).
+    pub fn detach(mut self) -> Result<(), Error> {
+        let tid: ThreadIdentifier = self
+            .tid
+            .take()
+            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "thread handle missing"))?;
+        __kcall_detach_thread(tid)?;
+        // Intentionally leak the stack — the thread may still be using it.
+        if let Some(stack) = self.stack.take() {
+            core::mem::forget(stack);
+        }
+        Ok(())
     }
 }
 
 impl Drop for KernelThread {
     fn drop(&mut self) {
         if self.tid.is_some() {
-            panic!("KernelThread dropped without joining");
+            panic!("KernelThread dropped without joining or detaching");
         }
     }
 }
@@ -91,7 +110,7 @@ impl Drop for KernelThread {
 /// Returns the current monotonic system time.
 pub fn monotonic_now() -> Result<SystemTime, Error> {
     let mut now: SystemTime = SystemTime::default();
-    gettime(&mut now)?;
+    __kcall_gettime(&mut now)?;
     Ok(now)
 }
 

@@ -280,17 +280,16 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             None => {
                 // Build Linux Daemon arguments.
                 let linuxd_args: LinuxDaemonArgs<T> = {
-                    // Get toolchain binary directory.
-                    let toolchain_binary_directory: String =
-                        match config.toolchain_binary_directory() {
-                            None => {
-                                let reason: &str = "toolchain binary directory not provided and \
-                                                    linuxd not initialized";
-                                error!("initialize(): {reason}");
-                                anyhow::bail!(reason);
-                            },
-                            Some(path) => path.to_string(),
-                        };
+                    // Get cloud-hypervisor binary directory.
+                    let clh_bin_path: String = match config.clh_bin_path() {
+                        None => {
+                            let reason: &str = "cloud-hypervisor binary directory not provided \
+                                                and linuxd not initialized";
+                            error!("initialize(): {reason}");
+                            anyhow::bail!(reason);
+                        },
+                        Some(path) => path.to_string(),
+                    };
 
                     // Get temporary directory.
                     let tmp_directory: String = match config.tmp_directory() {
@@ -325,10 +324,11 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         config.hwloc(),
                         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                         config.linuxd_binary_path().to_string(),
-                        toolchain_binary_directory,
+                        clh_bin_path,
                         config.log_directory().to_string(),
                         tmp_directory,
                         l2,
+                        config.networking_enabled(),
                         #[cfg(feature = "single-process")]
                         config.syscall_table(),
                     )

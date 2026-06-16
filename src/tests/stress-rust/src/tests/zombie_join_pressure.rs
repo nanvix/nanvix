@@ -26,9 +26,9 @@ use ::sys::{
         ErrorCode,
     },
     kcall::pm::{
-        create_thread,
-        join_thread,
-        sleep,
+        __kcall_create_thread,
+        __kcall_join_thread,
+        __kcall_sleep,
     },
     pm::{
         ThreadCreateArgs,
@@ -110,16 +110,16 @@ fn run_round(_round: usize) -> Result<(), StressError> {
     for _worker_id in 0..WORKERS {
         let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, zombie_join_worker, 0);
-        match create_thread(&mut args) {
+        match __kcall_create_thread(&mut args) {
             Ok(tid) => {
                 tids.push(tid);
                 stacks.push(stack);
             },
             Err(err) => {
                 // Join already-spawned threads before propagating the error.
-                for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+                for (tid, stack) in tids.into_iter().zip(stacks) {
                     let mut retval: usize = 0;
-                    let _ = join_thread(tid, &mut retval);
+                    let _ = __kcall_join_thread(tid, &mut retval);
                     drop(stack);
                 }
                 return Err(err);
@@ -128,9 +128,9 @@ fn run_round(_round: usize) -> Result<(), StressError> {
     }
 
     // Join every worker and validate return values.
-    for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+    for (tid, stack) in tids.into_iter().zip(stacks) {
         let mut retval: usize = 0;
-        join_thread(tid, &mut retval)?;
+        __kcall_join_thread(tid, &mut retval)?;
         drop(stack);
 
         if retval == WORKER_FAILURE {
@@ -190,6 +190,6 @@ extern "C" fn zombie_join_worker(_arg: usize) -> usize {
 /// Worker body: sleeps for [`SLEEP_MICROS`] microseconds and returns [`RETURN_TAG`].
 ///
 fn zombie_join_worker_impl() -> Result<usize, Error> {
-    sleep(Duration::from_micros(SLEEP_MICROS))?;
+    __kcall_sleep(Duration::from_micros(SLEEP_MICROS))?;
     Ok(RETURN_TAG)
 }

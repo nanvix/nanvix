@@ -5,15 +5,15 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
 use crate::sys;
 use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
-use ::sysapi::fcntl::atflags::{
-    AT_FDCWD,
-    AT_SYMLINK_NOFOLLOW,
+use ::sysapi::{
+    fcntl::atflags::{
+        AT_FDCWD,
+        AT_SYMLINK_NOFOLLOW,
+    },
+    sys_stat,
 };
-use ::sysapi::sys_stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -36,20 +36,8 @@ use ::sysapi::sys_stat;
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-#[allow(unreachable_code)]
 pub fn lstat(pathname: &str, buf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("lstat(): pathname = {:?}, statbuf = {:?}", pathname, buf);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_stat(pathname, buf).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("lstat(): VFS lstat failed (pathname={pathname:?}, error={e})");
-            Error::new(code, "vfs lstat failed")
-        })
-    }
-
-    #[cfg(not(feature = "standalone"))]
     sys::stat::fstatat(AT_FDCWD, pathname, buf, AT_SYMLINK_NOFOLLOW)
 }

@@ -5,7 +5,6 @@ NANVIXD_FEATURES :=
 NANVIXD_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIXD_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
 NANVIXD_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
-NANVIXD_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
@@ -19,9 +18,18 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 all-nanvixd: all-host-binaries-mkramfs all-guest-binaries
 endif
 
+# PDB filename for Windows symbol resolution (xperf, WPA, debuggers).
+NANVIXD_PDB := nanvixd.pdb
+
 all-nanvixd: init
 	$(HOST_CARGO_BUILD_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/nanvixd$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
+ifeq ($(IS_WINDOWS),yes)
+	# Copy PDB alongside the exe for symbol resolution.
+	@if [ -f "$(OBJECTS_DIR)/$(BUILD_MODE)/$(NANVIXD_PDB)" ]; then \
+		cp -f "$(OBJECTS_DIR)/$(BUILD_MODE)/$(NANVIXD_PDB)" "$(BINARIES_DIR)/$(NANVIXD_PDB)"; \
+	fi
+endif
 	# Build the standalone rootfs image from a seed directory using mkramfs.
 ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib
@@ -34,6 +42,18 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 		cp -f $(LIBRARIES_DIR)/libmul-pie.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
 	fi
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
+	# Build the ramfs image for the execv() test. It contains the execv target program (built as a
+	# guest binary, stripped at link time) at the filesystem root as "target", which execv-test
+	# opens and execs. Stripping keeps the on-disk image small.
+	@mkdir -p $(BINARIES_DIR)/execv-test-seed
+	@cp -f $(BINARIES_DIR)/execv-target.$(EXEC_FORMAT) $(BINARIES_DIR)/execv-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/execv-test.img $(BINARIES_DIR)/execv-test-seed/
+	# Build the ramfs image for the execv() big-binary test. It contains the large target program
+	# (inflated to MEMORY_SIZE/8) at the filesystem root as "target"; execv-test execs it via the
+	# same caller pointed at this image. This exercises execv() of a large binary with no size cap.
+	@mkdir -p $(BINARIES_DIR)/execv-big-test-seed
+	@cp -f $(BINARIES_DIR)/execv-big-target.$(EXEC_FORMAT) $(BINARIES_DIR)/execv-big-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/execv-big-test.img $(BINARIES_DIR)/execv-big-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).
@@ -44,7 +64,7 @@ endif
 endif
 
 check-nanvixd:
-	$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
+	@$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd
 
 format-nanvixd:
 	$(HOST_CARGO_FMT_CMD) -p nanvixd

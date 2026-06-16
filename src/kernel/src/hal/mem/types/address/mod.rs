@@ -7,16 +7,11 @@
 
 mod aligned;
 mod frame;
+mod page;
 mod pd;
-#[cfg(target_arch = "x86_64")]
-mod pdpt;
-mod pg;
 mod phys;
-#[cfg(target_arch = "x86_64")]
-mod pml4;
-mod pt;
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 mod test;
 
 //==================================================================================================
@@ -29,23 +24,15 @@ pub use ::sys::mm::{
 };
 pub use aligned::*;
 pub use frame::*;
-#[allow(unused_imports)]
+pub use page::*;
 pub use pd::*;
-#[cfg(target_arch = "x86_64")]
-#[allow(unused_imports)]
-pub use pdpt::*;
-pub use pg::*;
 pub use phys::*;
-#[cfg(target_arch = "x86_64")]
-pub use pml4::*;
-#[allow(unused_imports)]
-pub use pt::*;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 pub fn test() -> bool {
     let mut passed = true;
 

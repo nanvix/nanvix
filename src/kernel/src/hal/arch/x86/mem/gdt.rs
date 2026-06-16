@@ -7,6 +7,7 @@
 
 use crate::hal::arch::x86::cpu::tss::TssRef;
 use ::alloc::boxed::Box;
+pub use ::arch::mem::gdt::GDTE_ALIGNMENT;
 use ::arch::mem::gdt::{
     AccessAccessed,
     AccessConforming,
@@ -31,7 +32,10 @@ use ::core::{
     mem,
     pin::Pin,
 };
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Structures
@@ -69,11 +73,14 @@ pub enum SegmentSelector {
 }
 
 //===================================================================================================
-// Global Variables
+// Constants
 //===================================================================================================
 
-/// Global descriptor table.
-static mut GDT: [Gdte; 7] = [
+/// Number of entries in the GDT.
+pub const GDT_NUM_ENTRIES: usize = 7;
+
+/// Default GDT entries used to populate platform-provided backing storage.
+pub const DEFAULT_ENTRIES: [Gdte; GDT_NUM_ENTRIES] = [
     // Null entry.
     Gdte::new(
         0x0,
@@ -192,11 +199,63 @@ static mut GDT: [Gdte; 7] = [
     Gdte::default(),
 ];
 
+//===================================================================================================
+// Global Variables
+//===================================================================================================
+
+/// Pointer to the platform-provided GDT backing storage.
+///
+/// Initialized by [`Gdt::set_backing_storage()`] before [`Gdt::init()`]. On microvm the storage
+/// is a BSS-allocated static array.
+static mut GDT: *mut Gdte = core::ptr::null_mut();
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
 impl Gdt {
+    ///
+    /// # Description
+    ///
+    /// Installs platform-provided backing storage for the GDT.
+    ///
+    /// The caller is responsible for populating the storage with the correct descriptor entries
+    /// (e.g., by copying [`DEFAULT_ENTRIES`]) before this function is called. This function only
+    /// records the pointer; it does not write any entries.
+    ///
+    /// Must be called exactly once before [`Gdt::init()`].
+    ///
+    /// # Parameters
+    ///
+    /// - `storage`: Pointer to at least [`GDT_NUM_ENTRIES`] contiguous [`Gdte`] slots whose
+    ///   lifetime exceeds all subsequent GDT operations. Must be aligned to [`GDTE_ALIGNMENT`].
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the backing storage was successfully installed.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::InvalidArgument`] if `storage` is not aligned to [`GDTE_ALIGNMENT`].
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it sets a global raw pointer that all GDT operations
+    /// depend on. The caller must ensure:
+    /// - `storage` is non-null and points to at least [`GDT_NUM_ENTRIES`] entries.
+    /// - The backing memory outlives all GDT usage.
+    /// - This function is called at most once.
+    ///
+    pub unsafe fn set_backing_storage(storage: *mut Gdte) -> Result<(), Error> {
+        if !::sys::mm::is_aligned(storage as usize, GDTE_ALIGNMENT) {
+            let reason: &str = "GDT backing storage pointer is not properly aligned";
+            error!("{}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        GDT = storage;
+        Ok(())
+    }
+
     #[inline(never)]
     pub unsafe fn load(ptr: *const ::arch::mem::gdtr::Gdtr) {
         // No data is pushed the stack, or write to the stack red-zone
@@ -221,6 +280,10 @@ impl Gdt {
     }
 
     pub unsafe fn init(kstack: *const u8) -> Result<(GdtPtr, TssRef), Error> {
+        debug_assert!(
+            !GDT.is_null(),
+            "GDT backing storage not installed; call set_backing_storage() first"
+        );
         trace!("initializing gdt...");
         let ss0: u32 = SegmentSelector::KernelData as u32;
         let esp0: u32 = kstack as u32;
@@ -228,7 +291,7 @@ impl Gdt {
         let tss: TssRef = TssRef::new(ss0, esp0)?;
 
         // Overwrite task segment selector entry.
-        GDT[GdtEntries::Tss as usize] = Gdte::new(
+        *GDT.add(GdtEntries::Tss as usize) = Gdte::new(
             tss.address() as u32,
             tss.size() as u32 - 1,
             GdteAccessByte::new(
@@ -249,8 +312,8 @@ impl Gdt {
 
         // Set the GDTPTR.
         let gdtr = GdtPtr(Pin::new(Box::new(::arch::mem::gdtr::Gdtr::new(
-            GDT.as_ptr() as u32,
-            (mem::size_of_val(&GDT)) as u16,
+            GDT as u32,
+            (GDT_NUM_ENTRIES * mem::size_of::<Gdte>()) as u16,
         ))));
 
         info!("loading the GDT...");
@@ -281,7 +344,7 @@ impl Gdt {
     /// It is safe to use this function if and only if the processor is running in privileged mode.
     ///
     pub unsafe fn set_thread_data_area_base(tda_base: u32) {
-        GDT[GdtEntries::UserThreadDataArea as usize].set_base(tda_base);
+        (*GDT.add(GdtEntries::UserThreadDataArea as usize)).set_base(tda_base);
     }
 
     ///

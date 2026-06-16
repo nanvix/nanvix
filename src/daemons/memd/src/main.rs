@@ -10,6 +10,7 @@
 
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::proc::{
     ProcessManagementMessage,
@@ -43,12 +44,12 @@ use ::sys::{
 fn handle_page_fault(info: EventInformation) {
     // Terminate process.
     ::syslog::info!("terminating process (pid={:?})", info.pid);
-    if let Err(e) = ::sys::kcall::pm::terminate(info.pid) {
+    if let Err(e) = ::sys::kcall::pm::__kcall_terminate(info.pid) {
         panic!("failed to terminate test daemon (error={:?})", e);
     }
 
     // Acknowledge exception event.
-    if let Err(e) = ::sys::kcall::event::resume(info.id) {
+    if let Err(e) = ::sys::kcall::event::__kcall_resume(info.id) {
         panic!("failed to resume exception event (error={:?})", e);
     }
 }
@@ -89,38 +90,46 @@ fn handle_ipc_request(message: Message) -> Result<bool, Error> {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };
-    let myname: &str = "memd";
+    let myname: &str = ::config::daemons::MEMD_NAME;
 
     ::syslog::info!("running memory management daemon (pid={:?})...", mypid);
 
     // Acquire exception management capability.
     ::syslog::info!("acquiring exception management capability...");
-    if let Err(e) = ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
+    if let Err(e) = ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
         panic!("failed to acquire exception management capability (error={:?})", e);
+    }
+
+    // Acquire process management capability so that faulting processes can be terminated.
+    ::syslog::info!("acquiring process management capability...");
+    if let Err(e) = ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true) {
+        panic!("failed to acquire process management capability (error={:?})", e);
+    }
+
+    // Signup to the process manager daemon.
+    // NOTE: this must happen before subscribing to page faults so that no
+    // exception messages arrive during the synchronous signup handshake.
+    if let Err(e) = ::proc::signup(&mypid, myname) {
+        panic!("failed to signup to process manager daemon (error={:?})", e);
     }
 
     let page_fault_exception: ExceptionEvent = ExceptionEvent::Exception14;
 
     // Subscribe to page faults.
     ::syslog::info!("subscribing to page faults...");
-    if let Err(e) = ::sys::kcall::event::evctrl(
+    if let Err(e) = ::sys::kcall::event::__kcall_evctrl(
         Event::Exception(page_fault_exception),
         EventCtrlRequest::Register,
     ) {
         panic!("failed to subscribe to page faults (error={:?})", e);
     }
 
-    // Signup to the process manager daemon.
-    if let Err(e) = ::proc::signup(&mypid, myname) {
-        panic!("failed to signup to process manager daemon (error={:?})", e);
-    }
-
     loop {
-        match ::sys::kcall::ipc::recv() {
+        match ::sys::kcall::ipc::__kcall_recv() {
             Ok(message) => match message.message_type {
                 MessageType::Exception => match EventInformation::try_from(message) {
                     Ok(info) => handle_page_fault(info),
@@ -138,6 +147,9 @@ pub fn main() {
                 MessageType::ProcessTerminationEvent => {
                     unreachable!("should not receive process termination events")
                 },
+                MessageType::ProcessCreationEvent => {
+                    unreachable!("should not receive process creation events")
+                },
                 MessageType::PullResponse => {
                     ::syslog::error!("received unexpected pull response, ignoring");
                     continue;
@@ -148,7 +160,7 @@ pub fn main() {
     }
 
     // Shutdown memory management daemon.
-    let e = ::sys::kcall::pm::exit(0);
+    let e = ::sys::kcall::pm::__kcall_exit(0);
     ::syslog::error!("failed to shutdown memory management daemon (error={:?})", e);
 
     loop {

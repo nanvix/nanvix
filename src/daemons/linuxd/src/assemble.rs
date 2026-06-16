@@ -33,8 +33,8 @@ use ::syscall::{
         UnlinkAtRequest,
     },
     message::{
-        LinuxDaemonLongMessage,
-        LinuxDaemonMessagePart,
+        SystemCallLongMessage,
+        SystemCallMessagePart,
     },
     poll::message::PollRequest,
     sys::stat::message::{
@@ -59,15 +59,15 @@ use ::syscall::{
 
 impl<T> RequestAssemblerTrait<T> for FileStatAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileStatAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::FileStatAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -82,7 +82,7 @@ impl<T> RequestAssemblerTrait<T> for FileStatAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::FileStatAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -100,15 +100,15 @@ impl<T> RequestAssemblerTrait<T> for FileStatAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for SymbolicLinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::SymbolicLinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::SymbolicLinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -123,7 +123,7 @@ impl<T> RequestAssemblerTrait<T> for SymbolicLinkAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::SymbolicLinkAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -141,15 +141,15 @@ impl<T> RequestAssemblerTrait<T> for SymbolicLinkAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for LinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::LinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::LinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -164,7 +164,7 @@ impl<T> RequestAssemblerTrait<T> for LinkAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::LinkAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -182,15 +182,15 @@ impl<T> RequestAssemblerTrait<T> for LinkAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for ReadLinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::ReadLinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::ReadLinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -205,7 +205,7 @@ impl<T> RequestAssemblerTrait<T> for ReadLinkAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::ReadLinkAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -223,15 +223,15 @@ impl<T> RequestAssemblerTrait<T> for ReadLinkAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for MakeDirectoryAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::MakeDirectoryAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::MakeDirectoryAtRequest(assembler) => {
@@ -248,7 +248,7 @@ impl<T> RequestAssemblerTrait<T> for MakeDirectoryAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::MakeDirectoryAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -266,15 +266,15 @@ impl<T> RequestAssemblerTrait<T> for MakeDirectoryAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for UpdateFileAccessTimeAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::UpdateFileAccessTimeAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::UpdateFileAccessTimeAtRequest(assembler) => {
@@ -293,7 +293,7 @@ impl<T> RequestAssemblerTrait<T> for UpdateFileAccessTimeAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::UpdateFileAccessTimeAtRequest(assembler) => {
                 assembler.take_parts()
@@ -313,15 +313,15 @@ impl<T> RequestAssemblerTrait<T> for UpdateFileAccessTimeAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for FileChownAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileChownAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::FileChownAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -336,7 +336,7 @@ impl<T> RequestAssemblerTrait<T> for FileChownAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::FileChownAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -354,15 +354,15 @@ impl<T> RequestAssemblerTrait<T> for FileChownAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for FileChmodAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileChmodAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::FileChmodAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -377,7 +377,7 @@ impl<T> RequestAssemblerTrait<T> for FileChmodAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::FileChmodAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -395,15 +395,15 @@ impl<T> RequestAssemblerTrait<T> for FileChmodAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for OpenAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::OpenAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::OpenAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -418,7 +418,7 @@ impl<T> RequestAssemblerTrait<T> for OpenAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::OpenAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -436,15 +436,15 @@ impl<T> RequestAssemblerTrait<T> for OpenAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for RenameAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::RenameAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::RenameAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -459,7 +459,7 @@ impl<T> RequestAssemblerTrait<T> for RenameAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::RenameAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -477,15 +477,15 @@ impl<T> RequestAssemblerTrait<T> for RenameAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for UnlinkAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::UnlinkAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::UnlinkAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -500,7 +500,7 @@ impl<T> RequestAssemblerTrait<T> for UnlinkAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::UnlinkAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -518,15 +518,15 @@ impl<T> RequestAssemblerTrait<T> for UnlinkAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for ChangeDirectoryRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::ChangeDirectoryRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::ChangeDirectoryRequest(assembler) => {
@@ -543,7 +543,7 @@ impl<T> RequestAssemblerTrait<T> for ChangeDirectoryRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::ChangeDirectoryRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -561,15 +561,15 @@ impl<T> RequestAssemblerTrait<T> for ChangeDirectoryRequest {
 
 impl<T> RequestAssemblerTrait<T> for FileAccessAtRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::FileAccessAtRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::FileAccessAtRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -584,7 +584,7 @@ impl<T> RequestAssemblerTrait<T> for FileAccessAtRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::FileAccessAtRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),
@@ -602,15 +602,15 @@ impl<T> RequestAssemblerTrait<T> for FileAccessAtRequest {
 
 impl<T> RequestAssemblerTrait<T> for PollRequest {
     fn new_assembler() -> RequestAssemblerType {
-        let capacity: usize = Self::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
         RequestAssemblerType::PollRequest(
-            LinuxDaemonLongMessage::new(capacity).expect("capacity is set to a valid value"),
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
         )
     }
 
     fn add_part(
         assembler: &mut RequestAssemblerType,
-        part: LinuxDaemonMessagePart,
+        part: SystemCallMessagePart,
     ) -> Result<(), WorkerThreadError> {
         match assembler {
             RequestAssemblerType::PollRequest(assembler) => Ok(assembler.add_part(part)?),
@@ -625,7 +625,7 @@ impl<T> RequestAssemblerTrait<T> for PollRequest {
         }
     }
 
-    fn take_parts(assembler: RequestAssemblerType) -> Vec<LinuxDaemonMessagePart> {
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
         match assembler {
             RequestAssemblerType::PollRequest(assembler) => assembler.take_parts(),
             _ => unreachable!("invalid assembler type"),

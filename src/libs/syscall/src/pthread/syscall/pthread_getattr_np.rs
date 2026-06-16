@@ -49,7 +49,7 @@ pub fn pthread_getattr_np(thread: pthread_t, attr: &mut pthread_attr_t) -> Resul
     // Check if `attr` references a thread attributes object that was already initialized.
     if attr.is_initialized != 0 {
         let reason: &'static str = "thread attributes object was already initialized";
-        ::syslog::error!("pthread_getattr_np(): {reason} (attr={:p})", attr as *const _);
+        ::syslog::warn!("pthread_getattr_np(): {reason} (attr={:p})", attr as *const _);
         return Err(Error::new(ErrorCode::ResourceBusy, reason));
     }
 

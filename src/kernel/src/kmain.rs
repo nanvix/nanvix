@@ -11,15 +11,12 @@
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
 #![feature(allocator_api)] // kheap uses this.
-#![feature(core_intrinsics)] // identity_map uses this to bypass debug null-pointer checks.
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 #![feature(linked_list_cursors)] // vmem uses this.
 #![feature(linked_list_remove)] // vmem uses this.
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
-#![feature(stmt_expr_attributes)] // stdio uses this.
 #![feature(likely_unlikely)] // performance hints.
-#![feature(cold_path)] // performance hints.
-#![feature(const_type_name)] // logging uses this for function name detection.
 #![no_std]
 #![no_main]
 #![allow(clippy::result_large_err)] // FIXME: introduced by thread manager.
@@ -48,25 +45,26 @@ use crate::{
     kimage::KernelImage,
     kmod::KernelModule,
     mm::{
-        elf,
-        kheap,
+        elf::Elf32Fhdr,
         VirtMemoryManager,
         Vmem,
     },
     pm::ProcessManager,
 };
-use ::alloc::{
-    collections::LinkedList,
-    vec::Vec,
-};
+use ::alloc::collections::LinkedList;
+use ::bitmap::Bitmap;
 use ::core::sync::atomic::{
+    AtomicBool,
     AtomicUsize,
     Ordering,
 };
 use ::sys::{
+    error::Error,
     pm::ProcessIdentifier,
     ExitStatus,
 };
+
+use crate::mm::kheap;
 
 #[cfg(feature = "smp")]
 use crate::mm::kredzone;
@@ -93,7 +91,7 @@ mod klog;
 mod kmod;
 mod kpanic;
 mod mm;
-#[cfg(any(feature = "microvm", feature = "hyperlight"))]
+#[cfg(feature = "microvm")]
 mod multibin;
 pub(crate) mod pm;
 #[cfg(feature = "stdio")]
@@ -190,15 +188,73 @@ static PERF_IKC_MESSAGES_SENT: AtomicUsize = AtomicUsize::new(0);
 /// Number of IKC messages received.
 static PERF_IKC_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
 
+/// Whether the guest is entitled to take a VM snapshot.
+/// Set to `true` during boot when the `snapshot` kernel option is present.
+/// Consumed (set to `false`) on the first successful snapshot request.
+static SNAPSHOT_ALLOWED: AtomicBool = AtomicBool::new(false);
+
+/// Attempts to consume the one-time snapshot permission.
+///
+/// Returns `true` if the snapshot was allowed and the permission has now been consumed.
+/// Returns `false` if the snapshot was never enabled or has already been consumed.
+pub(crate) fn try_consume_snapshot() -> bool {
+    SNAPSHOT_ALLOWED
+        .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 fn test() {
     if !crate::hal::mem::test() {
         panic!("memory tests failed");
     }
+}
+
+/// Magic value used for in-kernel verification of the kernel arguments mechanism.
+#[cfg(feature = "test")]
+const TEST_KERNEL_ARGS_MAGIC: &str = "test_magic=0xDEADBEEF";
+
+///
+/// # Description
+///
+/// Verifies that the kernel received the expected magic kernel arguments from the command line.
+/// The test TOML configs pass `test_magic=0xDEADBEEF` as a kernel argument, so by the time this
+/// function runs the stored value must match [`TEST_KERNEL_ARGS_MAGIC`].
+///
+/// # Parameters
+///
+/// - `kernel_args`: The kernel arguments string parsed from boot info.
+///
+#[cfg(feature = "test")]
+fn test_kernel_args(kernel_args: &str) {
+    info!("testing kernel arguments...");
+
+    assert!(
+        !kernel_args.is_empty(),
+        "kernel args: expected non-empty string, got empty (was --kernel-args passed?)",
+    );
+
+    assert!(
+        kernel_args == TEST_KERNEL_ARGS_MAGIC,
+        "kernel args: expected={:?}, got={:?}",
+        TEST_KERNEL_ARGS_MAGIC,
+        kernel_args,
+    );
+
+    // Verify that the getter returns the same value that was stored.
+    let stored = kargs::get_kernel_args();
+    assert!(
+        stored == kernel_args,
+        "get_kernel_args() mismatch: expected={:?}, got={:?}",
+        kernel_args,
+        stored,
+    );
+
+    info!("kernel arguments test passed");
 }
 
 ///
@@ -209,34 +265,42 @@ fn test() {
 /// # Parameters
 ///
 /// - `mm`: A reference to the virtual memory manager to use.
-/// - `kmods`: A reference to the list of kernel modules to spawn.
+/// - `kmods`: A mutable reference to the list of kernel modules to spawn.
 ///
 /// # Returns
 ///
 /// The number of servers that were successfully spawned.
 ///
-fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -> usize {
+fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule>) -> usize {
     // SAFETY: the process manager is initialized, this is a single-core system, interrupts are
     // disabled, and the resulting `&mut ProcessManager` does not alias `mm`.
     let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
 
     let mut count: usize = 0;
     // Spawn all servers.
-    for kmod in kmods.iter() {
-        let elf_class: elf::ElfClass = match elf::detect_elf_class(kmod.start().into_raw_value()) {
-            Ok(ec) => ec,
-            Err(err) => {
-                warn!("failed to detect ELF class: {:?}", err);
-                continue;
-            },
-        };
-        let pid: ProcessIdentifier = {
-            // Split command line into arguments an environment variables using ";" as the delimiter.
-            let cmdline: Vec<&str> = kmod.cmdline().split(';').collect();
-            let args: &&str = cmdline.first().unwrap_or(&"");
-            let env: &&str = cmdline.get(1).unwrap_or(&"");
+    for kmod in kmods.iter_mut() {
+        info!("spawning server: {:?}", kmod.cmdline());
 
-            match pm.create_process(mm, elf_class, args, env) {
+        // SAFETY: `kmod.start()` points to a valid, page-aligned ELF image loaded by the
+        // bootloader that remains in memory for the lifetime of the kernel.
+        let elf: &Elf32Fhdr = unsafe { Elf32Fhdr::from_address(kmod.start().into_raw_value()) };
+        let pid: ProcessIdentifier = {
+            // Split command line into arguments and environment variables in place.
+            // A single `;` separates args from env; `\;` is a literal `;`.
+            // SAFETY: module pages are mapped read-write; `iter_mut` yields exclusive access
+            // so no other reference aliases the cmdline bytes.
+            let cmdline_buf: &mut [u8] = unsafe { kmod.cmdline_bytes_mut() };
+            let (args, env): (&str, &str) = ::cmdline::split_cmdline(cmdline_buf);
+            // Capture compacted length before create_process borrows args/env.
+            let compacted_len: usize = args.len() + env.len();
+
+            let result: Result<ProcessIdentifier, Error> = pm.create_process(mm, elf, args, env);
+
+            // Update the tracked length so that a subsequent cmdline() call returns the
+            // compacted content without stale trailing bytes.
+            kmod.set_cmdline_len(compacted_len);
+
+            match result {
                 Ok(pid) => {
                     count += 1;
                     pid
@@ -248,7 +312,7 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
             }
         };
 
-        info!("server {} spawned, pid={:?}", kmod.cmdline(), pid);
+        info!("server spawned, pid={:?}", pid);
     }
 
     count
@@ -256,14 +320,28 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
+    // Install klog buffer backing storage before the first logging call.
+    // Under SMP there is no klog buffer.
+    #[cfg(not(feature = "smp"))]
+    {
+        if let Err(e) = unsafe { crate::hal::platform::setup_klog_backing_storage() } {
+            panic!("failed to set up klog backing storage: {:?}", e);
+        }
+    }
+
     info!("initializing the kernel...");
 
     // Initialize the kernel heap.
-    if let Err(e) = unsafe { kheap::init() } {
-        panic!("failed to initialize kernel heap: {:?}", e);
+    {
+        if let Err(e) = unsafe { crate::hal::platform::setup_heap_backing_storage() } {
+            panic!("failed to set up heap backing storage: {:?}", e);
+        }
+        if let Err(e) = unsafe { kheap::init() } {
+            panic!("failed to initialize kernel heap: {:?}", e);
+        }
     }
 
-    #[cfg(test)]
+    #[cfg(feature = "test")]
     test();
 
     // Parse kernel arguments.
@@ -275,23 +353,60 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
         IoMemoryAllocator,
         LinkedList<KernelModule>,
+        &'static str,
     );
-    let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
-        KernelArgs = match kargs.parse() {
-            Ok(bootinfo) => {
-                (
-                bootinfo.madt,
-                bootinfo.mem_lower,
-                bootinfo.memory_regions,
-                bootinfo.mmio_regions,
-                bootinfo.ioaddresses,
-                bootinfo.kernel_modules,
-                )
-            },
-            Err(err) => {
-                panic!("failed to parse kernel arguments: {:?}", err);
-            },
-        };
+    let (
+        madt,
+        mem_lower,
+        mut memory_regions,
+        mut mmio_regions,
+        mut ioaddresses,
+        mut kernel_modules,
+        kernel_args,
+    ): KernelArgs = match kargs.parse() {
+        Ok(bootinfo) => (
+            bootinfo.madt,
+            bootinfo.mem_lower,
+            bootinfo.memory_regions,
+            bootinfo.mmio_regions,
+            bootinfo.ioaddresses,
+            bootinfo.kernel_modules,
+            bootinfo.kernel_args,
+        ),
+        Err(err) => {
+            panic!("failed to parse kernel arguments: {:?}", err);
+        },
+    };
+
+    if !kernel_args.is_empty() {
+        info!("kernel args: {:?}", kernel_args);
+    }
+
+    // Store kernel arguments in a global so they can be queried later.
+    // SAFETY: called once during single-threaded boot, before any user process is started.
+    unsafe {
+        kargs::set_kernel_args(kernel_args);
+    }
+
+    // Parse kernel arguments into structured options.
+    let kernel_options: ::alloc::vec::Vec<::koptions::KernelOption<'_>> =
+        ::koptions::parse(kernel_args);
+    if !kernel_options.is_empty() {
+        info!("kernel options: {:?}", kernel_options);
+    }
+
+    // Enable snapshot capability if the `snapshot` option was passed.
+    for opt in &kernel_options {
+        if *opt == ::koptions::KernelOption::Snapshot {
+            info!("snapshot capability enabled via kernel option");
+            SNAPSHOT_ALLOWED.store(true, Ordering::SeqCst);
+            break;
+        }
+    }
+
+    // Verify that kernel arguments were stored and can be retrieved correctly.
+    #[cfg(feature = "test")]
+    test_kernel_args(kernel_args);
 
     info!("parsing kernel image...");
     let kimage: KernelImage = match KernelImage::new() {
@@ -308,27 +423,71 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         memory_regions.push_back(data);
     }
     memory_regions.push_back(kimage.bss());
-    memory_regions.push_back(kimage.kpool());
 
     // Add kernel modules to list of memory regions.
+    // Track which page-aligned region bases have already been registered to avoid
+    // booking the same frames twice (multibinary modules share a single image region).
+    let mut registered_bases: [usize; ::multibin::MAX_ENTRIES] =
+        [usize::MAX; ::multibin::MAX_ENTRIES];
+    let mut registered_count: usize = 0;
     for module in kernel_modules.iter() {
-        let name: &str = module.cmdline();
-        let start: VirtualAddress = module.start().into_virtual_address();
-        let size: usize = module.size();
+        // Use only the program name (first token) as the region name to avoid large
+        // heap allocations when the full command line is very long.
+        let name: &str = module
+            .cmdline()
+            .split_once(' ')
+            .map_or(module.cmdline(), |(n, _)| n);
+        let raw_start: usize = module.region_base().into_virtual_address().into_raw_value();
+        let size: usize = module.region_size();
+        // Page-align the region: round start down and end up to page boundaries.
+        // The module payload may start at an offset within a page (e.g., after a size header).
+        let page_start: usize = ::sys::mm::align_down(raw_start, ::sys::mm::Alignment::Align4096);
+        let raw_end: usize = match raw_start.checked_add(size) {
+            Some(v) => v,
+            None => panic!("kernel module region end overflows address space"),
+        };
+        let page_end: usize = match ::sys::mm::align_up(raw_end, ::sys::mm::Alignment::Align4096) {
+            Some(v) => v,
+            None => panic!("kernel module region end overflows address space"),
+        };
+
+        // Skip if this exact page-aligned base was already registered.
+        let mut already_registered: bool = false;
+        for base in registered_bases.iter().take(registered_count) {
+            if *base == page_start {
+                already_registered = true;
+                break;
+            }
+        }
+        if already_registered {
+            continue;
+        }
+        if registered_count < registered_bases.len() {
+            registered_bases[registered_count] = page_start;
+            registered_count += 1;
+        }
+
+        let start: VirtualAddress = VirtualAddress::from_raw_value(page_start);
+        let aligned_size: usize = page_end - page_start;
         let typ: MemoryRegionType = MemoryRegionType::Reserved;
-        if let Ok(region) = MemoryRegion::new(name, start, size, typ, AccessPermission::RDONLY) {
+        if let Ok(region) =
+            MemoryRegion::new(name, start, aligned_size, typ, AccessPermission::RDWR)
+        {
             memory_regions.push_back(region);
         }
     }
 
-    if let Err(err) =
-        Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
-    {
-        panic!("failed to initialize hardware abstraction layer: {:?}", err);
-    }
+    let physical_memory_layout: Bitmap =
+        match Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
+        {
+            Ok(result) => result,
+            Err(err) => {
+                panic!("failed to initialize hardware abstraction layer: {:?}", err);
+            },
+        };
 
     // Initialize the memory manager.
-    let root: Vmem = match mm::init(&kimage, memory_regions, mmio_regions) {
+    let root: Vmem = match mm::init(memory_regions, mmio_regions, physical_memory_layout) {
         Ok(root) => root,
         Err(err) => {
             panic!("failed to initialize memory manager: {:?}", err);
@@ -336,6 +495,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     };
 
     // Check boot stack guard watermark for corruption.
+    #[cfg(feature = "exception-stack-guard")]
     if let Err(err) = mm::kstack::check_boot_stack_guard() {
         panic!("boot stack overflow detected: {:?}", err);
     }
@@ -429,7 +589,7 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
 
     // SAFETY: the memory manager is initialized and access is synchronized.
     let status: ExitStatus =
-        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules) > 0 {
+        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &mut kernel_modules) > 0 {
             // Enable timer interrupts, if they are supported.
             // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
             if let Some(intman) = unsafe { Hal::get_mut() }.intman() {

@@ -339,5 +339,5 @@ async fn test_mode_registry() {
     let config = NanvixRuntimeConfig::default();
 
     assert!(registry.create("standalone", "test-id", &config).is_ok());
-    assert!(registry.create("hyperlight", "test-id", &config).is_err());
+    assert!(registry.create("unknown", "test-id", &config).is_err());
 }

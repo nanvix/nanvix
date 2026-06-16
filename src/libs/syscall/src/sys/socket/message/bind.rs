@@ -7,8 +7,8 @@
 
 use crate::{
     sys::socket::sockaddr,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -35,11 +35,11 @@ pub struct BindSocketRequest {
     pub sockaddr: sockaddr,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(BindSocketRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(BindSocketRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl BindSocketRequest {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<sockaddr>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_int>() - mem::size_of::<sockaddr>();
 
     pub fn new(sockfd: c_int, sockaddr: &sockaddr) -> Self {
         Self {
@@ -49,23 +49,23 @@ impl BindSocketRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier, sockfd: c_int, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::BindSocketRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::BindSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
+            MessageReceiver::from(crate::NETWORK_DESTINATION),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -81,7 +81,7 @@ impl Debug for BindSocketRequest {
             f,
             "BindSocketRequest {{ sockfd: {}, sockaddr: {:?} }}",
             { self.sockfd },
-            &self.sockaddr
+            self.sockaddr
         )
     }
 }
@@ -95,10 +95,10 @@ impl Debug for BindSocketRequest {
 pub struct BindSocketResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(BindSocketResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(BindSocketResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl BindSocketResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -106,22 +106,22 @@ impl BindSocketResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::BindSocketResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::BindSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(crate::NETWORK_SOURCE),
             MessageReceiver::from(tid),
             MessageType::Ikc,
             None,

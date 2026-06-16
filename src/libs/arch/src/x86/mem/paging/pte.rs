@@ -5,18 +5,25 @@
 // Imports
 //==================================================================================================
 
-use crate::x86::mem::paging::{
-    flags::{
-        AccessedFlag,
-        DirtyFlag,
-        PageCacheDisableFlag,
-        PageWriteThroughFlag,
-        PresentFlag,
-        ReadWriteFlag,
-        UserSupervisorFlag,
+use crate::{
+    mem::{
+        self,
+        paging::TableEntry,
     },
-    frame::FrameNumber,
-    PteWord,
+    x86::mem::paging::{
+        flags::{
+            AccessedFlag,
+            CopyOnWriteFlag,
+            DirtyFlag,
+            PageCacheDisableFlag,
+            PageWriteThroughFlag,
+            PresentFlag,
+            ReadWriteFlag,
+            UserSupervisorFlag,
+        },
+        frame::FrameNumber,
+        PteWord,
+    },
 };
 
 //==================================================================================================
@@ -44,6 +51,8 @@ pub struct PageTableEntryFlags {
     accessed: AccessedFlag,
     /// Dirty flag.
     dirty: DirtyFlag,
+    /// Copy-on-write flag (OS-defined, stored in an AVL bit).
+    cow: CopyOnWriteFlag,
 }
 
 impl PageTableEntryFlags {
@@ -83,6 +92,7 @@ impl PageTableEntryFlags {
             page_cache_disable,
             accessed,
             dirty,
+            cow: CopyOnWriteFlag::NotCopyOnWrite,
         }
     }
 
@@ -99,7 +109,7 @@ impl PageTableEntryFlags {
     ///
     /// A [`PageTableEntryFlags`].
     ///
-    pub(crate) fn from_raw_value(value: PteWord) -> Self {
+    fn from_raw_value(value: PteWord) -> Self {
         Self {
             present: PresentFlag::from_raw_value(value),
             read_write: ReadWriteFlag::from_raw_value(value),
@@ -108,6 +118,7 @@ impl PageTableEntryFlags {
             page_cache_disable: PageCacheDisableFlag::from_raw_value(value),
             accessed: AccessedFlag::from_raw_value(value),
             dirty: DirtyFlag::from_raw_value(value),
+            cow: CopyOnWriteFlag::from_raw_value(value),
         }
     }
 
@@ -120,7 +131,7 @@ impl PageTableEntryFlags {
     ///
     /// The raw value.
     ///
-    pub(crate) fn into_raw_value(self) -> PteWord {
+    fn into_raw_value(self) -> PteWord {
         let mut value: PteWord = 0;
 
         value |= self.present.into_raw_value();
@@ -130,6 +141,7 @@ impl PageTableEntryFlags {
         value |= self.page_cache_disable.into_raw_value();
         value |= self.accessed.into_raw_value();
         value |= self.dirty.into_raw_value();
+        value |= self.cow.into_raw_value();
 
         value
     }
@@ -203,6 +215,34 @@ impl PageTableEntryFlags {
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.user_supervisor = user_supervisor;
     }
+
+    ///
+    /// # Description
+    ///
+    /// Checks if the copy-on-write flag is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the copy-on-write flag is set, `false` otherwise.
+    ///
+    #[inline(always)]
+    pub fn is_cow(&self) -> bool {
+        matches!(self.cow, CopyOnWriteFlag::CopyOnWrite)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the copy-on-write flag.
+    ///
+    /// # Parameters
+    ///
+    /// - `cow`: The copy-on-write flag.
+    ///
+    #[inline(always)]
+    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) {
+        self.cow = cow;
+    }
 }
 
 //==================================================================================================
@@ -223,6 +263,9 @@ pub struct PageTableEntry {
 }
 
 impl PageTableEntry {
+    /// Size in bytes of the hardware page table entry representation.
+    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+
     ///
     /// # Description
     ///
@@ -239,6 +282,45 @@ impl PageTableEntry {
     ///
     pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self {
         Self { flags, frame }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PageTableEntry`] from a raw value.
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: The raw value.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
+    /// - `None`: Otherwise.
+    ///
+    pub fn from_raw_value(value: PteWord) -> Option<Self> {
+        Some(Self {
+            flags: PageTableEntryFlags::from_raw_value(value),
+            frame: FrameNumber::from_raw_value(value as usize >> mem::FRAME_SHIFT)?,
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a [`PageTableEntry`] into a raw value.
+    ///
+    /// # Returns
+    ///
+    /// The raw value.
+    ///
+    pub fn into_raw_value(self) -> PteWord {
+        let mut value: PteWord = 0;
+
+        value |= self.flags.into_raw_value();
+        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
+
+        value
     }
 
     ///
@@ -319,60 +401,35 @@ impl PageTableEntry {
     pub fn set_user_supervisor(&mut self, user_supervisor: UserSupervisorFlag) {
         self.flags.set_user_supervisor(user_supervisor);
     }
-}
-
-//==================================================================================================
-// Raw Value Serialization
-//==================================================================================================
-
-impl PageTableEntry {
-    /// Size in bytes of the hardware page table entry representation.
-    pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
 
     ///
     /// # Description
     ///
-    /// Constructs a [`PageTableEntry`] from a raw value.
+    /// Checks whether the target page table entry is marked copy-on-write.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the entry is marked copy-on-write, `false` otherwise.
+    ///
+    pub fn is_cow(&self) -> bool {
+        self.flags.is_cow()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the copy-on-write flag in the target page table entry.
     ///
     /// # Parameters
     ///
-    /// - `value`: The raw value.
+    /// - `cow`: The copy-on-write flag.
     ///
-    /// # Returns
-    ///
-    /// - `Some(`[`PageTableEntry`]`)`: If the raw value is valid.
-    /// - `None`: Otherwise.
-    ///
-    pub fn from_raw_value(value: PteWord) -> Option<Self> {
-        use crate::x86::mem::paging::PHYS_ADDR_MASK;
-        Some(Self {
-            flags: PageTableEntryFlags::from_raw_value(value),
-            frame: FrameNumber::from_raw_value(
-                (value & PHYS_ADDR_MASK) as usize >> crate::mem::FRAME_SHIFT,
-            )?,
-        })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Converts a [`PageTableEntry`] into a raw value.
-    ///
-    /// # Returns
-    ///
-    /// The raw value.
-    ///
-    pub fn into_raw_value(self) -> PteWord {
-        let mut value: PteWord = 0;
-
-        value |= self.flags.into_raw_value();
-        value |= (self.frame.into_raw_value() << crate::mem::FRAME_SHIFT) as PteWord;
-
-        value
+    pub fn set_cow(&mut self, cow: CopyOnWriteFlag) {
+        self.flags.set_cow(cow);
     }
 }
 
-impl crate::x86::mem::paging::table::TableEntry for PageTableEntry {
+impl TableEntry for PageTableEntry {
     fn from_raw(raw: PteWord) -> Option<Self> {
         Self::from_raw_value(raw)
     }

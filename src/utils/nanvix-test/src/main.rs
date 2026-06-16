@@ -34,9 +34,7 @@ mod environment;
 mod executor;
 mod log_layout;
 mod nanvixd;
-#[cfg(unix)]
 mod port;
-#[cfg(unix)]
 mod uservm;
 mod warning;
 
@@ -53,8 +51,10 @@ macro_rules! warn_with_policy {
 // Imports
 //==================================================================================================
 
-#[cfg(unix)]
-use crate::executor::http::test_with_http_executor;
+#[cfg(feature = "standalone")]
+use crate::executor::snapshot_restore::test_with_snapshot_restore_executor;
+#[cfg(feature = "standalone")]
+use crate::executor::snapshot_save_exit::test_with_snapshot_save_exit_executor;
 use crate::{
     config::{
         NanvixTestConfig,
@@ -68,6 +68,7 @@ use crate::{
         ExecutorName,
         WorkloadSpec,
         empty::empty,
+        http::test_with_http_executor,
         terminal::test_with_terminal_executor,
     },
     log_layout::{
@@ -85,17 +86,37 @@ use ::log::{
 use ::std::{
     fs::create_dir_all,
     path::Path,
+    process,
+    sync::{
+        Arc,
+        atomic::{
+            AtomicI32,
+            Ordering,
+        },
+    },
 };
+#[cfg(unix)]
+use ::tokio::signal::unix::{
+    SignalKind,
+    signal,
+};
+use ::tokio_util::sync::CancellationToken;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
+/// Base return code for test interrupts; actual exit code will be 128 + signal number.
+const BASE_RETURN_CODE: i32 = 128;
 /// Default log-level (overridden by RUST_LOG environment variable if set).
 const DEFAULT_LOG_LEVEL: &str = "error";
 /// Default tenant identifier used when creating test sandboxes.
-#[cfg(unix)]
 pub(crate) const DEFAULT_TENANT_ID: &str = "nanvix-test";
+/// Signal number for a Windows Ctrl+C event. Windows has no `SIGINT`/`SIGTERM`
+/// distinction, so we map Ctrl+C to the POSIX `SIGINT` value (2) to keep the `128 + signum`
+/// exit-code convention.
+#[cfg(not(unix))]
+const WINDOWS_CTRL_C_SIGNUM: i32 = 2;
 
 //==================================================================================================
 // Standalone Functions
@@ -122,7 +143,103 @@ fn main() -> Result<()> {
             ::anyhow::anyhow!(reason)
         })?;
 
-    runtime.block_on(run())
+    // Shared state: signal number received (0 = none).
+    let received_signal: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+    let cancellation_token: CancellationToken = CancellationToken::new();
+    let force_exit_token: CancellationToken = CancellationToken::new();
+
+    // Spawn a background task that listens for interrupt signals.
+    // First signal: cancel the token so in-flight work drains gracefully.
+    // Second signal: cancel the force-exit token so that main() can shut down the runtime.
+    #[cfg(unix)]
+    {
+        let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
+        let sig_token: CancellationToken = cancellation_token.clone();
+        let sig_force_token: CancellationToken = force_exit_token.clone();
+        runtime.spawn(async move {
+            let mut sigint = match signal(SignalKind::interrupt()) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!("signal_listener(): failed to register SIGINT handler (error={error})");
+                    return;
+                },
+            };
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    error!("signal_listener(): failed to register SIGTERM handler (error={error})");
+                    return;
+                },
+            };
+
+            // Wait for the first signal.
+            let (signum, signame): (i32, &str) = tokio::select! {
+                _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
+                _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
+            };
+            info!("signal_listener(): received {signame}, requesting graceful shutdown...");
+            sig_flag.store(signum, Ordering::SeqCst);
+            sig_token.cancel();
+
+            // Wait for a second signal. Record it and cancel the force-exit token.
+            let (second_signum, second_signame): (i32, &str) = tokio::select! {
+                _ = sigint.recv() => (libc::SIGINT, "SIGINT"),
+                _ = sigterm.recv() => (libc::SIGTERM, "SIGTERM"),
+            };
+            error!(
+                "signal_listener(): received second signal {second_signame}, forcing immediate \
+                 exit"
+            );
+            sig_flag.store(second_signum, Ordering::SeqCst);
+            sig_force_token.cancel();
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        let sig_flag: Arc<AtomicI32> = Arc::clone(&received_signal);
+        let sig_token: CancellationToken = cancellation_token.clone();
+        let sig_force_token: CancellationToken = force_exit_token.clone();
+        runtime.spawn(async move {
+            // First Ctrl+C: request graceful shutdown.
+            if tokio::signal::ctrl_c().await.is_err() {
+                error!("signal_listener(): failed to register Ctrl+C handler");
+                return;
+            }
+            info!("signal_listener(): received Ctrl+C, requesting graceful shutdown...");
+            sig_flag.store(WINDOWS_CTRL_C_SIGNUM, Ordering::SeqCst);
+            sig_token.cancel();
+
+            // Second Ctrl+C: force immediate exit.
+            if tokio::signal::ctrl_c().await.is_err() {
+                error!("signal_listener(): failed to register second Ctrl+C handler");
+                return;
+            }
+            error!("signal_listener(): received second Ctrl+C, forcing immediate exit");
+            sig_flag.store(WINDOWS_CTRL_C_SIGNUM, Ordering::SeqCst);
+            sig_force_token.cancel();
+        });
+    }
+
+    // Run the main test loop. Abort early if a second signal forces exit.
+    let result: Result<()> = runtime.block_on(async {
+        tokio::select! {
+            result = run(cancellation_token) => result,
+            _ = force_exit_token.cancelled() => {
+                error!("main(): forcing exit on repeat signal...");
+                Err(::anyhow::anyhow!("force exit"))
+            },
+        }
+    });
+
+    // If a signal was caught, override the exit code to 128+signum.
+    let signum: i32 = received_signal.load(Ordering::SeqCst);
+    if signum != 0 {
+        drop(runtime);
+        process::exit(BASE_RETURN_CODE.saturating_add(signum));
+    }
+
+    result
 }
 
 ///
@@ -136,7 +253,7 @@ fn main() -> Result<()> {
 /// Returns `Ok(())` once all requested tests finish successfully; returns an error if CLI parsing,
 /// configuration loading, log directory creation, or test execution fails.
 ///
-async fn run() -> Result<()> {
+async fn run(cancellation_token: CancellationToken) -> Result<()> {
     initialize_run_timestamp();
 
     let parsed_args: args::Args =
@@ -233,20 +350,22 @@ async fn run() -> Result<()> {
         return Err(::anyhow::anyhow!(reason));
     }
 
-    prepare_runner_environment(
-        runner_config.l2_enabled,
-        runner_config.port_num,
-        Path::new(runner_config.tmp_directory.as_str()),
-        runner_config.tcp_cleanup_max_wait_seconds,
-        runner_config.tcp_cleanup_poll_interval_seconds,
-    )
-    .await;
+    tokio::select! {
+        _ = prepare_runner_environment(
+            runner_config.l2_enabled,
+            runner_config.port_num,
+            Path::new(runner_config.tmp_directory.as_str()),
+            runner_config.tcp_cleanup_max_wait_seconds,
+            runner_config.tcp_cleanup_poll_interval_seconds,
+        ) => {},
+        _ = cancellation_token.cancelled() => {
+            error!("main(): cancelled during environment preparation");
+            return Err(::anyhow::anyhow!("cancelled"));
+        },
+    }
     warning::fail_if_triggered("prepare_runner_environment")?;
 
-    // Detect machine type at compile time based on enabled Cargo features.
-    #[cfg(feature = "hyperlight")]
-    let machine: &str = "hyperlight";
-    #[cfg(feature = "microvm")]
+    // Machine type used for filtering tests.
     let machine: &str = "microvm";
 
     for test_config in selected_tests {
@@ -264,19 +383,40 @@ async fn run() -> Result<()> {
             continue;
         }
 
+        // Check whether a signal arrived between test iterations.
+        if cancellation_token.is_cancelled() {
+            error!("main(): cancellation requested, skipping remaining tests");
+            break;
+        }
+
         let TestCaseConfig {
             executor,
             name,
             iterations,
             program,
-            program_args,
+            mut program_args,
             input,
             expected_output,
             expect_empty_output,
             extra_nanvixd_args,
             expected_exit_code,
             runs_on: _,
+            program_env,
+            program_args_padding_len,
         } = test_config;
+
+        // When program_args_padding_len is set, generate a synthetic argument string.
+        if let Some(padding_len) = program_args_padding_len {
+            if padding_len > ::nanvix::config::system::MAX_CMDLINE_ARGS_LEN {
+                let reason: String = format!(
+                    "program_args_padding_len ({padding_len}) exceeds MAX_CMDLINE_ARGS_LEN ({})",
+                    ::nanvix::config::system::MAX_CMDLINE_ARGS_LEN
+                );
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
+            program_args = Some("A".repeat(padding_len));
+        }
 
         // Parse extra_nanvixd_args string into a vector of arguments.
         let extra_nanvixd_args: Vec<String> = match extra_nanvixd_args.as_ref() {
@@ -296,13 +436,14 @@ async fn run() -> Result<()> {
 
         debug!(
             "main(): running test (executor={}, name={}, iterations={}, program={:?}, \
-             program_args={:?}, expected_output={:?}, expect_empty_output={}, \
+             program_args={:?}, program_env={:?}, expected_output={:?}, expect_empty_output={}, \
              expected_exit_code={:?}, extra_nanvixd_args={:?})",
             executor,
             name,
             iterations,
             program,
             program_args,
+            program_env,
             expected_output,
             expect_empty_output,
             expected_exit_code,
@@ -318,11 +459,17 @@ async fn run() -> Result<()> {
                     ExecutorName::Empty.to_str(),
                     executor.as_str(),
                 )?;
-                empty(&runner_config, iterations, &log_layout, &extra_nanvixd_args).await?;
+                empty(
+                    &runner_config,
+                    iterations,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                    cancellation_token.clone(),
+                )
+                .await?;
                 let context: String = format!("empty executor completed (label={})", executor);
                 warning::fail_if_triggered(context.as_str())?;
             },
-            #[cfg(unix)]
             (ExecutorName::Http, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
@@ -343,11 +490,11 @@ async fn run() -> Result<()> {
                 let workload: WorkloadSpec = WorkloadSpec::new(
                     program_path.as_str(),
                     program_args.as_deref(),
+                    program_env.as_deref(),
                     input.as_deref(),
                     expected_output.as_deref(),
                     expect_empty_output,
                     expected_exit_code,
-                    machine == "hyperlight",
                 );
 
                 test_with_http_executor(
@@ -356,6 +503,7 @@ async fn run() -> Result<()> {
                     workload,
                     &log_layout,
                     &extra_nanvixd_args,
+                    cancellation_token.clone(),
                 )
                 .await?;
                 let context: String = format!(
@@ -364,16 +512,9 @@ async fn run() -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            #[cfg(unix)]
             (ExecutorName::Http, None) => {
                 let reason: String =
                     "tests entries with http executor must define the 'program' field".to_string();
-                error!("main(): {reason}");
-                return Err(::anyhow::anyhow!(reason));
-            },
-            #[cfg(not(unix))]
-            (ExecutorName::Http, _) => {
-                let reason: String = "HTTP executor is not supported on this platform".to_string();
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
@@ -397,11 +538,11 @@ async fn run() -> Result<()> {
                 let workload: WorkloadSpec = WorkloadSpec::new(
                     program_path.as_str(),
                     program_args.as_deref(),
+                    program_env.as_deref(),
                     input.as_deref(),
                     expected_output.as_deref(),
                     expect_empty_output,
                     expected_exit_code,
-                    machine == "hyperlight",
                 );
 
                 test_with_terminal_executor(
@@ -410,6 +551,7 @@ async fn run() -> Result<()> {
                     workload,
                     &log_layout,
                     &extra_nanvixd_args,
+                    cancellation_token.clone(),
                 )
                 .await?;
                 let context: String = format!(
@@ -421,6 +563,108 @@ async fn run() -> Result<()> {
             (ExecutorName::Terminal, None) => {
                 let reason: String = "test entries with terminal executor must define the \
                                       'program' field"
+                    .to_string();
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            #[cfg(feature = "standalone")]
+            (ExecutorName::SnapshotRestore, Some(program_path)) => {
+                if !Path::new(program_path.as_str()).exists() {
+                    warn_with_policy!(
+                        "main(): skipping tests with snapshot-restore executor because program \
+                         path is missing (path={})",
+                        program_path
+                    );
+                    warning::fail_if_triggered("snapshot-restore executor missing program")?;
+                    continue;
+                }
+
+                let log_layout: TestLogLayout = TestLogLayout::for_program(
+                    log_root,
+                    ExecutorName::SnapshotRestore.to_str(),
+                    program_path.as_str(),
+                )?;
+
+                let workload: WorkloadSpec = WorkloadSpec::new(
+                    program_path.as_str(),
+                    program_args.as_deref(),
+                    program_env.as_deref(),
+                    input.as_deref(),
+                    expected_output.as_deref(),
+                    expect_empty_output,
+                    expected_exit_code,
+                );
+
+                test_with_snapshot_restore_executor(
+                    &runner_config,
+                    iterations,
+                    workload,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                    cancellation_token.clone(),
+                )
+                .await?;
+                let context: String = format!(
+                    "snapshot-restore executor completed (program={}, test={})",
+                    program_path, executor
+                );
+                warning::fail_if_triggered(context.as_str())?;
+            },
+            #[cfg(feature = "standalone")]
+            (ExecutorName::SnapshotRestore, None) => {
+                let reason: String = "test entries with snapshot-restore executor must define the \
+                                      'program' field"
+                    .to_string();
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            #[cfg(feature = "standalone")]
+            (ExecutorName::SnapshotSaveExit, Some(program_path)) => {
+                if !Path::new(program_path.as_str()).exists() {
+                    warn_with_policy!(
+                        "main(): skipping tests with snapshot-save-exit executor because program \
+                         path is missing (path={})",
+                        program_path
+                    );
+                    warning::fail_if_triggered("snapshot-save-exit executor missing program")?;
+                    continue;
+                }
+
+                let log_layout: TestLogLayout = TestLogLayout::for_program(
+                    log_root,
+                    ExecutorName::SnapshotSaveExit.to_str(),
+                    program_path.as_str(),
+                )?;
+
+                let workload: WorkloadSpec = WorkloadSpec::new(
+                    program_path.as_str(),
+                    program_args.as_deref(),
+                    program_env.as_deref(),
+                    input.as_deref(),
+                    expected_output.as_deref(),
+                    expect_empty_output,
+                    expected_exit_code,
+                );
+
+                test_with_snapshot_save_exit_executor(
+                    &runner_config,
+                    iterations,
+                    workload,
+                    &log_layout,
+                    &extra_nanvixd_args,
+                    cancellation_token.clone(),
+                )
+                .await?;
+                let context: String = format!(
+                    "snapshot-save-exit executor completed (program={}, test={})",
+                    program_path, executor
+                );
+                warning::fail_if_triggered(context.as_str())?;
+            },
+            #[cfg(feature = "standalone")]
+            (ExecutorName::SnapshotSaveExit, None) => {
+                let reason: String = "test entries with snapshot-save-exit executor must define \
+                                      the 'program' field"
                     .to_string();
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));

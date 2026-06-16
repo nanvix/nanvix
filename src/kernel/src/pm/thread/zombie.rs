@@ -123,4 +123,17 @@ impl ZombieThread {
     pub fn status(&self) -> ExitStatus {
         self.status
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the zombie thread was detached.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `true` if the thread is detached, `false` otherwise.
+    ///
+    pub fn is_detached(&self) -> bool {
+        self.state.is_detached()
+    }
 }

@@ -9,8 +9,8 @@ use ::core::ptr;
 use ::sys::{
     error::Error,
     kcall::pm::{
-        get_thread_data_area,
-        set_thread_data_area,
+        __kcall_get_thread_data_area,
+        __kcall_set_thread_data_area,
     },
 };
 
@@ -31,16 +31,16 @@ pub fn run() -> Result<(), Error> {
 }
 
 fn test_set_and_restore_tda() -> Result<(), Error> {
-    let original_ptr = get_thread_data_area()?;
+    let original_ptr = __kcall_get_thread_data_area()?;
 
     let new_ptr: *mut u8 = ptr::addr_of_mut!(TEMP_TDA).cast::<u8>();
-    set_thread_data_area(new_ptr)?;
+    __kcall_set_thread_data_area(new_ptr)?;
 
-    let active_ptr = get_thread_data_area()?;
+    let active_ptr = __kcall_get_thread_data_area()?;
     assert_eq!(active_ptr, new_ptr, "TDA pointer mismatch");
 
-    set_thread_data_area(original_ptr)?;
-    let restored = get_thread_data_area()?;
+    __kcall_set_thread_data_area(original_ptr)?;
+    let restored = __kcall_get_thread_data_area()?;
     assert_eq!(restored, original_ptr, "original TDA pointer was not restored");
     Ok(())
 }

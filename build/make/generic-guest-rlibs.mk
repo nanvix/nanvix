@@ -4,7 +4,7 @@
 # Per-package rules retained for direct invocation (e.g., make check-guest-rlib-<pkg>).
 define GUEST_RLIB_RULES
 check-guest-rlib-$(1):
-	$(GUEST_CARGO_CHECK_CMD) -p $(1)
+	@$(GUEST_CARGO_CHECK_CMD) -p $(1)
 
 format-guest-rlib-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -40,7 +40,7 @@ _GUEST_RLIB_PKGS := $(foreach pkg,$(ALL_GUEST_RUST_LIBS),-p $(pkg))
 _GUEST_RLIB_LINT_TEST_PKGS := $(foreach pkg,$(ALL_GUEST_RUST_LIBS_TEST_LIST),-p $(pkg))
 
 check-guest-rlibs:
-	$(GUEST_CARGO_CHECK_CMD) $(_GUEST_RLIB_PKGS)
+	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_RLIB_PKGS)
 
 format-guest-rlibs:
 	$(GUEST_CARGO_FMT_CMD) $(_GUEST_RLIB_PKGS)

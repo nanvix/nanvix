@@ -7,9 +7,15 @@
 
 use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
-use ::sysapi::ffi::{
-    c_char,
-    c_int,
+use ::sysapi::{
+    fcntl::atflags::{
+        AT_FDCWD,
+        AT_REMOVEDIR,
+    },
+    ffi::{
+        c_char,
+        c_int,
+    },
 };
 use ::syslog::trace_syscall;
 
@@ -23,7 +29,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
     // Validate the path pointer.
     if path.is_null() {
-        ::syslog::error!("rmdir(): path is null (path={path:?})");
+        ::syslog::warn!("rmdir(): path is null (path={path:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -37,25 +43,13 @@ pub unsafe extern "C" fn rmdir(path: *const c_char) -> c_int {
         },
     };
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        match ::nvx::vfs::fd::vfs_rmdir(pathname) {
-            Ok(()) => 0,
-            Err(e) => {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("rmdir(): VFS rmdir failed (path={pathname:?}, error={e})");
-                *__errno_location() = code.get();
-                -1
-            },
-        }
-    }
-
-    #[cfg(not(feature = "standalone"))]
-    {
-        // linuxd does not support rmdir — return ENOSYS for non-VFS paths.
-        ::syslog::debug!("rmdir(): not supported for non-VFS path {:?}", pathname);
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-        -1
+    // Route through unlinkat with AT_REMOVEDIR.
+    match crate::fcntl::syscall::unlinkat(AT_FDCWD, pathname, AT_REMOVEDIR) {
+        Ok(()) => 0,
+        Err(e) => {
+            ::syslog::warn!("rmdir(): failed (path={pathname:?}, error={e:?})");
+            *__errno_location() = e.code.get();
+            -1
+        },
     }
 }

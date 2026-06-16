@@ -29,19 +29,19 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - id: deployment
-    uses: ./.github/actions/deployment-features
-    with:
-      deployment-type: "${{ inputs.deployment-type }}"
-  - name: "Lint (${{ inputs.machine-type }})"
-    shell: bash
-    run: |
-      ./z build \
-        -- \
-        lint-check \
-        "MACHINE=${{ inputs.machine-type }}" \
-        TARGET=${{ inputs.target-arch }} \
-        "LOG_LEVEL=${{ inputs.log-level }}" \
-        VERBOSE=yes \
-        ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-        ${{ steps.deployment.outputs.make-flags }}
+    - id: deployment
+      uses: ./.github/actions/deployment-features
+      with:
+        deployment-type: "${{ inputs.deployment-type }}"
+    - name: "Lint (${{ inputs.machine-type }})"
+      shell: bash
+      run: |
+        ./z build \
+          -- \
+          lint-check \
+          "MACHINE=${{ inputs.machine-type }}" \
+          TARGET=${{ inputs.target-arch }} \
+          "LOG_LEVEL=${{ inputs.log-level }}" \
+          VERBOSE=yes \
+          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
+          ${{ steps.deployment.outputs.make-flags }}

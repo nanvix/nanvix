@@ -5,36 +5,35 @@
 // Imports
 //==================================================================================================
 
-use crate::dirent::posix_dent;
-use ::alloc::vec::Vec;
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
-use ::sysapi::ffi::c_int;
-use ::syslog::{
-    error,
-    trace,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        dirent::message::{
+use crate::{
+    dirent::{
+        message::{
             GetDirectoryEntriesRequest,
             GetDirectoryEntriesResponse,
         },
-        message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
-            MessagePartitioner,
-        },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+        posix_dent,
     },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
+    message::{
+        MessagePartitioner,
+        SystemCallLongMessage,
+        SystemCallMessagePart,
     },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
+use ::sysapi::ffi::c_int;
+use ::syslog::{
+    trace,
+    warn,
 };
 
 //==================================================================================================
@@ -59,62 +58,45 @@ use {
 pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     trace!("posix_getdents(): fd={}, count={:?}", fd, count);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_getdents(fd, count).map_err(|e| {
-                let code: ErrorCode = e.into();
-                error!("posix_getdents(): VFS getdents failed (fd={fd}, error={e})");
-                Error::new(code, "vfs getdents failed")
-            });
-        }
-        Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "getdents not available in standalone mode",
-        ))
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    posix_getdents_linuxd(fd, count)
-}
-
-/// Forwards a `posix_getdents` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error> {
     const MESSAGE_ASSEMBLER_CAPACITY: usize =
-        GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request message.
-    let request: Message = GetDirectoryEntriesRequest::build(tid, fd, count).map_err(|error| {
+    let request: Message = GetDirectoryEntriesRequest::build(
+        tid,
+        fd,
+        count,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    )
+    .map_err(|error| {
         let reason: &str = "failed to build message";
-        error!("posix_getdents(): {reason} (error={:?})", error);
+        warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)
     })?;
 
     // Send request message.
-    ::sys::kcall::ipc::send(&request).map_err(|error| {
+    ::sys::kcall::ipc::__kcall_send(&request).map_err(|error| {
         let reason: &str = "failed to send message";
-        error!("posix_getdents(): {reason} (error={:?})", error);
+        warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)
     })?;
 
     // Create message assembler.
-    let mut assembler: LinuxDaemonLongMessage =
-        LinuxDaemonLongMessage::new(MESSAGE_ASSEMBLER_CAPACITY).map_err(|error| {
+    let mut assembler: SystemCallLongMessage =
+        SystemCallLongMessage::new(MESSAGE_ASSEMBLER_CAPACITY).map_err(|error| {
             let reason: &str = "failed to create message assembler";
-            error!("posix_getdents(): {reason} (error={:?})", error);
+            warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)
         })?;
 
     loop {
         // Wait for response message.
-        let response: Message = ::sys::kcall::ipc::recv().map_err(|error| {
+        let response: Message = ::sys::kcall::ipc::__kcall_recv().map_err(|error| {
             let reason: &str = "failed to receive message";
-            error!("posix_getdents(): {reason} (error={:?})", error);
+            warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)
         })?;
 
@@ -124,28 +106,28 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
             match ErrorCode::try_from(response.status) {
                 Ok(error_code) => {
                     let reason: &str = "system call failed";
-                    error!("posix_getdents(): {reason} (error_code={error_code:?})");
+                    warn!("posix_getdents(): {reason} (error_code={error_code:?})");
                     break Err(Error::new(error_code, reason));
                 },
                 Err(_) => {
                     let reason: &str = "failed to parse error code";
-                    error!("posix_getdents(): {reason} (response.status={})", { response.status });
+                    warn!("posix_getdents(): {reason} (response.status={})", { response.status });
                     break Err(Error::new(ErrorCode::InvalidMessage, reason));
                 },
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
             match message.header {
-                LinuxDaemonMessageHeader::GetDirectoryEntriesResponsePart => {
-                    let part: LinuxDaemonMessagePart =
-                        LinuxDaemonMessagePart::from_bytes(message.payload);
+                SystemCallMessageHeader::GetDirectoryEntriesResponsePart => {
+                    let part: SystemCallMessagePart =
+                        SystemCallMessagePart::from_bytes(message.payload);
 
                     // Add part to message assembler and check for errors.
                     if let Err(error) = assembler.add_part(part) {
                         let reason: &str = "failed to assemble message";
-                        error!("posix_getdents(): {reason} (error={:?})", error);
+                        warn!("posix_getdents(): {reason} (error={:?})", error);
                         break Err(error);
                     }
 
@@ -154,19 +136,19 @@ fn posix_getdents_linuxd(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Err
                         continue;
                     }
 
-                    let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                    let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                     match GetDirectoryEntriesResponse::from_parts(&parts) {
                         Ok(response) => break Ok(response.entries),
                         Err(error) => {
-                            error!("posix_getdents(): invalid message (error={:?})", error);
+                            warn!("posix_getdents(): invalid message (error={:?})", error);
                             break Err(error);
                         },
                     }
                 },
                 header => {
                     let reason: &str = "unexpected message type";
-                    error!("posix_getdents(): {reason} (header={header:?})");
+                    warn!("posix_getdents(): {reason} (header={header:?})");
                     break Err(Error::new(ErrorCode::InvalidMessage, reason));
                 },
             }

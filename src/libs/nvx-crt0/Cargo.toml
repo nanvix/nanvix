@@ -1,0 +1,91 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nvx-crt0"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Nanvix Guest Runtime Startup (C runtime 0)"
+homepage.workspace = true
+
+# Produced as a regular Rust lib (rlib) by default so Rust no_std
+# binaries can depend on this crate via cargo without rustc's
+# staticlib-time `#[global_allocator]` requirement being triggered
+# spuriously.  The Makefile builds a separate staticlib output by
+# passing `--crate-type staticlib --features forwarding-allocator` to
+# `cargo build`; that is what produces the `libnvx_crt0.a` consumed by
+# cpython / C executables.
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+cfg-if = { workspace = true }
+config = { workspace = true }
+# `nvx` provides the PIE relocation primitive used by `_start`.  We
+# depend on it with `default-features = false` so we do NOT pull in
+# `nvx`'s `runtime` feature (and through it, `sysalloc`); that would
+# put `sysalloc` objects into `libnvx_crt0.a` and break the design
+# invariant documented in the crate's lib.rs.
+nvx = { workspace = true, default-features = false }
+syslog = { workspace = true, default-features = true }
+sys = { workspace = true, features = ["kcall"] }
+# Optional: only pulled in via the `provides-allocator` feature (see
+# below).  When enabled, an `extern crate sysalloc;` in `lib.rs` forces
+# `sysalloc`'s `#[global_allocator]` into the link so the binary's
+# alloc-crate usage finds an allocator.
+sysalloc = { workspace = true, optional = true }
+# Optional: only pulled in via the `provides-allocator` feature.  Rust
+# no_std binaries that depend on `nvx-crt0` via cargo need libposix's
+# `__nanvix_libc_start_main` resolved at link time; pulling `posix` as
+# a cargo dep brings it into the binary's link graph.  Cargo unifies
+# `sysalloc` (referenced by both this crate and `posix`) into a single
+# compilation, so the binary ends up with a single sysalloc instance.
+#
+# For the cpython staticlib path this dep is OFF (the staticlib build
+# uses `--no-default-features`), so `libnvx_crt0.a` does NOT carry
+# `libposix` or `sysalloc` objects — `__nanvix_libc_start_main` is
+# resolved from the separately-built `libposix.a` at the cpython link.
+posix = { workspace = true, default-features = false, features = ["allocator", "syscall"], optional = true }
+
+[features]
+# Default to `c-main` so a vanilla `cargo build -p nvx-crt0` succeeds without
+# forcing every caller to pass `--features ...`.  Consumers that want the
+# Rust trampoline opt out via `default-features = false, features = ["rust-main"]`
+# in their own Cargo.toml.
+default = ["c-main"]
+c-main = []
+rust-main = []
+
+# `provides-allocator` makes this crate force `sysalloc`'s
+# `#[global_allocator]` into the binary's link graph (via `extern crate
+# sysalloc;` in `lib.rs`).  Used by Rust no_std binaries that depend
+# on `nvx-crt0` via cargo.  Disabled for the cpython staticlib build
+# (which uses `forwarding-allocator` instead) so `libnvx_crt0.a`
+# carries no `sysalloc` objects.
+provides-allocator = ["dep:sysalloc", "dep:posix"]
+
+# `forwarding-allocator` declares a stub `#[global_allocator]` in this
+# crate that forwards to `libposix`'s `sysalloc` via C-ABI bridges.  It
+# exists only to satisfy rustc's requirement that every staticlib
+# linking the `alloc` crate (which `-Zbuild-std=core,alloc` pulls in
+# unconditionally) must declare a `#[global_allocator]`.
+#
+# Enabled by the Makefile (`GUEST_STATICLIB_FEATURES_nvx-crt0`) for the
+# `libnvx_crt0.a` staticlib build consumed by cpython.  Rust no_std
+# binaries leave it OFF — they get a real `#[global_allocator]` from
+# `sysalloc` via `provides-allocator`, and a second declaration here
+# would conflict at compile time.
+forwarding-allocator = []
+
+# Logging level pass-through to syslog (mirrors the convention used by `nvx`).
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]
+
+[lints]
+workspace = true

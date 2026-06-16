@@ -15,26 +15,16 @@
 # Memory Layout
 #==================================================================================================
 
-# Total size of physical memory (in bytes).
-# Constraints
-# - Must be large enough to hold the kernel image plus the kernel pool.
-memory_size = 134217728
-
 # Number of processors.
 num_processors = 1
 
-# Total size of the kernel pool (in bytes).
+# Kernel watermark (in frames).
+# User-side allocations are rejected when fulfilling them would leave fewer than this many free
+# frames in the system. Kernel allocations are never gated by this watermark.
 # Constraints:
-# - Must be a multiple of the page size.
-# - Must not exceed the size of a page table.
-kpool_size = 4194304
-
-# Base address of the kernel pool.
-# Constraints:
-# - Must be aligned to a page table boundary (4 MB).
-# - Must be greater than the kernel image end plus any machine-reserved space.
-# - Must not cause kpool_base + kpool_size to exceed memory_size.
-kpool_base = 0x00800000
+# - Must be non-zero.
+# - Recommended: 32-64 frames (128-256 KB), sized to cover worst-case kernel cleanup operations.
+kernel_watermark = 64
 
 #==================================================================================================
 # Stack Configuration
@@ -91,6 +81,30 @@ ipc_message_size = 64
 
 # Number of IKC messages to poll at a time.
 ikc_poll_batch_size = 8
+
+#==================================================================================================
+# Thread Limits
+#==================================================================================================
+
+# Maximum number of threads that may exist system-wide at the same time (including the kernel
+# thread). When this limit is reached, create_thread and create_process return OutOfMemory instead
+# of proceeding with allocations that could exhaust the kernel heap.
+# A thread slot is considered occupied from creation until the zombie is joined or harvested.
+# Constraints:
+# - Must be at least 1 (the kernel thread always exists).
+# Notes:
+# - Each thread consumes at least one kernel stack (kstack_size bytes). At the default kstack_size
+#   of 64 KiB, 32 threads imply up to ~2 MiB of kernel-stack reservation.
+max_threads = 32
+
+# Maximum number of processes that may exist system-wide at the same time.
+# A process slot is considered occupied from creation until the zombie is buried (i.e. waited on).
+# Constraints:
+# - Must be at least 1 (the kernel process always exists).
+# - Must not exceed 255. This upper bound lets the kernel encode per-frame reference counts in a
+#   single byte (a frame can be shared by at most max_processes owners), which keeps the
+#   BSS-backed refcount table small.
+max_processes = 255
 
 #==================================================================================================
 # Synchronization Limits

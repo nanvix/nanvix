@@ -77,18 +77,27 @@ impl BenchmarkFlavour {
     }
 
     pub fn get_program(&self, root: &Path) -> String {
+        // VMM benchmarks (boot-time, snapshot-restore, warm-start-vmm) spawn a VM directly
+        // without nanvixd, so they always use the bare .elf binary. System benchmarks that need
+        // the daemon stack use .initrd in standalone mode to bundle procd, memd, vfsd, and the
+        // application binary.
+        let ext: &str = if cfg!(feature = "standalone") && self.needs_nanvixd() {
+            "initrd"
+        } else {
+            "elf"
+        };
         match self {
             BenchmarkFlavour::BootTime => {
-                format!("{}/bin/noop-rust-nostd.elf", root.display())
+                format!("{}/bin/noop-rust-nostd.{ext}", root.display())
             },
             BenchmarkFlavour::SnapshotRestore => {
-                format!("{}/bin/snapshot-rust-nostd.elf", root.display())
+                format!("{}/bin/snapshot-rust-nostd.{ext}", root.display())
             },
             BenchmarkFlavour::VfsBench => {
-                format!("{}/bin/vfs-bench-nostd.elf", root.display())
+                format!("{}/bin/vfs-bench-nostd.{ext}", root.display())
             },
             _ => {
-                format!("{}/bin/echo-rust-nostd.elf", root.display())
+                format!("{}/bin/echo-rust-nostd.{ext}", root.display())
             },
         }
     }
@@ -161,7 +170,7 @@ pub struct Benchmark {
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_client: reqwest::Client,
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
-    pub nanvixd_toolchain_bin_dir: String,
+    pub nanvixd_clh_bin_path: String,
     #[cfg(any(feature = "multi-process", feature = "single-process"))]
     pub nanvixd_netns_pool_size: Option<usize>,
     #[cfg(any(feature = "multi-process", feature = "single-process"))]

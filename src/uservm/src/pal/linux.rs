@@ -266,6 +266,63 @@ impl AnonymousMapping {
     ///
     /// # Description
     ///
+    /// Issues an `madvise` hint for a sub-region of the mapping.
+    ///
+    /// # Parameters
+    ///
+    /// * `start` - Byte offset from the start of the mapping (must be page-aligned).
+    /// * `len` - Size of the region in bytes.
+    /// * `advice` - madvise advice constant (e.g., `MADV_SEQUENTIAL`, `MADV_WILLNEED`).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error.
+    ///
+    pub fn madvise_at(&self, start: usize, len: usize, advice: i32) -> Result<()> {
+        trace!("AnonymousMapping::madvise_at(): start={start:#x}, len={len:#x}, advice={advice}");
+
+        if len == 0 {
+            return Ok(());
+        }
+
+        if !start.is_multiple_of(page_size()) {
+            let reason: String = format!(
+                "start offset {start:#x} is not page-aligned (page_size={:#x})",
+                page_size()
+            );
+            error!("AnonymousMapping::madvise_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        if start.checked_add(len).is_none_or(|end| end > self.size) {
+            let reason: String = format!(
+                "madvise region [{start:#x}, {:#x}) exceeds mapping bounds (size={:#x})",
+                start.saturating_add(len),
+                self.size
+            );
+            error!("AnonymousMapping::madvise_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // SAFETY: `start` has been bounds-checked, so `self.ptr + start` stays within the mapping.
+        let addr: *mut ::libc::c_void = unsafe { self.ptr.cast::<u8>().add(start).cast() };
+        let ret: i32 = unsafe { ::libc::madvise(addr, len, advice) };
+        if ret != 0 {
+            let reason: String = format!(
+                "madvise failed at {addr:?} (start={start:#x}, len={len:#x}, advice={advice}, \
+                 error={})",
+                ::std::io::Error::last_os_error()
+            );
+            error!("AnonymousMapping::madvise_at(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Replaces the entire mapping with a fresh anonymous read-write mapping using `MAP_FIXED`.
     /// This is useful for restoring a neutral memory region after a failed file-backed remap.
     ///
@@ -432,6 +489,20 @@ impl FileMapping {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the mapped file contents as an immutable byte slice.
+    ///
+    /// # Returns
+    ///
+    /// An immutable byte slice covering the entire mapped file.
+    ///
+    pub fn as_slice(&self) -> &[u8] {
+        // SAFETY: The mapping is valid for `self.size` bytes for the lifetime of `self`.
+        unsafe { slice::from_raw_parts(self.ptr.cast::<u8>(), self.size) }
+    }
 }
 
 impl Drop for FileMapping {
@@ -452,6 +523,29 @@ impl Drop for FileMapping {
             }
         }
     }
+}
+
+//==================================================================================================
+// Helper Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Returns the system page size (cached after the first call).
+///
+/// # Returns
+///
+/// The system page size (in bytes).
+///
+fn page_size() -> usize {
+    static PAGE_SIZE: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| {
+        // SAFETY: `sysconf(_SC_PAGESIZE)` is always safe to call and returns a positive value.
+        #[allow(clippy::cast_possible_truncation)]
+        let size: usize = unsafe { ::libc::sysconf(::libc::_SC_PAGESIZE) as usize };
+        size
+    });
+    *PAGE_SIZE
 }
 
 //==================================================================================================
@@ -515,6 +609,25 @@ mod tests {
         let result: Result<FileMapping> = FileMapping::mmap(path_string.as_str());
         assert!(result.is_err(), "mmap should fail for zero-length files");
 
+        fs::remove_file(&path)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_file_mapping_as_slice() -> Result<()> {
+        let path: PathBuf = unique_temp_path("nanvix-filemapping-as-slice")?;
+        let content: &[u8] = b"as_slice test content for FileMapping";
+        fs::write(&path, content)?;
+
+        let path_string: ::std::string::String = path.to_string_lossy().into_owned();
+        let mapping: FileMapping = FileMapping::mmap(path_string.as_str())?;
+
+        let slice: &[u8] = mapping.as_slice();
+        assert_eq!(slice.len(), content.len(), "slice length mismatch");
+        assert_eq!(slice, content, "slice contents differ from file contents");
+
+        drop(mapping);
         fs::remove_file(&path)?;
 
         Ok(())
@@ -653,5 +766,43 @@ mod tests {
             AnonymousMapping::new(4096, false).expect("failed to create mapping");
         let result: Result<()> = mapping.remap_file_at(0, 0, -1, 0);
         assert!(result.is_err(), "remap_file_at should reject zero-length region");
+    }
+
+    #[test]
+    fn test_madvise_at_success() -> Result<()> {
+        let size: usize = 2 * 4096;
+        let mapping: AnonymousMapping = AnonymousMapping::new(size, false)?;
+
+        // Valid madvise on a page-aligned sub-region should succeed.
+        mapping.madvise_at(0, 4096, ::libc::MADV_WILLNEED)?;
+        mapping.madvise_at(4096, 4096, ::libc::MADV_SEQUENTIAL)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_madvise_at_zero_len_is_noop() -> Result<()> {
+        let mapping: AnonymousMapping = AnonymousMapping::new(4096, false)?;
+
+        // Zero-length madvise should return Ok without doing anything.
+        mapping.madvise_at(0, 0, ::libc::MADV_WILLNEED)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_madvise_at_rejects_out_of_bounds() {
+        let mapping: AnonymousMapping =
+            AnonymousMapping::new(4096, false).expect("failed to create mapping");
+        let result: Result<()> = mapping.madvise_at(0, 8192, ::libc::MADV_WILLNEED);
+        assert!(result.is_err(), "madvise_at should reject out-of-bounds region");
+    }
+
+    #[test]
+    fn test_madvise_at_rejects_unaligned_start() {
+        let mapping: AnonymousMapping =
+            AnonymousMapping::new(8192, false).expect("failed to create mapping");
+        let result: Result<()> = mapping.madvise_at(1, 4096, ::libc::MADV_WILLNEED);
+        assert!(result.is_err(), "madvise_at should reject non-page-aligned start");
     }
 }

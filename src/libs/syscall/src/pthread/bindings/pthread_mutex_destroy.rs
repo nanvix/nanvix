@@ -42,7 +42,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut pthread_mutex_t) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_mutex_destroy(): invalid mutex pointer");
+        ::syslog::warn!("pthread_mutex_destroy(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

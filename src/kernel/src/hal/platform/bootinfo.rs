@@ -41,6 +41,8 @@ pub struct BootInfo {
     pub ioaddresses: IoMemoryAllocator,
     /// Kernel modules.
     pub kernel_modules: LinkedList<KernelModule>,
+    /// Kernel arguments shared by all modules in the initrd.
+    pub kernel_args: &'static str,
 }
 
 //==================================================================================================
@@ -61,6 +63,7 @@ impl BootInfo {
     /// - `mmio_regions`: Memory-mapped I/O regions.
     /// - `ioaddresses`: I/O memory allocator with pre-registered MMIO regions.
     /// - `kernel_modules`: Kernel modules.
+    /// - `kernel_args`: Kernel arguments shared by all modules.
     ///
     /// # Returns
     ///
@@ -73,6 +76,7 @@ impl BootInfo {
         mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
         ioaddresses: IoMemoryAllocator,
         kernel_modules: LinkedList<KernelModule>,
+        kernel_args: &'static str,
     ) -> Self {
         Self {
             madt,
@@ -81,6 +85,7 @@ impl BootInfo {
             mmio_regions,
             ioaddresses,
             kernel_modules,
+            kernel_args,
         }
     }
 }

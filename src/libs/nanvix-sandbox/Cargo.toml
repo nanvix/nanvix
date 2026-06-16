@@ -23,6 +23,7 @@ linuxd = { workspace = true, optional = true }
 libc = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
+nanvix-sandbox-config = { workspace = true, optional = true }
 serde_json = { workspace = true }
 syscomm = { workspace = true }
 sys = { workspace = true }
@@ -31,16 +32,19 @@ user-vm-api = { workspace = true }
 uservm = { workspace = true }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "standalone"]
 # If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
 # into the sandbox.
-single-process = ["linuxd"]
+single-process = [
+    "linuxd",
+    "nanvix-sandbox-config",
+    "nanvix-sandbox-config/single-process",
+]
 multi-process = ["linuxd"]
 standalone = []
 gdb = ["uservm/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["uservm/profile-time"]
-hyperlight = ["config/hyperlight", "uservm/hyperlight"]
 microvm = ["config/microvm", "uservm/microvm"]
 whp = ["config/whp", "uservm/whp"]
 

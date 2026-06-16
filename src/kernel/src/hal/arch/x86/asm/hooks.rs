@@ -57,7 +57,11 @@ global_asm!(
     ".extern do_exception",
     ".extern do_kcall",
     ".extern do_interrupt",
+    // EXCP_STACK_GUARD is only needed when the microvm guard-check code is compiled in; when
+    // `{MICROVM}=0`, this `.extern` is compiled out together with the guard-check block.
+    ".if {MICROVM}",
     ".extern EXCP_STACK_GUARD",
+    ".endif",
 
     // -----------------------------------------------------------------
     // Exported Symbols
@@ -178,8 +182,7 @@ global_asm!(
     // variable EXCP_STACK_GUARD. A value of 0 disables the check.
     //
     // On microvm, a stack overflow triggers a clean VMM shutdown via
-    // the ACPI power-management port. On hyperlight, the macro is a
-    // no-op because that mechanism is not available.
+    // the ACPI power-management port.
     //
     // Clobbers: EDX, EAX (only on the overflow path which never returns).
     //

@@ -1,0 +1,26 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "hostfs-api"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Wire format for host filesystem daemon (hostfsd) communication"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+sys = { workspace = true }
+sysapi = { workspace = true }
+
+[features]
+default = []
+std = []
+test-support = []
+
+[lints]
+workspace = true

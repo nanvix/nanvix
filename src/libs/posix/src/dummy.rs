@@ -10,6 +10,7 @@ use ::sys::error::ErrorCode;
 use ::sysapi::ffi::{
     c_char,
     c_int,
+    c_long,
     c_void,
 };
 use ::syslog::trace_libcall;
@@ -165,43 +166,6 @@ pub unsafe extern "C" fn tcsetattr(
 ///
 /// # Description
 ///
-/// Replaces the current process image with a new process image specified by `file` and argument
-/// vector `argv`, searching the `PATH` environment variable to locate the executable if necessary.
-///
-/// # Parameters
-///
-/// - `file`: Null-terminated string naming the file to execute (may be a bare program name).
-/// - `argv`: Null-terminated array of argument strings passed to the new program. The first element
-///   conventionally is the program name.
-///
-/// # Returns
-///
-/// This function only returns on failure, in which case it returns `-1` and sets `errno`.
-///
-/// # Notes
-///
-/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
-/// A future implementation should perform path resolution, validate executable format, load the
-/// program image into memory, set up the user stack with the argument and environment vectors, and
-/// transfer control without returning.
-///
-/// # Safety
-///
-/// This function is unsafe because it dereferences raw pointers supplied by foreign callers. It is
-/// safe to call this function if `file` and `argv` (when non-null) point to valid, null-terminated
-/// C strings and a null-terminated vector, respectively.
-///
-#[unsafe(no_mangle)]
-#[trace_libcall]
-pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int {
-    ::syslog::debug!("execvp(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
-}
-
-///
-/// # Description
-///
 /// Resolves a pathname to an absolute, canonical form, eliminating symbolic links, `.` and `..`
 /// components.
 ///
@@ -235,6 +199,84 @@ pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_cha
     ::syslog::debug!("realpath(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null_mut()
+}
+
+///
+/// # Description
+///
+/// Retrieves the value of a configurable system limit or option associated with the
+/// pathname `path`, as identified by `name` (one of the `_PC_*` selectors defined in
+/// `<unistd.h>`).
+///
+/// # Parameters
+///
+/// - `path`: Null-terminated pathname of the file or directory being queried.
+/// - `name`: A `_PC_*` selector specifying which configurable value to retrieve.
+///
+/// # Returns
+///
+/// On success a non-negative limit value, or `-1` (with `errno` unchanged) when the
+/// queried option has no determinate limit. On failure returns `-1` and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always returns `-1` with `errno = ENOSYS`,
+/// matching the convention used by the other "not implemented" stubs in this module.
+/// Callers (notably libstdc++'s `std::filesystem`) treat `-1` as "no limit known" and
+/// fall back to compile-time defaults such as `PATH_MAX`, so this stub is sufficient
+/// to satisfy the libstdc++ link without changing behaviour. A future implementation
+/// should return real limits for the selectors it knows about (e.g. `_PC_PATH_MAX`,
+/// `_PC_NAME_MAX`, `_PC_LINK_MAX`), and only set `errno = EINVAL` for genuinely
+/// unrecognised selectors per the POSIX contract.
+///
+/// # Safety
+///
+/// This function is unsafe because it accepts a raw pointer supplied by foreign callers.
+/// It is safe to call this function if `path` (when non-null) points to a valid
+/// null-terminated C string.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn pathconf(_path: *const c_char, _name: c_int) -> c_long {
+    ::syslog::debug!("pathconf(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
+/// Retrieves the value of a configurable system limit or option associated with the
+/// open file descriptor `fd`, as identified by `name` (one of the `_PC_*` selectors
+/// defined in `<unistd.h>`).
+///
+/// # Parameters
+///
+/// - `fd`: An open file descriptor to query.
+/// - `name`: A `_PC_*` selector specifying which configurable value to retrieve.
+///
+/// # Returns
+///
+/// On success a non-negative limit value, or `-1` (with `errno` unchanged) when the
+/// queried option has no determinate limit. On failure returns `-1` and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always returns `-1` with `errno = ENOSYS`.
+/// See `pathconf()` for the rationale on why this stub is acceptable for the current
+/// libstdc++ link requirements.
+///
+/// # Safety
+///
+/// This function is safe to call with any integer; passing a descriptor that is not
+/// currently open does not change the (stub) behaviour.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn fpathconf(_fd: c_int, _name: c_int) -> c_long {
+    ::syslog::debug!("fpathconf(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
 }
 
 ///
@@ -286,4 +328,78 @@ pub unsafe extern "C" fn ftw(
     ::syslog::debug!("ftw(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
+}
+
+///
+/// # Description
+///
+/// Retrieves file-system statistics for the file system that contains the file named by
+/// `path` and stores them in the `statvfs` structure pointed to by `buf`.
+///
+/// # Parameters
+///
+/// - `path`: Null-terminated pathname of any file within the queried file system.
+/// - `buf`: Pointer to a `struct statvfs` to be filled in on success.
+///
+/// # Returns
+///
+/// On success returns `0` and populates `*buf`. On failure returns `-1` and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
+/// It exists so that consumers which only reference the symbol (notably libstdc++'s
+/// `std::filesystem::space()`) link successfully; such callers treat the `-1`/`errno`
+/// failure as "information unavailable". A future implementation should query the backing
+/// file-system daemon and populate the block / inode counts and the mount flags.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers supplied by foreign callers.
+/// It is safe to call this function if `path` points to a valid, null-terminated C string
+/// and `buf` (when non-null) points to writable storage large enough for a `struct statvfs`
+/// in a future, fully implemented version.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn statvfs(_path: *const c_char, _buf: *mut c_void) -> c_int {
+    ::syslog::debug!("statvfs(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
+/// Opens a directory stream positioned at the first entry, for the directory associated with
+/// the already-open file descriptor `fd`.
+///
+/// # Parameters
+///
+/// - `fd`: An open file descriptor referring to a directory.
+///
+/// # Returns
+///
+/// On success returns a pointer to an opaque `DIR` stream object. On failure returns a null
+/// pointer and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
+/// It exists so that consumers which only reference the symbol (notably libstdc++'s
+/// `std::filesystem` directory iterators) link successfully; such callers treat the null
+/// return as "directory could not be opened". A future implementation should take ownership of
+/// `fd` and return a `DIR` stream backed by the directory it refers to.
+///
+/// # Safety
+///
+/// This function is safe to call with any integer; passing a descriptor that is not currently
+/// open does not change the (stub) behaviour.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn fdopendir(_fd: c_int) -> *mut c_void {
+    ::syslog::debug!("fdopendir(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    core::ptr::null_mut()
 }

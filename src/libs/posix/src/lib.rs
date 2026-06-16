@@ -7,8 +7,6 @@
 
 #![deny(clippy::all)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(never_type)] // pthread requires this.
-#![feature(c_variadic)] // fcntl requires this.
 
 //==================================================================================================
 // Modules
@@ -47,6 +45,14 @@ pub mod pthread;
 
 /// Password structure.
 pub mod pwd;
+
+/// Process start-of-day driver called from `nvx-crt0::_start`.
+///
+/// Owns the stateful runtime services (heap, TDA, argv / envp parsing)
+/// that bring up and tear down a Nanvix process.  See the module-level
+/// rationale comment in `start.rs` for why these live in libposix
+/// instead of in `nvx-crt0`.
+pub mod start;
 
 /// File last access and modification times.
 pub mod utime;

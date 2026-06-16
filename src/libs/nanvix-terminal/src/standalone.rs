@@ -21,7 +21,11 @@ use ::log::{
     info,
     warn,
 };
-use ::std::io::Read;
+use ::nanvix_sandbox_config::StandaloneConfig;
+use ::std::io::{
+    ErrorKind,
+    Read,
+};
 use ::tokio::{
     io::{
         self,
@@ -29,7 +33,6 @@ use ::tokio::{
         Stdout,
     },
     sync::mpsc,
-    time,
 };
 use ::uservm::standalone::{
     StandaloneVmHandle,
@@ -46,66 +49,9 @@ const IO_BUFFER_SIZE: usize = 4096;
 /// Capacity of the bounded channel between the stdin reader thread and the async input task.
 const STDIN_CHANNEL_CAPACITY: usize = 4096;
 
-/// Maximum time to wait for the input task to shut down gracefully before aborting it.
-const INPUT_SHUTDOWN_TIMEOUT: ::std::time::Duration = ::std::time::Duration::from_secs(1);
-
 //==================================================================================================
 // Structures
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Configuration for the terminal in standalone mode.
-///
-/// Holds the minimal set of paths required to launch a User VM directly.
-///
-#[derive(Clone)]
-pub struct TerminalConfig {
-    /// Path to the guest kernel binary.
-    kernel_binary_path: String,
-    /// Optional path to a RAM filesystem image exposed to the guest.
-    ramfs_filename: Option<String>,
-    /// Optional file path for capturing guest stderr output.
-    console_file: Option<String>,
-    /// Optional snapshot path for restoring VM state instead of cold-booting.
-    snapshot_path: Option<String>,
-    /// Optional GDB server port for debugging the guest.
-    #[cfg(feature = "gdb")]
-    gdb_port: Option<u16>,
-}
-
-impl TerminalConfig {
-    ///
-    /// # Description
-    ///
-    /// Creates a new terminal configuration.
-    ///
-    /// # Parameters
-    ///
-    /// - `kernel_binary_path`: Path to the guest kernel binary.
-    /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-    /// - `console_file`: Optional file path for guest stderr capture.
-    /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
-    /// - `gdb_port`: Optional GDB server port.
-    ///
-    pub fn new(
-        kernel_binary_path: String,
-        ramfs_filename: Option<String>,
-        console_file: Option<String>,
-        snapshot_path: Option<String>,
-        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
-    ) -> Self {
-        Self {
-            kernel_binary_path,
-            ramfs_filename,
-            console_file,
-            snapshot_path,
-            #[cfg(feature = "gdb")]
-            gdb_port,
-        }
-    }
-}
 
 ///
 /// # Description
@@ -117,7 +63,7 @@ impl TerminalConfig {
 ///
 pub struct Terminal {
     /// Configuration for launching new VMs.
-    config: TerminalConfig,
+    config: StandaloneConfig,
 }
 
 //==================================================================================================
@@ -134,7 +80,7 @@ impl Terminal {
     ///
     /// - `config`: Configuration for launching VMs.
     ///
-    pub fn new(config: TerminalConfig) -> Self {
+    pub fn new(config: StandaloneConfig) -> Self {
         Self { config }
     }
 
@@ -171,14 +117,18 @@ impl Terminal {
         };
 
         let (handle, io): (StandaloneVmHandle, StandaloneVmIo) = StandaloneVmHandle::spawn(
-            self.config.kernel_binary_path.clone(),
+            self.config.kernel_binary_path().to_string(),
             Some(guest_binary_path.to_string()),
             initrd_args,
-            self.config.ramfs_filename.clone(),
-            self.config.console_file.clone(),
-            self.config.snapshot_path.clone(),
+            self.config.kernel_args().map(|s| s.to_string()),
+            self.config.ramfs_filename().map(|s| s.to_string()),
+            self.config.console_file().map(|s| s.to_string()),
+            self.config.snapshot_path().map(|s| s.to_string()),
+            self.config.mount_directory().map(|s| s.to_string()),
+            self.config.networking_mode(),
+            self.config.host_filter(),
             #[cfg(feature = "gdb")]
-            self.config.gdb_port,
+            self.config.gdb_port(),
         );
 
         // Bridge host stdin/stdout with guest I/O channels.
@@ -221,7 +171,7 @@ impl Terminal {
         } = io;
 
         // --- Input path (independent task): host stdin → guest input ---
-        let mut input_handle: ::tokio::task::JoinHandle<()> = ::tokio::spawn(async move {
+        let input_handle: ::tokio::task::JoinHandle<()> = ::tokio::spawn(async move {
             let (stdin_tx, mut stdin_rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) =
                 mpsc::channel(STDIN_CHANNEL_CAPACITY);
 
@@ -245,21 +195,32 @@ impl Terminal {
         // --- Output path (current task): guest output → host stdout ---
         // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
         let mut stdout: Stdout = io::stdout();
+        let mut io_error: Option<::std::io::Error> = None;
         while let Some(data) = output_rx.recv().await {
-            stdout.write_all(&data).await?;
-            stdout.flush().await?;
+            if let Err(e) = stdout.write_all(&data).await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    error!("failed to write to stdout: {e}");
+                    io_error = Some(e);
+                }
+                break;
+            }
+            if let Err(e) = stdout.flush().await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    error!("failed to flush stdout: {e}");
+                    io_error = Some(e);
+                }
+                break;
+            }
         }
 
-        // Wait briefly for the input task to shut down; abort if it does not complete in time.
-        if time::timeout(INPUT_SHUTDOWN_TIMEOUT, &mut input_handle)
-            .await
-            .is_err()
-        {
-            warn!("input task did not shut down in time, aborting");
-            input_handle.abort();
-        }
+        // Abort the input task immediately — the stdin thread blocks on read() and cannot be
+        // interrupted portably, so waiting provides no benefit.
+        input_handle.abort();
 
-        Ok(())
+        match io_error {
+            Some(e) => Err(e.into()),
+            None => Ok(()),
+        }
     }
 
     ///

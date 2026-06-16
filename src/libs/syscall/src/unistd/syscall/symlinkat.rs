@@ -5,24 +5,23 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::SymbolicLinkAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::SymbolicLinkAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::alloc::{
-        string::ToString,
-        vec::Vec,
-    },
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -52,44 +51,27 @@ pub fn symlinkat(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> 
         linkpath
     );
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_symlinkat(target, dirfd, linkpath).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::error!(
-                "symlinkat(): VFS symlinkat failed (linkpath={linkpath:?}, error={e})"
-            );
-            Error::new(code, "vfs symlinkat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    symlinkat_linuxd(target, dirfd, linkpath)
-}
-
-/// Forwards a `symlinkat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let target: alloc::borrow::Cow<'_, str> = crate::path::expand_path(target);
+    let linkpath: alloc::borrow::Cow<'_, str> = crate::path::expand_path(linkpath);
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: SymbolicLinkAtRequest =
         SymbolicLinkAtRequest::new(target.to_string(), dirfd, linkpath.to_string())?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request.
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "symlinkat(): failed (target={:?}, dirfd={:?}, linkpath={:?}, error_code={:?})",
             target,
             dirfd,
@@ -105,7 +87,7 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
             },
             // Failed to parse error code, return generic error.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "symlinkat(): failed to parse error code (target={:?}, dirfd={:?}, \
                      linkpath={:?}, error={:?})",
                     target,
@@ -118,13 +100,13 @@ fn symlinkat_linuxd(target: &str, dirfd: i32, linkpath: &str) -> Result<(), Erro
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::SymbolicLinkAtResponse => Ok(()),
+            SystemCallMessageHeader::SymbolicLinkAtResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "symlinkat(): failed to parse response (target={:?}, dirfd={:?}, \
                      linkpath={:?}, header={:?})",
                     target,

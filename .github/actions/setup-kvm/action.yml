@@ -7,10 +7,26 @@ description: "Enable KVM access for the current user on GitHub-hosted runners"
 runs:
   using: "composite"
   steps:
-  - name: "Setup KVM"
-    shell: bash
-    run: |
-      echo "[INFO] Configuring KVM access..."
-      sudo usermod -aG kvm "$(whoami)"
-      sudo chmod 666 /dev/kvm
-      echo "[INFO] KVM is ready."
+    - name: "Setup KVM"
+      shell: bash
+      run: |
+        echo "[INFO] Configuring KVM access..."
+        if [[ ! -e /dev/kvm ]]; then
+          echo "::error::/dev/kvm not found — KVM is not available."
+          exit 1
+        fi
+        # In containers we typically run as root and sudo/usermod may not
+        # be available.  Only adjust permissions when needed.
+        if [[ -w /dev/kvm ]]; then
+          echo "[INFO] /dev/kvm is already writable — no changes needed."
+        elif command -v sudo &>/dev/null; then
+          sudo chmod 666 /dev/kvm
+          echo "[INFO] Set /dev/kvm permissions via sudo."
+        else
+          chmod 666 /dev/kvm 2>/dev/null || {
+            echo "::error::Cannot make /dev/kvm writable (no sudo, chmod failed)."
+            exit 1
+          }
+          echo "[INFO] Set /dev/kvm permissions directly."
+        fi
+        echo "[INFO] KVM is ready."

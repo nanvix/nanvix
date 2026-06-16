@@ -7,8 +7,8 @@
 
 use crate::{
     sys::socket::message::ListenSocketRequest,
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -24,25 +24,15 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, backlog);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "listen not available in standalone mode",
-        ));
-    }
-
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = ListenSocketRequest::build(tid, sockfd, backlog);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -53,11 +43,11 @@ pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::ListenSocketResponse => Ok(()),
+                SystemCallMessageHeader::ListenSocketResponse => Ok(()),
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },

@@ -19,11 +19,11 @@ use ::sys::{
     },
     kcall::{
         mm::{
-            mmap,
-            mprotect,
-            munmap,
+            __kcall_mmap,
+            __kcall_mprotect,
+            __kcall_munmap,
         },
-        pm::getpid,
+        pm::__kcall_getpid,
     },
     mm::{
         AccessPermission,
@@ -59,7 +59,7 @@ const MMAP_STRESS_STRIDE_BYTES: usize = 4 * KILOBYTE;
 pub fn run() -> Result<(), StressError> {
     let mut cap_guard: CapabilityGuard = CapabilityGuard::enable(Capability::MemoryManagement)?;
 
-    let pid: ProcessIdentifier = getpid()?;
+    let pid: ProcessIdentifier = __kcall_getpid()?;
 
     // Reserve address space from the unified bump allocator so we don't conflict with the heap
     // region.
@@ -75,11 +75,11 @@ pub fn run() -> Result<(), StressError> {
             AccessPermission::RDONLY
         };
 
-        mmap(pid, addr, perm)?;
+        __kcall_mmap(pid, addr, 1, perm)?;
 
         if perm.is_writable() {
-            mprotect(pid, addr, AccessPermission::RDONLY)?;
-            mprotect(pid, addr, AccessPermission::RDWR)?;
+            __kcall_mprotect(pid, addr, AccessPermission::RDONLY)?;
+            __kcall_mprotect(pid, addr, AccessPermission::RDWR)?;
 
             let raw_addr: usize = usize::from(addr);
             let iteration_byte: u8 = u8::try_from(iteration)
@@ -90,7 +90,7 @@ pub fn run() -> Result<(), StressError> {
             }
         }
 
-        munmap(pid, addr)?;
+        __kcall_munmap(pid, addr)?;
 
         let next_raw: usize = usize::from(addr);
         current_addr = VirtualAddress::from_raw_value(next_raw + MMAP_STRESS_STRIDE_BYTES);

@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 [package]
-name = "slab"
+name = "nanvix-slab"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true

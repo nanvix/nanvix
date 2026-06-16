@@ -37,7 +37,6 @@ The kernel supports multiple machine types via Cargo
 feature flags:
 
 - `microvm` (default) — Lightweight VM for KVM.
-- `hyperlight` — Hyperlight-based VM.
 
 ### Virtual Memory Layout
 

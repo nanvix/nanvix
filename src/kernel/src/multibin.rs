@@ -9,10 +9,7 @@ use crate::{
     hal::mem::PhysicalAddress,
     kmod::KernelModule,
 };
-use ::alloc::{
-    string::ToString,
-    vec::Vec,
-};
+use ::alloc::vec::Vec;
 use ::sys::{
     error::{
         Error,
@@ -40,9 +37,9 @@ use ::sys::{
 ///
 /// # Returns
 ///
-/// A [`Vec`] of [`KernelModule`]s on success, or an [`Error`] if the image is malformed.
+/// A list of modules on success, or an [`Error`] if the image is malformed.
 ///
-pub fn parse(image_data: &[u8], initrd_base: usize) -> Result<Vec<KernelModule>, Error> {
+pub fn parse(image_data: &'static [u8], initrd_base: usize) -> Result<Vec<KernelModule>, Error> {
     let parsed: multibin::ParseResult = multibin::parse(image_data).map_err(|e| {
         error!("parse(): failed to parse multibinary image: {:?}", e);
         e
@@ -82,10 +79,15 @@ pub fn parse(image_data: &[u8], initrd_base: usize) -> Result<Vec<KernelModule>,
             entry_phys_addr, entry.size, cmdline
         );
 
-        let module: KernelModule = KernelModule::new(
+        // Each module's mapped region covers the entire multibinary image so that
+        // the header pages (containing cmdline strings) remain accessible after
+        // the kernel switches to the new page table.
+        let module: KernelModule = KernelModule::new_with_region(
             PhysicalAddress::from_raw_value(entry_phys_addr)?,
             entry.size,
-            cmdline.to_string(),
+            PhysicalAddress::from_raw_value(initrd_base)?,
+            image_data.len(),
+            cmdline,
         );
         modules.push(module);
     }

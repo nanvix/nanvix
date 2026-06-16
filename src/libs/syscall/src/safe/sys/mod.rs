@@ -60,7 +60,7 @@ impl System {
             Ok(name) => name,
             Err(_error) => {
                 let reason: &str = "failed to convert system name";
-                ::syslog::error!("system_name(): {}", reason);
+                ::syslog::warn!("system_name(): {}", reason);
                 return Err(Error::new(sys::error::ErrorCode::ValueOutOfRange, reason));
             },
         };

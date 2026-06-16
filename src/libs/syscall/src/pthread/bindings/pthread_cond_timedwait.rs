@@ -56,19 +56,19 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
 ) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::syslog::error!("pthread_cond_timedwait(): invalid condition variable pointer");
+        ::syslog::warn!("pthread_cond_timedwait(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_cond_timedwait(): invalid mutex pointer");
+        ::syslog::warn!("pthread_cond_timedwait(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
     // Check if `abstime` is not valid.
     if abstime.is_null() {
-        ::syslog::error!("pthread_cond_timedwait(): invalid absolute time pointer");
+        ::syslog::warn!("pthread_cond_timedwait(): invalid absolute time pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
         match SystemTime::new((*abstime).tv_sec as u64, (*abstime).tv_nsec as u32) {
             Some(timeout) => timeout,
             None => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "pthread_cond_timedwait(): invalid timeout (cond={:?}, mutex={:?}, \
                      abstime={:?})",
                     cond,
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn pthread_cond_timedwait(
     match crate::pthread::pthread_cond_timedwait(&*cond, &*mutex, Some(timeout)) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pthread_cond_timedwait(): failed to wait on condition variable (cond={:?}, \
                  mutex={:?}, abstime={:?}, error={:?})",
                 cond,

@@ -14,6 +14,7 @@
 
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::sys::{
     error::{
@@ -172,13 +173,13 @@ pub fn main() -> Result<(), Error> {
 ///   negative caching and blocking write operations on the mount.
 fn mount_ramfs(readonly: bool) -> Result<(), Error> {
     // Acquire IO management capability.
-    pm::capctl(Capability::IoManagement, true)?;
+    pm::__kcall_capctl(Capability::IoManagement, true)?;
 
     // Attach RAMFS MMIO region.
-    mm::mmio_alloc(RAMFS_MMIO_TAG)?;
+    mm::__kcall_mmio_alloc(RAMFS_MMIO_TAG)?;
 
     // Get region info.
-    let info: ::sys::mm::MmioRegionInfo = mm::mmio_info(RAMFS_MMIO_TAG)?;
+    let info: ::sys::mm::MmioRegionInfo = mm::__kcall_mmio_info(RAMFS_MMIO_TAG)?;
     let total_size: usize = info.size();
 
     // Mount the FAT image directly from the MMIO region.
@@ -189,7 +190,7 @@ fn mount_ramfs(readonly: bool) -> Result<(), Error> {
 
     // Release IO management capability but keep the MMIO region allocated —
     // the mounted FAT references it for the process lifetime.
-    pm::capctl(Capability::IoManagement, false)?;
+    pm::__kcall_capctl(Capability::IoManagement, false)?;
 
     Ok(())
 }

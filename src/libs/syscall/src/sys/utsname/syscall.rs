@@ -46,7 +46,7 @@ fn encode_str<const N: usize>(string: &str) -> Result<[c_char; N], Error> {
         // Failure.
         Err(error) => {
             let reason: &str = "failed to convert string";
-            ::syslog::error!("encode_str(): {} (error={:?})", reason, error);
+            ::syslog::warn!("encode_str(): {} (error={:?})", reason, error);
             return Err(Error::new(ErrorCode::ValueOutOfRange, reason));
         },
     };
@@ -54,7 +54,7 @@ fn encode_str<const N: usize>(string: &str) -> Result<[c_char; N], Error> {
     // Check if string is too long.
     if c_string.as_bytes_with_nul().len() > N {
         let reason: &str = "string is too long";
-        ::syslog::error!("encode_str(): {} (string={:?})", reason, string);
+        ::syslog::warn!("encode_str(): {} (string={:?})", reason, string);
         return Err(Error::new(ErrorCode::ValueOutOfRange, reason));
     }
 

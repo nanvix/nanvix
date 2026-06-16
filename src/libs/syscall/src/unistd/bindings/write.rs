@@ -67,14 +67,14 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t) -> c_ssize_t {
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::syslog::error!("write(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?})");
+        ::syslog::warn!("write(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
 
     // Check if count is invalid.
     if count == 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "write(): invalid write count (fd={fd:?}, buffer={buffer:?}, count={count:?})"
         );
         *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn write(fd: c_int, buffer: *const c_void, count: c_size_t
     match crate::unistd::syscall::write(fd, buffer) {
         Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "write(): {error:?} (fd={fd:?}, buffer={:?}, count={count:?})",
                 buffer.as_ptr()
             );

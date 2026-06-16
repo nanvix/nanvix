@@ -19,19 +19,30 @@ syslog = { workspace = true, default-features = true }
 sys = { workspace = true, features = ["kcall"] }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
-vfs = { workspace = true, optional = true }
 
 # Platform-specific dependencies.
 [target.'cfg(any(target_os = "none", target_os = "nanvix"))'.dependencies]
 # The sysalloc crate provides a memory allocator implementation for Nanvix.
 # For Linux the allocator is provided by the C library, so sysalloc is not required.
-sysalloc = { workspace = true }
+#
+# Optional and gated behind the `runtime` feature so consumers that do NOT
+# need `nvx::init` / `nvx::cleanup` (notably the `forwarding-allocator`
+# variant of `nvx-crt0` consumed by cpython) can drop the `sysalloc`
+# transitive dep entirely.  Without this gating, `sysalloc`'s
+# `#[global_allocator]` would always be linked in alongside the
+# forwarding-allocator's `#[global_allocator]`, triggering rustc's
+# duplicate-global-allocator error.
+sysalloc = { workspace = true, optional = true }
 
 [features]
-default = ["staticlib"]
-staticlib = []
-standalone = ["dep:vfs"]
-hyperlight = []
+default = ["runtime"]
+# `runtime` toggles the heap / TDA bring-up helpers (`nvx::init` /
+# `nvx::cleanup`).  Consumers that bring up the runtime through some
+# other path — for example libposix's `__nanvix_libc_start_main` — may
+# depend on `nvx` with `default-features = false` to drop the
+# `sysalloc` transitive dep.  See the `Cargo.toml` of `nvx-crt0` for
+# the cpython staticlib build path that exercises this.
+runtime = ["dep:sysalloc"]
 rustc-dep-of-std = [
     "alloc",
     "core",
@@ -41,6 +52,7 @@ rustc-dep-of-std = [
     "sys/rustc-dep-of-std",
     "syslog/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
+    "dep:sysalloc",
 ]
 
 # Logging Features

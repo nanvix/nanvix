@@ -24,11 +24,16 @@ use ::nanvix::{
     },
     sandbox::UserVmIdentifier,
     syscomm::{
+        ReadExact,
         SocketStream,
         SocketType,
-        UnboundSocket,
+        WriteAll,
     },
 };
+// The socket-based gateway transport is only used on Unix; on Windows the standalone gateway is
+// exposed as a named pipe (see `GatewayStream::connect`).
+#[cfg(unix)]
+use ::nanvix::syscomm::UnboundSocket;
 use ::reqwest::{
     Client,
     StatusCode,
@@ -63,7 +68,7 @@ pub struct UserVm {
     /// Identifier assigned to this User VM by the Nanvix Daemon.
     user_vm_id: UserVmIdentifier,
     /// Socket stream wired to the User VM gateway for I/O.
-    gateway_stream: SocketStream,
+    gateway_stream: GatewayStream,
     /// Milliseconds to wait after shutting down a User VM when L2 is disabled.
     cleanup_uservm_sleep_duration_ms: u64,
     /// Milliseconds to wait after shutting down a User VM when L2 is enabled.
@@ -103,7 +108,7 @@ impl UserVm {
             tenant_id: uservm_args.tenant_id.clone(),
             app_name: uservm_args.app_name.clone(),
             program: uservm_args.program_path.clone(),
-            program_args: uservm_args.program_args.clone().unwrap_or_default(),
+            program_args: uservm_args.combined_program_args(),
         };
 
         let mut request_headers: HeaderMap = uservm_args.headers();
@@ -156,7 +161,7 @@ impl UserVm {
             SocketType::Unix
         };
 
-        let gateway_stream: SocketStream =
+        let gateway_stream: GatewayStream =
             Self::connect_to_gateway(config, response.gateway_sockaddr.as_str(), gateway_socktype)
                 .await?;
 
@@ -187,14 +192,14 @@ impl UserVm {
     ///
     /// # Return Value
     ///
-    /// Returns a connected `SocketStream` when the gateway becomes reachable before the timeout;
+    /// Returns a connected `GatewayStream` when the gateway becomes reachable before the timeout;
     /// returns an error when the retry budget is exhausted.
     ///
     async fn connect_to_gateway(
         config: &RunnerConfig,
         address: &str,
         socket_type: SocketType,
-    ) -> Result<SocketStream> {
+    ) -> Result<GatewayStream> {
         let deadline: Duration = Duration::from_millis(config.gateway_connect_timeout_ms);
         let start: Instant = Instant::now();
         let mut attempts: usize = 0;
@@ -204,10 +209,16 @@ impl UserVm {
 
         loop {
             attempts = attempts.saturating_add(1);
-            let unbound_socket: UnboundSocket = UnboundSocket::new(socket_type);
-            match unbound_socket.connect(address).await {
+            match GatewayStream::connect(socket_type, address).await {
                 Ok(stream) => return Ok(stream),
                 Err(error) => {
+                    if error.kind() == ::std::io::ErrorKind::Unsupported {
+                        let reason: String = format!(
+                            "unsupported gateway transport for address {address} (error={error})"
+                        );
+                        error!("connect_to_gateway(): {reason}");
+                        return Err(::anyhow::anyhow!(reason));
+                    }
                     let elapsed: Duration = start.elapsed();
                     debug!(
                         "connect_to_gateway(): attempt {} failed (addr={}, elapsed_ms={}, \
@@ -270,7 +281,7 @@ impl UserVm {
     ///
     /// Returns a mutable reference to the socket stream connected to the User VM gateway.
     ///
-    pub fn gateway_stream(&mut self) -> &mut SocketStream {
+    pub fn gateway_stream(&mut self) -> &mut GatewayStream {
         &mut self.gateway_stream
     }
 
@@ -518,6 +529,152 @@ impl Drop for UserVm {
 }
 
 //==================================================================================================
+// Gateway Stream
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Transport-agnostic handle to the User VM gateway endpoint exposed by nanvixd.
+///
+/// The standalone gateway is a single point at which the test harness exchanges guest stdio.
+/// Its underlying transport is platform-dependent:
+///
+/// - **Unix**: a Unix-domain socket (or a TCP socket in L2 mode), wrapped in [`SocketStream`].
+/// - **Windows**: a named pipe (`\\.\pipe\...`), since Unix-domain sockets are unavailable. TCP
+///   (L2 mode) is not available on Windows, which only supports standalone deployments. Because
+///   named pipes have no half-close primitive, the input (stdin) direction is framed to emulate
+///   one: each record is a little-endian `u32` length followed by that many payload bytes, and a
+///   zero-length record signals EOF. The output direction stays a raw byte stream.
+///
+pub(crate) enum GatewayStream {
+    /// Gateway exposed via a `syscomm` socket stream (TCP, or a Unix-domain socket on Unix).
+    /// Only constructed on Unix; on Windows the gateway is always a named pipe.
+    #[cfg_attr(windows, allow(dead_code))]
+    Socket(SocketStream),
+    /// Gateway exposed via a Windows named pipe (used by the standalone deployment).
+    #[cfg(windows)]
+    Pipe(::tokio::net::windows::named_pipe::NamedPipeClient),
+}
+
+impl GatewayStream {
+    ///
+    /// # Description
+    ///
+    /// Establishes a single connection to the gateway endpoint, selecting the transport that
+    /// matches the requested socket type and host platform.
+    ///
+    /// # Parameters
+    ///
+    /// - `socket_type`: Transport requested by the caller (`Unix` for standalone, `Tcp` for L2).
+    /// - `address`: Gateway endpoint address returned by nanvixd.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a connected gateway stream on success; returns an I/O error on failure so the
+    /// caller's retry loop can decide whether to try again.
+    ///
+    pub(crate) async fn connect(socket_type: SocketType, address: &str) -> ::std::io::Result<Self> {
+        // On Windows the standalone gateway is exposed as a named pipe rather than a
+        // Unix-domain socket, which the platform does not provide. TCP (L2 mode) gateways are
+        // not supported on Windows, so reject them up front rather than falling through to the
+        // socket path and surfacing confusing connection retries/timeouts.
+        #[cfg(windows)]
+        {
+            match socket_type {
+                SocketType::Unix => {
+                    let client: ::tokio::net::windows::named_pipe::NamedPipeClient =
+                        ::tokio::net::windows::named_pipe::ClientOptions::new().open(address)?;
+                    Ok(GatewayStream::Pipe(client))
+                },
+                SocketType::Tcp => Err(::std::io::Error::new(
+                    ::std::io::ErrorKind::Unsupported,
+                    "TCP (L2 mode) gateways are not supported on Windows",
+                )),
+            }
+        }
+
+        #[cfg(unix)]
+        {
+            let stream: SocketStream = UnboundSocket::new(socket_type).connect(address).await?;
+            Ok(GatewayStream::Socket(stream))
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes the entire buffer to the gateway endpoint.
+    ///
+    pub(crate) async fn write_all(&mut self, buf: &[u8]) -> ::std::io::Result<()> {
+        match self {
+            GatewayStream::Socket(stream) => stream.write_all(buf).await,
+            #[cfg(windows)]
+            GatewayStream::Pipe(pipe) => {
+                use ::tokio::io::AsyncWriteExt;
+                // The Windows gateway emulates the Unix half-close with a framed input
+                // direction: each record is a little-endian `u32` length followed by that many
+                // payload bytes (see `shutdown_write` for the matching zero-length EOF record).
+                // Skip empty writes so a zero-length payload is never mistaken for the EOF record.
+                if buf.is_empty() {
+                    return Ok(());
+                }
+                let payload_len: u32 = u32::try_from(buf.len()).map_err(|_| {
+                    ::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidInput,
+                        "gateway input record exceeds u32 length",
+                    )
+                })?;
+                pipe.write_all(&payload_len.to_le_bytes()).await?;
+                pipe.write_all(buf).await
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Signals end-of-input to the gateway endpoint.
+    ///
+    /// On Unix this half-closes the write direction so the peer observes EOF on the guest's stdin.
+    ///
+    /// Windows named pipes have no half-close primitive. The gateway therefore emulates one with a
+    /// framed input direction: this writes a zero-length EOF record so the daemon-side bridge
+    /// closes the guest's stdin while the pipe stays open for reading the guest's output.
+    ///
+    pub(crate) async fn shutdown_write(&mut self) -> ::std::io::Result<()> {
+        match self {
+            GatewayStream::Socket(stream) => stream.shutdown_write().await,
+            #[cfg(windows)]
+            GatewayStream::Pipe(pipe) => {
+                use ::tokio::io::AsyncWriteExt;
+                // Zero-length record = in-band EOF marker. Flush so the bridge observes it
+                // promptly; the pipe stays open so guest output can still be read.
+                pipe.write_all(&0u32.to_le_bytes()).await?;
+                pipe.flush().await
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads exactly enough bytes to fill the provided buffer from the gateway endpoint.
+    ///
+    pub(crate) async fn read_exact(&mut self, buf: &mut [u8]) -> ::std::io::Result<usize> {
+        match self {
+            GatewayStream::Socket(stream) => stream.read_exact(buf).await,
+            #[cfg(windows)]
+            GatewayStream::Pipe(pipe) => {
+                use ::tokio::io::AsyncReadExt;
+                pipe.read_exact(buf).await?;
+                Ok(buf.len())
+            },
+        }
+    }
+}
+
+//==================================================================================================
 // User VM Arguments
 //==================================================================================================
 
@@ -536,6 +693,9 @@ pub struct UserVmArgs {
     program_path: String,
     /// Optional command-line arguments forwarded to the workload.
     program_args: Option<String>,
+    /// Optional environment variables forwarded to the workload (combined into program_args
+    /// using the documented `<args>;<env>` format before sending to nanvixd).
+    program_env: Option<String>,
     /// Indicates whether the Nanvix Daemon should provision L2 networking.
     l2_enabled: bool,
 }
@@ -553,6 +713,7 @@ impl UserVmArgs {
     /// - `app_name`: Human-readable application workload name.
     /// - `program_path`: Absolute path to the executable launched inside the User VM.
     /// - `program_args`: Optional command-line arguments forwarded to the executable.
+    /// - `program_env`: Optional environment variables forwarded to the executable.
     /// - `l2_enabled`: Flag indicating whether the request should enable L2 networking mode.
     ///
     /// # Return Value
@@ -565,6 +726,7 @@ impl UserVmArgs {
         app_name: &str,
         program_path: &str,
         program_args: Option<&str>,
+        program_env: Option<&str>,
         l2_enabled: bool,
     ) -> Result<Self> {
         let mut headers: HeaderMap = HeaderMap::new();
@@ -588,6 +750,7 @@ impl UserVmArgs {
             app_name: app_name.to_string(),
             program_path: program_path.to_string(),
             program_args: program_args.map(|value| value.to_string()),
+            program_env: program_env.map(|value| value.to_string()),
             l2_enabled,
         })
     }
@@ -618,5 +781,126 @@ impl UserVmArgs {
     ///
     pub fn l2_enabled(&self) -> bool {
         self.l2_enabled
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds the combined `program_args` string using the documented `<args>;<env>` format.
+    ///
+    /// When environment variables are present, they are appended after a `;` separator so that
+    /// the kernel's `split_cmdline()` can split them. When only one of args or env is present,
+    /// the appropriate prefix or suffix is used.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the combined string ready to be sent as the `program_args` field in the HTTP
+    /// `New` message.
+    ///
+    fn combined_program_args(&self) -> String {
+        crate::executor::combine_args_env(self.program_args.as_deref(), self.program_env.as_deref())
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::executor::combine_args_env;
+
+    /// Helper that builds a `UserVmArgs` with the given program_args and program_env, then
+    /// calls `combined_program_args()`.
+    fn combine(args: Option<&str>, env: Option<&str>) -> String {
+        let uva: UserVmArgs =
+            UserVmArgs::new("t", "a", "p", args, env, false).expect("UserVmArgs::new failed");
+        uva.combined_program_args()
+    }
+
+    #[test]
+    fn combined_no_args_no_env() {
+        assert_eq!(combine(None, None), "");
+    }
+
+    #[test]
+    fn combined_args_only() {
+        assert_eq!(combine(Some("arg1 arg2"), None), "arg1 arg2");
+    }
+
+    #[test]
+    fn combined_env_only() {
+        assert_eq!(combine(None, Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combined_args_and_env() {
+        assert_eq!(combine(Some("arg1"), Some("VAR=x")), "arg1;VAR=x");
+    }
+
+    #[test]
+    fn combined_escapes_semicolons_in_args() {
+        // A literal `;` in args must be escaped to `\;` so split_cmdline() treats it as data.
+        assert_eq!(combine(Some("a;b"), Some("VAR=x")), "a\\;b;VAR=x");
+    }
+
+    #[test]
+    fn combined_escapes_semicolons_in_env() {
+        // A literal `;` in env must be escaped to `\;` so split_cmdline() treats it as data.
+        assert_eq!(combine(Some("arg1"), Some("PATH=a;b")), "arg1;PATH=a\\;b");
+    }
+
+    #[test]
+    fn combined_escapes_semicolons_even_without_env() {
+        // Semicolons in args are always escaped so split_cmdline() treats them as data.
+        assert_eq!(combine(Some("a;b"), None), "a\\;b");
+    }
+
+    #[test]
+    fn combined_roundtrip_with_split_cmdline() {
+        // Verify the combined string round-trips through the kernel's split_cmdline().
+        let combined: String = combine(Some("path/to;file arg2"), Some("FOO=bar BAZ=qux"));
+        let mut buf: Vec<u8> = combined.into_bytes();
+        let (args, env) = ::cmdline::split_cmdline(&mut buf);
+        assert_eq!(args, "path/to;file arg2");
+        assert_eq!(env, "FOO=bar BAZ=qux");
+    }
+
+    #[test]
+    fn combined_roundtrip_semicolon_in_env_value() {
+        // Verify that a literal `;` inside an env value survives the round-trip
+        // because it is escaped to `\;` and split_cmdline() unescapes it.
+        let combined: String = combine(Some("hello"), Some("PATH=a;b"));
+        let mut buf: Vec<u8> = combined.into_bytes();
+        let (args, env) = ::cmdline::split_cmdline(&mut buf);
+        assert_eq!(args, "hello");
+        assert_eq!(env, "PATH=a;b");
+    }
+
+    #[test]
+    fn combined_empty_env_string_treated_as_absent() {
+        // `Some("")` must behave the same as `None` — no trailing `;`.
+        assert_eq!(combine(Some("arg1"), Some("")), "arg1");
+    }
+
+    #[test]
+    fn combined_empty_args_string_treated_as_absent() {
+        // `Some("")` must behave the same as `None` — no leading `;` when only env is set.
+        assert_eq!(combine(Some(""), Some("VAR=x")), ";VAR=x");
+    }
+
+    #[test]
+    fn combined_program_args_matches_free_function() {
+        // The free function should produce identical results to the UserVmArgs method.
+        assert_eq!(
+            combine_args_env(Some("arg1"), Some("VAR=x")),
+            combine(Some("arg1"), Some("VAR=x"))
+        );
+        assert_eq!(combine_args_env(None, None), combine(None, None));
+        assert_eq!(
+            combine_args_env(Some("a;b"), Some("PATH=a;b")),
+            combine(Some("a;b"), Some("PATH=a;b"))
+        );
     }
 }

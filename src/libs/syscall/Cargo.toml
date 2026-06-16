@@ -28,6 +28,7 @@ goblin = { workspace = true, optional = true, features = [
 ] }
 libc_stdlib = { workspace = true, optional = true }
 nvx = { workspace = true, optional = true }
+proc = { workspace = true, features = ["syscall"], optional = true }
 spin = { workspace = true, features = ["lazy", "once", "spin_mutex"] }
 static_assert = { workspace = true }
 syslog = { workspace = true, default-features = true, optional = true }
@@ -42,7 +43,7 @@ compiler_builtins = { workspace = true, optional = true }
 default = ["syscall"]
 # Enable this, if this library is to be used as a static library.
 staticlib = ["dep:libc_stdlib"]
-syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall"]
+syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall", "dep:libc_stdlib"]
 std = []
 dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
 rustc-dep-of-std = [
@@ -63,8 +64,7 @@ rustc-dep-of-std = [
     "type-safe/rustc-dep-of-std",
     "spin/rustc-dep-of-std",
 ]
-standalone = ["dep:nvx", "nvx/standalone", "dep:sysalloc"]
-hyperlight = ["nvx?/hyperlight"]
+standalone = ["dep:sysalloc", "dep:proc"]
 
 # TODO (#798): remove this feature flag once the signal module is stable.
 sigaction = []

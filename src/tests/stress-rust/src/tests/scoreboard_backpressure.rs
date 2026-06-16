@@ -31,15 +31,15 @@ use ::sys::{
     },
     kcall::{
         mm::{
-            mmap,
-            munmap,
+            __kcall_mmap,
+            __kcall_munmap,
         },
         pm::{
-            create_thread,
-            getpid,
-            join_thread,
+            __kcall_create_thread,
+            __kcall_getpid,
+            __kcall_join_thread,
         },
-        sched::sched_yield,
+        sched::__kcall_sched_yield,
     },
     mm::{
         AccessPermission,
@@ -114,14 +114,14 @@ pub fn run() -> Result<(), StressError> {
     for worker_id in 0..worker_count {
         let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, scoreboard_pressure_worker, worker_id);
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
         tids.push(tid);
         stacks.push(stack);
     }
 
-    for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+    for (tid, stack) in tids.into_iter().zip(stacks) {
         let mut retval: usize = 0;
-        join_thread(tid, &mut retval)?;
+        __kcall_join_thread(tid, &mut retval)?;
         drop(stack);
 
         if retval == SCOREBOARD_PRESSURE_FAILURE {
@@ -196,7 +196,7 @@ extern "C" fn scoreboard_pressure_worker(worker_id: usize) -> usize {
 /// Propagates failures from kernel calls or address calculations.
 ///
 fn scoreboard_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
-    let pid: ProcessIdentifier = getpid()?;
+    let pid: ProcessIdentifier = __kcall_getpid()?;
     let region_base: usize = worker_region_base(worker_id)?;
 
     for iteration in 0..SCOREBOARD_PRESSURE_ITERATIONS {
@@ -204,7 +204,7 @@ fn scoreboard_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
         let addr_raw: usize = region_base + page_offset;
         let addr: VirtualAddress = VirtualAddress::from_raw_value(addr_raw);
 
-        mmap(pid, addr, AccessPermission::RDWR)?;
+        __kcall_mmap(pid, addr, 1, AccessPermission::RDWR)?;
         let byte_raw: usize = (worker_id ^ iteration) & SCOREBOARD_PRESSURE_BYTE_MASK;
         let byte: u8 = u8::try_from(byte_raw)
             .map_err(|_| Error::new(ErrorCode::ValueOutOfRange, "worker byte overflow"))?;
@@ -212,12 +212,12 @@ fn scoreboard_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
             let ptr: *mut u8 = exposed_addr_to_mut_u8(addr_raw);
             ptr.write_volatile(byte);
         }
-        munmap(pid, addr)?;
+        __kcall_munmap(pid, addr)?;
 
         SCOREBOARD_PRESSURE_PROGRESS.fetch_add(1, Ordering::AcqRel);
 
         if (iteration ^ worker_id) & SCOREBOARD_PRESSURE_YIELD_MASK == 0 {
-            sched_yield()?;
+            __kcall_sched_yield()?;
         }
     }
 

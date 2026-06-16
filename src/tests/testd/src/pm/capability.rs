@@ -22,8 +22,10 @@ use ::sys::pm::Capability;
 ///
 fn test_capctl_exception_control() -> bool {
     // Attempt to acquire and release exception control capability.
-    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
-        Ok(()) => matches!(::sys::kcall::pm::capctl(Capability::ExceptionControl, false), Ok(())),
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
+        Ok(()) => {
+            matches!(::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, false), Ok(()))
+        },
         _ => false,
     }
 }
@@ -39,8 +41,10 @@ fn test_capctl_exception_control() -> bool {
 ///
 fn test_capctl_interrupt_control() -> bool {
     // Attempt to acquire and release interrupt control capability.
-    match ::sys::kcall::pm::capctl(Capability::InterruptControl, true) {
-        Ok(()) => matches!(::sys::kcall::pm::capctl(Capability::InterruptControl, false), Ok(())),
+    match ::sys::kcall::pm::__kcall_capctl(Capability::InterruptControl, true) {
+        Ok(()) => {
+            matches!(::sys::kcall::pm::__kcall_capctl(Capability::InterruptControl, false), Ok(()))
+        },
         _ => false,
     }
 }
@@ -56,8 +60,10 @@ fn test_capctl_interrupt_control() -> bool {
 ///
 fn test_capctl_io_management() -> bool {
     // Attempt to acquire and release I/O management capability.
-    match ::sys::kcall::pm::capctl(Capability::IoManagement, true) {
-        Ok(()) => matches!(::sys::kcall::pm::capctl(Capability::IoManagement, false), Ok(())),
+    match ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, true) {
+        Ok(()) => {
+            matches!(::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, false), Ok(()))
+        },
         _ => false,
     }
 }
@@ -73,8 +79,10 @@ fn test_capctl_io_management() -> bool {
 ///
 fn test_capctl_memory_management() -> bool {
     // Attempt to acquire and release memory management capability.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
-        Ok(()) => matches!(::sys::kcall::pm::capctl(Capability::MemoryManagement, false), Ok(())),
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
+        Ok(()) => {
+            matches!(::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false), Ok(()))
+        },
         _ => false,
     }
 }
@@ -90,8 +98,10 @@ fn test_capctl_memory_management() -> bool {
 ///
 fn test_capctl_process_management() -> bool {
     // Attempt to acquire and release process management capability.
-    match ::sys::kcall::pm::capctl(Capability::ProcessManagement, true) {
-        Ok(()) => matches!(::sys::kcall::pm::capctl(Capability::ProcessManagement, false), Ok(())),
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true) {
+        Ok(()) => {
+            matches!(::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, false), Ok(()))
+        },
         _ => false,
     }
 }
@@ -107,10 +117,10 @@ fn test_capctl_process_management() -> bool {
 ///
 fn test_capctl_invalid_acquire() -> bool {
     // Attempt to acquire exception control capability twice.
-    match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
-        Ok(()) => match ::sys::kcall::pm::capctl(Capability::ExceptionControl, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
+        Ok(()) => match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, true) {
             Ok(()) => return false,
-            _ => match ::sys::kcall::pm::capctl(Capability::ExceptionControl, false) {
+            _ => match ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -119,10 +129,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire interrupt control capability twice.
-    match ::sys::kcall::pm::capctl(Capability::InterruptControl, true) {
-        Ok(()) => match ::sys::kcall::pm::capctl(Capability::InterruptControl, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::InterruptControl, true) {
+        Ok(()) => match ::sys::kcall::pm::__kcall_capctl(Capability::InterruptControl, true) {
             Ok(()) => return false,
-            _ => match ::sys::kcall::pm::capctl(Capability::InterruptControl, false) {
+            _ => match ::sys::kcall::pm::__kcall_capctl(Capability::InterruptControl, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -131,10 +141,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire I/O management capability twice.
-    match ::sys::kcall::pm::capctl(Capability::IoManagement, true) {
-        Ok(()) => match ::sys::kcall::pm::capctl(Capability::IoManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, true) {
+        Ok(()) => match ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, true) {
             Ok(()) => return false,
-            _ => match ::sys::kcall::pm::capctl(Capability::IoManagement, false) {
+            _ => match ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -143,10 +153,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire memory management capability twice.
-    match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
-        Ok(()) => match ::sys::kcall::pm::capctl(Capability::MemoryManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
+        Ok(()) => match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, true) {
             Ok(()) => return false,
-            _ => match ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
+            _ => match ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -155,10 +165,10 @@ fn test_capctl_invalid_acquire() -> bool {
     }
 
     // Attempt to acquire process management capability twice.
-    match ::sys::kcall::pm::capctl(Capability::ProcessManagement, true) {
-        Ok(()) => match ::sys::kcall::pm::capctl(Capability::ProcessManagement, true) {
+    match ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true) {
+        Ok(()) => match ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true) {
             Ok(()) => return false,
-            _ => match ::sys::kcall::pm::capctl(Capability::ProcessManagement, false) {
+            _ => match ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, false) {
                 Ok(()) => (),
                 _ => return false,
             },
@@ -180,27 +190,27 @@ fn test_capctl_invalid_acquire() -> bool {
 ///
 fn test_capctl_invalid_release() -> bool {
     // Attempt to release exception control capability without acquiring it.
-    if let Ok(()) = ::sys::kcall::pm::capctl(Capability::ExceptionControl, false) {
+    if let Ok(()) = ::sys::kcall::pm::__kcall_capctl(Capability::ExceptionControl, false) {
         return false;
     }
 
     // Attempt to release interrupt control capability without acquiring it.
-    if let Ok(()) = ::sys::kcall::pm::capctl(Capability::InterruptControl, false) {
+    if let Ok(()) = ::sys::kcall::pm::__kcall_capctl(Capability::InterruptControl, false) {
         return false;
     }
 
     // Attempt to release I/O management capability without acquiring it.
-    if let Ok(()) = ::sys::kcall::pm::capctl(Capability::IoManagement, false) {
+    if let Ok(()) = ::sys::kcall::pm::__kcall_capctl(Capability::IoManagement, false) {
         return false;
     }
 
     // Attempt to release memory management capability without acquiring it.
-    if let Ok(()) = ::sys::kcall::pm::capctl(Capability::MemoryManagement, false) {
+    if let Ok(()) = ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false) {
         return false;
     }
 
     // Attempt to release process management capability without acquiring it.
-    if let Ok(()) = ::sys::kcall::pm::capctl(Capability::ProcessManagement, false) {
+    if let Ok(()) = ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, false) {
         return false;
     }
 

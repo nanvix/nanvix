@@ -20,7 +20,7 @@ pub struct Args {
     iterations: usize,
     num_concurrent_vms: Option<usize>,
     netns_pool_size: Option<usize>,
-    toolchain_bin_dir: String,
+    clh_bin_path: String,
     tmp_dir: String,
 }
 
@@ -36,7 +36,7 @@ impl Args {
     const OPT_NUM_CONCURRENT_VMS: &'static str = "-num-concurrent-vms";
     const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
     const DEFAULT_NETNS_POOL_SIZE: usize = ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE;
-    const OPT_TOOLCHAIN_BIN_DIR: &'static str = "-toolchain-bin-dir";
+    const OPT_CLH_BIN_PATH: &'static str = "-clh-bin-path";
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
@@ -137,8 +137,7 @@ Options:
   {netns_pool_size} <size>            Netns pool prefill size for nanvixd (concurrent-l2 only; \
              default: {default_netns_pool_size}). Other L2 benchmarks use 1; non-L2 benchmarks \
              ignore this flag.
-  {toolchain_bin_dir} <toolchain_dir> Directory containing toolchain binaries (cloud-hypervisor, \
-             etc.).
+  {clh_bin_path} <clh_bin_path>       Path to the cloud-hypervisor binary directory.
   {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
              {DEFAULT_TMP_DIRECTORY}).
   {help}                              Show this help message and exit.
@@ -160,7 +159,7 @@ Examples:
             num_concurrent_vms = Self::OPT_NUM_CONCURRENT_VMS,
             netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
             default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
-            toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIR,
+            clh_bin_path = Self::OPT_CLH_BIN_PATH,
             tmp_dir = Self::OPT_TMP_DIR,
             DEFAULT_TMP_DIRECTORY = DEFAULT_TMP_DIRECTORY,
             help = Self::OPT_HELP,
@@ -173,7 +172,7 @@ Examples:
         let mut iterations: usize = 100;
         let mut num_concurrent_vms: Option<usize> = None;
         let mut netns_pool_size: Option<usize> = None;
-        let mut toolchain_bin_dir: String = "./toolchain/bin".to_string();
+        let mut clh_bin_path: String = "./toolchain/bin".to_string();
         let mut tmp_dir: String = DEFAULT_TMP_DIRECTORY.to_string();
 
         let mut i: usize = 1;
@@ -230,16 +229,16 @@ Examples:
                     }
                     netns_pool_size = Some(args[i].parse::<usize>()?);
                 },
-                Self::OPT_TOOLCHAIN_BIN_DIR => {
+                Self::OPT_CLH_BIN_PATH => {
                     i += 1;
                     if i >= args.len() {
                         Self::usage(args[0].as_str());
                         return Err(anyhow::anyhow!(
                             "missing value for: {}",
-                            Self::OPT_TOOLCHAIN_BIN_DIR
+                            Self::OPT_CLH_BIN_PATH
                         ));
                     }
-                    toolchain_bin_dir = args[i].clone();
+                    clh_bin_path = args[i].clone();
                 },
                 Self::OPT_TMP_DIR => {
                     i += 1;
@@ -321,7 +320,7 @@ Examples:
                     iterations,
                     num_concurrent_vms,
                     netns_pool_size,
-                    toolchain_bin_dir,
+                    clh_bin_path,
                     tmp_dir,
                 })
             },
@@ -348,8 +347,8 @@ Examples:
         self.num_concurrent_vms
     }
 
-    pub fn toolchain_bin_dir(&self) -> String {
-        self.toolchain_bin_dir.clone()
+    pub fn clh_bin_path(&self) -> String {
+        self.clh_bin_path.clone()
     }
 
     pub fn netns_pool_size(&self) -> Option<usize> {

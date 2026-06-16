@@ -18,13 +18,7 @@ use ::log::{
 };
 use ::std::{
     fs::File,
-    io::{
-        Read,
-        Seek,
-        SeekFrom,
-        Write,
-    },
-    mem,
+    io::Write,
     os::unix::io::AsRawFd,
     path::Path,
 };
@@ -47,76 +41,18 @@ pub struct VirtualMemory {
     mapping: AnonymousMapping,
     /// Optional RAMFS descriptor that keeps metadata and the backing file alive.
     ramfs: Option<RamFs>,
-}
-
-///
-/// # Description
-///
-/// A structure that represents the header in virtual memory snapshot files.
-///
-#[repr(C)]
-struct SnapshotHeader {
-    /// Magic number identifying the file as a Nanvix virtual memory snapshot.
-    magic: u64,
-    /// Snapshot format version.
-    version: u32,
-    /// Compression method applied to memory contents (0 = none).
-    compression: u32,
-    /// Size of the guest memory in bytes.
-    memory_size: u64,
-    /// FNV-1a checksum of the memory contents.
-    checksum: u64,
+    /// Additional file handles for multi-image backing files. Kept alive so that
+    /// `mmap(MAP_FIXED)` file-backed regions remain valid for the VM's lifetime.
+    backing_files: Vec<File>,
 }
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-const SIZE_OF_HEADER: usize = mem::size_of::<SnapshotHeader>();
-
 /// The offset within the snapshot file where memory contents begin.
 /// This is page-aligned to enable direct MAP_FIXED remapping during restore.
 const SNAPSHOT_DATA_OFFSET: usize = PAGE_SIZE;
-
-/// Magic number for snapshot files: ASCII "NVXVMEM!" in little-endian byte order.
-const SNAPSHOT_MAGIC: u64 = u64::from_le_bytes(*b"NVXVMEM!");
-
-/// Current snapshot format version.
-const SNAPSHOT_VERSION: u32 = 1;
-
-/// Compression type: no compression applied.
-const COMPRESSION_NONE: u32 = 0;
-
-// Compile-time assertion that the snapshot header fits before the data section.
-static_assert::assert_eq!(SIZE_OF_HEADER <= SNAPSHOT_DATA_OFFSET);
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Computes an FNV-1a checksum of the given data.
-///
-/// # Parameters
-///
-/// - `data`: Byte slice to checksum.
-///
-/// # Returns
-///
-/// A 64-bit FNV-1a hash of `data`.
-///
-fn compute_checksum(data: &[u8]) -> u64 {
-    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x00000100000001B3;
-    let mut hash: u64 = FNV_OFFSET_BASIS;
-    for &byte in data {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
 
 //==================================================================================================
 // Implementations
@@ -156,6 +92,7 @@ impl VirtualMemory {
         let vmem: Self = Self {
             mapping,
             ramfs: None,
+            backing_files: Vec::new(),
         };
 
         // Map memory into virtual machine.
@@ -217,6 +154,48 @@ impl VirtualMemory {
     ///
     /// # Description
     ///
+    /// Replaces multiple sub-regions of guest memory with file-backed mappings (zero-copy).
+    ///
+    /// Each region is specified as a `(guest_offset, file)` pair. The file is mapped at the
+    /// given offset using `mmap(MAP_FIXED)`, replacing the anonymous pages in that range.
+    ///
+    /// # Parameters
+    ///
+    /// - `regions`: Slice of `(guest_offset, file)` pairs. Must be non-overlapping.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn remap_files_at(&mut self, regions: &[(usize, &File)]) -> Result<()> {
+        for &(start, file) in regions {
+            self.remap_file_at(start, file)?;
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Issues an `madvise` hint for a sub-region of the virtual memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Byte offset from the start of the mapping (must be page-aligned).
+    /// - `len`: Size of the region in bytes.
+    /// - `advice`: madvise advice constant (e.g., `MADV_SEQUENTIAL`, `MADV_WILLNEED`).
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns empty. Otherwise, returns an error.
+    ///
+    pub fn madvise_at(&self, start: usize, len: usize, advice: i32) -> Result<()> {
+        self.mapping.madvise_at(start, len, advice)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Attaches a RAM filesystem descriptor to the virtual memory so the backing file remains
     /// alive for the VM's lifetime.
     ///
@@ -230,6 +209,21 @@ impl VirtualMemory {
     ///
     pub fn attach_ramfs(&mut self, ramfs: RamFs) {
         self.ramfs = Some(ramfs);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attaches multiple backing file handles whose memory-mapped regions must remain valid
+    /// for the VM's lifetime. Used by the multi-image RAMFS path where each sub-image file
+    /// is mapped individually.
+    ///
+    /// # Parameters
+    ///
+    /// - `files`: File handles to keep alive.
+    ///
+    pub fn attach_backing_files(&mut self, files: Vec<File>) {
+        self.backing_files.extend(files);
     }
 
     ///
@@ -269,6 +263,83 @@ impl VirtualMemory {
                 self.mapping.ptr().add(addr),
                 data.len(),
             );
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Pre-populates host-side backing pages for the given GPA ranges using
+    /// `madvise(MADV_POPULATE_WRITE)`. This faults in host pages before guest execution so that
+    /// KVM's EPT fault path only needs to install SLAT entries without also incurring host page
+    /// faults, reducing cold-start latency.
+    ///
+    /// Pre-populating moves page-fault costs to partition setup time where they are measured
+    /// separately and do not inflate guest execution latency.
+    ///
+    /// # Parameters
+    ///
+    /// - `gpa_ranges`: Slice of `(gpa, size)` pairs. Each GPA and size must be page-aligned
+    ///   and the range must lie within the mapped guest RAM. Zero-sized entries are skipped.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn populate_ept(&self, gpa_ranges: &[(u64, u64)]) -> Result<()> {
+        trace!("populate_ept(): {} range(s)", gpa_ranges.len());
+
+        let page_size: u64 = PAGE_SIZE as u64;
+        let ram_size: u64 = self.mapping.size() as u64;
+
+        for &(gpa, size) in gpa_ranges {
+            if size == 0 {
+                continue;
+            }
+
+            if gpa % page_size != 0 || size % page_size != 0 {
+                let reason: String =
+                    format!("gpa and size must be page-aligned (gpa={gpa:#x}, size={size:#x})");
+                error!("populate_ept(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            if gpa.checked_add(size).is_none_or(|end| end > ram_size) {
+                let reason: String = format!(
+                    "range exceeds mapped guest RAM (gpa={gpa:#x}, size={size:#x}, \
+                     ram_size={ram_size:#x})"
+                );
+                error!("populate_ept(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            // Compute host virtual address for this GPA offset.
+            // SAFETY: bounds checked above — `gpa + size <= ram_size` and `ram_size` equals the
+            // mapping length, so `ptr.add(gpa)` through `ptr.add(gpa + size - 1)` are within the
+            // allocated region.
+            let gpa_offset: usize = usize::try_from(gpa)
+                .map_err(|_| anyhow::anyhow!("gpa {gpa:#x} exceeds usize range"))?;
+            let host_addr: *mut u8 = unsafe { self.mapping.ptr().add(gpa_offset) };
+
+            // SAFETY: `host_addr` points into the anonymous mapping and the range
+            // `[host_addr, host_addr + size)` lies within the mapping (bounds checked above).
+            // `MADV_POPULATE_WRITE` faults in pages with write access, ensuring the host kernel
+            // allocates backing pages so subsequent KVM EPT faults only need to install SLAT
+            // entries.
+            let range_len: usize = usize::try_from(size)
+                .map_err(|_| anyhow::anyhow!("size {size:#x} exceeds usize range"))?;
+            let ret: i32 =
+                unsafe { ::libc::madvise(host_addr.cast(), range_len, libc::MADV_POPULATE_WRITE) };
+            if ret != 0 {
+                let reason: String = format!(
+                    "madvise(MADV_POPULATE_WRITE) failed (gpa={gpa:#x}, size={size:#x}, error={})",
+                    ::std::io::Error::last_os_error()
+                );
+                error!("populate_ept(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
         }
 
         Ok(())
@@ -344,64 +415,24 @@ impl VirtualMemory {
             },
         };
 
-        // Check alignment. Due to `mmap()` allocation, this should be PAGE_SIZE.
-        if !(self.mapping.ptr() as usize).is_multiple_of(PAGE_SIZE) {
-            let reason: &str = "memory pointer is not aligned to page size";
-            error!("save_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
         let memory_slice: &[u8] = self.mapping.as_slice();
 
-        // Write a placeholder header; the checksum field will be filled in after streaming.
-        let placeholder_header = SnapshotHeader::new(self.mapping.size(), 0);
-        if let Err(e) = file.write_all(placeholder_header.as_bytes()) {
-            let reason: String =
-                format!("failed writing the header to virtual memory snapshot file (error={e:?})");
-            error!("save_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Pad to SNAPSHOT_DATA_OFFSET so the memory contents start at a page boundary.
-        // NOTE: The compile-time assertion at module level guarantees
-        // SIZE_OF_HEADER <= SNAPSHOT_DATA_OFFSET, so this subtraction cannot underflow.
-        let padding: [u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER] =
-            [0u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER];
+        // Write zero padding so the memory contents start at a page boundary, enabling direct
+        // MAP_FIXED remapping during restore.
+        let padding: [u8; SNAPSHOT_DATA_OFFSET] = [0u8; SNAPSHOT_DATA_OFFSET];
         if let Err(e) = file.write_all(&padding) {
             let reason: String = format!("failed writing padding to snapshot file (error={e:?})");
             error!("save_snapshot(): {reason}");
             anyhow::bail!(reason)
         }
 
-        // Stream memory contents to file while computing the FNV-1a checksum in a single pass,
-        // avoiding a separate full traversal for checksum computation.
-        const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-        const FNV_PRIME: u64 = 0x00000100000001B3;
-        let mut checksum: u64 = FNV_OFFSET_BASIS;
+        // Stream memory contents to file.
         for chunk in memory_slice.chunks(64 * 1024) {
-            for &byte in chunk {
-                checksum ^= byte as u64;
-                checksum = checksum.wrapping_mul(FNV_PRIME);
-            }
             if let Err(e) = file.write_all(chunk) {
                 let reason: String = format!("failed to write memory contents (error={e:?})");
                 error!("save_snapshot(): {reason}");
                 anyhow::bail!(reason)
             }
-        }
-
-        // Seek back and write the final header with the computed checksum.
-        if let Err(e) = file.seek(SeekFrom::Start(0)) {
-            let reason: String =
-                format!("failed to seek to beginning of snapshot file (error={e:?})");
-            error!("save_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-        let final_header = SnapshotHeader::new(self.mapping.size(), checksum);
-        if let Err(e) = file.write_all(final_header.as_bytes()) {
-            let reason: String =
-                format!("failed to write final header to snapshot file (error={e:?})");
-            error!("save_snapshot(): {reason}");
-            anyhow::bail!(reason)
         }
 
         if let Err(e) = file.sync_all() {
@@ -441,77 +472,33 @@ impl VirtualMemory {
             },
         };
 
-        // Read the header.
-        let mut header_bytes: [u8; SIZE_OF_HEADER] = [0u8; SIZE_OF_HEADER];
-        if let Err(e) = (&file).read_exact(&mut header_bytes) {
-            let reason: String =
-                format!("failed reading header from virtual memory snapshot file (error={e:?})");
-            error!("load_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-        let header: SnapshotHeader = SnapshotHeader::from_bytes(&header_bytes);
-
-        // Validate the magic number.
-        if header.magic != SNAPSHOT_MAGIC {
-            let reason: String = format!(
-                "invalid snapshot magic: expected {:#018x}, got {:#018x}",
-                SNAPSHOT_MAGIC, header.magic
-            );
-            error!("load_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Validate the version number.
-        if header.version != SNAPSHOT_VERSION {
-            let reason: String = format!(
-                "unsupported snapshot version: expected {}, got {}",
-                SNAPSHOT_VERSION, header.version
-            );
-            error!("load_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Validate the compression mode.
-        if header.compression != COMPRESSION_NONE {
-            let reason: String = format!(
-                "unsupported snapshot compression: expected {}, got {}",
-                COMPRESSION_NONE, header.compression
-            );
-            error!("load_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Validate that the memory size matches.
-        if header.memory_size != self.mapping.size() as u64 {
-            let reason: String = format!(
-                "memory size mismatch: expected {}, got {}",
-                self.mapping.size(),
-                header.memory_size
-            );
-            error!("load_snapshot(): {reason}");
-            anyhow::bail!(reason)
-        }
-
-        // Validate that the snapshot file is large enough for the header plus all memory contents.
-        // If the file is truncated, a MAP_FIXED mmap could later cause SIGBUS on guest access.
-        {
-            let file_len: u64 = match file.metadata() {
-                Ok(m) => m.len(),
-                Err(e) => {
-                    let reason: String =
-                        format!("failed reading snapshot file metadata (error={e:?})");
+        // Verify the snapshot file is large enough to back the entire guest memory mapping.
+        // Without this check, mmap() with MAP_FIXED may succeed on a short file and later guest
+        // accesses past EOF would raise SIGBUS and crash the UserVM process.
+        let required_size: u64 =
+            match (SNAPSHOT_DATA_OFFSET as u64).checked_add(self.mapping.size() as u64) {
+                Some(v) => v,
+                None => {
+                    let reason: &str = "snapshot required size overflows u64";
                     error!("load_snapshot(): {reason}");
                     anyhow::bail!(reason)
                 },
             };
-            let required: u64 = (SNAPSHOT_DATA_OFFSET + self.mapping.size()) as u64;
-            if file_len < required {
-                let reason: String = format!(
-                    "snapshot file too small: expected at least {required} bytes, got {file_len}"
-                );
+        let file_len: u64 = match file.metadata() {
+            Ok(m) => m.len(),
+            Err(e) => {
+                let reason: String =
+                    format!("failed querying snapshot file metadata (error={e:?})");
                 error!("load_snapshot(): {reason}");
                 anyhow::bail!(reason)
-            }
+            },
+        };
+        if file_len < required_size {
+            let reason: String = format!(
+                "snapshot file too small (size={file_len} bytes, required={required_size} bytes)"
+            );
+            error!("load_snapshot(): {reason}");
+            anyhow::bail!(reason)
         }
 
         // Remap the KVM guest memory region directly onto the snapshot file using MAP_FIXED.
@@ -531,77 +518,8 @@ impl VirtualMemory {
         };
         self.mapping.remap_file(file.as_raw_fd(), file_offset)?;
 
-        // Validate that the checksum matches the memory contents.
-        // NOTE: this eagerly reads all pages from the snapshot file, trading demand-paging latency
-        // for upfront integrity verification.
-        let memory_slice: &[u8] = self.mapping.as_slice();
-        let actual_checksum: u64 = compute_checksum(memory_slice);
-        if actual_checksum != header.checksum {
-            let reason: String = format!(
-                "checksum mismatch: expected {:#018x}, got {:#018x}",
-                header.checksum, actual_checksum
-            );
-            error!("load_snapshot(): {reason}");
-
-            // The checksum verification failed, but at this point the mapping has already been
-            // remapped with MAP_FIXED to the snapshot file. To avoid exposing callers to this
-            // partially-applied state, restore a neutral anonymous mapping at the same address.
-            if let Err(e) = self.mapping.remap_anonymous() {
-                error!("load_snapshot(): failed to restore anonymous mapping ({e})");
-            }
-
-            anyhow::bail!(reason)
-        }
-
         trace!("load_snapshot(): successfully loaded snapshot from {:?}", path);
         Ok(())
-    }
-}
-
-impl SnapshotHeader {
-    fn new(memory_size: usize, checksum: u64) -> Self {
-        SnapshotHeader {
-            magic: SNAPSHOT_MAGIC,
-            version: SNAPSHOT_VERSION,
-            compression: COMPRESSION_NONE,
-            memory_size: memory_size as u64,
-            checksum,
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Serializes the snapshot header (which has `repr(C)`) as a slice of bytes.
-    ///
-    /// # Returns
-    ///
-    /// A slice of bytes containing the snapshot header.
-    ///
-    fn as_bytes(&self) -> &[u8; SIZE_OF_HEADER] {
-        // SAFETY: Size and alignment are guaranteed by being a `SnapshotHeader` method.
-        // The struct has #[repr(C)].
-        unsafe { mem::transmute::<&SnapshotHeader, &[u8; SIZE_OF_HEADER]>(self) }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Deserializes a snapshot header from a slice of bytes.
-    ///
-    /// # Parameters
-    ///
-    /// - `bytes`: Slice of bytes containing the snapshot header.
-    ///
-    /// # Returns
-    ///
-    /// The type-safe form of the header.
-    ///
-    fn from_bytes(bytes: &[u8; SIZE_OF_HEADER]) -> Self {
-        // SAFETY: Size is guaranteed to match SIZE_OF_HEADER.
-        // The struct has #[repr(C)] so memory layout is guaranteed.
-        // The header is at the beginning of the file, so alignment is guaranteed.
-        unsafe { mem::transmute::<[u8; SIZE_OF_HEADER], SnapshotHeader>(*bytes) }
     }
 }
 
@@ -699,55 +617,6 @@ mod tests {
         Ok(())
     }
 
-    /// Verifies that `load_snapshot` rejects a file with a mismatched memory size.
-    #[test]
-    fn load_snapshot_rejects_size_mismatch() -> AnyResult<()> {
-        let path: PathBuf = unique_snapshot_path("size-mismatch");
-
-        // Write a snapshot with a different memory size in the header.
-        let dummy: Vec<u8> = vec![0u8; TEST_MEM_SIZE * 2];
-        let bad_header: SnapshotHeader =
-            SnapshotHeader::new(TEST_MEM_SIZE * 2, compute_checksum(&dummy));
-        let mut file: File = File::create(&path).expect("failed to create file");
-        file.write_all(bad_header.as_bytes())
-            .expect("failed to write header");
-        // Pad to SNAPSHOT_DATA_OFFSET.
-        let padding: [u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER] =
-            [0u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER];
-        file.write_all(&padding).expect("failed to write padding");
-        // Write dummy memory contents (matching the *bad* header size).
-        file.write_all(&dummy)
-            .expect("failed to write dummy memory");
-        drop(file);
-
-        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
-        let result: AnyResult<()> = vmem.load_snapshot(&path);
-        assert!(result.is_err(), "load_snapshot should reject size mismatch");
-
-        fs::remove_file(&path).ok();
-        Ok(())
-    }
-
-    /// Verifies that `load_snapshot` rejects a truncated file.
-    #[test]
-    fn load_snapshot_rejects_truncated_file() -> AnyResult<()> {
-        let path: PathBuf = unique_snapshot_path("truncated");
-
-        // Write a valid header but no memory contents.
-        let header: SnapshotHeader = SnapshotHeader::new(TEST_MEM_SIZE, 0);
-        let mut file: File = File::create(&path).expect("failed to create file");
-        file.write_all(header.as_bytes())
-            .expect("failed to write header");
-        drop(file);
-
-        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
-        let result: AnyResult<()> = vmem.load_snapshot(&path);
-        assert!(result.is_err(), "load_snapshot should reject a truncated file");
-
-        fs::remove_file(&path).ok();
-        Ok(())
-    }
-
     /// Verifies that `load_snapshot` fails gracefully when the file does not exist.
     #[test]
     fn load_snapshot_rejects_missing_file() -> AnyResult<()> {
@@ -760,88 +629,35 @@ mod tests {
         Ok(())
     }
 
-    /// Verifies that header round-trip serialization preserves all fields.
+    /// Verifies that `load_snapshot` rejects a snapshot file that is smaller than the guest
+    /// memory mapping it must back. This guards against MAP_FIXED-on-short-file successes that
+    /// would otherwise cause SIGBUS on later guest accesses past EOF. The boundary case
+    /// (`required_size - 1`) is exercised to pin the strict `<` comparison in the size check.
     #[test]
-    fn header_round_trip_serialization() {
-        let header: SnapshotHeader =
-            SnapshotHeader::new(0x1234_5678_9abc_def0, 0xfeed_face_dead_beef);
-        let bytes: &[u8; SIZE_OF_HEADER] = header.as_bytes();
-        let restored: SnapshotHeader = SnapshotHeader::from_bytes(bytes);
-        assert_eq!(restored.magic, SNAPSHOT_MAGIC);
-        assert_eq!(restored.version, SNAPSHOT_VERSION);
-        assert_eq!(restored.compression, COMPRESSION_NONE);
-        assert_eq!(restored.memory_size, 0x1234_5678_9abc_def0);
-        assert_eq!(restored.checksum, 0xfeed_face_dead_beef);
-    }
-
-    /// Verifies that `compute_checksum` is deterministic and sensitive to content.
-    #[test]
-    fn checksum_is_deterministic_and_content_sensitive() {
-        let data_a: [u8; 4] = [1, 2, 3, 4];
-        let data_b: [u8; 4] = [4, 3, 2, 1];
-        let empty: [u8; 0] = [];
-
-        // Same input produces the same checksum.
-        assert_eq!(compute_checksum(&data_a), compute_checksum(&data_a));
-
-        // Different inputs produce different checksums.
-        assert_ne!(compute_checksum(&data_a), compute_checksum(&data_b));
-
-        // Empty data has a well-defined checksum (FNV-1a offset basis).
-        assert_eq!(compute_checksum(&empty), 0xcbf29ce484222325);
-    }
-
-    /// Verifies that `load_snapshot` rejects a file with an invalid magic number.
-    #[test]
-    fn load_snapshot_rejects_bad_magic() -> AnyResult<()> {
-        let path: PathBuf = unique_snapshot_path("bad-magic");
-
-        // Write a header with a corrupted magic number.
-        let mut header: SnapshotHeader = SnapshotHeader::new(TEST_MEM_SIZE, 0);
-        header.magic = 0xBAD0_BAD0_BAD0_BAD0;
-        let mut file: File = File::create(&path).expect("failed to create file");
-        file.write_all(header.as_bytes())
-            .expect("failed to write header");
-        let padding: [u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER] =
-            [0u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER];
-        file.write_all(&padding).expect("failed to write padding");
-        let dummy: Vec<u8> = vec![0u8; TEST_MEM_SIZE];
-        file.write_all(&dummy)
-            .expect("failed to write dummy memory");
-        drop(file);
-
+    fn load_snapshot_rejects_undersized_file() -> AnyResult<()> {
         let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
-        let result: AnyResult<()> = vmem.load_snapshot(&path);
-        assert!(result.is_err(), "load_snapshot should reject bad magic");
+        let required_size: usize = SNAPSHOT_DATA_OFFSET + TEST_MEM_SIZE;
 
-        fs::remove_file(&path).ok();
-        Ok(())
-    }
+        // Case 1: file containing only the data-offset padding, no memory contents.
+        let path_empty: PathBuf = unique_snapshot_path("undersized-empty");
+        let truncated_empty: Vec<u8> = vec![0u8; SNAPSHOT_DATA_OFFSET];
+        fs::write(&path_empty, &truncated_empty).expect("failed to write undersized snapshot file");
+        let result_empty: AnyResult<()> = vmem.load_snapshot(&path_empty);
+        fs::remove_file(&path_empty).ok();
+        assert!(result_empty.is_err(), "load_snapshot should fail for an empty-data file");
 
-    /// Verifies that `load_snapshot` rejects a file with an unsupported version.
-    #[test]
-    fn load_snapshot_rejects_bad_version() -> AnyResult<()> {
-        let path: PathBuf = unique_snapshot_path("bad-version");
+        // Case 2: boundary — exactly one byte short of the required size.
+        let path_boundary: PathBuf = unique_snapshot_path("undersized-boundary");
+        let truncated_boundary: Vec<u8> = vec![0u8; required_size - 1];
+        fs::write(&path_boundary, &truncated_boundary)
+            .expect("failed to write boundary-sized snapshot file");
+        let result_boundary: AnyResult<()> = vmem.load_snapshot(&path_boundary);
+        fs::remove_file(&path_boundary).ok();
+        assert!(
+            result_boundary.is_err(),
+            "load_snapshot should fail for a file one byte short of required size"
+        );
 
-        // Write a header with an unsupported version number.
-        let mut header: SnapshotHeader = SnapshotHeader::new(TEST_MEM_SIZE, 0);
-        header.version = SNAPSHOT_VERSION + 1;
-        let mut file: File = File::create(&path).expect("failed to create file");
-        file.write_all(header.as_bytes())
-            .expect("failed to write header");
-        let padding: [u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER] =
-            [0u8; SNAPSHOT_DATA_OFFSET - SIZE_OF_HEADER];
-        file.write_all(&padding).expect("failed to write padding");
-        let dummy: Vec<u8> = vec![0u8; TEST_MEM_SIZE];
-        file.write_all(&dummy)
-            .expect("failed to write dummy memory");
-        drop(file);
-
-        let (_kvm, _vm, mut vmem): (Kvm, VmFd, VirtualMemory) = create_test_vmem()?;
-        let result: AnyResult<()> = vmem.load_snapshot(&path);
-        assert!(result.is_err(), "load_snapshot should reject bad version");
-
-        fs::remove_file(&path).ok();
         Ok(())
     }
 }

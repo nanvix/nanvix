@@ -76,7 +76,7 @@ pub unsafe extern "C" fn fchownat(
 ) -> c_int {
     // Check if `path` is invalid.
     if path.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "fchownat(): null path pointer (dirfd={dirfd:?}, path={path:?}, owner={owner:?}, \
              group={group:?}, flag={flag:?})"
         );
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn fchownat(
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(_error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "fchownat(): invalid pathname (dirfd={dirfd:?}, path={path:?}, owner={owner:?}, \
                  group={group:?}, flag={flag:?})"
             );
@@ -101,7 +101,7 @@ pub unsafe extern "C" fn fchownat(
     match crate::unistd::fchownat(dirfd, pathname, owner, group, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "fchownat(): {error:?} (dirfd={dirfd:?}, path={pathname:?}, owner={owner:?}, \
                  group={group:?}, flag={flag:?})"
             );

@@ -1,0 +1,28 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "multiimage"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Multi-image container format for consolidating multiple FAT32 images"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+default = []
+std = []
+
+[dependencies]
+config = { workspace = true }
+mmio-tag = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

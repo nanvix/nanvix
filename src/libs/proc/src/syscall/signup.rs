@@ -46,10 +46,10 @@ use ::sys::{
 pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
     // Build signup message and send it.
     let message: Message = message::signup_request(*pid, name)?;
-    ::sys::kcall::ipc::send(&message)?;
+    ::sys::kcall::ipc::__kcall_send(&message)?;
 
     // Wait unblock message from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::recv()?;
+    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Parse message.
     match message.message_type {

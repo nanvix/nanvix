@@ -1,0 +1,24 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "net-backend"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Platform-agnostic networking backend for Nanvix daemons"
+homepage.workspace = true
+
+[dependencies]
+libc = { workspace = true }
+log = { workspace = true }
+sys = { workspace = true, features = ["std"] }
+sysapi = { workspace = true, features = ["std"] }
+syscall = { workspace = true, features = ["std"] }
+
+[features]
+default = []
+
+[lints]
+workspace = true

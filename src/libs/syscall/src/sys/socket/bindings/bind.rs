@@ -56,7 +56,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: socklen_t) -> c_int {
     // Check if sock address is invalid.
     if sockaddr.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "bind(): invalid socket address (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
              len={len:?})"
         );
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
     let sockaddr: SocketAddr = match SocketAddr::try_from(unsafe { &*sockaddr }) {
         Ok(sockaddr) => sockaddr,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "bind(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
             );
             *__errno_location() = error.code.get();
@@ -80,7 +80,7 @@ pub unsafe extern "C" fn bind(sockfd: c_int, sockaddr: *const sockaddr, len: soc
     match crate::sys::socket::syscall::bind(sockfd, &sockaddr) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "bind(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, len={len:?})"
             );
             *__errno_location() = error.code.get();

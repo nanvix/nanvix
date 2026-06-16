@@ -15,8 +15,8 @@ use crate::{
         AddressFamily,
         SocketType,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -48,7 +48,6 @@ use ::sysapi::ffi::c_int;
 ///
 /// The `socketpair()` function returns empty on success. On error, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn socketpair(
     domain: AddressFamily,
     typ: SocketType,
@@ -57,44 +56,35 @@ pub fn socketpair(
 ) -> Result<(), Error> {
     ::syslog::trace!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
 
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (domain, typ, protocol, socket_fds);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "socketpair not available in standalone mode",
-        ));
-    }
-
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Check if array of file descriptors has expected length.
     if socket_fds.len() != 2 {
         let reason: &str = "array of file descriptors must have length 2";
-        ::syslog::error!("socketpair(): failed ({:?})", reason);
+        ::syslog::warn!("socketpair(): failed ({:?})", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
     // Build request and send it.
     let request: Message = CreateSocketPairRequest::build(tid, domain, typ, protocol);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
-        ::syslog::error!("socketpair(): failed ({:?})", error_code);
+        ::syslog::warn!("socketpair(): failed ({:?})", error_code);
         Err(Error::new(error_code, "socketpair() failed"))
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::CreateSocketPairResponse => {
+            SystemCallMessageHeader::CreateSocketPairResponse => {
                 let response: CreateSocketPairResponse =
                     CreateSocketPairResponse::from_bytes(message.payload);
 

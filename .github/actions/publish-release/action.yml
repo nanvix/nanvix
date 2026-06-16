@@ -136,7 +136,7 @@ runs:
             // This happens on every human merge: the merge commit still has the
             // old version from the previous bot push, so publish-release finds
             // the release already created by that prior run. The bot's subsequent
-            // create-minor-release push will bump the version and create a new one.
+            // create-release push will bump the version and create a new one.
             if (release.target_commitish !== commitSha) {
               core.info(
                 `Release ${tag} already exists for commit ${release.target_commitish}; ` +
@@ -331,4 +331,3 @@ runs:
           } else {
             core.info(`Verified release ${release.id} is published (draft=${verify.draft}).`);
           }
-

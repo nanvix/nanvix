@@ -59,6 +59,12 @@ impl ThreadIdentifier {
     /// Identifier of the init daemon thread.
     pub const INITD: ThreadIdentifier = ThreadIdentifier(1);
 
+    /// Raw identifier for the VFS daemon thread.
+    pub const VFSD_RAW: i32 = 3;
+
+    /// Identifier of the VFS daemon thread (main thread, assumes TID == PID).
+    pub const VFSD: ThreadIdentifier = ThreadIdentifier(Self::VFSD_RAW);
+
     pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<i32>()] {
         self.0.to_ne_bytes()
     }

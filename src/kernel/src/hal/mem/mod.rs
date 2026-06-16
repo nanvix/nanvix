@@ -17,14 +17,11 @@ pub use self::types::{
     region::*,
 };
 
-// Re-export Table from arch.
-pub use ::arch::mem::paging::Table;
-
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 pub fn test() -> bool {
     self::types::address::test()
 }

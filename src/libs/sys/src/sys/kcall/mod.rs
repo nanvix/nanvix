@@ -21,6 +21,10 @@ pub mod debug;
 /// Event handling kernel calls.
 pub mod event;
 
+/// `fork()` kernel-call wrapper.
+#[cfg(target_arch = "x86")]
+pub mod fork;
+
 /// Inter-Process Communication (IPC) kernel calls.
 pub mod ipc;
 

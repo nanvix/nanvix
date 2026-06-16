@@ -11,6 +11,7 @@
 extern crate alloc;
 extern crate libc_string;
 extern crate nvx;
+extern crate nvx_crt0;
 
 use ::sys::error::{
     Error,
@@ -22,11 +23,13 @@ use ::sys::error::{
 //==================================================================================================
 
 mod demand_paging;
+mod detach;
 mod direction_flag;
-#[cfg(not(feature = "hyperlight"))]
+mod duplicate;
+mod getppid;
 mod mmio_ramfs;
-#[cfg(not(feature = "hyperlight"))]
 mod rendezvous;
+mod source_spoofing;
 mod tls;
 
 //==================================================================================================
@@ -53,7 +56,12 @@ const EXIT_CODE: i32 = 13;
 ///
 #[no_mangle]
 pub fn main() -> Result<(), Error> {
-    #[cfg(not(feature = "hyperlight"))]
+    detach::run()?;
+
+    duplicate::run()?;
+
+    getppid::run()?;
+
     mmio_ramfs::run()?;
 
     tls::run()?;
@@ -62,8 +70,9 @@ pub fn main() -> Result<(), Error> {
 
     demand_paging::run()?;
 
-    #[cfg(not(feature = "hyperlight"))]
     rendezvous::run()?;
+
+    source_spoofing::run()?;
 
     // Return an error with the specified exit code.
     // The nvx runtime will convert this to the process exit code.

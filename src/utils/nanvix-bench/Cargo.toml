@@ -15,6 +15,7 @@ anyhow = { workspace = true }
 build-utils = { workspace = true }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 indicatif = { workspace = true }
+koptions = { workspace = true, features = ["std"] }
 libc = { workspace = true }
 log = { workspace = true }
 nanvixd = { workspace = true }
@@ -28,7 +29,7 @@ tokio = { workspace = true, features = ["full"] }
 vfs-bench-common = { workspace = true }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "multi-process", "profile-time"]
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
 multi-process = ["nanvix/multi-process"]
@@ -37,7 +38,6 @@ standalone = ["nanvix/standalone", "nanvixd/standalone"]
 gdb = ["microvm", "nanvix/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["nanvixd/profile-time", "nanvix/profile-time"]
-hyperlight = ["nanvix/hyperlight"]
 microvm = ["nanvix/microvm"]
 whp = ["nanvix/whp"]
 

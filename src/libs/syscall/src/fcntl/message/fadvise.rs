@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -20,7 +20,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::sys_types::off_t;
 
@@ -37,10 +40,10 @@ pub struct FileAdvisoryInformationRequest {
     pub advice: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileAdvisoryInformationRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileAdvisoryInformationRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileAdvisoryInformationRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<off_t>()
         - mem::size_of::<off_t>()
@@ -56,11 +59,11 @@ impl FileAdvisoryInformationRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
@@ -70,17 +73,19 @@ impl FileAdvisoryInformationRequest {
         offset: off_t,
         len: off_t,
         advice: i32,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Message {
         let message: FileAdvisoryInformationRequest =
             FileAdvisoryInformationRequest::new(fd, offset, len, advice);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileAdvisoryInformationRequest,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::FileAdvisoryInformationRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -99,10 +104,10 @@ pub struct FileAdvisoryInformationResponse {
     pub ret: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileAdvisoryInformationResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileAdvisoryInformationResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileAdvisoryInformationResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
 
     pub fn new(ret: i32) -> Self {
         Self {
@@ -111,24 +116,29 @@ impl FileAdvisoryInformationResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, ret: i32) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        ret: i32,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileAdvisoryInformationResponse = FileAdvisoryInformationResponse::new(ret);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileAdvisoryInformationResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::FileAdvisoryInformationResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

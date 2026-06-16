@@ -15,10 +15,10 @@ use ::core::sync::atomic::{
 use ::sys::{
     error::Error,
     kcall::pm::{
-        create_thread,
-        getpid,
-        gettid,
-        join_thread,
+        __kcall_create_thread,
+        __kcall_getpid,
+        __kcall_gettid,
+        __kcall_join_thread,
     },
     pm::ThreadCreateArgs,
 };
@@ -50,10 +50,10 @@ pub fn run() -> Result<(), Error> {
 }
 
 fn test_identifiers() -> Result<(), Error> {
-    let pid = getpid()?;
+    let pid = __kcall_getpid()?;
     assert!(i32::from(pid) > 0, "process identifier must be positive");
 
-    let tid = gettid()?;
+    let tid = __kcall_gettid()?;
     assert!(i32::from(tid) > 0, "thread identifier must be positive");
     Ok(())
 }
@@ -62,7 +62,7 @@ fn test_create_and_join() -> Result<(), Error> {
     WORKER_STARTED.store(false, Ordering::Relaxed);
     WORKER_TID.store(0, Ordering::Relaxed);
 
-    let main_tid_raw: usize = usize::try_from(gettid()?)?;
+    let main_tid_raw: usize = usize::try_from(__kcall_gettid()?)?;
 
     let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
@@ -73,10 +73,10 @@ fn test_create_and_join() -> Result<(), Error> {
         user_stack_size: stack.size(),
         user_tda: None,
     };
-    let tid = create_thread(&mut args)?;
+    let tid = __kcall_create_thread(&mut args)?;
 
     let mut retval: usize = 0;
-    join_thread(tid, &mut retval)?;
+    __kcall_join_thread(tid, &mut retval)?;
     drop(stack);
     assert_eq!(retval, EXPECTED_EXIT_STATUS, "unexpected worker exit status");
     assert!(WORKER_STARTED.load(Ordering::Acquire), "worker never started execution");
@@ -93,7 +93,7 @@ extern "C" fn worker_thread(arg: usize) -> usize {
 fn worker_thread_impl(arg: usize) -> Result<usize, Error> {
     assert_eq!(arg, EXPECTED_WORKER_ARG, "worker received unexpected argument");
 
-    let tid_raw: usize = usize::try_from(gettid()?)?;
+    let tid_raw: usize = usize::try_from(__kcall_gettid()?)?;
     WORKER_TID.store(tid_raw, Ordering::Release);
     WORKER_STARTED.store(true, Ordering::Release);
 

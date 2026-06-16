@@ -28,7 +28,7 @@ source "${IMPORT_DIR}/logging.sh"
 #===================================================================================================
 
 # Configuration matrix for testing all supported machines.
-declare -a MACHINE_TYPES=("microvm" "hyperlight")
+declare -a MACHINE_TYPES=("microvm")
 declare -a BUILD_TYPES=("debug" "release")
 declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process" "l2")
 declare -a STEP_TYPES=("spellcheck" "format" "lint" "build" "test")
@@ -40,7 +40,6 @@ PADDING=60
 # Counters for passed and failed steps.
 passed_count=0
 failed_count=0
-skipped_count=0
 
 # Total elapsed time.
 total_elapsed_time=0
@@ -172,32 +171,6 @@ is_machine_independent() {
 
 #
 # Description
-#   Checks if a machine/deployment combination should be excluded.
-#
-# Arguments
-#   $1 - Machine type.
-#   $2 - Deployment type.
-#
-# Returns
-#   0 if excluded (should skip), 1 otherwise.
-#
-# Usage Example
-#   if is_excluded "hyperlight" "standalone"; then
-#
-is_excluded() {
-    local machine="${1}"
-    local deployment="${2}"
-
-    # Hyperlight does not support the -ramfs flag required by standalone mode.
-    if [[ "${machine}" == "hyperlight" ]] && [[ "${deployment}" == "standalone" ]]; then
-        return 0
-    fi
-
-    return 1
-}
-
-#
-# Description
 #   Runs a single pipeline step and reports the result.
 #
 # Arguments
@@ -310,12 +283,6 @@ main() {
     for build_type in "${BUILD_TYPES[@]}"; do
         for machine in "${MACHINE_TYPES[@]}"; do
             for deployment in "${DEPLOYMENT_TYPES[@]}"; do
-                # Check if this machine/deployment combination is excluded.
-                if is_excluded "${machine}" "${deployment}"; then
-                    ((++skipped_count))
-                    continue
-                fi
-
                 for step in "${STEP_TYPES[@]}"; do
                     # Check if this step is machine-independent.
                     if is_machine_independent "${step}"; then
@@ -341,7 +308,6 @@ main() {
     total_milliseconds=$((total_elapsed_time % 1000))
     print_info "(pipeline) Total Passed: ${passed_count}"
     print_info "(pipeline) Total Failed: ${failed_count}"
-    print_info "(pipeline) Total Skipped (excluded): ${skipped_count}"
     print_info "(pipeline) Total Time: ${total_seconds}.${total_milliseconds}s"
 
     # Exit with error if there are failed steps.

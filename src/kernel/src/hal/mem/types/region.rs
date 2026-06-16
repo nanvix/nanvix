@@ -44,6 +44,85 @@ pub enum MemoryRegionType {
     /// Bad memory.
     Bad,
 }
+
+//==================================================================================================
+// MMIO Cache Policy
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Caching policy for MMIO memory regions. Controls the PWT (Page Write-Through) and PCD
+/// (Page Cache Disable) bits in the page table entries that back the region.
+///
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct MmioCachePolicy {
+    /// If `true`, the page is mapped with the Write-Through attribute (PWT=1).
+    write_through: bool,
+    /// If `true`, caching is enabled for the page (PCD=0).
+    cache_enabled: bool,
+}
+
+impl MmioCachePolicy {
+    ///
+    /// # Description
+    ///
+    /// Creates a new MMIO cache policy.
+    ///
+    /// # Parameters
+    ///
+    /// - `write_through`: If `true`, enables the Write-Through attribute (PWT=1).
+    /// - `cache_enabled`: If `true`, enables caching for the page (PCD=0).
+    ///
+    /// # Returns
+    ///
+    /// A new [`MmioCachePolicy`] instance.
+    ///
+    pub const fn new(write_through: bool, cache_enabled: bool) -> Self {
+        Self {
+            write_through,
+            cache_enabled,
+        }
+    }
+
+    /// Uncacheable: Write-Through Enabled, Cache Disabled.
+    pub const UNCACHEABLE: Self = Self {
+        write_through: true,
+        cache_enabled: false,
+    };
+
+    /// Write-Back: Write-Through Disabled, Cache Enabled.
+    pub const WRITE_BACK: Self = Self {
+        write_through: false,
+        cache_enabled: true,
+    };
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the Write-Through attribute is set.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the page is mapped with the Write-Through attribute (PWT=1).
+    ///
+    pub fn write_through(&self) -> bool {
+        self.write_through
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether caching is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if caching is enabled for the page (PCD=0).
+    ///
+    pub fn cache_enabled(&self) -> bool {
+        self.cache_enabled
+    }
+}
 //==================================================================================================
 // Memory Region
 //==================================================================================================
@@ -60,9 +139,13 @@ pub struct MemoryRegion<T: Address> {
     size: usize,
     typ: MemoryRegionType,
     perm: AccessPermission,
+    cache_policy: Option<MmioCachePolicy>,
 }
 
 impl<T: Address> MemoryRegion<T> {
+    /// Maximum byte-length of a memory region name.
+    const MEMORY_REGION_NAME_MAX: usize = 32;
+
     /// Creates a new memory region.
     pub fn new(
         name: &str,
@@ -71,6 +154,13 @@ impl<T: Address> MemoryRegion<T> {
         typ: MemoryRegionType,
         perm: AccessPermission,
     ) -> Result<Self, Error> {
+        // Check if name is too long (byte length).
+        if name.len() > Self::MEMORY_REGION_NAME_MAX {
+            let reason: &str = "memory region name is too long";
+            error!("{reason} (name.len={}, NAME_MAX={})", name.len(), Self::MEMORY_REGION_NAME_MAX);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
         // Check if size of the memory region is valid.
         if size == 0 {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid memory region size"));
@@ -99,6 +189,7 @@ impl<T: Address> MemoryRegion<T> {
             size,
             typ,
             perm,
+            cache_policy: None,
         })
     }
 
@@ -125,6 +216,32 @@ impl<T: Address> MemoryRegion<T> {
     pub fn perm(&self) -> AccessPermission {
         self.perm
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the MMIO cache policy of the target memory region, if set.
+    ///
+    /// # Returns
+    ///
+    /// The [`MmioCachePolicy`] if one was assigned, or `None` otherwise.
+    ///
+    pub fn cache_policy(&self) -> Option<MmioCachePolicy> {
+        self.cache_policy
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the MMIO cache policy of the target memory region.
+    ///
+    /// # Parameters
+    ///
+    /// - `policy`: The cache policy to assign.
+    ///
+    pub fn set_cache_policy(&mut self, policy: MmioCachePolicy) {
+        self.cache_policy = Some(policy);
+    }
 }
 
 impl<T: Address> PartialEq for MemoryRegion<T> {
@@ -134,6 +251,7 @@ impl<T: Address> PartialEq for MemoryRegion<T> {
             && self.size == other.size
             && self.typ == other.typ
             && self.perm == other.perm
+            && self.cache_policy == other.cache_policy
     }
 }
 
@@ -181,14 +299,49 @@ impl<T: Address> TruncatedMemoryRegion<T> {
         Ok(Self(MemoryRegion::new(name, start, size, typ, perm)?))
     }
 
+    ///
+    /// # Description
+    ///
+    /// Creates a new truncated MMIO memory region with an explicit cache policy.
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: Name of the memory region.
+    /// - `start`: Page-aligned start address.
+    /// - `size`: Size of the region in bytes (rounded up to page alignment).
+    /// - `perm`: Access permissions for the region.
+    /// - `cache_policy`: Caching policy that controls PWT/PCD bits in page table entries.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, a new [`TruncatedMemoryRegion`] with type
+    /// [`MemoryRegionType::Mmio`] is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn new_mmio(
+        name: &str,
+        start: PageAligned<T>,
+        size: usize,
+        perm: AccessPermission,
+        cache_policy: MmioCachePolicy,
+    ) -> Result<Self, Error> {
+        let mut region: Self = Self::new(name, start, size, MemoryRegionType::Mmio, perm)?;
+        region.0.set_cache_policy(cache_policy);
+        Ok(region)
+    }
+
     pub fn from_memory_region(region: MemoryRegion<T>) -> Result<Self, Error> {
+        let cache_policy: Option<MmioCachePolicy> = region.cache_policy();
         let start: T = region.start().align_down(PAGE_ALIGNMENT)?;
         let start: PageAligned<T> = PageAligned::from_address(start)?;
         let name: String = region.name();
         let size: usize = region.size();
         let typ: MemoryRegionType = region.typ();
         let perm: AccessPermission = region.perm();
-        Self::new(&name, start, size, typ, perm)
+        let mut truncated: Self = Self::new(&name, start, size, typ, perm)?;
+        if let Some(policy) = cache_policy {
+            truncated.0.set_cache_policy(policy);
+        }
+        Ok(truncated)
     }
 
     pub fn name(&self) -> String {
@@ -213,6 +366,19 @@ impl<T: Address> TruncatedMemoryRegion<T> {
     /// Returns the permissions of the target memory region.
     pub fn perm(&self) -> AccessPermission {
         self.0.perm()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the MMIO cache policy of the target memory region, if set.
+    ///
+    /// # Returns
+    ///
+    /// The [`MmioCachePolicy`] if one was assigned, or `None` otherwise.
+    ///
+    pub fn cache_policy(&self) -> Option<MmioCachePolicy> {
+        self.0.cache_policy()
     }
 }
 
@@ -240,12 +406,14 @@ impl<T: Address> core::fmt::Debug for TruncatedMemoryRegion<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(
             f,
-            "TruncatedMemoryRegion {{ name: {}, start: {:?}, size: {}, typ: {:?}, perm: {:?} }}",
+            "TruncatedMemoryRegion {{ name: {}, start: {:?}, size: {}, typ: {:?}, perm: {:?}, \
+             cache_policy: {:?} }}",
             self.name(),
             self.start(),
             self.size(),
             self.typ(),
-            self.perm()
+            self.perm(),
+            self.cache_policy()
         )
     }
 }

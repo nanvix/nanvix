@@ -39,11 +39,16 @@
 mod aligned_alloc;
 mod block_header;
 mod calloc;
+pub mod env_table;
 mod free;
+mod getenv;
 mod malloc;
 mod malloc_usable_size;
+mod memalign;
 mod posix_memalign;
 mod realloc;
+mod setenv;
+mod unsetenv;
 
 //==================================================================================================
 // Imports
@@ -64,10 +69,14 @@ use ::sysapi::{
 pub use aligned_alloc::aligned_alloc;
 pub use calloc::calloc;
 pub use free::free;
+pub use getenv::getenv;
 pub use malloc::malloc;
 pub use malloc_usable_size::malloc_usable_size;
+pub use memalign::memalign;
 pub use posix_memalign::posix_memalign;
 pub use realloc::realloc;
+pub use setenv::setenv;
+pub use unsetenv::unsetenv;
 
 //==================================================================================================
 // Standalone Functions

@@ -53,7 +53,7 @@ use ::syslog::trace_libcall;
 #[trace_libcall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _exit(status: c_int) -> ! {
-    match sys::kcall::pm::exit(status) {
+    match sys::kcall::pm::__kcall_exit(status) {
         Ok(_) => unreachable!("process termination should not successfully return"),
         Err(error) => panic!("failed to terminate process (error={error:?})"),
     }

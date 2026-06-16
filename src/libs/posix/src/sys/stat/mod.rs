@@ -91,7 +91,7 @@ pub unsafe extern "C" fn fchmod(fd: c_int, mode: mode_t) -> c_int {
     match stat::fchmod(fd, mode) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
+            ::syslog::warn!("fchmod(): {:?} (fd={}, mode={})", error, fd, mode);
             *__errno_location() = error.code.get();
             -1
         },
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn fchmodat(
     let pathname: &str = match ffi::CStr::from_ptr(path).to_str() {
         Ok(pathname) => pathname,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "fchmodat(): invalid pathname (dirfd={:?}, mode={:?}, flag={:?}, error={:?})",
                 dirfd,
                 mode,
@@ -150,7 +150,7 @@ pub unsafe extern "C" fn fchmodat(
     match stat::fchmodat(dirfd, pathname, mode, flag) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "fchmodat(): failed (dirfd={}, pathname={:?}, mode={}, flag={}, error={:?})",
                 dirfd,
                 pathname,
@@ -194,7 +194,7 @@ pub unsafe extern "C" fn fchmodat(
 pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     // Check if `times` is invalid.
     if times.is_null() {
-        ::syslog::error!("futimens(): fd={}, times={:p}", fd, times);
+        ::syslog::warn!("futimens(): fd={}, times={:p}", fd, times);
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(array) => array,
         Err(_) => {
-            ::syslog::error!("futimens(): invalid times array");
+            ::syslog::warn!("futimens(): invalid times array");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -213,12 +213,7 @@ pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
     match stat::futimens(fd, times) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
-                "futimens(): failed (fd={}, times={:?}, error={:?})",
-                fd,
-                times,
-                error
-            );
+            ::syslog::warn!("futimens(): failed (fd={}, times={:?}, error={:?})", fd, times, error);
             *__errno_location() = error.code.get();
             -1
         },
@@ -281,7 +276,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!("lstat(): invalid pathname");
+            ::syslog::warn!("lstat(): invalid pathname");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -292,7 +287,7 @@ pub unsafe extern "C" fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::
     match stat::lstat(pathname, statbuf) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "lstat(): failed (pathname={}, statbuf={:p}, error={:?})",
                 pathname,
                 statbuf,
@@ -362,7 +357,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
     let pathname: &str = match ffi::CStr::from_ptr(pathname).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!("mkdirat(): invalid pathname");
+            ::syslog::warn!("mkdirat(): invalid pathname");
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
@@ -372,7 +367,7 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
     match stat::mkdirat(dirfd, pathname, mode) {
         Ok(()) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "mkdirat(): failed (dirfd={}, pathname={:?}, mode={}, error={:?})",
                 dirfd,
                 pathname,
@@ -457,7 +452,7 @@ pub unsafe extern "C" fn utimensat(
     let pathname: &str = match ffi::CStr::from_ptr(filename).to_str() {
         Ok(pathname) => pathname,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "utimensat(): invalid pathname (dirfd={}, times={:p}, flags={})",
                 dirfd,
                 times,
@@ -470,7 +465,7 @@ pub unsafe extern "C" fn utimensat(
 
     // Check if `times` is invalid.
     if times.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "utimensat(): invalid times (dirfd={}, pathname={:?}, times={:p}, flags={})",
             dirfd,
             pathname,
@@ -485,7 +480,7 @@ pub unsafe extern "C" fn utimensat(
     let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
         Ok(array) => array,
         Err(_) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "futimens(): invalid times array (dirfd={}, pathname={:?}, times={:p}, flags={})",
                 dirfd,
                 pathname,
@@ -500,7 +495,7 @@ pub unsafe extern "C" fn utimensat(
     match stat::utimensat(dirfd, pathname, times, flags) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "utimensat(): failed (dirfd={}, pathname={}, times={:?}, flags={}, error={:?})",
                 dirfd,
                 pathname,

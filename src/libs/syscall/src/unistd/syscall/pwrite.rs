@@ -5,36 +5,27 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    unistd::message::{
+        PartialWriteRequest,
+        PartialWriteResponse,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::core::cmp;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
     c_size_t,
     off_t,
-};
-#[cfg(feature = "standalone")]
-use ::sysapi::unistd::{
-    STDERR_FILENO,
-    STDIN_FILENO,
-    STDOUT_FILENO,
-};
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::{
-            PartialWriteRequest,
-            PartialWriteResponse,
-        },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::core::cmp,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
 };
 
 //==================================================================================================
@@ -60,38 +51,37 @@ use {
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // POSIX requires pwrite on a non-seekable fd (pipe/stdio) to return ESPIPE.
     #[cfg(feature = "standalone")]
     {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return ::nvx::vfs::fd::vfs_pwrite(fd, buffer, offset).map_err(|e| {
-                let code: ErrorCode = e.into();
-                ::syslog::warn!("pwrite(): VFS pwrite failed (fd={fd}, error={e})");
-                Error::new(code, "vfs pwrite failed")
-            });
-        }
+        use ::sysapi::unistd::{
+            STDERR_FILENO,
+            STDIN_FILENO,
+            STDOUT_FILENO,
+        };
+
         if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            let reason: &str = "illegal seek on stdio";
-            ::syslog::error!("pwrite(): {reason} (fd={fd})");
-            return Err(Error::new(ErrorCode::IllegalSeek, reason));
+            ::syslog::warn!(
+                "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, offset={offset})",
+            );
+            return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
         }
-        let reason: &str = "pwrite not available in standalone mode";
-        ::syslog::error!("pwrite(): {reason} (fd={fd})");
-        Err(Error::new(ErrorCode::OperationNotSupported, reason))
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    pwrite_linuxd(fd, buffer, offset)
-}
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
+    #[cfg(feature = "standalone")]
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("pwrite(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(
+            ErrorCode::BadFile,
+            "pwrite: fd is not a VFS fd in standalone mode",
+        ));
+    }
 
-/// Forwards a `pwrite` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     while buffer_offset < buffer.len() {
         let chunk_size: usize =
@@ -107,15 +97,17 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,
             chunk,
+            crate::VFS_DESTINATION,
+            crate::VFS_MESSAGE_TYPE,
         );
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pwrite(): failed (fd={}, buffer.len={}, error_code={})",
                 fd,
                 buffer.len(),
@@ -127,17 +119,17 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
                 Ok(error_code) => return Err(Error::new(error_code, "pwritev() failed")),
                 // Error code was not parsed.
                 Err(error) => {
-                    ::syslog::error!("pwrite(): failed to convert error code (error={:?})", error);
+                    ::syslog::warn!("pwrite(): failed to convert error code (error={:?})", error);
                     return Err(Error::new(ErrorCode::TryAgain, "pwritev() failed"));
                 },
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
             // Response was successfully parsed.
             match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::PartialWriteResponse => {
+                SystemCallMessageHeader::PartialWriteResponse => {
                     // Parse response.
                     let message: PartialWriteResponse =
                         PartialWriteResponse::from_bytes(message.payload);
@@ -148,7 +140,7 @@ fn pwrite_linuxd(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<
                 },
                 // Response was not expected.
                 header => {
-                    ::syslog::error!(
+                    ::syslog::warn!(
                         "pwrite(): failed to parse response (fd={}, buffer.len={}, header={:?})",
                         fd,
                         buffer.len(),

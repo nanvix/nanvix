@@ -27,17 +27,19 @@ use ::core::{
 #[repr(u8)]
 pub enum MessageType {
     /// The message encodes information about an interrupt that occurred.
-    Interrupt,
+    Interrupt = 1,
     /// The message encodes information about an exception that occurred.
-    Exception,
+    Exception = 2,
     /// The message carries information sent by a process to another.
-    Ipc,
+    Ipc = 3,
     /// The message encodes information about a process termination event.
-    ProcessTerminationEvent,
+    ProcessTerminationEvent = 4,
     /// The message carries information sent from one kernel to another.
-    Ikc,
+    Ikc = 5,
     /// The message signals completion of a bulk pull transfer.
-    PullResponse,
+    PullResponse = 6,
+    /// The message encodes information about a process creation event.
+    ProcessCreationEvent = 7,
 }
 ::static_assert::assert_eq_size!(MessageType, 1);
 
@@ -66,6 +68,7 @@ impl MessageType {
             MessageType::ProcessTerminationEvent => [4],
             MessageType::Ikc => [5],
             MessageType::PullResponse => [6],
+            MessageType::ProcessCreationEvent => [7],
         }
     }
 
@@ -91,6 +94,7 @@ impl MessageType {
             [4] => Ok(MessageType::ProcessTerminationEvent),
             [5] => Ok(MessageType::Ikc),
             [6] => Ok(MessageType::PullResponse),
+            [7] => Ok(MessageType::ProcessCreationEvent),
             _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message type")),
         }
     }
@@ -105,6 +109,7 @@ impl fmt::Debug for MessageType {
             MessageType::ProcessTerminationEvent => write!(f, "process termination event"),
             MessageType::Ikc => write!(f, "inter-kernel communication"),
             MessageType::PullResponse => write!(f, "pull response"),
+            MessageType::ProcessCreationEvent => write!(f, "process creation event"),
         }
     }
 }

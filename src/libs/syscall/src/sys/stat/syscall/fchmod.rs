@@ -5,24 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    safe::RawFileDescriptor,
+    sys::stat::message::FileChmodRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use sysapi::sys_types::mode_t;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        sys::stat::message::FileChmodRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -42,45 +39,38 @@ use {
 ///
 /// Upon successful completion, `fchmod()` returns empty. Otherwise, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
+    // In standalone mode, only VFS file descriptors should be routed to vfsd.
     #[cfg(feature = "standalone")]
-    {
-        if ::nvx::vfs::fd::is_vfs_fd(fd) {
-            return Ok(());
-        }
-        Err(Error::new(ErrorCode::OperationNotSupported, "fchmod not available in standalone mode"))
+    if !crate::is_vfs_fd(fd) {
+        ::syslog::warn!("fchmod(): bad file descriptor fd={fd} in standalone mode");
+        return Err(Error::new(
+            ErrorCode::BadFile,
+            "fchmod: fd is not a VFS fd in standalone mode",
+        ));
     }
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fchmod_linuxd(fd, mode)
-}
-
-/// Forwards a `fchmod` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message = FileChmodRequest::build(tid, fd, mode);
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message =
+        FileChmodRequest::build(tid, fd, mode, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
+        ::syslog::warn!("fchmod(): syscall failed (fd={:?}, mode={:o}, status={:?})", fd, mode, {
             response.status
         });
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchmod(): syscall failed (fd={:?}, mode={:o}, error_code={:?})",
                     fd,
                     mode,
@@ -89,7 +79,7 @@ fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
                 Err(Error::new(error_code, "system call failed"))
             },
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchmod(): syscall failed (fd={:?}, mode={:o}, error={:?})",
                     fd,
                     mode,
@@ -100,13 +90,13 @@ fn fchmod_linuxd(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::FileChmodResponse => Ok(()),
+            SystemCallMessageHeader::FileChmodResponse => Ok(()),
             // Invalid response.
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "fchmod(): invalid response (fd={:?}, mode={:o}, header={:?})",
                     fd,
                     mode,

@@ -15,8 +15,8 @@ use crate::{
         AddressFamily,
         SocketType,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -32,25 +32,15 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
-#[allow(unreachable_code)]
 pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<c_int, Error> {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (domain, typ, protocol);
-        return Err(Error::new(
-            ErrorCode::OperationNotSupported,
-            "socket not available in standalone mode",
-        ));
-    }
-
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = CreateSocketRequest::build(tid, domain, typ, protocol);
-    ::sys::kcall::ipc::send(&request)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -61,11 +51,11 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
         }
     } else {
         // System call succeeded, parse response.
-        match LinuxDaemonMessage::try_from_bytes(response.payload) {
+        match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
             Ok(message) => match message.header {
                 // Response was successfully parsed.
-                LinuxDaemonMessageHeader::CreateSocketResponse => {
+                SystemCallMessageHeader::CreateSocketResponse => {
                     let response: CreateSocketResponse =
                         CreateSocketResponse::from_bytes(message.payload);
 

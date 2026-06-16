@@ -50,7 +50,7 @@ pub unsafe extern "C" fn pthread_rwlock_init(
 ) -> c_int {
     // Check if `rwlock` is invalid.
     if rwlock.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_rwlock_init(): invalid read-write lock (rwlock={rwlock:p}, attr={attr:p})"
         );
         return ErrorCode::InvalidArgument.get();
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn pthread_rwlock_init(
 
     // Check if `rwlock` is unaligned.
     if !(rwlock as usize).is_multiple_of(align_of::<pthread_rwlock_t>()) {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pthread_rwlock_init(): unaligned read-write lock (rwlock={rwlock:p}, attr={attr:p})"
         );
         return ErrorCode::InvalidArgument.get();
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn pthread_rwlock_init(
     if !attr.is_null() {
         // Check if `attr` is unaligned.
         if !(attr as usize).is_multiple_of(align_of::<pthread_rwlockattr_t>()) {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pthread_rwlock_init(): unaligned read-write lock attribute (rwlock={rwlock:p}, \
                  attr={attr:p})"
             );
@@ -83,7 +83,7 @@ pub unsafe extern "C" fn pthread_rwlock_init(
 
     // Attempt to initialize read-write lock and check for errors.
     if let Err(error) = crate::pthread::pthread_rwlock_init(&mut *rwlock, &attr) {
-        ::syslog::error!("pthread_rwlock_init(): {error:?} (rwlock={rwlock:p}, attr={attr:?})");
+        ::syslog::warn!("pthread_rwlock_init(): {error:?} (rwlock={rwlock:p}, attr={attr:?})");
         return error.code.get();
     }
 

@@ -154,6 +154,9 @@ pub fn is_initialized() -> bool {
     VFS_STATE.lock().is_some()
 }
 
+///
+/// # Description
+///
 /// Mounts an existing FAT image from a memory region.
 ///
 /// # Parameters
@@ -189,7 +192,11 @@ pub unsafe fn mount_image(
     }
 
     // SAFETY: Caller guarantees memory region validity.
-    let fat: Fat = unsafe { Fat::from_memory(ptr, size)? };
+    let fat: Fat = if readonly {
+        unsafe { Fat::from_memory_readonly(ptr as *const u8, size)? }
+    } else {
+        unsafe { Fat::from_memory(ptr, size)? }
+    };
     let mount: Mount = Mount::new(String::from(mount_path), fat, readonly)?;
 
     let mut state = VFS_STATE.lock();

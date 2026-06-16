@@ -26,12 +26,12 @@ use ::sys::{
     },
     kcall::{
         pm::{
-            create_thread,
-            gettime,
-            join_thread,
-            sleep,
+            __kcall_create_thread,
+            __kcall_gettime,
+            __kcall_join_thread,
+            __kcall_sleep,
         },
-        sched::sched_yield,
+        sched::__kcall_sched_yield,
     },
     pm::{
         ThreadCreateArgs,
@@ -108,13 +108,13 @@ pub fn run() -> Result<(), StressError> {
     // Spawn all workers upfront to maximize concurrent scheduling pressure.
     for (worker_id, stack) in stacks.iter().enumerate() {
         let mut args: ThreadCreateArgs = thread_args(stack, scheduler_pressure_worker, worker_id);
-        match create_thread(&mut args) {
+        match __kcall_create_thread(&mut args) {
             Ok(tid) => tids.push(tid),
             Err(e) => {
                 // Join already-spawned threads before returning so their stacks remain valid.
                 for tid in &tids {
                     let mut retval: usize = 0;
-                    let _ = join_thread(*tid, &mut retval);
+                    let _ = __kcall_join_thread(*tid, &mut retval);
                 }
                 return Err(e);
             },
@@ -124,7 +124,7 @@ pub fn run() -> Result<(), StressError> {
     // Join each worker and check for failures. Stacks are kept alive until after the loop.
     for tid in &tids {
         let mut retval: usize = 0;
-        join_thread(*tid, &mut retval)?;
+        __kcall_join_thread(*tid, &mut retval)?;
         if retval == PRESSURE_FAILURE {
             let code_raw: usize = PRESSURE_ERROR_CODE.swap(0, Ordering::Relaxed);
             let code: ErrorCode = error_code_from_usize(code_raw);
@@ -200,11 +200,11 @@ fn scheduler_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
         // Burst of fast kcalls: alternate gettime and yield to saturate the scheduler.
         for iteration in 0..SYSCALLS_PER_ROUND {
             let mut now: SystemTime = SystemTime::default();
-            gettime(&mut now)?;
+            __kcall_gettime(&mut now)?;
 
             // Stagger yields across workers so that ready-queue membership varies each cycle.
             if (iteration + worker_id + round) & 0x3 == 0 {
-                sched_yield()?;
+                __kcall_sched_yield()?;
             }
         }
 
@@ -212,7 +212,7 @@ fn scheduler_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
 
         // Brief sleep to force a sleeping → wakeup → ready transition, exercising the scheduler's
         // thread-selection logic again from a different starting state.
-        sleep(INTER_ROUND_SLEEP)?;
+        __kcall_sleep(INTER_ROUND_SLEEP)?;
     }
 
     Ok(PRESSURE_ROUNDS)

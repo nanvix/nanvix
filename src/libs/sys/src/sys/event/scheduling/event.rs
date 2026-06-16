@@ -24,6 +24,8 @@ use ::core::fmt::Debug;
 pub enum SchedulingEvent {
     /// Process termination.
     ProcessTermination,
+    /// Process creation.
+    ProcessCreation,
 }
 
 //==================================================================================================
@@ -32,10 +34,11 @@ pub enum SchedulingEvent {
 
 impl SchedulingEvent {
     /// Number of scheduling events.
-    pub const NUMBER_EVENTS: usize = 1;
+    pub const NUMBER_EVENTS: usize = 2;
 
     /// Scheduling events.
-    pub const VALUES: [Self; Self::NUMBER_EVENTS] = [Self::ProcessTermination];
+    pub const VALUES: [Self; Self::NUMBER_EVENTS] =
+        [Self::ProcessTermination, Self::ProcessCreation];
 }
 
 impl From<SchedulingEvent> for u32 {
@@ -50,6 +53,7 @@ impl TryFrom<u32> for SchedulingEvent {
     fn try_from(raw: u32) -> Result<Self, Self::Error> {
         match raw {
             0 => Ok(Self::ProcessTermination),
+            1 => Ok(Self::ProcessCreation),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid scheduling event identifier")),
         }
     }

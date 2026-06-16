@@ -9,6 +9,10 @@ use ::arch::mem::PAGE_ALIGNMENT;
 use ::core::{
     alloc::Layout,
     cmp::max,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
 };
 use ::sys::{
     error::{
@@ -19,8 +23,60 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Offset of the cached thread ID within the TDA header, in bytes.
+pub const TDA_TID_OFFSET: usize = core::mem::size_of::<*mut u8>();
+
+/// Size of the cached thread ID field in the TDA header, in bytes.
+pub const TDA_TID_SIZE: usize = core::mem::size_of::<u32>();
+
+/// Total size of the TDA header (self-pointer + cached thread ID), in bytes.
+const TDA_HEADER_SIZE: usize = TDA_TID_OFFSET + TDA_TID_SIZE;
+
+/// Sentinel value indicating the cached thread ID has not been populated yet.
+pub const TDA_TID_UNSET: u32 = 0;
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
+
+/// Tracks whether the calling thread's TDA has been fully initialized.
+///
+/// # Safety Invariant
+///
+/// This flag is set to `true` by [`mark_initialized`] after `set_thread_data_area()` succeeds
+/// during runtime init, and reset to `false` by [`mark_uninitialized`] in [`cleanup`] before the
+/// segment base is cleared. Code that reads the TDA via a segment register (e.g., the
+/// `pthread_self()` fast path) must check this flag first.
+///
+/// The flag is process-wide, which is sound because:
+/// - The main thread sets it once during `init()`, before any child thread is created.
+/// - Child threads inherit a valid TDA from the kernel (configured via `FS_BASE`/GDT on context
+///   switch) and never run user code without one.
+/// - `cleanup()` resets the flag and then diverges via `exit_thread()`, so no subsequent
+///   `pthread_self()` call can observe a stale `true`.
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Marks the TDA subsystem as initialized.
+///
+/// Must be called after `set_thread_data_area()` succeeds during runtime init.
+pub fn mark_initialized() {
+    INITIALIZED.store(true, Ordering::Release);
+}
+
+/// Marks the TDA subsystem as uninitialized.
+///
+/// Must be called before clearing the segment base in [`cleanup`].
+pub fn mark_uninitialized() {
+    INITIALIZED.store(false, Ordering::Release);
+}
+
+/// Returns `true` if [`mark_initialized`] has been called and [`mark_uninitialized`] has not.
+pub fn is_initialized() -> bool {
+    INITIALIZED.load(Ordering::Acquire)
+}
 
 extern "C" {
     /// Linker symbol that marks the beginning of the TLS segment.
@@ -56,12 +112,17 @@ extern "C" {
 /// ```text
 /// High Address
 ///     ↑
-/// +---------------------+ <- tda_ptr + size_of::<*mut u8>() (end of allocation)
+/// +---------------------+ <- tda_ptr + tda_header_size (end of allocation)
+/// |                     |
+/// | Cached Thread ID    | u32 slot for fast pthread_self()
+/// |                     | Zero-initialized; lazily populated by pthread_self()
+/// |                     | Read via segment register at TDA_TID_OFFSET
+/// +---------------------+ <- tda_ptr + size_of::<*mut u8>()
 /// |                     |
 /// | Self-Reference      | Pointer to Thread Data Area (TDA)
 /// | Pointer             | Value: tda_ptr (points to itself)
-/// |                     |
-/// +---------------------+ <- tda_ptr (returned to caller)
+/// |                     |                (size_of::<*mut u8>() bytes)
+/// +---------------------+ <- tda_ptr (returned to caller, segment base)
 /// |                     |
 /// | Padding (optional)  | Padding to meet alignment requirements between TLS and TDA pointer
 /// |                     |
@@ -79,7 +140,8 @@ extern "C" {
 /// Low Address
 ///
 /// Where:
-/// - allocation_size = allocation_padding_size + size_of::<*mut u8>()
+/// - TDA_HEADER_SIZE = TDA_TID_OFFSET + TDA_TID_SIZE
+/// - allocation_size = allocation_padding_size + TDA_HEADER_SIZE
 /// - allocation_padding_size = align_up(tls_size, max(PAGE_ALIGNMENT, align_of::<*mut u8>()))
 /// - tda_ptr = allocation + allocation_padding_size
 /// ```
@@ -89,34 +151,33 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     let tls_end_addr: usize = unsafe { &__TLS_END as *const u8 as usize };
     let tls_size: usize = tls_end_addr - tls_start_addr;
     let tls_alignment: usize = PAGE_ALIGNMENT.into();
-    let tda_ptr_size: usize = core::mem::size_of::<*mut u8>();
     let allocation_alignment: usize = max(tls_alignment, core::mem::align_of::<*mut u8>());
     let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?)
         .ok_or_else(|| {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "alloc(): align_up overflow (tls_size={tls_size}, \
                  allocation_alignment={allocation_alignment})"
             );
             Error::new(ErrorCode::OutOfMemory, "align_up overflow")
         })?;
-    let allocation_size: usize = allocation_padding_size + tda_ptr_size;
+    let allocation_size: usize = allocation_padding_size + TDA_HEADER_SIZE;
 
     ::syslog::trace!(
         "alloc(): tls_start_addr={tls_start_addr:x?}, tls_end_addr={tls_end_addr:x?}, \
-         tls_size={tls_size}, tls_alignment={tls_alignment}, tda_ptr_size={tda_ptr_size}, \
+         tls_size={tls_size}, tls_alignment={tls_alignment}, tda_header_size={TDA_HEADER_SIZE}, \
          allocation_alignment={allocation_alignment}, \
          allocation_padding_size={allocation_padding_size}, allocation_size={allocation_size}",
     );
 
     // Check if thread-local storage is empty.
-    if allocation_size == 0 {
+    if tls_size == 0 {
         return Ok(None);
     }
 
     // Check if thread-local storage has an invalid alignment.
     if !tls_start_addr.is_multiple_of(tls_alignment) {
         let reason: &'static str = "tls start address is not page-aligned";
-        ::syslog::error!(
+        ::syslog::warn!(
             "alloc(): {reason} (tls_start_addr={tls_start_addr:x?}, tls_alignment={tls_alignment})",
         );
         return Err(Error::new(ErrorCode::ValueOutOfRange, reason));
@@ -127,7 +188,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
         Ok(layout) => layout,
         Err(_error) => {
             let reason: &'static str = "invalid layout for thread-local storage";
-            ::syslog::error!(
+            ::syslog::warn!(
                 "alloc(): {reason} (allocation_size={allocation_size}, \
                  allocation_alignment={allocation_alignment})",
             );
@@ -140,7 +201,7 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
     let allocation: *mut u8 = unsafe { crate::alloc(layout) };
     if allocation.is_null() {
         let reason: &'static str = "out of memory";
-        ::syslog::error!("init(): {reason}");
+        ::syslog::warn!("init(): {reason}");
         return Err(Error::new(ErrorCode::OutOfMemory, reason));
     }
 
@@ -155,10 +216,16 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
         *self_ptr = tda_ptr;
     }
 
+    // Zero-initialize the cached thread ID at TDA_TID_OFFSET. The actual TID is populated lazily.
+    let tid_ptr: *mut u32 = unsafe { tda_ptr.add(TDA_TID_OFFSET) as *mut u32 };
+    unsafe {
+        *tid_ptr = TDA_TID_UNSET;
+    }
+
     // Compute pointer to thread-local storage.
     // SAFETY: `tda_ptr` is non-null and pointer arithmetic is within bounds.
     let tls_aligned_size: usize = align_up(tls_size, PAGE_ALIGNMENT).ok_or_else(|| {
-        ::syslog::error!("alloc(): align_up overflow (tls_size={tls_size}, tda_ptr={tda_ptr:?})");
+        ::syslog::warn!("alloc(): align_up overflow (tls_size={tls_size}, tda_ptr={tda_ptr:?})");
         Error::new(ErrorCode::OutOfMemory, "align_up overflow")
     })?;
     let tls_ptr: *mut u8 = unsafe { tda_ptr.sub(tls_aligned_size) };
@@ -184,10 +251,10 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
 ///
 pub fn cleanup() -> Result<(), sys::error::Error> {
     // Get the base address for thread data area.
-    let tcb_ptr: *mut u8 = match sys::kcall::pm::get_thread_data_area() {
+    let tcb_ptr: *mut u8 = match sys::kcall::pm::__kcall_get_thread_data_area() {
         Ok(ptr) => ptr,
         Err(error) => {
-            ::syslog::error!("cleanup_tda(): {error:?}");
+            ::syslog::warn!("cleanup_tda(): {error:?}");
             return Err(error);
         },
     };
@@ -200,11 +267,15 @@ pub fn cleanup() -> Result<(), sys::error::Error> {
     // Deallocate thread-local storage.
     dealloc(tcb_ptr)?;
 
+    // Mark TDA as uninitialized before clearing the segment base so that no subsequent
+    // segment-relative access (e.g., pthread_self() fast path) can observe a stale flag.
+    mark_uninitialized();
+
     // Clear the thread-local storage pointer first to avoid dangling pointers.
-    match sys::kcall::pm::set_thread_data_area(core::ptr::null_mut()) {
+    match sys::kcall::pm::__kcall_set_thread_data_area(core::ptr::null_mut()) {
         Ok(()) => Ok(()),
         Err(error) => {
-            ::syslog::error!("cleanup_tda(): failed to clear tda pointer (error={error:?})");
+            ::syslog::warn!("cleanup_tda(): failed to clear tda pointer (error={error:?})");
             Err(error)
         },
     }
@@ -235,24 +306,23 @@ fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
     let tls_end_addr: usize = unsafe { &__TLS_END as *const u8 as usize };
     let tls_size: usize = tls_end_addr - tls_start_addr;
     let tls_alignment: usize = PAGE_ALIGNMENT.into();
-    let tda_ptr_size: usize = core::mem::size_of::<*mut u8>();
     let allocation_alignment: usize = max(tls_alignment, core::mem::align_of::<*mut u8>());
     let allocation_padding_size: usize = align_up(tls_size, allocation_alignment.try_into()?)
         .ok_or_else(|| {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "dealloc(): align_up overflow (tls_size={tls_size}, \
                  allocation_alignment={allocation_alignment})"
             );
             Error::new(ErrorCode::OutOfMemory, "align_up overflow")
         })?;
-    let allocation_size: usize = allocation_padding_size + tda_ptr_size;
+    let allocation_size: usize = allocation_padding_size + TDA_HEADER_SIZE;
 
     ::syslog::trace!(
         "cleanup(): tls_start_addr={tls_start_addr:x?}, tls_end_addr={tls_end_addr:x?}, \
-         tls_size={tls_size}, tls_alignment={tls_alignment}, tcb_size={tda_ptr_size}, \
+         tls_size={tls_size}, tls_alignment={tls_alignment}, tda_header_size={TDA_HEADER_SIZE}, \
          allocation_alignment={allocation_alignment}, \
          allocation_padding_size={allocation_padding_size}, allocation_size={allocation_size}, \
-         tcb_ptr={tda_ptr:p}",
+         tda_ptr={tda_ptr:p}",
     );
 
     // Compute allocation layout.
@@ -260,7 +330,7 @@ fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
         Ok(layout) => layout,
         Err(_error) => {
             let reason: &'static str = "invalid layout";
-            ::syslog::error!(
+            ::syslog::warn!(
                 "cleanup(): {reason} (allocation_size={allocation_size}, \
                  allocation_align={allocation_alignment})",
             );

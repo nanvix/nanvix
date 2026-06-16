@@ -7,7 +7,7 @@
 
 mod context;
 mod exception;
-mod idt;
+pub(crate) mod idt;
 mod interrupt;
 
 #[cfg(feature = "smp")]
@@ -69,9 +69,7 @@ pub fn init(
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
 ) -> Result<(GdtPtr, TssRef, Option<InterruptController>, Option<XapicTimer>), Error> {
-    unsafe extern "C" {
-        static kstack: u8;
-    }
+    let kstack_ptr: *const u8 = crate::hal::platform::get_kstack_top();
 
     // Check if the CPU has the cpuid instruction.
     if ::arch::cpu::cpuid::has_cpuid() {
@@ -122,7 +120,7 @@ pub fn init(
         unsafe { fpu::init() };
     }
 
-    let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };
+    let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(kstack_ptr)? };
     unsafe { idt::init() };
 
     let (controller, xapic_timer): (Option<InterruptController>, Option<XapicTimer>) =

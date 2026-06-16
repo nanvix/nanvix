@@ -7,7 +7,6 @@
 
 use crate::hal::mem::{
     AccessPermission,
-    Address,
     MemoryRegion,
     MemoryRegionType,
     VirtualAddress,
@@ -35,7 +34,6 @@ pub struct KernelImage {
     data: Option<MemoryRegion<VirtualAddress>>,
     rodata: MemoryRegion<VirtualAddress>,
     bss: MemoryRegion<VirtualAddress>,
-    kpool: MemoryRegion<VirtualAddress>,
 }
 
 //==================================================================================================
@@ -112,28 +110,11 @@ impl KernelImage {
             AccessPermission::RDWR,
         )?;
 
-        // Kernel page pool.
-        info!(
-            "{:>6}: start={:#010x}, end={:#010x} size={:#010x}",
-            "kpool",
-            ::sys::config::memory_layout::KPOOL_BASE.into_raw_value(),
-            ::sys::config::memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE,
-            config::kernel::KPOOL_SIZE
-        );
-        let kpool = MemoryRegion::new(
-            "kernel page pool",
-            ::sys::config::memory_layout::KPOOL_BASE,
-            config::kernel::KPOOL_SIZE,
-            MemoryRegionType::Reserved,
-            AccessPermission::RDWR,
-        )?;
-
         Ok(Self {
             text,
             data,
             rodata,
             bss,
-            kpool,
         })
     }
 
@@ -151,9 +132,5 @@ impl KernelImage {
 
     pub fn bss(&self) -> MemoryRegion<VirtualAddress> {
         self.bss.clone()
-    }
-
-    pub fn kpool(&self) -> MemoryRegion<VirtualAddress> {
-        self.kpool.clone()
     }
 }

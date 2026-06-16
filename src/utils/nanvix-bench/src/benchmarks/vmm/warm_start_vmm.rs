@@ -24,11 +24,15 @@ use ::nanvix::{
             DataChunkHeader,
             IkcFrame,
             Message,
+            MessageType,
         },
-        pm::ThreadIdentifier,
+        pm::{
+            ProcessIdentifier,
+            ThreadIdentifier,
+        },
     },
     syscall::{
-        LinuxDaemonMessage,
+        SystemCallMessage,
         unistd::message::{
             ReadRequest,
             ReadResponse,
@@ -93,6 +97,7 @@ impl Benchmark {
             kernel_filename,
             initrd_filename: Some(program),
             initrd_args: None,
+            kernel_args: None,
             ramfs_filename: None,
             stderr: Some(if cfg!(windows) { "NUL" } else { "/dev/null" }.to_string()),
             vcpu_thread_stdout_tx,
@@ -105,6 +110,7 @@ impl Benchmark {
             gdb_port: None,
             #[cfg(feature = "profile-time")]
             perf_timings: ::nanvix::uservm::perf::PerfTimings::new(),
+            guest_profile_path: None,
         });
 
         // Warmup: run one untimed echo cycle through the full IKC protocol to trigger
@@ -118,16 +124,16 @@ impl Benchmark {
                 },
                 None => anyhow::bail!("warmup: channel closed during ReadRequest"),
             };
-            let warmup_linuxd_msg: LinuxDaemonMessage =
-                LinuxDaemonMessage::try_from_bytes(warmup_read_msg.payload)
-                    .map_err(|_| anyhow::anyhow!("warmup: error parsing LinuxDaemon message"))?;
+            let warmup_syscall_msg: SystemCallMessage =
+                SystemCallMessage::try_from_bytes(warmup_read_msg.payload)
+                    .map_err(|_| anyhow::anyhow!("warmup: error parsing SystemCall message"))?;
             // NOTE: `as_id()` returns `Err(ThreadIdentifier)` when the source is a
             // thread (expected) and `Ok(ProcessIdentifier)` when it is a process.
             let warmup_tid: ThreadIdentifier = match { warmup_read_msg.source }.as_id() {
                 Err(tid) => tid,
                 Ok(pid) => anyhow::bail!("warmup: unexpected message source: {pid:?}"),
             };
-            let _warmup_read_req: ReadRequest = ReadRequest::from_bytes(warmup_linuxd_msg.payload);
+            let _warmup_read_req: ReadRequest = ReadRequest::from_bytes(warmup_syscall_msg.payload);
 
             // Step 2: Receive the bulk pull request from the guest kernel.
             let warmup_pull_header: DataChunkHeader = match vcpu_thread_stdout_rx.recv().await {
@@ -157,8 +163,13 @@ impl Benchmark {
             // Step 4: Send ReadResponse metadata.
             let warmup_empty_buf: [u8; ReadResponse::BUFFER_SIZE] =
                 [0u8; ReadResponse::BUFFER_SIZE];
-            let warmup_read_response: Message =
-                ReadResponse::build(warmup_tid, payload.len() as i32, warmup_empty_buf);
+            let warmup_read_response: Message = ReadResponse::build(
+                warmup_tid,
+                payload.len() as i32,
+                warmup_empty_buf,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(warmup_read_response))
                 .await?;
@@ -182,8 +193,12 @@ impl Benchmark {
             };
 
             // Step 7: Send WriteResponse to acknowledge the write.
-            let warmup_write_response: Message =
-                WriteResponse::build(warmup_tid, payload.len() as i32);
+            let warmup_write_response: Message = WriteResponse::build(
+                warmup_tid,
+                payload.len() as i32,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(warmup_write_response))
                 .await?;
@@ -211,12 +226,12 @@ impl Benchmark {
                     anyhow::bail!(reason);
                 },
             };
-            let linuxd_message: LinuxDaemonMessage =
-                match LinuxDaemonMessage::try_from_bytes(ipc_read_message.payload) {
+            let syscall_message: SystemCallMessage =
+                match SystemCallMessage::try_from_bytes(ipc_read_message.payload) {
                     Ok(message) => message,
                     Err(_) => {
                         return Err(anyhow::anyhow!(
-                            "Error parsing IPC message to LinuxDaemon message"
+                            "Error parsing IPC message to SystemCall message"
                         ));
                     },
                 };
@@ -224,7 +239,7 @@ impl Benchmark {
                 Err(tid) => tid,
                 Ok(pid) => return Err(anyhow::anyhow!("unexpected message source: {pid:?}")),
             };
-            let _read_request: ReadRequest = ReadRequest::from_bytes(linuxd_message.payload);
+            let _read_request: ReadRequest = ReadRequest::from_bytes(syscall_message.payload);
 
             // Step 2: Receive the bulk pull request from the guest kernel.
             let pull_header: DataChunkHeader = match vcpu_thread_stdout_rx.recv().await {
@@ -266,7 +281,13 @@ impl Benchmark {
 
             // Step 4: Send ReadResponse metadata (buffer is empty; data was sent via bulk).
             let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-            let read_response: Message = ReadResponse::build(tid, payload.len() as i32, empty_buf);
+            let read_response: Message = ReadResponse::build(
+                tid,
+                payload.len() as i32,
+                empty_buf,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(read_response))
                 .await?;
@@ -312,7 +333,12 @@ impl Benchmark {
             latencies.push(start.elapsed().as_micros());
 
             // Step 7: Send WriteResponse to acknowledge the write.
-            let write_response: Message = WriteResponse::build(tid, payload.len() as i32);
+            let write_response: Message = WriteResponse::build(
+                tid,
+                payload.len() as i32,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            );
             io_thread_data_tx
                 .send(IkcFrame::Message(write_response))
                 .await?;

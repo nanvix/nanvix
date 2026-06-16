@@ -4,27 +4,34 @@
 //!
 //! # Description
 //!
-//! This module implements lazy identity mapping for physical memory accesses.
+//! This module implements identity mapping for physical memory accesses.
 //!
 //! Only the kernel process has physical memory identity-mapped into its virtual address space.
-//! At boot, page tables are allocated from BSS for kernel code/data/bss/kpool/modules. When
-//! the kernel later needs to access a physical frame not yet mapped (for example, during IPC
-//! copies), this module lazily allocates a BSS page table and fills the PTE in the kernel PD.
+//! At boot, page tables are allocated from BSS for kernel code/data/bss/modules. During
+//! [`init`], page tables for every PDE index in `[0, MEMORY_SIZE)` are pre-allocated from the
+//! BSS pool, covering all physical memory. If a frame is later allocated outside these
+//! pre-covered ranges, [`identity_map_page`] lazily installs a page table entry (and, when
+//! necessary, a new page table from the BSS pool) for the corresponding PDE.
 //!
-//! User processes do not get identity-mapping updates. When kernel code running in a user
-//! address space needs to perform a physical-memory operation, it must temporarily switch CR3
-//! to the kernel address space through the local CR3-switch helper.
+//! When a new user address space is created, [`sync_kernel_pdes`] copies all present kernel
+//! identity-mapping PDEs into the new page directory in a single pass.
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
-use crate::hal::mem::{
-    Address,
-    PageAligned,
-    PageDirectoryAddress,
-    PhysicalAddress,
+use crate::hal::{
+    arch::x86::{
+        fast_memcpy,
+        fast_memset,
+    },
+    mem::{
+        Address,
+        PageAligned,
+        PageDirectoryAddress,
+        PhysicalAddress,
+    },
 };
 use ::arch::{
     cpu::cr3::Cr3Register,
@@ -49,10 +56,13 @@ use ::arch::{
             TableIndex,
             UserSupervisorFlag,
         },
+        PAGE_ALIGNMENT,
         PAGE_TABLE_LENGTH,
     },
 };
+use ::config::kernel::MEMORY_SIZE;
 use ::core::sync::atomic::{
+    AtomicU32,
     AtomicUsize,
     Ordering,
 };
@@ -60,41 +70,77 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-use arch::mem::PAGE_ALIGNMENT;
+
+// Compile-time check: the number of identity-mapping PDEs must fit in one page directory.
+::static_assert::assert_eq!(MEMORY_SIZE / mem::PGTAB_SIZE <= PAGE_TABLE_LENGTH);
+
 //==================================================================================================
 // Global State
 //==================================================================================================
 
 /// Physical address of the kernel page directory (set once during boot by [`init`]).
-///
-/// On x86, this is the single PD.
-/// On x86_64, this is the kernel PD (PDPT\[0\] entry), not the PML4.
 static KERNEL_PD_PADDR: AtomicUsize = AtomicUsize::new(0);
 
-/// Physical address of the kernel root paging structure for CR3 switching.
-///
-/// On x86, this equals `KERNEL_PD_PADDR` (PD is the root).
-/// On x86_64, this is the PML4 address (the root that CR3 loads).
-static KERNEL_CR3: AtomicUsize = AtomicUsize::new(0);
+/// Raw value of the kernel CR3 register for address-space switching.
+static KERNEL_CR3: AtomicU32 = AtomicU32::new(0);
 
 //==================================================================================================
 // Public API
 //==================================================================================================
 
-/// Records the kernel PD and CR3 physical addresses. Called once from `PageMap::new_boot()`.
 ///
-/// On x86, `kernel_cr3` equals `kernel_pd_paddr` (PD is the root paging structure).
-/// On x86_64, `kernel_cr3` is the PML4 address.
-pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: impl Into<usize>) {
+/// # Description
+///
+/// Records the kernel page-directory and root paging-structure physical addresses used by the
+/// lazy identity mapper.
+///
+/// # Parameters
+///
+/// - `kernel_pd_paddr`: Physical address of the kernel page directory.
+/// - `kernel_cr3`: CR3 register value for the kernel root paging structure used for CR3 switching.
+///
+/// # Returns
+///
+/// Upon success, `Ok(())`. Upon failure, an error is returned and the global state remains
+/// uninitialized (atomics are not published).
+///
+/// # Notes
+///
+/// On x86, `kernel_cr3` equals `kernel_pd_paddr` (the page directory is the CR3 root).
+///
+/// This function pre-allocates a BSS page table for every PDE index in
+/// `[0, MEMORY_SIZE)` that does not already have one. This covers all physical memory, so no
+/// new PDEs are created at runtime. The kernel PD and CR3 atomics are published only after
+/// pre-allocation succeeds, so other code never observes a partially-initialized identity map.
+pub(crate) fn init(
+    kernel_pd_paddr: PageDirectoryAddress,
+    kernel_cr3: Cr3Register,
+) -> Result<(), Error> {
+    // Pre-allocate page tables for all PDE indices in [0, MEMORY_SIZE).
+    // This covers all physical memory, so no new PDEs are created at runtime.
+    let pd_paddr: usize = kernel_pd_paddr.into_raw_value();
+    let pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
+    for i in 0..pde_count {
+        let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+        // SAFETY: the PD is identity-mapped.
+        let pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(pd_paddr) };
+        ensure_pt(pd, pde_idx)?;
+    }
+
+    // Publish the kernel PD and CR3 only after pre-allocation succeeds, so that other code
+    // (e.g. `sync_kernel_pdes`, `with_kernel_address_space`) never observes a partially-
+    // initialized identity map.
     KERNEL_PD_PADDR.store(kernel_pd_paddr.into_raw_value(), Ordering::Release);
-    KERNEL_CR3.store(kernel_cr3.into(), Ordering::Release);
+    KERNEL_CR3.store(kernel_cr3.into_u32(), Ordering::Release);
+
+    Ok(())
 }
 
 ///
 /// # Description
 ///
-/// Copies bytes between two physical memory regions after ensuring that both ranges are
-/// identity-mapped in the kernel address space.
+/// Copies bytes between two memory regions, after ensuring that both ranges are identity-mapped in
+/// the kernel address space.
 ///
 /// # Parameters
 ///
@@ -115,7 +161,7 @@ pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, kernel_cr3: impl Into<
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
+pub(crate) fn memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
     // Check if copy size is zero.
     if size == 0 {
         return Ok(());
@@ -124,17 +170,23 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
     let dst_start: usize = dst as usize;
     let src_start: usize = src as usize;
     let dst_end: usize = dst_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy(): destination range overflows")
+        error!("memcpy(): destination range overflows (dst={dst_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memcpy(): destination range overflows")
     })?;
     let src_end: usize = src_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy(): source range overflows")
+        error!("memcpy(): source range overflows (src={src_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memcpy(): source range overflows")
     })?;
 
     // Check if copy ranges overlap.
     if (dst_start..dst_end).contains(&src_start) || (src_start..src_end).contains(&dst_start) {
+        error!(
+            "memcpy(): source and destination ranges overlap (dst={dst_start:#x}, \
+             src={src_start:#x}, size={size:#x})"
+        );
         return Err(Error::new(
             ErrorCode::BadAddress,
-            "phys_memcpy(): source and destination ranges overlap",
+            "memcpy(): source and destination ranges overlap",
         ));
     }
 
@@ -146,13 +198,10 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
         let (dst_start, dst_size) = page_aligned_cover(dst_addr, size)?;
         ensure_identity_mapped_range(dst_start, dst_size)?;
 
-        // SAFETY: both ranges are identity-mapped, so virtual == physical.
-        // Caller guarantees valid, non-overlapping physical ranges for `size` bytes.
-        // NOTE: use the intrinsic directly to avoid the debug null-pointer assertion in
-        // `core::ptr::copy_nonoverlapping`. Physical address 0 is a valid kernel address
-        // but becomes a null pointer when cast to `*const u8`.
+        // SAFETY: both `src` and `dst` are identity-mapped (virtual == physical) and
+        // valid for `size` bytes. The overlap check above guarantees non-overlapping ranges.
         unsafe {
-            core::intrinsics::copy_nonoverlapping(src, dst, size);
+            fast_memcpy(dst, src, size);
         }
         Ok(())
     })
@@ -161,93 +210,13 @@ pub(crate) fn phys_memcpy(dst: *mut u8, src: *const u8, size: usize) -> Result<(
 ///
 /// # Description
 ///
-/// Copies bytes between two physical memory regions using 32-bit stores, after ensuring that both
-/// ranges are identity-mapped in the kernel address space.
-///
-/// # Parameters
-///
-/// - `dst`: Destination physical address.
-/// - `src`: Source physical address.
-/// - `size`: Number of bytes to copy.
-///
-/// # Returns
-///
-/// Upon success, empty is returned. Upon failure, an error is returned instead.
-///
-/// # Errors
-///
-/// - [`ErrorCode::BadAddress`]: One of the physical ranges is invalid or overflows.
-/// - Any error propagated by the lazy identity mapper while preparing the ranges.
-///
-/// # Safety Notes
-///
-/// Callers should ensure that `size` is a multiple of 4 bytes.
-///
-/// # Notes
-///
-/// If `size == 0`, this function is a no-op and returns success.
-///
-pub(crate) fn phys_memcpy32(dst: *mut u8, src: *const u8, size: usize) -> Result<(), Error> {
-    // Check if copy size is zero.
-    if size == 0 {
-        return Ok(());
-    }
-
-    let dst_start: usize = dst as usize;
-    let src_start: usize = src as usize;
-    let dst_end: usize = dst_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy32(): destination range overflows")
-    })?;
-    let src_end: usize = src_start.checked_add(size).ok_or_else(|| {
-        Error::new(ErrorCode::BadAddress, "phys_memcpy32(): source range overflows")
-    })?;
-
-    // Check if copy ranges overlap.
-    if (dst_start..dst_end).contains(&src_start) || (src_start..src_end).contains(&dst_start) {
-        return Err(Error::new(
-            ErrorCode::BadAddress,
-            "phys_memcpy32(): source and destination ranges overlap",
-        ));
-    }
-
-    debug_assert!(size.is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((dst as usize).is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((src as usize).is_multiple_of(::core::mem::size_of::<u32>()));
-
-    with_kernel_address_space(|| {
-        let src_addr: PhysicalAddress = PhysicalAddress::from_raw_value(src as usize)?;
-        let (src_start, src_size) = page_aligned_cover(src_addr, size)?;
-        ensure_identity_mapped_range(src_start, src_size)?;
-        let dst_addr: PhysicalAddress = PhysicalAddress::from_raw_value(dst as usize)?;
-        let (dst_start, dst_size) = page_aligned_cover(dst_addr, size)?;
-        ensure_identity_mapped_range(dst_start, dst_size)?;
-
-        // SAFETY: both ranges are identity-mapped, so virtual == physical.
-        // Caller guarantees valid, non-overlapping physical ranges and 4-byte aligned size.
-        // NOTE: use the intrinsic directly to avoid the debug null-pointer assertion in
-        // `core::ptr::copy_nonoverlapping`. Physical address 0 is a valid kernel address
-        // but becomes a null pointer when cast to `*const u32`.
-        unsafe {
-            core::intrinsics::copy_nonoverlapping(
-                src as *const u32,
-                dst as *mut u32,
-                size / core::mem::size_of::<u32>(),
-            );
-        }
-        Ok(())
-    })
-}
-
-///
-/// # Description
-///
-/// Fills a physical memory range using 32-bit stores, after ensuring that the full target range is
+/// Fills bytes in a memory range with a byte value, after ensuring that the full target range is
 /// identity-mapped in the kernel address space.
 ///
 /// # Parameters
 ///
 /// - `base`: Starting physical address of the target range.
-/// - `value`: Byte value to replicate across each 32-bit store.
+/// - `value`: Byte value to fill.
 /// - `size`: Number of bytes to fill.
 ///
 /// # Returns
@@ -259,44 +228,93 @@ pub(crate) fn phys_memcpy32(dst: *mut u8, src: *const u8, size: usize) -> Result
 /// - [`ErrorCode::BadAddress`]: The target range is invalid or overflows.
 /// - Any error propagated by the lazy identity mapper while preparing the range.
 ///
-/// # Safety Notes
-///
-/// Callers should ensure that `base` is 4-byte aligned and `size` is a multiple of 4 bytes.
-///
 /// # Notes
 ///
 /// If `size == 0`, this function is a no-op and returns success.
 ///
-pub(crate) fn phys_memset32(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
+pub(crate) fn memset(base: *mut u8, value: u8, size: usize) -> Result<(), Error> {
     // Check if fill size is zero.
     if size == 0 {
         return Ok(());
     }
 
-    debug_assert!(size.is_multiple_of(::core::mem::size_of::<u32>()));
-    debug_assert!((base as usize).is_multiple_of(::core::mem::size_of::<u32>()));
+    let base_start: usize = base as usize;
+    // Check if fill range overflows.
+    base_start.checked_add(size).ok_or_else(|| {
+        error!("memset(): target range overflows (base={base_start:#x}, size={size:#x})");
+        Error::new(ErrorCode::BadAddress, "memset(): target range overflows")
+    })?;
 
     with_kernel_address_space(|| {
         let base_addr: PhysicalAddress = PhysicalAddress::from_raw_value(base as usize)?;
         let (base_start, base_size) = page_aligned_cover(base_addr, size)?;
         ensure_identity_mapped_range(base_start, base_size)?;
 
-        // SAFETY: the range is identity-mapped, so virtual == physical.
-        // Caller guarantees a valid writable physical range, 4-byte aligned base and size.
-        // NOTE: use write_volatile to avoid the debug null-pointer assertion in
-        // `core::ptr::write`. Physical address 0 is a valid kernel address but becomes
-        // a null pointer when cast to `*mut u32`.
+        // SAFETY: `base` is identity-mapped (virtual == physical) and valid for
+        // writes of `size` bytes.
         unsafe {
-            let word: u32 = (value as u32) * 0x0101_0101;
-            let base_addr: usize = base as usize;
-            let num_words: usize = size / core::mem::size_of::<u32>();
-            for i in 0..num_words {
-                let addr: *mut u32 = (base_addr + i * core::mem::size_of::<u32>()) as *mut u32;
-                core::ptr::write_volatile(addr, word);
-            }
+            fast_memset(base, value, size);
         }
         Ok(())
     })
+}
+
+///
+/// # Description
+///
+/// Copies all present kernel identity-mapping PDEs from the kernel page directory into a target
+/// page directory. This covers `[0, MEMORY_SIZE)` and ensures that the target PD (typically a
+/// new user process PD) can access all kernel identity-mapped memory. Because all PDEs in this
+/// range are pre-allocated at boot ([`init`]), this is a simple copy of already-present entries.
+///
+/// # Parameters
+///
+/// - `target_pd_paddr`: Physical address of the target page directory.
+///
+/// # Returns
+///
+/// Upon success, `Ok(())`. Upon failure, an error is returned.
+///
+/// # Notes
+///
+/// This function should be called once when constructing a new user address space.
+///
+pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<(), Error> {
+    let kernel_pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
+    if kernel_pd_paddr == 0 {
+        return Ok(());
+    }
+
+    // SAFETY: the kernel PD is identity-mapped (BSS-backed). The target PD is backed by a
+    // kernel page whose physical address is identity-mapped in the kernel address space.
+    let kernel_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(kernel_pd_paddr) };
+    let target_pd: Table<PageDirectoryEntry> =
+        unsafe { Table::from_address(target_pd_paddr.into_raw_value()) };
+
+    // Number of PDEs to sync — bounded by MEMORY_SIZE.
+    let kernel_pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
+
+    for i in 0..kernel_pde_count {
+        // SAFETY: `i` is always < PAGE_TABLE_LENGTH because MEMORY_SIZE < 4 GiB.
+        let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+
+        let kernel_pde: PageDirectoryEntry = unsafe { kernel_pd.read(pde_idx) }
+            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+        if !kernel_pde.is_present() {
+            continue;
+        }
+
+        // Only install the kernel PDE if the target PD does not already have one.
+        let target_pde: PageDirectoryEntry = unsafe { target_pd.read(pde_idx) }
+            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+        if !target_pde.is_present() {
+            unsafe { target_pd.write(pde_idx, kernel_pde) };
+        }
+    }
+
+    Ok(())
 }
 
 /// RAII guard that restores the original CR3 value when dropped.
@@ -343,7 +361,7 @@ fn with_kernel_address_space<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    let kernel_cr3_raw: usize = KERNEL_CR3.load(Ordering::Acquire);
+    let kernel_cr3_raw: u32 = KERNEL_CR3.load(Ordering::Acquire);
     // Check if the kernel CR3 has been initialized.
     if kernel_cr3_raw == 0 {
         return f();
@@ -353,9 +371,9 @@ where
     let old_cr3: Cr3Register = unsafe { Cr3Register::read() };
 
     // If we are already in the kernel address space, no switch needed.
-    // SAFETY: `kernel_cr3_raw` was stored from a valid root-paging-structure address during
-    // `init()`, so the truncation to u32 is correct for addresses below 4 GiB.
-    let kernel_cr3: Cr3Register = unsafe { Cr3Register::from_u32_unchecked(kernel_cr3_raw as u32) };
+    // SAFETY: `kernel_cr3_raw` was produced by `Cr3Register::into_u32()` during `init()`,
+    // so it is guaranteed to have no reserved bits set.
+    let kernel_cr3: Cr3Register = unsafe { Cr3Register::from_u32_unchecked(kernel_cr3_raw) };
     if old_cr3 == kernel_cr3 {
         return f();
     }
@@ -518,8 +536,8 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
             PresentFlag::Present,
             ReadWriteFlag::ReadWrite,
             UserSupervisorFlag::Supervisor,
-            PageWriteThroughFlag::WriteThrough,
-            PageCacheDisableFlag::CacheDisabled,
+            PageWriteThroughFlag::NotWriteThrough,
+            PageCacheDisableFlag::CacheEnabled,
             AccessedFlag::NotAccessed,
             DirtyFlag::NotDirty,
             PageSizeFlag::Standard,
@@ -581,8 +599,8 @@ fn ensure_pte(
             PresentFlag::Present,
             ReadWriteFlag::ReadWrite,
             UserSupervisorFlag::Supervisor,
-            PageWriteThroughFlag::WriteThrough,
-            PageCacheDisableFlag::CacheDisabled,
+            PageWriteThroughFlag::NotWriteThrough,
+            PageCacheDisableFlag::CacheEnabled,
             AccessedFlag::NotAccessed,
             DirtyFlag::NotDirty,
         ),
@@ -622,7 +640,7 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
-fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
+pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     let phys_addr: usize = phys_addr.into_raw_value();
 
     let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
@@ -641,4 +659,174 @@ fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Erro
     // SAFETY: the PT is identity-mapped (BSS-backed).
     let pt: Table<PageTableEntry> = unsafe { Table::from_address(pt_paddr) };
     ensure_pte(pt, pte_idx, phys_addr)
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(feature = "test")]
+pub(super) mod test {
+    use super::{
+        sync_kernel_pdes,
+        KERNEL_PD_PADDR,
+    };
+    use crate::{
+        hal::mem::PageDirectoryAddress,
+        mm::VirtMemoryManager,
+    };
+    use ::arch::mem::{
+        self,
+        paging::{
+            self,
+            PageDirectoryEntry,
+            Table,
+            TableIndex,
+        },
+    };
+    use ::config::kernel::MEMORY_SIZE;
+    use ::core::sync::atomic::Ordering;
+
+    ///
+    /// # Description
+    ///
+    /// Verifies that [`super::init`] pre-allocates a page table for every PDE index in
+    /// `[0, MEMORY_SIZE)`. Reads each PDE from the kernel page directory and
+    /// asserts the present bit is set.
+    ///
+    fn test_init_preallocates_identity_map_pdes() -> bool {
+        let pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
+        if pd_paddr == 0 {
+            error!("kernel PD not initialized");
+            return false;
+        }
+
+        let pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
+
+        for i in 0..pde_count {
+            let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+            // SAFETY: the kernel PD is identity-mapped and initialized.
+            let pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(pd_paddr) };
+            let pde: PageDirectoryEntry = match unsafe { pd.read(pde_idx) } {
+                Some(pde) => pde,
+                None => {
+                    error!("failed to read PDE at index {}", i);
+                    return false;
+                },
+            };
+            if !pde.is_present() {
+                error!("PDE at index {} is not present after init()", i);
+                return false;
+            }
+        }
+
+        true
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Allocates a zeroed kernel page, treats it as a page directory, calls
+    /// [`sync_kernel_pdes`], and verifies that every present kernel PDE in
+    /// `[0, MEMORY_SIZE)` was copied into the target PD with the same frame address.
+    ///
+    fn test_sync_kernel_pdes_copies_to_target() -> bool {
+        let kernel_pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
+        if kernel_pd_paddr == 0 {
+            error!("kernel PD not initialized");
+            return false;
+        }
+
+        // Allocate a zeroed kernel page to serve as the target page directory.
+        let target_page = {
+            // SAFETY: the memory manager is initialized and access is synchronized.
+            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+            match mm.alloc_kpage(true) {
+                Ok(page) => page,
+                Err(e) => {
+                    error!("failed to allocate target page (error={e:?})");
+                    return false;
+                },
+            }
+        };
+
+        let target_pd_raw: usize = target_page.base().into_raw_value();
+        let target_pd_paddr: PageDirectoryAddress =
+            match PageDirectoryAddress::from_raw_value(target_pd_raw) {
+                Ok(addr) => addr,
+                Err(e) => {
+                    error!("invalid target PD address (error={e:?})");
+                    return false;
+                },
+            };
+
+        // Sync kernel identity-mapping PDEs into the target PD.
+        if let Err(e) = sync_kernel_pdes(target_pd_paddr) {
+            error!("sync_kernel_pdes failed (error={e:?})");
+            return false;
+        }
+
+        let pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
+
+        for i in 0..pde_count {
+            let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+
+            // SAFETY: both PDs are identity-mapped.
+            let kernel_pd: Table<PageDirectoryEntry> =
+                unsafe { Table::from_address(kernel_pd_paddr) };
+            let kernel_pde: PageDirectoryEntry = match unsafe { kernel_pd.read(pde_idx) } {
+                Some(pde) => pde,
+                None => {
+                    error!("failed to read kernel PDE at index {}", i);
+                    return false;
+                },
+            };
+
+            // SAFETY: the target PD is backed by a zeroed kernel page.
+            let target_pd: Table<PageDirectoryEntry> =
+                unsafe { Table::from_address(target_pd_raw) };
+            let target_pde: PageDirectoryEntry = match unsafe { target_pd.read(pde_idx) } {
+                Some(pde) => pde,
+                None => {
+                    error!("failed to read target PDE at index {}", i);
+                    return false;
+                },
+            };
+
+            // Both must agree on presence.
+            if kernel_pde.is_present() != target_pde.is_present() {
+                error!(
+                    "PDE mismatch at index {}: kernel present={}, target present={}",
+                    i,
+                    kernel_pde.is_present(),
+                    target_pde.is_present()
+                );
+                return false;
+            }
+
+            // If present, the target must point to the same page table frame.
+            if kernel_pde.is_present() && kernel_pde.frame_address() != target_pde.frame_address() {
+                error!(
+                    "PDE frame mismatch at index {}: kernel={:#x}, target={:#x}",
+                    i,
+                    kernel_pde.frame_address(),
+                    target_pde.frame_address()
+                );
+                return false;
+            }
+        }
+
+        // target_page drops here, returning the kernel page to the pool.
+        true
+    }
+
+    /// Runs all identity-mapping virtual memory tests.
+    pub fn test() -> bool {
+        let mut passed: bool = true;
+
+        passed &= run_test!(test_init_preallocates_identity_map_pdes);
+        passed &= run_test!(test_sync_kernel_pdes_copies_to_target);
+
+        passed
+    }
 }

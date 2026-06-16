@@ -14,12 +14,20 @@ homepage.workspace = true
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
+# `nvx` provides the panic handler and PIE relocation helper.
+# `nvx` does carry an optional `sysalloc` dependency, but only behind its
+# `runtime` feature.  The workspace `nvx` dependency is pinned to
+# `default-features = false` (see the root `Cargo.toml`), so the `runtime`
+# feature — and the `sysalloc` dependency it would pull in — stays disabled
+# here.  That keeps this dep from re-introducing the duplicate-`sysalloc`
+# bug — see `nanvix-todo/dlopen-load-address-conflict.md`.
 nvx = { workspace = true }
 sys = { workspace = true }
 cfg-if = { workspace = true }
+config = { workspace = true }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
-syscall = { workspace = true, features = ["staticlib", "syscall", "dlfcn"] }
+syscall = { workspace = true, features = ["syscall", "dlfcn"] }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
 sysalloc = { workspace = true, optional = true }
@@ -27,13 +35,23 @@ syslog = { workspace = true, default-features = true, optional = true }
 type-safe = { workspace = true }
 
 [features]
-default = ["syscall", "allocator", "staticlib"]
+default = ["syscall", "allocator", "c-main"]
 allocator = ["dep:sysalloc"]
 syscall = ["syslog", "syscall/dlfcn"]
 standalone = ["syscall/standalone"]
-hyperlight = ["syscall/hyperlight"]
 std = []
-staticlib = ["nvx/staticlib"]
+
+# `c-main` gates the link-time errno wiring used by C executables (cpython,
+# numpy, ...).  When enabled, `syscall/staticlib` switches
+# `__errno_location()` from a self-contained local errno to an `extern fn
+# __errno()` that resolves to newlib's implementation, so errno is shared
+# between libposix and libc in the final link.
+#
+# The staticlib build of `libposix.a` (consumed by cpython) has this on by
+# default.  Rust no_std binaries that depend on `posix` via cargo opt out
+# with `default-features = false` so they keep the self-contained errno
+# variant (no newlib in their link).
+c-main = ["syscall/staticlib"]
 
 # Logging
 trace = ["syslog/trace"]

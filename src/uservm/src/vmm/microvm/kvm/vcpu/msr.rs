@@ -29,6 +29,7 @@ use ::log::{
     debug,
     error,
     trace,
+    warn,
 };
 use ::serde::{
     Deserialize,
@@ -159,9 +160,6 @@ const fn count_expanded(msrs: &[MsrIndex]) -> usize {
 /// Total number of individual MSR indices in the expanded allowlist.
 const EXPANDED_MSR_COUNT: usize = count_expanded(REGULAR_MSRS) + count_expanded(DEFERRED_MSRS);
 
-/// Maximum number of MSR entries accepted in a serialized snapshot.
-const MAX_MSR_ENTRIES: usize = 4096;
-
 ///
 /// # Description
 ///
@@ -248,65 +246,6 @@ pub struct MsrsState {
 // Implementations
 //==================================================================================================
 
-impl MsrsState {
-    ///
-    /// # Description
-    ///
-    /// Validates the structural integrity of a serialized MSR snapshot.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, this function returns empty. Otherwise, it returns an error
-    /// describing the structural problem.
-    ///
-    pub(crate) fn validate(&self) -> Result<()> {
-        trace!("MsrsState::validate()");
-
-        let header_size: usize = ::std::mem::size_of::<::kvm_bindings::kvm_msrs>();
-        let entry_size: usize = ::std::mem::size_of::<kvm_msr_entry>();
-
-        if self.bytes.len() < header_size {
-            let reason: String = format!(
-                "snapshot MSR data too short for header: expected at least {}, got {}",
-                header_size,
-                self.bytes.len()
-            );
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        let nmsrs: usize =
-            u32::from_ne_bytes([self.bytes[0], self.bytes[1], self.bytes[2], self.bytes[3]])
-                as usize;
-
-        // Cap nmsrs to prevent pathological allocations from malformed snapshots.
-        if nmsrs > MAX_MSR_ENTRIES {
-            let reason: String =
-                format!("snapshot MSR entry count {} exceeds maximum ({})", nmsrs, MAX_MSR_ENTRIES);
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        let expected_size: usize = nmsrs
-            .checked_mul(entry_size)
-            .and_then(|v| v.checked_add(header_size))
-            .ok_or_else(|| {
-                anyhow::anyhow!("MSR data size computation overflowed (nmsrs={nmsrs})")
-            })?;
-        if self.bytes.len() < expected_size {
-            let reason: String = format!(
-                "snapshot MSR data size mismatch: expected at least {}, got {}",
-                expected_size,
-                self.bytes.len()
-            );
-            error!("validate(): {reason}");
-            anyhow::bail!(reason);
-        }
-
-        Ok(())
-    }
-}
-
 impl Msrs {
     ///
     /// # Description
@@ -389,6 +328,9 @@ impl Msrs {
             },
         };
 
+        // Guarantee that a restored vCPU keeps receiving timer interrupts.
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
         Ok(MsrsState {
             bytes: serialize_fam_struct(&msrs),
         })
@@ -427,6 +369,17 @@ impl Msrs {
             state.bytes[2],
             state.bytes[3],
         ]) as usize;
+
+        // Reject snapshots whose declared MSR count exceeds the allowlist size. Snapshots produced
+        // by `save_state()` can never exceed `EXPANDED_MSR_COUNT`, so a larger value indicates
+        // corruption or tampering. This bound also prevents `Vec::with_capacity` below from
+        // attempting an attacker-controlled allocation that could OOM-abort the process.
+        if nmsrs > EXPANDED_MSR_COUNT {
+            let reason: String =
+                format!("msrs nmsrs={nmsrs} exceeds allowlist size {EXPANDED_MSR_COUNT}");
+            error!("load_state(): {reason}");
+            anyhow::bail!(reason)
+        }
 
         let expected_size: usize = nmsrs
             .checked_mul(entry_size)
@@ -484,6 +437,51 @@ impl Msrs {
         }
 
         Ok(())
+    }
+}
+
+//==================================================================================================
+// Standalone functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// If the `IA32_TSC_DEADLINE` MSR was read back as zero, replaces it with the `IA32_TSC` value.
+///
+/// When a snapshot is taken, the `IA32_TSC_DEADLINE` MSR is sometimes read as zero even though the
+/// APIC timer is armed. Restoring a zero deadline leaves the vCPU without a pending timer interrupt,
+/// so it may never receive TSC-deadline interrupts again after resuming. Seeding the deadline with
+/// the current `IA32_TSC` value guarantees the timer fires promptly on restore. This mirrors
+/// Firecracker's `fix_zero_tsc_deadline_msr`.
+///
+/// # Parameters
+///
+/// - `msrs`: The MSR entries read during snapshot save, modified in place.
+///
+fn fix_zero_tsc_deadline_msr(msrs: &mut ::kvm_bindings::Msrs) {
+    const TSC_INDEX: u32 = MsrIndex::Ia32Tsc.as_u32();
+    const TSC_DEADLINE_INDEX: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+
+    // A correctly-built snapshot contains at most one IA32_TSC entry. Defensively handle a
+    // malformed list with duplicates by picking the maximum, mirroring Firecracker.
+    let tsc_value: Option<u64> = msrs
+        .as_slice()
+        .iter()
+        .filter(|msr| msr.index == TSC_INDEX)
+        .map(|msr| msr.data)
+        .max();
+
+    if let Some(tsc_value) = tsc_value {
+        for msr in msrs.as_mut_slice() {
+            if msr.index == TSC_DEADLINE_INDEX && msr.data == 0 {
+                warn!(
+                    "fix_zero_tsc_deadline_msr(): IA32_TSC_DEADLINE is 0, replacing with \
+                     {tsc_value:#x}"
+                );
+                msr.data = tsc_value;
+            }
+        }
     }
 }
 
@@ -630,6 +628,30 @@ mod tests {
         Ok(())
     }
 
+    /// Verifies that `load_state` rejects a header whose `nmsrs` field exceeds the
+    /// compile-time allowlist size, preventing attacker-controlled `Vec::with_capacity`
+    /// allocations that could OOM-abort the process.
+    #[test]
+    fn load_state_rejects_nmsrs_exceeding_allowlist() -> AnyResult<()> {
+        let (_kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
+        let msrs: Msrs = Msrs;
+
+        let header_size: usize = std::mem::size_of::<::kvm_bindings::kvm_msrs>();
+        let mut data: Vec<u8> = vec![0u8; header_size];
+        let oversized: u32 = u32::try_from(EXPANDED_MSR_COUNT)?.saturating_add(1);
+        data[..4].copy_from_slice(&oversized.to_ne_bytes());
+
+        let bad_state: MsrsState = MsrsState { bytes: data };
+        let result: Result<()> = msrs.load_state(&vcpu_fd, &bad_state);
+        let err: String = result
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("load_state should reject oversized nmsrs"))?
+            .to_string();
+        assert!(err.contains("exceeds allowlist size"), "unexpected error: {err}");
+
+        Ok(())
+    }
+
     // ---- Filtering and ordering tests (no KVM required) ----
 
     /// Verifies that well-known serializable MSRs pass the filter.
@@ -717,42 +739,73 @@ mod tests {
         );
     }
 
-    /// Verifies that `validate` accepts a well-formed MSR snapshot.
-    #[test]
-    fn validate_accepts_valid_snapshot() -> AnyResult<()> {
-        let (kvm, _vm, vcpu_fd): (Kvm, VmFd, VcpuFd) = create_test_vcpu()?;
-        let msrs: Msrs = Msrs;
+    // ---- fix_zero_tsc_deadline_msr tests (no KVM required) ----
 
-        let state: MsrsState = msrs.save_state(&kvm, &vcpu_fd).expect("save_state failed");
-        state
-            .validate()
-            .expect("validate should accept a valid MSR snapshot");
-
-        Ok(())
+    /// Builds a `kvm_bindings::Msrs` from `(index, data)` pairs.
+    fn build_msrs(entries: &[(u32, u64)]) -> ::kvm_bindings::Msrs {
+        let entries: Vec<kvm_msr_entry> = entries
+            .iter()
+            .map(|&(index, data)| kvm_msr_entry {
+                index,
+                data,
+                ..Default::default()
+            })
+            .collect();
+        ::kvm_bindings::Msrs::from_entries(&entries).expect("failed to build msrs")
     }
 
-    /// Verifies that `validate` rejects a truncated MSR header.
-    #[test]
-    fn validate_rejects_truncated_header() {
-        let bad_state: MsrsState = MsrsState {
-            bytes: vec![0u8; 4],
-        };
-        assert!(bad_state.validate().is_err(), "validate should reject truncated header");
+    /// Returns the `data` for the given MSR index, if present.
+    fn msr_data(msrs: &::kvm_bindings::Msrs, index: u32) -> Option<u64> {
+        msrs.as_slice()
+            .iter()
+            .find(|msr| msr.index == index)
+            .map(|msr| msr.data)
     }
 
-    /// Verifies that `validate` rejects a header whose `nmsrs` field implies more entries
-    /// than the byte vector contains.
+    /// Verifies that a zero `IA32_TSC_DEADLINE` is replaced with the `IA32_TSC` value.
     #[test]
-    fn validate_rejects_truncated_entries() {
-        let header_size: usize = std::mem::size_of::<::kvm_bindings::kvm_msrs>();
-        let mut data: Vec<u8> = vec![0u8; header_size];
-        let nmsrs_bytes: [u8; 4] = 100u32.to_ne_bytes();
-        data[..4].copy_from_slice(&nmsrs_bytes);
+    fn fix_zero_tsc_deadline_seeds_from_tsc() {
+        let tsc: u32 = MsrIndex::Ia32Tsc.as_u32();
+        let deadline: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+        let mut msrs: ::kvm_bindings::Msrs = build_msrs(&[(tsc, 0x1234_5678), (deadline, 0)]);
 
-        let bad_state: MsrsState = MsrsState { bytes: data };
-        assert!(
-            bad_state.validate().is_err(),
-            "validate should reject data with insufficient entries"
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
+        assert_eq!(
+            msr_data(&msrs, deadline),
+            Some(0x1234_5678),
+            "zero IA32_TSC_DEADLINE should be seeded with the IA32_TSC value"
+        );
+    }
+
+    /// Verifies that a non-zero `IA32_TSC_DEADLINE` is left untouched.
+    #[test]
+    fn fix_zero_tsc_deadline_preserves_nonzero() {
+        let tsc: u32 = MsrIndex::Ia32Tsc.as_u32();
+        let deadline: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+        let mut msrs: ::kvm_bindings::Msrs = build_msrs(&[(tsc, 0x1234_5678), (deadline, 0x9999)]);
+
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
+        assert_eq!(
+            msr_data(&msrs, deadline),
+            Some(0x9999),
+            "non-zero IA32_TSC_DEADLINE must not be modified"
+        );
+    }
+
+    /// Verifies that the deadline is left at zero when no `IA32_TSC` entry is present.
+    #[test]
+    fn fix_zero_tsc_deadline_no_tsc_entry() {
+        let deadline: u32 = MsrIndex::Ia32TscDeadline.as_u32();
+        let mut msrs: ::kvm_bindings::Msrs = build_msrs(&[(deadline, 0)]);
+
+        fix_zero_tsc_deadline_msr(&mut msrs);
+
+        assert_eq!(
+            msr_data(&msrs, deadline),
+            Some(0),
+            "without an IA32_TSC entry the deadline must stay unchanged"
         );
     }
 }

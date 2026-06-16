@@ -129,6 +129,7 @@ impl Slab {
             num_index_blocks * block_size < total_num_blocks * block_size <= len,
             (addr as usize) + (total_num_blocks * block_size) * size_of::<u8>()
                 + vstd::layout::align_of::<u8>() - 1 <= usize::MAX,
+            (total_num_blocks * block_size) * size_of::<u8>() <= isize::MAX,
             (num_index_blocks * block_size) * size_of::<u8>() <= isize::MAX,
             (addr as usize) + len * size_of::<u8>() <= usize::MAX,
     {
@@ -149,6 +150,12 @@ impl Slab {
                 ((addr as usize) + len) % (usize::MAX + 1) >= addr as usize,
         ;
         assert((addr as usize) + (total_num_blocks * block_size) * size_of::<u8>() <= usize::MAX);
+        assert((total_num_blocks * block_size) * size_of::<u8>() <= isize::MAX) by (nonlinear_arith)
+            requires
+                total_num_blocks * block_size <= len,
+                len <= isize::MAX,
+                size_of::<u8>() == 1,
+        ;
     }
 
     proof fn lemma_can_create_raw_array(
@@ -223,6 +230,9 @@ impl Slab {
                 &&& slab@.end_addr <= addr as usize + len
                 &&& slab@.allocated_addrs == Set::<usize>::empty()
                 &&& slab.inv()
+                &&& forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+                    ==> #[trigger] slab@.free_addrs.contains(
+                        (slab@.start_addr + i * block_size as int) as usize)
             })
     {
         assert(size_of::<u8>() == 1);
@@ -343,6 +353,47 @@ impl Slab {
         }
 
         assert(slab@.allocated_addrs.disjoint(slab@.free_addrs));
+
+        // Prove that every valid block index maps to a free address.
+        assert forall|i: int| 0 <= i < (slab@.end_addr - slab@.start_addr) / block_size as int
+            implies #[trigger] slab@.free_addrs.contains(
+                (slab@.start_addr + i * block_size as int) as usize) by {
+            assert(!slab.index@.is_bit_set(i));
+            let free_bits = Set::<int>::new(|j: int| 0 <= j < slab.num_data_blocks() && !slab.index@.is_bit_set(j));
+            assert(free_bits.contains(i));
+        }
+
+        // Completeness: every block-aligned address in [start_addr, end_addr) is in free_addrs.
+        // (After construction allocated_addrs is empty, so they must all be free.)
+        assert forall|a: usize| a % slab@.block_size == 0 && slab@.start_addr <= a < slab@.end_addr
+            implies slab@.allocated_addrs.contains(a) || slab@.free_addrs.contains(a) by {
+            let data_addr_as_int = slab.data_addr as usize as int;
+            let bs = slab.block_size as int;
+            let diff = a as int - data_addr_as_int;
+            // diff >= 0 and diff % bs == 0
+            assert(diff >= 0);
+            vstd::arithmetic::div_mod::lemma_sub_mod_noop(a as int, data_addr_as_int, bs);
+            // lemma gives: ((a%bs) - (data_addr%bs)) % bs == diff % bs
+            // a%bs==0, data_addr%bs==0, so (0-0)%bs == 0
+            assert((0 as int) % bs == 0) by (nonlinear_arith) requires bs > 0;
+            assert(diff % bs == 0);
+            let j = diff / bs;
+            // j >= 0
+            vstd::arithmetic::div_mod::lemma_div_is_ordered(0, diff, bs);
+            // j < num_data_blocks: diff < num_data_blocks * bs, so diff/bs < num_data_blocks
+            assert(diff < num_data_blocks as int * bs);
+            assert(j < num_data_blocks as int) by (nonlinear_arith)
+                requires diff >= 0, diff < num_data_blocks as int * bs, bs > 0, diff % bs == 0, j == diff / bs;
+            // bit j is unset (all bits < num_data_blocks are unset after construction)
+            assert(!slab.index@.is_bit_set(j));
+            // a == (data_addr + j * bs) as usize
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(diff, bs);
+            assert(diff == j * bs);
+            assert(a == (data_addr_as_int + j * bs) as usize);
+            // So a is in free_addrs
+            let free_bits = Set::<int>::new(|i: int| 0 <= i < slab.num_data_blocks() && !slab.index@.is_bit_set(i));
+            assert(free_bits.contains(j));
+        }
     }
 
     /// Proves that the address mapping is injective: distinct block indices

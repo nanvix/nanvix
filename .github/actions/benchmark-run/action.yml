@@ -20,21 +20,21 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: "Run Benchmarks"
-    shell: bash
-    env:
-      BENCHMARKS: ${{ inputs.benchmarks }}
-      MACHINE_TYPE: ${{ inputs.machine-type }}
-      ITERATIONS: ${{ inputs.iterations }}
-    run: |
-      for bench in ${BENCHMARKS}; do
-        python3 ./scripts/benchmark.py \
-          run \
-          --benchmark "${bench}" \
-          --machine-type "${MACHINE_TYPE}" \
-          --hwloc "$HOME/hwloc.json" \
-          --iterations "${ITERATIONS}" \
-          --toolchain-bin-dir "$HOME/toolchain/bin" \
-          --output-dir "$(pwd)" \
-          --commit "${{ github.sha }}"
-      done
+    - name: "Run Benchmarks"
+      shell: bash
+      env:
+        BENCHMARKS: ${{ inputs.benchmarks }}
+        MACHINE_TYPE: ${{ inputs.machine-type }}
+        ITERATIONS: ${{ inputs.iterations }}
+      run: |
+        for bench in ${BENCHMARKS}; do
+          python3 ./scripts/benchmark.py \
+            run \
+            --benchmark "${bench}" \
+            --machine-type "${MACHINE_TYPE}" \
+            --hwloc "$HOME/hwloc.json" \
+            --iterations "${ITERATIONS}" \
+            --clh-bin-path "$HOME/toolchain/bin" \
+            --output-dir "$(pwd)" \
+            --commit "${{ github.sha }}"
+        done

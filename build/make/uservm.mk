@@ -4,9 +4,9 @@
 USERVM_FEATURES :=
 USERVM_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
 USERVM_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
-USERVM_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 USERVM_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 USERVM_FEATURES += $(if $(filter yes,$(WHP)),whp,)
+USERVM_FEATURES += $(if $(filter yes,$(RELEASE)),nightly-performance-optimizations,)
 USERVM_FEATURES := $(strip $(USERVM_FEATURES))
 USERVM_CARGO_FEATURES := $(if $(USERVM_FEATURES),--features "$(USERVM_FEATURES)")
 
@@ -15,7 +15,7 @@ all-uservm: init
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
 
 check-uservm:
-	$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
+	@$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
 
 format-uservm:
 	$(HOST_CARGO_FMT_CMD) -p uservm

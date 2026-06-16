@@ -5,27 +5,26 @@
 // Imports
 //==================================================================================================
 
-use crate::safe::RawFileDescriptor;
-use ::sys::error::Error;
-use ::sysapi::ffi::c_int;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::LinkAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::alloc::{
-        string::ToString,
-        vec::Vec,
-    },
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+use crate::{
+    message::MessagePartitioner,
+    safe::RawFileDescriptor,
+    unistd::message::LinkAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
+use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
@@ -64,48 +63,27 @@ pub fn linkat(
         flags
     );
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_linkat(olddirfd, oldpath, newdirfd, newpath, flags).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("linkat(): VFS linkat failed (oldpath={oldpath:?}, error={e})");
-            Error::new(code, "vfs linkat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    linkat_linuxd(olddirfd, oldpath, newdirfd, newpath, flags)
-}
-
-/// Forwards a `linkat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn linkat_linuxd(
-    olddirfd: RawFileDescriptor,
-    oldpath: &str,
-    newdirfd: RawFileDescriptor,
-    newpath: &str,
-    flags: c_int,
-) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let oldpath: alloc::borrow::Cow<'_, str> = crate::path::expand_path(oldpath);
+    let newpath: alloc::borrow::Cow<'_, str> = crate::path::expand_path(newpath);
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: LinkAtRequest =
         LinkAtRequest::new(olddirfd, oldpath.to_string(), newdirfd, newpath.to_string(), flags)?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request.
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "linkat(): failed (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
              error={})",
             olddirfd,
@@ -124,7 +102,7 @@ fn linkat_linuxd(
             },
             // Error code was not successfully parsed.
             Err(error) => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "linkat(): failed to parse error code (olddirfd={}, oldpath={}, newdirfd={}, \
                      newpath={}, flags={}, error={:?})",
                     olddirfd,
@@ -139,15 +117,15 @@ fn linkat_linuxd(
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
         match message.header {
             // Response was successfully parsed.
-            LinuxDaemonMessageHeader::LinkAtResponse => Ok(()),
+            SystemCallMessageHeader::LinkAtResponse => Ok(()),
             // Response was not successfully parsed.
             header => {
                 let reason: &str = "unexpected message header";
-                ::syslog::error!(
+                ::syslog::warn!(
                     "linkat(): {:?} (olddirfd={}, oldpath={}, newdirfd={}, newpath={}, flags={}, \
                      header={:?})",
                     reason,

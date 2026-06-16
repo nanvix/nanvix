@@ -54,7 +54,6 @@ extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
@@ -107,6 +106,7 @@ expected_output = "ok"
 [[tests]]
 executor = "http"
 program = "./bin/network-rust.elf"
+extra_nanvixd_args = "-allow-host-networking"
 input = "[]"
 expected_output = "ok"
 
@@ -115,25 +115,6 @@ executor = "http"
 program = "./bin/dlfcn-rust.elf"
 input = "[]"
 expected_output = "ok"
-runs_on = ["microvm"] # FIXME: #1643 — kernel heap exhaustion under Hyperlight
-
-[[tests]]
-executor = "http"
-program = "./bin/c-bindings-rust.elf"
-input = "[]"
-expected_output = "ok"
-
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = '["hello world!"]'
-expected_output = "Hello, world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = "[]"
-expected_output = "Hello, world!"
 
 #===================================================================================================
 # Terminal Executor Tests (Interactive Mode)
@@ -154,7 +135,6 @@ extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
@@ -200,15 +180,143 @@ expected_output = "ok"
 [[tests]]
 executor = "terminal"
 program = "./bin/network-rust.elf"
+extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
 program = "./bin/dlfcn-rust.elf"
 expected_output = "ok"
-runs_on = ["microvm"] # FIXME: #1643 — kernel heap exhaustion under Hyperlight
 
 [[tests]]
 executor = "terminal"
-program = "./bin/c-bindings-rust.elf"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
 expected_output = "ok"
+
+#===================================================================================================
+# Environment Variable Tests
+#===================================================================================================
+
+# Single environment variable.
+[[tests]]
+executor = "http"
+program = "./bin/env-rust-nostd.elf"
+program_env = "TEST_VAR=hello"
+input = "[]"
+expected_output = "TEST_VAR=hello\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/env-rust-nostd.elf"
+program_env = "TEST_VAR=hello"
+expected_output = "TEST_VAR=hello\nok"
+
+# Multiple environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/env-rust-nostd.elf"
+program_env = "FOO=bar BAZ=qux"
+input = "[]"
+expected_output = "FOO=bar\nBAZ=qux\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/env-rust-nostd.elf"
+program_env = "FOO=bar BAZ=qux"
+expected_output = "FOO=bar\nBAZ=qux\nok"
+
+# Environment variable with special characters in value.
+[[tests]]
+executor = "http"
+program = "./bin/env-rust-nostd.elf"
+program_env = "SPECIAL=a/b:c-d_e.f"
+input = "[]"
+expected_output = "SPECIAL=a/b:c-d_e.f\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/env-rust-nostd.elf"
+program_env = "SPECIAL=a/b:c-d_e.f"
+expected_output = "SPECIAL=a/b:c-d_e.f\nok"
+
+#===================================================================================================
+# Combined Command-Line Argument and Environment Variable Tests
+#===================================================================================================
+
+# Program with args and environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+program_env = "FOO=bar"
+input = "[]"
+expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+program_env = "FOO=bar"
+expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
+
+# Program with args and no environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+input = "[]"
+expected_output = "ARGS:hello world\nENV:\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+expected_output = "ARGS:hello world\nENV:\nok"
+
+# Program with no args and with environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_env = "FOO=bar"
+input = "[]"
+expected_output = "ARGS:\nENV:FOO=bar\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_env = "FOO=bar"
+expected_output = "ARGS:\nENV:FOO=bar\nok"
+
+# Program with escaped args (literal semicolon in arguments).
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "a;b"
+program_env = "X=1"
+input = "[]"
+expected_output = "ARGS:a;b\nENV:X=1\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "a;b"
+program_env = "X=1"
+expected_output = "ARGS:a;b\nENV:X=1\nok"
+
+# Program with escaped environment variables (literal semicolon in env value).
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello"
+program_env = "PATH=a;b"
+input = "[]"
+expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello"
+program_env = "PATH=a;b"
+expected_output = "ARGS:hello\nENV:PATH=a;b\nok"

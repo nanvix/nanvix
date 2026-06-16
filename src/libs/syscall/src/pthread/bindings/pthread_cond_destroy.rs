@@ -42,7 +42,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut pthread_cond_t) -> c_int {
     // Check if `cond` is not valid.
     if cond.is_null() {
-        ::syslog::error!("pthread_cond_destroy(): invalid condition variable pointer");
+        ::syslog::warn!("pthread_cond_destroy(): invalid condition variable pointer");
         return ErrorCode::InvalidArgument.get();
     }
 

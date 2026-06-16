@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::mem;
 use ::sys::{
@@ -18,7 +18,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::{
     sys_times::tms,
@@ -33,10 +36,10 @@ use sysapi::{
 pub struct TimesRequest {
     pub _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(TimesRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(TimesRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl TimesRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -44,22 +47,26 @@ impl TimesRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Result<Message, Error> {
+    pub fn build(
+        tid: ThreadIdentifier,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Result<Message, Error> {
         let message: TimesRequest = TimesRequest::new();
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::TimesRequest, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::TimesRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -78,11 +85,11 @@ pub struct TimesResponse {
     pub buffer: tms,
     pub _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(TimesResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(TimesResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl TimesResponse {
     pub const PADDING_SIZE: usize =
-        LinuxDaemonMessage::PAYLOAD_SIZE - mem::size_of::<clock_t>() - mem::size_of::<tms>();
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<clock_t>() - mem::size_of::<tms>();
 
     fn new(elapsed: clock_t, buffer: tms) -> Self {
         Self {
@@ -92,22 +99,28 @@ impl TimesResponse {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    pub fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    pub fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, elapsed: clock_t, buffer: tms) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        elapsed: clock_t,
+        buffer: tms,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: TimesResponse = TimesResponse::new(elapsed, buffer);
-        let message: LinuxDaemonMessage =
-            LinuxDaemonMessage::new(LinuxDaemonMessageHeader::TimesResponse, message.into_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::TimesResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

@@ -16,8 +16,8 @@ use ::sys::{
         ErrorCode,
     },
     kcall::{
-        pm::sleep,
-        sched::sched_yield,
+        pm::__kcall_sleep,
+        sched::__kcall_sched_yield,
     },
 };
 
@@ -50,10 +50,10 @@ pub fn run() -> Result<(), StressError> {
             .map_err(|_| Error::new(ErrorCode::ValueOutOfRange, "round overflow"))?;
         let delay_micros: u64 = SLEEP_BASE_MICROS + (round_u64 & 0xF) * SLEEP_JITTER_MICROS;
         let duration: Duration = Duration::from_micros(delay_micros);
-        sleep(duration)?;
+        __kcall_sleep(duration)?;
 
         if round & 0x3 == 0 {
-            sched_yield()?;
+            __kcall_sched_yield()?;
         }
     }
 

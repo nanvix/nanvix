@@ -264,6 +264,11 @@ fn memory_footprint_32(source: &[u8]) -> Result<MemoryFootprint> {
 /// - The `destination` address is valid.
 /// - The `source` address is valid.
 /// - The `max_offset` is valid.
+/// - When the `nightly-performance-optimizations` feature is enabled, the `destination` memory
+///   is zero-filled. With that feature this function copies only `p_filesz` bytes per segment and
+///   does not zero the trailing BSS region (`p_memsz > p_filesz`); the caller must therefore
+///   guarantee that the destination memory is already zero. Without the feature the BSS region is
+///   zeroed explicitly and no such guarantee is required.
 ///
 #[allow(unsafe_op_in_unsafe_fn)]
 pub unsafe fn load(
@@ -366,7 +371,13 @@ unsafe fn load_32(
             let dst: *mut u8 = dst.add(vaddr);
             std::ptr::copy_nonoverlapping(src, dst, filesz);
 
-            // Zero out the BSS section.
+            // Zero out the BSS section (`p_memsz > p_filesz`).
+            //
+            // When the `nightly-performance-optimizations` feature is enabled this is skipped:
+            // the caller guarantees that the destination memory is already zero-filled (both
+            // supported VMM backends allocate zero-filled guest physical memory), so the
+            // trailing range is already zero and the explicit write would be redundant.
+            #[cfg(not(feature = "nightly-performance-optimizations"))]
             if memsz > filesz {
                 let bss_size: usize = memsz - filesz;
                 let bss_dst: *mut u8 = dst.add(filesz);
@@ -482,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn load_copies_segment_and_zeroes_bss() -> Result<()> {
+    fn load_copies_segment_and_handles_bss() -> Result<()> {
         let header_size: usize = mem::size_of::<Elf32Fhdr>();
         let phdr_size: usize = mem::size_of::<Elf32Phdr>();
         let segment_offset: usize = header_size + phdr_size;
@@ -510,7 +521,15 @@ mod tests {
         }
         image[segment_offset..segment_offset + filesz].copy_from_slice(&segment_data);
 
+        // The `load()` safety contract requires zero-filled destination memory when the
+        // `nightly-performance-optimizations` feature is enabled (the loader skips zeroing the
+        // BSS region and relies on the caller providing zeroed memory). Honor that precondition
+        // here. Without the feature, pre-fill with a sentinel (`0xaa`) so the test can verify that
+        // the loader explicitly zeroes the BSS region.
+        #[cfg(not(feature = "nightly-performance-optimizations"))]
         let mut memory: Vec<u8> = vec![0xaa; VADDR + memsz + 0x1000];
+        #[cfg(feature = "nightly-performance-optimizations")]
+        let mut memory: Vec<u8> = vec![0; VADDR + memsz + 0x1000];
         let destination: *mut c_void = memory.as_mut_ptr().cast::<c_void>();
 
         let (entry, first_address, size): (usize, usize, usize) =
@@ -520,6 +539,11 @@ mod tests {
         assert_eq!(first_address, VADDR);
         assert_eq!(size, memsz);
         assert_eq!(&memory[VADDR..VADDR + filesz], &segment_data);
+
+        // The loaded image must expose a zero-filled BSS region (`p_filesz..p_memsz`). By default
+        // the loader zeroes it explicitly; with the `nightly-performance-optimizations` feature it
+        // skips that write and relies on the caller-provided zeroed memory. Either way the range
+        // must read as zero.
         assert!(
             memory[VADDR + filesz..VADDR + memsz]
                 .iter()

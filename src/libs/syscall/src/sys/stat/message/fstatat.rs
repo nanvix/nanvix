@@ -7,12 +7,12 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessageHeader,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::String,
@@ -27,8 +27,14 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
-    pm::ThreadIdentifier,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::{
     limits::PATH_MAX,
@@ -192,6 +198,8 @@ impl MessagePartitioner for FileStatAtRequest {
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier.
+    /// - `message_type`: Message type.
     ///
     /// # Returns
     ///
@@ -202,15 +210,19 @@ impl MessagePartitioner for FileStatAtRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::FileStatAtRequestPart,
+            SystemCallMessageHeader::FileStatAtRequestPart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -386,6 +398,8 @@ impl MessagePartitioner for FileStatAtResponse {
     /// - `part_number`: Partition number.
     /// - `payload_size`: Payload size.
     /// - `payload`: Payload.
+    /// - `destination`: Process identifier.
+    /// - `message_type`: Message type.
     ///
     /// # Returns
     ///
@@ -396,15 +410,19 @@ impl MessagePartitioner for FileStatAtResponse {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_response(
+        SystemCallMessagePart::build_response(
             tid,
-            LinuxDaemonMessageHeader::FileStatAtResponsePart,
+            SystemCallMessageHeader::FileStatAtResponsePart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }

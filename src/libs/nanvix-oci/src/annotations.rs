@@ -27,7 +27,7 @@ pub const INITRD_ENV: &str = "com.nanvix.initrd.env";
 /// Maps to the `-ramfs <generated.img>` argument of `nanvixd`.
 pub const RAMFS_ROOT: &str = "com.nanvix.ramfs.root";
 
-/// Execution mode override (e.g., `"standalone"`, `"hyperlight"`).
+/// Execution mode override (e.g., `"standalone"`).
 /// If absent, the host-level default from `shim-config.toml` is used.
 pub const EXECUTION_MODE: &str = "com.nanvix.execution-mode";
 

@@ -23,78 +23,78 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: "Persist results to ${{ inputs.target-dir }}"
-    shell: bash
-    env:
-      BENCHMARKS: ${{ inputs.benchmarks }}
-      MACHINE_TYPES: ${{ inputs.machine-types }}
-      ARCHS: ${{ inputs.archs }}
-      TARGET_DIR: ${{ inputs.target-dir }}
-    run: |
-      set -e
-      mkdir -p "${TARGET_DIR}"
+    - name: "Persist results to ${{ inputs.target-dir }}"
+      shell: bash
+      env:
+        BENCHMARKS: ${{ inputs.benchmarks }}
+        MACHINE_TYPES: ${{ inputs.machine-types }}
+        ARCHS: ${{ inputs.archs }}
+        TARGET_DIR: ${{ inputs.target-dir }}
+      run: |
+        set -e
+        mkdir -p "${TARGET_DIR}"
 
-      python3 ./scripts/benchmark.py \
-        persist \
-        --benchmarks "${BENCHMARKS}" \
-        --machine-types "${MACHINE_TYPES}" \
-        --archs "${ARCHS}" \
-        --source-dir "$(pwd)" \
-        --target-dir "${TARGET_DIR}"
+        python3 ./scripts/benchmark.py \
+          persist \
+          --benchmarks "${BENCHMARKS}" \
+          --machine-types "${MACHINE_TYPES}" \
+          --archs "${ARCHS}" \
+          --source-dir "$(pwd)" \
+          --target-dir "${TARGET_DIR}"
 
-  - name: "Commit updated benchmark results"
-    shell: bash
-    env:
-      TARGET_DIR: ${{ inputs.target-dir }}
-    run: |
-      # NOTE: This check uses GITHUB_REF_NAME which equals the branch name
-      # on push events. On pull_request events it would be the PR branch,
-      # so this action must only be called from push-triggered jobs.
-      if [[ "$GITHUB_REF_NAME" != "dev" ]]; then
-        echo "Skipping benchmark persist commit: not on dev branch."
-        exit 0
-      fi
-
-      set -e
-      git config user.name "github-actions[bot]"
-      git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      # Ensure the remote URL uses SSH so that the deploy key configured
-      # at checkout time is used for authentication (the deploy key is a
-      # bypass actor for branch protection rules on dev).
-      git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
-
-      echo "Pulling latest changes..."
-      git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
-
-      # Stage AFTER pull --rebase. If git add ran before the pull, the
-      # autostash triggered by --autostash would stash the staged changes
-      # and pop them back WITHOUT preserving the index (git stash pop does
-      # not use --index), silently un-staging all our work and causing the
-      # git diff --cached check below to see nothing to commit.
-      git add "${TARGET_DIR}"
-
-      if git diff --cached --quiet; then
-        echo "No benchmark result changes to commit."
-      else
-        git commit --no-verify -m "data: update benchmark baseline results (${GITHUB_SHA}) [skip ci]"
-        echo "Pushing benchmark results..."
-        max_attempts=3
-        attempt=1
-        while [ $attempt -le $max_attempts ]; do
-          if git push --no-verify; then
-            echo "Push succeeded on attempt ${attempt}."
-            break
-          fi
-          echo "Push failed on attempt ${attempt}/${max_attempts}. Retrying..."
-          sleep $((attempt * 5))
-          # autostash is safe here: our changes are already committed, so
-          # there is nothing unstaged for stash pop to mishandle.
-          git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
-          attempt=$((attempt + 1))
-        done
-        if [ $attempt -gt $max_attempts ]; then
-          echo "ERROR: git push failed after ${max_attempts} attempts."
-          exit 1
+    - name: "Commit updated benchmark results"
+      shell: bash
+      env:
+        TARGET_DIR: ${{ inputs.target-dir }}
+      run: |
+        # NOTE: This check uses GITHUB_REF_NAME which equals the branch name
+        # on push events. On pull_request events it would be the PR branch,
+        # so this action must only be called from push-triggered jobs.
+        if [[ "$GITHUB_REF_NAME" != "dev" ]]; then
+          echo "Skipping benchmark persist commit: not on dev branch."
+          exit 0
         fi
-      fi
+
+        set -e
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        # Ensure the remote URL uses SSH so that the deploy key configured
+        # at checkout time is used for authentication (the deploy key is a
+        # bypass actor for branch protection rules on dev).
+        git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
+
+        echo "Pulling latest changes..."
+        git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
+
+        # Stage AFTER pull --rebase. If git add ran before the pull, the
+        # autostash triggered by --autostash would stash the staged changes
+        # and pop them back WITHOUT preserving the index (git stash pop does
+        # not use --index), silently un-staging all our work and causing the
+        # git diff --cached check below to see nothing to commit.
+        git add "${TARGET_DIR}"
+
+        if git diff --cached --quiet; then
+          echo "No benchmark result changes to commit."
+        else
+          git commit --no-verify -m "data: update benchmark baseline results (${GITHUB_SHA}) [skip ci]"
+          echo "Pushing benchmark results..."
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            if git push --no-verify; then
+              echo "Push succeeded on attempt ${attempt}."
+              break
+            fi
+            echo "Push failed on attempt ${attempt}/${max_attempts}. Retrying..."
+            sleep $((attempt * 5))
+            # autostash is safe here: our changes are already committed, so
+            # there is nothing unstaged for stash pop to mishandle.
+            git pull --rebase --autostash || { echo "ERROR: git pull --rebase failed."; exit 1; }
+            attempt=$((attempt + 1))
+          done
+          if [ $attempt -gt $max_attempts ]; then
+            echo "ERROR: git push failed after ${max_attempts} attempts."
+            exit 1
+          fi
+        fi

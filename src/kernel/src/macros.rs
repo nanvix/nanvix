@@ -30,6 +30,7 @@ pub static STDOUT_LOCK: Spinlock = Spinlock::new();
 ///
 /// A `&'static str` containing the function name, or `"<unknown>"` if extraction fails.
 ///
+#[cfg(not(verus_keep_ghost))]
 macro_rules! extract_function_name {
     () => {{
         let closure = || {};
@@ -61,20 +62,23 @@ macro_rules! extract_function_name {
 ///
 macro_rules! info{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Info {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Info,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Info {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Info,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -90,20 +94,23 @@ macro_rules! info{
 ///
 macro_rules! trace{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Trace {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Trace,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Trace {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Trace,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -119,20 +126,23 @@ macro_rules! trace{
 ///
 macro_rules! debug{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Debug {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Debug,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Debug {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Debug,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -148,20 +158,23 @@ macro_rules! debug{
 ///
 macro_rules! warn{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Warn {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Warn,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Warn {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Warn,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
@@ -177,25 +190,28 @@ macro_rules! warn{
 ///
 macro_rules! error{
 	( $($arg:tt)* ) => ({
-		#[cfg(feature = "smp")]
-		use crate::macros::STDOUT_LOCK;
-		use ::core::fmt::Write;
-		if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Error {
+		#[cfg(not(verus_keep_ghost))]
+		{
 			#[cfg(feature = "smp")]
-			let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
-			let _ = write!(
-				&mut crate::klog::Klog::get(
-					module_path!(),
-					crate::klog::KlogLevel::Error,
-					extract_function_name!()
-				),
-				$($arg)*
-			);
+			use crate::macros::STDOUT_LOCK;
+			use ::core::fmt::Write;
+			if crate::klog::MAX_LEVEL >= crate::klog::KlogLevel::Error {
+				#[cfg(feature = "smp")]
+				let _guard: crate::pm::sync::spinlock::SpinlockGuard = STDOUT_LOCK.lock();
+				let _ = write!(
+					&mut crate::klog::Klog::get(
+						module_path!(),
+						crate::klog::KlogLevel::Error,
+						extract_function_name!()
+					),
+					$($arg)*
+				);
+			}
 		}
 	})
 }
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 macro_rules! run_test {
     ($test_func:ident) => {{
         let result: bool = $test_func();

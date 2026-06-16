@@ -78,27 +78,208 @@ runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
-program = "./bin/arch-rust.elf"
+program = "./bin/arch-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/echo-rust-nostd.elf"
+name = "execv-small"
+program = "./bin/execv-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/execv-test.img"
+expected_output = "ok"
+expected_exit_code = 0
+
+# execv() of a large binary (target inflated to MEMORY_SIZE/8). Reuses the same caller, pointed at
+# a ramfs whose `/target` is the large program, to exercise loading a big image with no size cap.
+[[tests]]
+executor = "terminal"
+name = "execv-big"
+program = "./bin/execv-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/execv-big-test.img"
+expected_output = "ok"
+expected_exit_code = 0
+
+[[tests]]
+executor = "terminal"
+program = "./bin/echo-rust-nostd.initrd"
 input = '["hello"]'
 expected_output = "hello"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/thread-rust.elf"
+program = "./bin/thread-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/stress-rust.elf"
+program = "./bin/waitpid-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/linux-app.elf"
+program = "./bin/setenv-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/stress-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+expected_output = "ok"
+
+#===================================================================================================
+# HTTP Executor Tests
+#
+# HTTP mode is supported on Windows in single-tenant standalone deployments. The guest stdio
+# gateway is a named pipe, which has no half-close primitive; the gateway emulates one with an
+# in-band framed input direction so stdin-driven workloads (e.g. echo) receive EOF exactly as on
+# Linux. See doc/run-windows.md (HTTP Mode). The coverage below mirrors the Windows terminal
+# section; host mount tests are intentionally omitted because they have no HTTP counterpart even on
+# Linux.
+#===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "http"
+program = "./bin/test-mmio-fault.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 3
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "http"
+program = "./bin/vfs-test.elf"
+extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
+input = "[]"
+expect_empty_output = true
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "http"
+program = "./bin/arch-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/echo-rust-nostd.initrd"
+input = '["hello world!"]'
+expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/thread-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/waitpid-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/setenv-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/stress-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/linux-app.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+input = "[]"
+expected_output = "ok"
+
+#===================================================================================================
+# Host Mount Tests
+#===================================================================================================
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-fork-hostfs.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/test-fork-hostfs-data"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-multipart-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
+#===================================================================================================
+# Networking Tests
+#===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/network-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/network-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+expected_output = "ok"
+
+#===================================================================================================
+# Snapshot Save / Restore Tests
+#===================================================================================================
+
+[[tests]]
+executor = "snapshot-restore"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 32

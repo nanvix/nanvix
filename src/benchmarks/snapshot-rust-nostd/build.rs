@@ -19,6 +19,10 @@ use std::{
         Path,
         PathBuf,
     },
+    time::{
+        SystemTime,
+        UNIX_EPOCH,
+    },
 };
 
 //==================================================================================================
@@ -45,6 +49,31 @@ fn main() {
         let content = raw_content.replace("\n", "").replace(" ", "");
         println!("cargo:rustc-env=CONFIG={content}");
     }
+
+    //==============================================================================================
+    // Build-Time Seed for Random Walks
+    //==============================================================================================
+
+    // The seed introduces non-determinism between builds: callers can pin a specific seed by
+    // exporting `NANVIX_BENCH_SEED`; otherwise a fresh seed is derived from the current wall-clock
+    // time when the build script runs. The seed is baked into the binary at compile time, so a
+    // given binary always replays the same random walk.
+    println!("cargo:rerun-if-env-changed=NANVIX_BENCH_SEED");
+    let seed: String = env::var("NANVIX_BENCH_SEED").unwrap_or_else(|_| {
+        // Combine whole seconds and sub-second nanoseconds without a u128 -> u64 truncation cast.
+        // `as_secs()` is already u64, and `subsec_nanos()` is u32 (< 1e9, fits in u64). Wrapping
+        // arithmetic is intentional: any wall-clock time produces a non-trivial seed.
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| {
+                d.as_secs()
+                    .wrapping_mul(1_000_000_000)
+                    .wrapping_add(u64::from(d.subsec_nanos()))
+            })
+            .unwrap_or(0xDEADBEEFCAFEBABE_u64)
+            .to_string()
+    });
+    println!("cargo:rustc-env=NANVIX_BENCH_SEED={seed}");
 
     //==============================================================================================
     // Link Archive

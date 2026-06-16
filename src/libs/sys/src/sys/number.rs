@@ -2,6 +2,26 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// IDT vector used for the user→kernel call trap.
+///
+/// This vector is deliberately **not** `0x80`, because `0x80` collides with Linux's i386 syscall
+/// gate. Using `0x80` makes Nanvix user binaries accidentally "executable" on an x86_64 Linux host,
+/// where each `kcall*` turns into an arbitrary Linux syscall and the process exits in undefined
+/// ways. `0x81` is unused on Linux (and Windows), so a Nanvix binary run on such a host
+/// deterministically faults (`#GP` → `SIGSEGV`) instead of behaving unpredictably.
+///
+/// This constant is shared between the kernel IDT setup and the user-space kcall assembly so the
+/// two sides cannot drift apart.
+///
+pub const KCALL_VECTOR: u8 = 0x81;
+
+//==================================================================================================
 // Enums
 //==================================================================================================
 
@@ -17,6 +37,8 @@ pub enum KcallNumber {
     Debug = KcallNumber::NR_DEBUG_SYSCALL,
     /// Get process identifier.
     GetPid = KcallNumber::NR_GET_PID_SYSCALL,
+    /// Get parent process identifier.
+    GetPpid = KcallNumber::NR_GET_PPID_SYSCALL,
     /// Get thread identifier.
     GetTid = KcallNumber::NR_GET_TID_SYSCALL,
     /// Terminate the calling process.
@@ -85,6 +107,12 @@ pub enum KcallNumber {
     Pull = KcallNumber::NR_PULL_SYSCALL,
     /// Creates a snapshot of the virtual machine.
     Snapshot = KcallNumber::NR_SNAPSHOT_SYSCALL,
+    /// Detaches a thread so it is auto-harvested on exit.
+    DetachThread = KcallNumber::NR_DETACH_THREAD_SYSCALL,
+    /// Duplicates the calling process.
+    Duplicate = KcallNumber::NR_DUPLICATE_SYSCALL,
+    /// Replaces the image of the calling process.
+    Execv = KcallNumber::NR_EXECV_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -127,6 +155,10 @@ impl KcallNumber {
     const NR_PUSH_SYSCALL: u32 = 33;
     const NR_PULL_SYSCALL: u32 = 34;
     const NR_SNAPSHOT_SYSCALL: u32 = 35;
+    const NR_DETACH_THREAD_SYSCALL: u32 = 36;
+    const NR_DUPLICATE_SYSCALL: u32 = 37;
+    const NR_GET_PPID_SYSCALL: u32 = 38;
+    const NR_EXECV_SYSCALL: u32 = 39;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -136,6 +168,7 @@ impl From<u32> for KcallNumber {
         match value {
             Self::NR_DEBUG_SYSCALL => KcallNumber::Debug,
             Self::NR_GET_PID_SYSCALL => KcallNumber::GetPid,
+            Self::NR_GET_PPID_SYSCALL => KcallNumber::GetPpid,
             Self::NR_GET_TID_SYSCALL => KcallNumber::GetTid,
             Self::NR_EXIT_SYSCALL => KcallNumber::Exit,
             Self::NR_CAP_CTL_SYSCALL => KcallNumber::CapCtl,
@@ -170,6 +203,9 @@ impl From<u32> for KcallNumber {
             Self::NR_PUSH_SYSCALL => KcallNumber::Push,
             Self::NR_PULL_SYSCALL => KcallNumber::Pull,
             Self::NR_SNAPSHOT_SYSCALL => KcallNumber::Snapshot,
+            Self::NR_DETACH_THREAD_SYSCALL => KcallNumber::DetachThread,
+            Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
+            Self::NR_EXECV_SYSCALL => KcallNumber::Execv,
             _ => KcallNumber::Invalid,
         }
     }
@@ -181,6 +217,7 @@ impl From<KcallNumber> for u32 {
         match k {
             KcallNumber::Debug => KcallNumber::NR_DEBUG_SYSCALL,
             KcallNumber::GetPid => KcallNumber::NR_GET_PID_SYSCALL,
+            KcallNumber::GetPpid => KcallNumber::NR_GET_PPID_SYSCALL,
             KcallNumber::GetTid => KcallNumber::NR_GET_TID_SYSCALL,
             KcallNumber::Exit => KcallNumber::NR_EXIT_SYSCALL,
             KcallNumber::CapCtl => KcallNumber::NR_CAP_CTL_SYSCALL,
@@ -215,7 +252,27 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Push => KcallNumber::NR_PUSH_SYSCALL,
             KcallNumber::Pull => KcallNumber::NR_PULL_SYSCALL,
             KcallNumber::Snapshot => KcallNumber::NR_SNAPSHOT_SYSCALL,
+            KcallNumber::DetachThread => KcallNumber::NR_DETACH_THREAD_SYSCALL,
+            KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
+            KcallNumber::Execv => KcallNumber::NR_EXECV_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The kcall trap vector must never be `0x80`, because that vector collides with the Linux
+    /// i386 syscall gate and makes Nanvix user binaries behave unpredictably when run on a Linux
+    /// host. See the module-level documentation of [`KCALL_VECTOR`] for details.
+    #[test]
+    fn test_kcall_vector_avoids_linux_syscall_gate() {
+        assert_ne!(KCALL_VECTOR, 0x80);
     }
 }

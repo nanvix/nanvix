@@ -9,7 +9,7 @@
 //! ## Scenario
 //!
 //! User-mode code may set DF=1 via the `std` instruction.  If a kernel call
-//! (`int 0x80`) fires while DF is set and the kernel does not clear it, the
+//! (`int 0x81`) fires while DF is set and the kernel does not clear it, the
 //! kernel's Rust handlers run with DF=1.  Compiler-generated `rep movsl`
 //! instructions (used for struct copies in debug builds) then copy memory
 //! **backwards**, silently corrupting scheduler linked-list nodes and heap
@@ -50,7 +50,7 @@ const STRESS_ITERATIONS: u32 = 256;
 /// Sets the x86 direction flag (DF=1) via the `std` instruction.
 ///
 /// After this call, `rep movsb`/`rep movsl` will copy **backwards**.  Only thin kcall wrappers
-/// (whose body is a single `int 0x80` instruction) may be called while DF=1; the kernel clears DF
+/// (whose body is a single `int 0x81` instruction) may be called while DF=1; the kernel clears DF
 /// on entry, so the flag never leaks into compiler-generated code.  The caller must call
 /// `clear_df()` before returning to general Rust code.
 ///
@@ -160,7 +160,7 @@ fn test_gettime_with_df_set() -> Result<(), Error> {
     let mut time: SystemTime = SystemTime::EPOCH;
 
     set_df();
-    let result: Result<(), Error> = pm::gettime(&mut time);
+    let result: Result<(), Error> = pm::__kcall_gettime(&mut time);
     clear_df();
 
     result?;
@@ -189,7 +189,7 @@ fn test_gettime_with_df_set() -> Result<(), Error> {
 /// leading to a triple fault or data corruption.
 fn test_yield_with_df_set() -> Result<(), Error> {
     set_df();
-    let result: Result<(), Error> = sched::sched_yield();
+    let result: Result<(), Error> = sched::__kcall_sched_yield();
     clear_df();
 
     result
@@ -204,7 +204,7 @@ fn test_debug_with_df_set() -> Result<(), Error> {
     let msg: &[u8] = b"direction_flag: df-test probe";
 
     set_df();
-    let result: Result<(), Error> = debug::debug(msg.as_ptr(), msg.len());
+    let result: Result<(), Error> = debug::__kcall_debug(msg.as_ptr(), msg.len());
     clear_df();
 
     result
@@ -220,7 +220,7 @@ fn test_debug_with_df_set() -> Result<(), Error> {
 fn test_stress_yield_with_df_set() -> Result<(), Error> {
     for i in 0..STRESS_ITERATIONS {
         set_df();
-        let result: Result<(), Error> = sched::sched_yield();
+        let result: Result<(), Error> = sched::__kcall_sched_yield();
         clear_df();
 
         if let Err(e) = result {

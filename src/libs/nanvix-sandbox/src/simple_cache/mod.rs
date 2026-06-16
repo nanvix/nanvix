@@ -8,18 +8,6 @@
 //! for use when the Linux Daemon and User VM are embedded within the same process.
 
 //==================================================================================================
-// Public Modules
-//==================================================================================================
-
-pub mod config;
-
-//==================================================================================================
-// Exports
-//==================================================================================================
-
-pub use self::config::SimpleSandboxCacheConfig;
-
-//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -27,13 +15,13 @@ use crate::{
     control_plane_sockaddr_builder,
     gateway_sockaddr_builder,
     linuxd::LinuxDaemon,
-    ControlPlaneAcceptor,
     syscomm::{
         SocketListener,
         SocketType,
         UnboundSocket,
     },
     user_vm_sockaddr_builder,
+    ControlPlaneAcceptor,
     InitializedSandbox,
     RunningSandbox,
     SandboxConfig,
@@ -41,6 +29,8 @@ use crate::{
     UninitializedSandbox,
     UserVmIdentifier,
 };
+pub use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
+
 use ::anyhow::Result;
 use ::log::{
     debug,
@@ -156,12 +146,11 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 },
             };
 
-        let control_plane_acceptor: Arc<ControlPlaneAcceptor> =
-            ControlPlaneAcceptor::new(
-                control_plane_bind_socket,
-                control_plane_bind_sockaddr,
-                control_plane_bind_socket_type,
-            );
+        let control_plane_acceptor: Arc<ControlPlaneAcceptor> = ControlPlaneAcceptor::new(
+            control_plane_bind_socket,
+            control_plane_bind_sockaddr,
+            control_plane_bind_socket_type,
+        );
 
         Ok(Arc::new(Mutex::new(Self {
             config,
@@ -223,10 +212,8 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 sandbox.gateway_socket_info().1,
             )),
             _ => {
-                let control_plane_acceptor: Arc<ControlPlaneAcceptor> = self
-                    .control_plane_acceptor
-                    .clone()
-                    .ok_or_else(|| {
+                let control_plane_acceptor: Arc<ControlPlaneAcceptor> =
+                    self.control_plane_acceptor.clone().ok_or_else(|| {
                         let reason: &str = "control plane acceptor not initialized";
                         error!("get(): {reason}");
                         anyhow::anyhow!(reason)
@@ -285,8 +272,7 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 #[cfg(feature = "single-process")]
                 let syscall_table = self.config.syscall_table();
 
-                let toolchain_binary_directory =
-                    Some(self.config.toolchain_binary_directory().to_string());
+                let clh_bin_path = Some(self.config.clh_bin_path().to_string());
 
                 let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.tenant_id(),
@@ -307,9 +293,10 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                         control_plane_connect_sockaddr.clone(),
                         self.config.control_plane_sockaddr_type(),
                     ),
-                    toolchain_binary_directory,
+                    clh_bin_path,
                     Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
                     Some(false), // l2 (not supported in single-process/standalone)
+                    self.config.networking_mode().is_enabled(),
                 );
 
                 let uninitialized_sandbox: UninitializedSandbox<T> =

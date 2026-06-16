@@ -198,6 +198,15 @@ pub struct Elf32Fhdr {
 pub type Elf32Ehdr = Elf32Fhdr;
 
 impl Elf32Fhdr {
+    /// Size of the ELF32 file header in bytes.
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+    /// Byte offset of `e_shoff` within the file header.
+    pub const OFFSET_E_SHOFF: usize = core::mem::offset_of!(Self, e_shoff);
+    /// Byte offset of `e_shentsize` within the file header.
+    pub const OFFSET_E_SHENTSIZE: usize = core::mem::offset_of!(Self, e_shentsize);
+    /// Byte offset of `e_shnum` within the file header.
+    pub const OFFSET_E_SHNUM: usize = core::mem::offset_of!(Self, e_shnum);
+
     ///
     /// # Description
     ///
@@ -320,6 +329,135 @@ impl Elf32Phdr {
             return Err("segment file size exceeds memory size");
         }
         Ok(())
+    }
+}
+
+//==================================================================================================
+// Section Header Types
+//==================================================================================================
+
+/// Symbol table section.
+pub const SHT_SYMTAB: u32 = 2;
+/// String table section.
+pub const SHT_STRTAB: u32 = 3;
+/// Dynamic symbol table section.
+pub const SHT_DYNSYM: u32 = 11;
+
+//==================================================================================================
+// Symbol Types (low 4 bits of `st_info`)
+//==================================================================================================
+
+/// Mask for extracting the symbol type from `st_info`.
+pub const ST_TYPE_MASK: u8 = 0xf;
+/// No type.
+pub const STT_NOTYPE: u8 = 0;
+/// Data object.
+pub const STT_OBJECT: u8 = 1;
+/// Function entry point.
+pub const STT_FUNC: u8 = 2;
+
+//==================================================================================================
+// Symbol Bindings (high 4 bits of `st_info`)
+//==================================================================================================
+
+/// Right-shift required to extract the symbol binding from `st_info`.
+pub const ST_BIND_SHIFT: u8 = 4;
+/// Local symbol — not visible outside the object file containing its definition.
+pub const STB_LOCAL: u8 = 0;
+/// Global symbol — visible to all object files being combined.
+pub const STB_GLOBAL: u8 = 1;
+/// Weak symbol — resembles a global symbol but has lower precedence. Per the System V ABI
+/// (gABI, chapter "Symbol Table"), an undefined weak symbol that cannot be resolved at
+/// dynamic-link time is taken to have address zero (or `NULL` for function symbols). This
+/// is the contract every mainstream ELF dynamic loader (glibc, musl, FreeBSD `rtld-elf`,
+/// Android Bionic) implements, and which our `dlfcn` loader honours.
+pub const STB_WEAK: u8 = 2;
+
+//==================================================================================================
+// ELF32 Section Header
+//==================================================================================================
+
+/// ELF32 section header.
+#[repr(C)]
+pub struct Elf32Shdr {
+    /// Section name (index into section header string table).
+    pub sh_name: u32,
+    /// Section type.
+    pub sh_type: u32,
+    /// Section flags.
+    pub sh_flags: u32,
+    /// Virtual address of the section in memory.
+    pub sh_addr: u32,
+    /// Offset of the section in the file.
+    pub sh_offset: u32,
+    /// Size of the section in bytes.
+    pub sh_size: u32,
+    /// Section header table index link.
+    pub sh_link: u32,
+    /// Extra information depending on the section type.
+    pub sh_info: u32,
+    /// Address alignment constraint.
+    pub sh_addralign: u32,
+    /// Size of each entry for fixed-size entry sections.
+    pub sh_entsize: u32,
+}
+
+impl Elf32Shdr {
+    /// Size of an ELF32 section header entry in bytes.
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+    /// Byte offset of `sh_type` within the section header.
+    pub const OFFSET_SH_TYPE: usize = core::mem::offset_of!(Self, sh_type);
+    /// Byte offset of `sh_offset` within the section header.
+    pub const OFFSET_SH_OFFSET: usize = core::mem::offset_of!(Self, sh_offset);
+    /// Byte offset of `sh_size` within the section header.
+    pub const OFFSET_SH_SIZE: usize = core::mem::offset_of!(Self, sh_size);
+    /// Byte offset of `sh_link` within the section header.
+    pub const OFFSET_SH_LINK: usize = core::mem::offset_of!(Self, sh_link);
+    /// Byte offset of `sh_entsize` within the section header.
+    pub const OFFSET_SH_ENTSIZE: usize = core::mem::offset_of!(Self, sh_entsize);
+}
+
+//==================================================================================================
+// ELF32 Symbol Table Entry
+//==================================================================================================
+
+/// ELF32 symbol table entry.
+#[repr(C)]
+pub struct Elf32Sym {
+    /// Symbol name (index into string table).
+    pub st_name: u32,
+    /// Symbol value.
+    pub st_value: u32,
+    /// Symbol size.
+    pub st_size: u32,
+    /// Symbol type and binding attributes.
+    pub st_info: u8,
+    /// Reserved (unused).
+    pub st_other: u8,
+    /// Section header table index.
+    pub st_shndx: u16,
+}
+
+impl Elf32Sym {
+    /// Size of an ELF32 symbol table entry in bytes.
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+    /// Byte offset of `st_name` within the symbol entry.
+    pub const OFFSET_ST_NAME: usize = core::mem::offset_of!(Self, st_name);
+    /// Byte offset of `st_value` within the symbol entry.
+    pub const OFFSET_ST_VALUE: usize = core::mem::offset_of!(Self, st_value);
+    /// Byte offset of `st_size` within the symbol entry.
+    pub const OFFSET_ST_SIZE: usize = core::mem::offset_of!(Self, st_size);
+    /// Byte offset of `st_info` within the symbol entry.
+    pub const OFFSET_ST_INFO: usize = core::mem::offset_of!(Self, st_info);
+
+    /// Returns the symbol type (low 4 bits of `st_info`).
+    pub fn st_type(&self) -> u8 {
+        self.st_info & ST_TYPE_MASK
+    }
+
+    /// Returns the symbol binding (high 4 bits of `st_info`).
+    pub fn st_bind(&self) -> u8 {
+        self.st_info >> ST_BIND_SHIFT
     }
 }
 

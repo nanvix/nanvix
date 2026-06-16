@@ -14,12 +14,19 @@ homepage.workspace = true
 name = "kernel"
 path = "src/kmain.rs"
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
 arch = { workspace = true }
+vstd = { workspace = true }
 bitmap = { workspace = true }
 bump-allocator = { workspace = true }
 cfg-if = { workspace = true }
+error = { workspace = true, features = ["verus"] }
+cmdline = { workspace = true }
 config = { workspace = true, optional = true }
+koptions = { workspace = true }
 elf = { workspace = true }
 mmio-tag = { workspace = true }
 no_fail = { workspace = true }
@@ -28,8 +35,6 @@ raw-array = { workspace = true }
 slab = { workspace = true }
 sorted-vec = { workspace = true }
 sys = { workspace = true }
-hyperlight-common = { workspace = true, optional = true }
-hyperlight-guest = { workspace = true, optional = true }
 multibin = { workspace = true, optional = true }
 static_assert = { workspace = true }
 
@@ -40,17 +45,6 @@ build-utils = { workspace = true }
 default = ["microvm"]
 
 # Machine Types
-hyperlight = [
-    "arch/hyperlight",
-    "puts",
-    "stdio",
-    "pit",
-    "dep:hyperlight-common",
-    "dep:hyperlight-guest",
-    "dep:config",
-    "dep:multibin",
-    "config/hyperlight",
-]
 microvm = [
     "arch/microvm",
     "putb",
@@ -59,6 +53,7 @@ microvm = [
     "dep:config",
     "dep:multibin",
     "config/microvm",
+    "exception-stack-guard",
 ]
 # Platform Features
 
@@ -69,8 +64,14 @@ putb = []
 puts = []
 stdio = []
 
+# Enables the dynamic exception stack guard.
+exception-stack-guard = []
+
 # Enables latest performance optimizations.
 nightly-performance-optimizations = []
+
+# Testing
+test = []
 
 # Interface Features
 kcall = []

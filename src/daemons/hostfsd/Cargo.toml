@@ -1,0 +1,35 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "hostfsd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Host Filesystem Daemon"
+homepage.workspace = true
+
+[lib]
+name = "hostfsd"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+hostfs-api = { workspace = true, features = ["std"] }
+log = { workspace = true }
+sys = { workspace = true, features = ["std"] }
+sysapi = { workspace = true, features = ["std"] }
+syscall = { workspace = true, default-features = false }
+syslog = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+hostfs-api = { workspace = true, features = ["test-support"] }
+sysapi = { workspace = true, features = ["std"] }
+tempfile = { workspace = true }
+
+[features]
+default = []
+
+[lints]
+workspace = true

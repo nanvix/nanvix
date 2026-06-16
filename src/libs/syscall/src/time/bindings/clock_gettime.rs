@@ -49,7 +49,7 @@ pub unsafe extern "C" fn clock_gettime(clock_id: clockid_t, tp: *mut timespec) -
     match crate::time::clock_gettime(clock_id, &mut tp) {
         Ok(_) => 0,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "clock_gettime(): failed (clock_id={:?}, tp={:?}, error={:?})",
                 clock_id,
                 tp,

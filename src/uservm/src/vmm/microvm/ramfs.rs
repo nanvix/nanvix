@@ -13,8 +13,11 @@ use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::log::{
     error,
+    info,
     trace,
+    warn,
 };
+use ::multiimage::MultiImageLayout;
 #[cfg(target_os = "linux")]
 use ::std::fs::Metadata;
 use ::std::{
@@ -189,10 +192,13 @@ impl RamFs {
         &self,
         vmem: &mut VirtualMemory,
         initrd_end: usize,
+        extra_remap_regions: &[(usize, &File)],
     ) -> Result<(usize, usize)> {
         trace!(
-            "RamFs::load_into_virtual_memory(): path={:?}, initrd_end={:#010x}",
-            self.path, initrd_end
+            "RamFs::load_into_virtual_memory(): path={:?}, initrd_end={:#010x}, extra_regions={}",
+            self.path,
+            initrd_end,
+            extra_remap_regions.len()
         );
 
         let ramfs_size: usize = self.ramfs_size();
@@ -270,7 +276,42 @@ impl RamFs {
         }
 
         // Transfer RAMFS data into guest memory.
-        self.map_file_into_guest(vmem, ramfs_base)?;
+        if extra_remap_regions.is_empty() {
+            // Standard path: single-file remap for just the ramfs.
+            self.map_file_into_guest(vmem, ramfs_base)?;
+        } else {
+            // Combined zero-copy path: remap extra files (e.g. initrd) + ramfs together.
+            let mut regions: Vec<(usize, &File)> = extra_remap_regions.to_vec();
+            regions.push((ramfs_base, &self.file));
+            vmem.remap_files_at(&regions)?;
+
+            // Prefault ramfs pages after the combined remap.
+            cfg_if::cfg_if! {
+                if #[cfg(target_os = "linux")] {
+                    vmem.madvise_at(ramfs_base, ramfs_size, ::libc::MADV_POPULATE_READ)
+                        .unwrap_or_else(|e| {
+                            warn!(
+                                "RamFs::load_into_virtual_memory(): MADV_POPULATE_READ failed \
+                                 ({e}), falling back to MADV_WILLNEED"
+                            );
+                            vmem.madvise_at(ramfs_base, ramfs_size, ::libc::MADV_WILLNEED)
+                                .unwrap_or_else(|e2| {
+                                    warn!(
+                                        "RamFs::load_into_virtual_memory(): MADV_WILLNEED \
+                                         fallback also failed: {e2}"
+                                    );
+                                });
+                        });
+                } else if #[cfg(target_os = "windows")] {
+                    vmem.prefault_at(ramfs_base, ramfs_size)
+                        .unwrap_or_else(|e| {
+                            warn!(
+                                "RamFs::load_into_virtual_memory(): prefault_at failed: {e}"
+                            );
+                        });
+                }
+            }
+        }
 
         trace!(
             "RamFs::load_into_virtual_memory(): loaded ramfs (path={:?}, base={:#010x}, \
@@ -289,9 +330,12 @@ impl RamFs {
     /// # Note
     ///
     /// The RAMFS registers at GPA `0xC` and GPA `0x10` fall inside the kernel ELF's `.zero`
-    /// section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`). The ELF loader zero-fills
-    /// this range when `load_kernel()` runs. This method must therefore execute **after** the
-    /// ELF has been loaded, so that the VMM-written values are not overwritten.
+    /// section (`LOAD` segment at GPA `0x0` with `MemSiz=0x8000`), which `load_kernel()`
+    /// zero-fills by default. This method must therefore execute **after** the ELF has been
+    /// loaded, so that the VMM-written values are not overwritten. (With the
+    /// `nightly-performance-optimizations` feature the loader skips that zeroing and relies on
+    /// the freshly allocated guest memory already being zero, but running after `load_kernel()`
+    /// remains correct.)
     ///
     /// # Parameters
     ///
@@ -368,6 +412,373 @@ impl RamFs {
             anyhow::anyhow!(reason)
         })?;
 
+        // Advise the host OS to prefault ramfs pages, reducing page-fault stalls
+        // during guest execution.
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                // MADV_POPULATE_READ synchronously faults in file-backed pages as read-only,
+                // which avoids copy-on-write on MAP_PRIVATE mappings. This is strictly stronger
+                // than MADV_WILLNEED (advisory only) and ensures all pages are host-resident
+                // before the guest starts, so KVM EPT faults resolve without blocking on I/O.
+                // Available since Linux 5.14; fall back to MADV_WILLNEED on older kernels.
+                vmem.madvise_at(base, self.ramfs_size(), ::libc::MADV_POPULATE_READ)
+                    .unwrap_or_else(|e| {
+                        warn!(
+                            "RamFs::map_file_into_guest(): MADV_POPULATE_READ failed ({e}), \
+                             falling back to MADV_WILLNEED"
+                        );
+                        vmem.madvise_at(base, self.ramfs_size(), ::libc::MADV_WILLNEED)
+                            .unwrap_or_else(|e2| {
+                                warn!(
+                                    "RamFs::map_file_into_guest(): MADV_WILLNEED fallback \
+                                     also failed: {e2}"
+                                );
+                            });
+                    });
+            } else if #[cfg(target_os = "windows")] {
+                // PrefetchVirtualMemory is the Windows equivalent of MADV_WILLNEED:
+                // it brings backing pages into physical memory ahead of time.
+                vmem.prefault_at(base, self.ramfs_size())
+                    .unwrap_or_else(|e| {
+                        warn!("RamFs::map_file_into_guest(): prefault_at failed: {e}");
+                    });
+            }
+        }
+
         Ok(())
+    }
+}
+
+//==================================================================================================
+// Multi-Image RAMFS
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Encapsulates a multi-image RAMFS layout comprising a HEAD page and one or more sub-image files.
+///
+/// Instead of creating a single concatenated file on disk, this struct holds the pre-built HEAD
+/// page and open file handles for each sub-image. The VMM backends map each file directly into
+/// guest memory (zero-copy) at the offsets computed by the multi-image layout.
+///
+#[derive(Debug)]
+pub struct MultiRamFs {
+    /// Pre-built HEAD page bytes (header + entries).
+    head_page: std::vec::Vec<u8>,
+    /// Open file handles paired with their guest memory offset (relative to ramfs_base).
+    files: std::vec::Vec<(File, usize)>,
+    /// Total size of the multi-image container (HEAD + all page-aligned sub-images).
+    total_size: usize,
+}
+
+impl MultiRamFs {
+    ///
+    /// # Description
+    ///
+    /// Opens all sub-image files described by the layout and prepares them for zero-copy
+    /// mapping into guest memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `layout`: The multi-image layout produced by [`multiimage::compute_multiimage_layout`].
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns a `MultiRamFs` descriptor. Otherwise, returns an error.
+    ///
+    pub fn open(layout: MultiImageLayout) -> Result<Self> {
+        trace!(
+            "MultiRamFs::open(): {} regions, total_size={}",
+            layout.regions.len(),
+            layout.total_size
+        );
+
+        let mut files: std::vec::Vec<(File, usize)> =
+            std::vec::Vec::with_capacity(layout.regions.len());
+
+        for region in &layout.regions {
+            let file: File = File::open(&region.path).map_err(|e| {
+                let reason: String =
+                    format!("failed to open sub-image (path={:?}, error={e:?})", region.path);
+                error!("MultiRamFs::open(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+
+            // Validate that the file size matches what the layout expects.
+            let actual_size: u64 = file
+                .metadata()
+                .map_err(|e| {
+                    let reason: String = format!(
+                        "failed to query sub-image metadata (path={:?}, error={e:?})",
+                        region.path
+                    );
+                    error!("MultiRamFs::open(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?
+                .len();
+
+            if actual_size != region.size as u64 {
+                let reason: String = format!(
+                    "sub-image size changed since layout was computed (path={:?}, expected={}, \
+                     actual={actual_size})",
+                    region.path, region.size
+                );
+                error!("MultiRamFs::open(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            files.push((file, region.offset));
+        }
+
+        Ok(Self {
+            head_page: layout.head_page,
+            files,
+            total_size: layout.total_size,
+        })
+    }
+
+    /// Returns the total page-aligned size of the multi-image container.
+    fn total_size(&self) -> usize {
+        self.total_size
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Loads this multi-image RAMFS near the end of guest memory, writing the HEAD page and
+    /// memory-mapping each sub-image file at its computed offset (zero-copy).
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory that will host the RAMFS.
+    /// - `initrd_end`: The first byte immediately after the initrd contents in guest memory.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, returns the guest-physical base address and total size where the RAMFS
+    /// was loaded. Otherwise, returns an error.
+    ///
+    pub fn load_into_virtual_memory(
+        &self,
+        vmem: &mut VirtualMemory,
+        initrd_end: usize,
+        extra_remap_regions: &[(usize, &File)],
+    ) -> Result<(usize, usize)> {
+        trace!(
+            "MultiRamFs::load_into_virtual_memory(): total_size={}, initrd_end={:#010x}, \
+             extra_regions={}",
+            self.total_size,
+            initrd_end,
+            extra_remap_regions.len()
+        );
+
+        let ramfs_size: usize = self.total_size();
+        let memory_size: usize = vmem.get_size();
+
+        if !ramfs_size.is_multiple_of(PAGE_SIZE) {
+            let reason: String = format!(
+                "multi-image total size is not page-aligned (total_size={ramfs_size}, \
+                 page_size={PAGE_SIZE})"
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        if ramfs_size > memory_size {
+            let reason: String = format!(
+                "multi-image exceeds guest memory size (total_size={ramfs_size}, \
+                 memory_size={memory_size})"
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let min_available_base: usize = match initrd_end.checked_add(RAMFS_MIN_SLACK_BYTES) {
+            Some(value) => value,
+            None => {
+                let reason: &str = "overflow while computing required ramfs slack";
+                error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        if min_available_base > memory_size {
+            let reason: String = format!(
+                "guest memory ({memory_size}) is smaller than initrd end plus slack \
+                 ({min_available_base})",
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        let ramfs_base: usize = match memory_size.checked_sub(ramfs_size) {
+            Some(base) => base,
+            None => {
+                let reason: String = format!(
+                    "multi-image does not fit in guest memory (total_size={ramfs_size}, \
+                     memory_size={memory_size})",
+                );
+                error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+                anyhow::bail!(reason)
+            },
+        };
+
+        debug_assert!(
+            ramfs_base.is_multiple_of(PAGE_SIZE),
+            "ramfs_base ({ramfs_base:#x}) must be page-aligned"
+        );
+
+        if ramfs_base < min_available_base {
+            let available: usize = match memory_size.checked_sub(min_available_base) {
+                Some(value) => value,
+                None => {
+                    let reason: &str = "underflow while computing available guest memory for ramfs";
+                    error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+                    anyhow::bail!(reason)
+                },
+            };
+            let reason: String = format!(
+                "multi-image conflicts with initrd requirements (total_size={ramfs_size}, \
+                 available_for_ramfs={available}, required_slack={} bytes)",
+                RAMFS_MIN_SLACK_BYTES,
+            );
+            error!("MultiRamFs::load_into_virtual_memory(): {reason}");
+            anyhow::bail!(reason)
+        }
+
+        // Build the list of file-backed regions, prepending any extra remap regions
+        // (e.g. initrd) so they are included in a single combined remap.
+        let mut regions: std::vec::Vec<(usize, &File)> = extra_remap_regions.to_vec();
+        regions.extend(
+            self.files
+                .iter()
+                .map(|(file, offset)| (ramfs_base + offset, file)),
+        );
+
+        // When extra regions are present, the HEAD page at ramfs_base falls inside the
+        // freed placeholder range and is destroyed by remap_files_at. Write it BEFORE
+        // the remap only when there are no extra regions (the head [0..split_start) is
+        // preserved); otherwise write it AFTER, into the re-committed gap.
+        if extra_remap_regions.is_empty() {
+            vmem.write_bytes(ramfs_base as u64, &self.head_page)?;
+            info!(
+                "MultiRamFs::load_into_virtual_memory(): wrote HEAD page at {:#010x} (before \
+                 remap)",
+                ramfs_base
+            );
+        }
+
+        vmem.remap_files_at(&regions)?;
+
+        if !extra_remap_regions.is_empty() {
+            vmem.write_bytes(ramfs_base as u64, &self.head_page)?;
+            info!(
+                "MultiRamFs::load_into_virtual_memory(): wrote HEAD page at {:#010x} (after remap)",
+                ramfs_base
+            );
+        }
+
+        for &(guest_addr, _) in &regions {
+            trace!(
+                "MultiRamFs::load_into_virtual_memory(): mapped sub-image at {:#010x}",
+                guest_addr
+            );
+        }
+
+        info!(
+            "MultiRamFs::load_into_virtual_memory(): loaded multi-image (base={:#010x}, \
+             size={ramfs_size})",
+            ramfs_base
+        );
+
+        Ok((ramfs_base, ramfs_size))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Extracts the open file handles from this `MultiRamFs`, consuming it.
+    ///
+    /// The returned files must be kept alive for the VM's lifetime so that the memory-mapped
+    /// regions remain valid.
+    ///
+    pub fn into_files(self) -> std::vec::Vec<File> {
+        self.files.into_iter().map(|(file, _offset)| file).collect()
+    }
+}
+
+//==================================================================================================
+// Shared RAMFS Loading
+//==================================================================================================
+
+/// Result of [`load_ramfs`]: describes which RAMFS variant was loaded into guest memory so
+/// that the caller can keep the appropriate file handles alive for the VM's lifetime.
+pub enum LoadedRamFs {
+    /// No RAMFS was loaded (`-ramfs` was not specified).
+    None,
+    /// A single-image RAMFS was loaded via the legacy path.
+    Single {
+        /// The opened RAMFS descriptor (keeps the file handle alive).
+        ramfs: RamFs,
+        /// Guest-physical base address of the RAMFS.
+        base: usize,
+        /// Size in bytes.
+        size: usize,
+    },
+}
+
+impl LoadedRamFs {
+    /// Returns the guest-physical region `(base, size)` if any RAMFS was loaded.
+    pub fn region(&self) -> Option<(usize, usize)> {
+        match self {
+            Self::None => None,
+            Self::Single { base, size, .. } => Some((*base, *size)),
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Loads a RAMFS image into guest memory. This shared helper eliminates duplication between the
+/// KVM and WHP backends.
+///
+/// When `ramfs_filename` is `Some`, opens the image and maps it into guest memory.
+/// When `None`, returns [`LoadedRamFs::None`].
+///
+/// The caller is responsible for keeping the returned file handles alive for the VM's lifetime
+/// (e.g., via `VirtualMemory::attach_ramfs`).
+///
+/// # Parameters
+///
+/// - `vmem`: Guest virtual memory to load the RAMFS into.
+/// - `initrd_end`: First byte after the initrd in guest memory.
+/// - `ramfs_filename`: Optional path to a single RAMFS image.
+/// - `extra_remap_regions`: Additional file-backed regions (e.g. initrd) to include in the
+///   combined zero-copy remap. Pass `&[]` when no extra regions are needed.
+///
+/// # Returns
+///
+/// On success, returns a [`LoadedRamFs`] describing what was loaded and any file handles that
+/// must be kept alive. On failure, returns an error.
+///
+pub fn load_ramfs(
+    vmem: &mut VirtualMemory,
+    initrd_end: usize,
+    ramfs_filename: Option<&str>,
+    extra_remap_regions: &[(usize, &File)],
+) -> Result<LoadedRamFs> {
+    if let Some(ramfs_filename) = ramfs_filename {
+        let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
+        let (ramfs_base, ramfs_size) =
+            ramfs.load_into_virtual_memory(vmem, initrd_end, extra_remap_regions)?;
+        Ok(LoadedRamFs::Single {
+            ramfs,
+            base: ramfs_base,
+            size: ramfs_size,
+        })
+    } else {
+        Ok(LoadedRamFs::None)
     }
 }

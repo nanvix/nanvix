@@ -7,6 +7,9 @@
 
 use sys::mm::Alignment;
 
+#[allow(unused_imports)]
+use ::vstd::prelude::*;
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -21,8 +24,23 @@ pub const WORD_SIZE: usize = ::core::mem::size_of::<u32>();
 ///
 /// # Description
 ///
+/// Alignment for a word.
+///
+pub const WORD_ALIGNMENT: Alignment = Alignment::Align4;
+
+///
+/// # Description
+///
+/// Log2 WORD_SIZE
+///
+pub const WORD_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
+
+///
+/// # Description
+///
 /// Log2 PAGE_SIZE
 ///
+#[verus_verify]
 pub const PAGE_SHIFT: usize = 12;
 
 ///
@@ -30,7 +48,10 @@ pub const PAGE_SHIFT: usize = 12;
 ///
 /// Number of bytes in a page.
 ///
-pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
+#[verus_verify]
+pub const PAGE_SIZE: usize = 4096;
+// Compile-time check that the literal matches the shift-based definition.
+::static_assert::assert_eq!(PAGE_SIZE == 1 << PAGE_SHIFT);
 
 ///
 /// # Description
@@ -44,11 +65,7 @@ pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
 ///
 /// Log2 [`PGTAB_SIZE`].
 ///
-#[cfg(target_arch = "x86")]
 pub const PGTAB_SHIFT: usize = 22;
-/// Log2 [`PGTAB_SIZE`].
-#[cfg(target_arch = "x86_64")]
-pub const PGTAB_SHIFT: usize = 21;
 
 ///
 /// # Description
@@ -104,8 +121,11 @@ pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 ///
 /// Alignment for a page table.
 ///
-#[cfg(target_arch = "x86")]
 pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align4194304;
-/// Alignment for a page table.
-#[cfg(target_arch = "x86_64")]
-pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align2097152;
+
+///
+/// # Description
+///
+/// Stack alignment mandated by the System V ABI.
+///
+pub const STACK_ALIGNMENT: Alignment = Alignment::Align16;

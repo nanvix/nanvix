@@ -5,29 +5,30 @@
 // Imports
 //==================================================================================================
 
-use ::alloc::string::String;
-use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::{
-            LinuxDaemonLongMessage,
-            LinuxDaemonMessagePart,
-            MessagePartitioner,
-        },
-        unistd::message::{
-            GetCurrentWorkingDirectoryRequest,
-            GetCurrentWorkingDirectoryResponse,
-        },
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
+use crate::{
+    message::{
+        MessagePartitioner,
+        SystemCallLongMessage,
+        SystemCallMessagePart,
     },
-    ::alloc::vec::Vec,
-    ::sys::{
-        error::ErrorCode,
-        ipc::Message,
-        pm::ThreadIdentifier,
+    unistd::message::{
+        GetCurrentWorkingDirectoryRequest,
+        GetCurrentWorkingDirectoryResponse,
     },
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::{
+    string::String,
+    vec::Vec,
+};
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -36,24 +37,7 @@ use {
 
 /// Gets the current working directory.
 pub fn getcwd() -> Result<String, Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_getcwd().map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("getcwd(): VFS getcwd failed (error={e})");
-            Error::new(code, "vfs getcwd failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    getcwd_linuxd()
-}
-
-/// Forwards a `getcwd` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn getcwd_linuxd() -> Result<String, Error> {
+    ::syslog::trace!("getcwd()");
     // Send request.
     getcwd_request()?;
 
@@ -62,27 +46,29 @@ fn getcwd_linuxd() -> Result<String, Error> {
 }
 
 /// Handles the request of the `getcwd()` system call.
-#[cfg(not(feature = "standalone"))]
 fn getcwd_request() -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    let request: Message = GetCurrentWorkingDirectoryRequest::build(tid);
+    let request: Message = GetCurrentWorkingDirectoryRequest::build(
+        tid,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
 
     // Send request.
-    ::sys::kcall::ipc::send(&request)
+    ::sys::kcall::ipc::__kcall_send(&request)
 }
 
 /// Handles the response of the `getcwd()` system call.
-#[cfg(not(feature = "standalone"))]
 fn getcwd_response() -> Result<String, Error> {
     // Compute the maximum number of parts in the response.
     let capacity: usize =
-        GetCurrentWorkingDirectoryResponse::MAX_SIZE.div_ceil(LinuxDaemonMessagePart::PAYLOAD_SIZE);
+        GetCurrentWorkingDirectoryResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
-    let mut assembler: LinuxDaemonLongMessage = LinuxDaemonLongMessage::new(capacity)?;
+    let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {
@@ -93,12 +79,12 @@ fn getcwd_response() -> Result<String, Error> {
             }
         } else {
             // System call succeeded, parse response.
-            let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
             match message.header {
-                LinuxDaemonMessageHeader::GetCurrentWorkingDirectoryResponsePart => {
-                    let part: LinuxDaemonMessagePart =
-                        LinuxDaemonMessagePart::from_bytes(message.payload);
+                SystemCallMessageHeader::GetCurrentWorkingDirectoryResponsePart => {
+                    let part: SystemCallMessagePart =
+                        SystemCallMessagePart::from_bytes(message.payload);
 
                     // Add part to message assembler and check for errors.
                     if let Err(e) = assembler.add_part(part) {
@@ -110,7 +96,7 @@ fn getcwd_response() -> Result<String, Error> {
                         continue;
                     }
 
-                    let parts: Vec<LinuxDaemonMessagePart> = assembler.take_parts();
+                    let parts: Vec<SystemCallMessagePart> = assembler.take_parts();
 
                     match GetCurrentWorkingDirectoryResponse::from_parts(&parts) {
                         Ok(response) => break Ok(response.cwd),

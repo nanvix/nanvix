@@ -27,9 +27,44 @@ use std::{
 /// Minimum image size in bytes (1 MiB).
 const MIN_IMAGE_SIZE: u64 = 1024 * 1024;
 
-/// Extra headroom added to the computed image size to leave free space for
-/// guest-created temporary files at runtime.
-const HEADROOM_FACTOR: f64 = 2.0;
+/// Extra headroom added to the computed image size to leave free space for guest-created temporary
+/// files at runtime.
+const HEADROOM_FACTOR: f64 = 1.5;
+
+/// Exit code for invalid command-line usage.
+const EXIT_USAGE: i32 = 1;
+
+/// Exit code for host filesystem I/O errors.
+const EXIT_IO: i32 = 2;
+
+/// Exit code for FAT filesystem I/O errors.
+const EXIT_FAT: i32 = 3;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// A directory entry collected during the directory scan.
+struct DirEntry {
+    /// The full path to the directory.
+    path: PathBuf,
+    /// The name of the directory.
+    name: String,
+    /// The path relative to the source root.
+    rel: PathBuf,
+}
+
+/// A file entry collected during the directory scan.
+struct FileEntry {
+    /// The full path to the file.
+    path: PathBuf,
+    /// The name of the file.
+    name: String,
+    /// The path relative to the source root.
+    rel: PathBuf,
+    /// The size of the file in bytes.
+    size: u64,
+}
 
 //==================================================================================================
 // Main
@@ -38,28 +73,28 @@ const HEADROOM_FACTOR: f64 = 2.0;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let (output, size_override, source_dir) = match parse_args(&args) {
+    let (output, size_override, headroom, source_dir) = match parse_args(&args) {
         Ok(v) => v,
         Err(msg) => {
             eprintln!("error: {msg}");
             usage(&args[0]);
-            process::exit(1);
+            process::exit(EXIT_USAGE);
         },
     };
 
     // Compute image size: either user-specified or auto-calculated.
     let content_size: u64 = dir_size(&source_dir);
     let image_size: u64 = match size_override {
-        Some(s) => s,
+        Some(s) => {
+            // User-specified size: still round up to page boundary.
+            let page_size: u64 = arch::mem::PAGE_SIZE as u64;
+            (s + page_size - 1) & !(page_size - 1)
+        },
         None => {
-            let computed: u64 = (content_size as f64 * HEADROOM_FACTOR) as u64;
-            computed.max(MIN_IMAGE_SIZE)
+            let factor: f64 = headroom.unwrap_or(HEADROOM_FACTOR);
+            mkramfs::compute_image_size_with_factor(content_size, factor)
         },
     };
-
-    // Round up to page size so the guest VMM can use zero-copy file-backed mappings.
-    let page_size: u64 = arch::mem::PAGE_SIZE as u64;
-    let image_size: u64 = (image_size + page_size - 1) & !(page_size - 1);
 
     eprintln!(
         "mkramfs: source={} content={}B image={}B output={}",
@@ -73,13 +108,16 @@ fn main() {
 }
 
 //==================================================================================================
-// Image Generation
+// Argument Parsing
 //==================================================================================================
 
 /// Creates a FAT32 image at `output` populated with the contents of `source_dir`.
 fn generate_image(output: &Path, source_dir: &Path, size: u64) {
     // Create and format a zeroed FAT image.
-    mkramfs::mkfatfs(output, size as usize);
+    if let Err(e) = mkramfs::mkfatfs(output, size as usize) {
+        eprintln!("mkramfs: failed to create/format FAT image: {e}");
+        process::exit(EXIT_FAT);
+    }
 
     // Populate the image with the source directory contents.
     {
@@ -89,13 +127,13 @@ fn generate_image(output: &Path, source_dir: &Path, size: u64) {
             .open(output)
             .unwrap_or_else(|e| {
                 eprintln!("mkramfs: failed to open image for writing: {e}");
-                process::exit(1);
+                process::exit(EXIT_IO);
             });
         let storage = fatfs::StdIoWrapper::new(file);
         let filesystem =
             fatfs::FileSystem::new(storage, fatfs::FsOptions::new()).unwrap_or_else(|e| {
                 eprintln!("mkramfs: failed to open FAT filesystem: {e}");
-                process::exit(1);
+                process::exit(EXIT_FAT);
             });
         let root = filesystem.root_dir();
 
@@ -106,6 +144,10 @@ fn generate_image(output: &Path, source_dir: &Path, size: u64) {
 /// Recursively copies the contents of `current` into the FAT directory `fat_dir`.
 ///
 /// `base` is the original source root, used to compute relative paths for error messages.
+///
+/// Files are sorted by size in descending order before writing to maximize
+/// contiguous cluster allocation in FAT.  This improves the hit rate of
+/// the VFS `DirectReadHandle` zero-copy path.
 fn copy_dir_recursive<IO, TP, OCC>(fat_dir: &fatfs::Dir<IO, TP, OCC>, current: &Path, base: &Path)
 where
     IO: fatfs::ReadWriteSeek,
@@ -114,39 +156,78 @@ where
 {
     let entries = fs::read_dir(current).unwrap_or_else(|e| {
         eprintln!("mkramfs: failed to read directory {}: {e}", current.display());
-        process::exit(1);
+        process::exit(EXIT_IO);
     });
+
+    // Collect and partition entries into directories and files.
+    let mut dirs: Vec<DirEntry> = Vec::new();
+    let mut files: Vec<FileEntry> = Vec::new();
 
     for entry in entries {
         let entry = entry.unwrap_or_else(|e| {
             eprintln!("mkramfs: failed to read entry in {}: {e}", current.display());
-            process::exit(1);
+            process::exit(EXIT_IO);
+        });
+        let metadata = entry.metadata().unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to get metadata for {}: {e}", entry.path().display());
+            process::exit(EXIT_IO);
         });
         let path: PathBuf = entry.path();
         let name: String = entry.file_name().to_string_lossy().into_owned();
         let rel: PathBuf = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
 
-        if path.is_dir() {
-            fat_dir.create_dir(&name).unwrap_or_else(|_| {
-                panic!("mkramfs: failed to create directory {}", rel.display())
+        if metadata.is_dir() {
+            dirs.push(DirEntry { path, name, rel });
+        } else if metadata.is_file() {
+            files.push(FileEntry {
+                path,
+                name,
+                rel,
+                size: metadata.len(),
             });
-            let sub_dir = fat_dir
-                .open_dir(&name)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to open directory {}", rel.display()));
-            copy_dir_recursive(&sub_dir, &path, base);
-        } else if path.is_file() {
-            let data: Vec<u8> = fs::read(&path).unwrap_or_else(|e| {
-                eprintln!("mkramfs: failed to read {}: {e}", rel.display());
-                process::exit(1);
-            });
-            let mut fat_file = fat_dir
-                .create_file(&name)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to create {}", rel.display()));
-            fatfs::Write::write_all(&mut fat_file, &data)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to write {}", rel.display()));
-            fatfs::Write::flush(&mut fat_file)
-                .unwrap_or_else(|_| panic!("mkramfs: failed to flush {}", rel.display()));
         }
+    }
+
+    // Sort directories by relative path so traversal order is deterministic.
+    dirs.sort_by(|a, b| a.rel.cmp(&b.rel));
+
+    // Sort files largest-first so they get contiguous clusters in FAT.
+    // Break ties by relative path so equal-sized files are processed in a
+    // deterministic order.
+    files.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.rel.cmp(&b.rel)));
+
+    // Write files first (before subdirectories) to pack them at the
+    // beginning of the FAT cluster chain.
+    for file in &files {
+        let data: Vec<u8> = fs::read(&file.path).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to read {}: {e}", file.rel.display());
+            process::exit(EXIT_IO);
+        });
+        let mut fat_file = fat_dir.create_file(&file.name).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to create {}: {e:?}", file.rel.display());
+            process::exit(EXIT_FAT);
+        });
+        fatfs::Write::write_all(&mut fat_file, &data).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to write {}: {e:?}", file.rel.display());
+            process::exit(EXIT_FAT);
+        });
+        fatfs::Write::flush(&mut fat_file).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to flush {}: {e:?}", file.rel.display());
+            process::exit(EXIT_FAT);
+        });
+    }
+
+    // Then recurse into subdirectories.
+    for dir in &dirs {
+        fat_dir.create_dir(&dir.name).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to create directory {}: {e:?}", dir.rel.display());
+            process::exit(EXIT_FAT);
+        });
+        let sub_dir = fat_dir.open_dir(&dir.name).unwrap_or_else(|e| {
+            eprintln!("mkramfs: failed to open directory {}: {e:?}", dir.rel.display());
+            process::exit(EXIT_FAT);
+        });
+        copy_dir_recursive(&sub_dir, &dir.path, base);
     }
 }
 
@@ -172,10 +253,11 @@ fn dir_size(dir: &Path) -> u64 {
 
 /// Parses command-line arguments.
 ///
-/// Returns `(output_path, optional_size, source_dir)`.
-fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, PathBuf), String> {
+/// Returns `(output_path, optional_size, optional_headroom, source_dir)`.
+fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, Option<f64>, PathBuf), String> {
     let mut output: Option<PathBuf> = None;
     let mut size: Option<u64> = None;
+    let mut headroom: Option<f64> = None;
     let mut source: Option<PathBuf> = None;
     let mut i: usize = 1;
 
@@ -201,6 +283,19 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, PathBuf), String
                 }
                 size = Some(bytes);
             },
+            "-f" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("-f requires an argument".into());
+                }
+                let factor: f64 = args[i]
+                    .parse()
+                    .map_err(|_| format!("invalid headroom factor: {}", args[i]))?;
+                if factor < 1.0 {
+                    return Err("headroom factor must be at least 1.0".into());
+                }
+                headroom = Some(factor);
+            },
             "-h" | "--help" => {
                 return Err("help requested".into());
             },
@@ -224,21 +319,25 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, Option<u64>, PathBuf), String
         return Err(format!("{} is not a directory", source.display()));
     }
 
-    Ok((output, size, source))
+    Ok((output, size, headroom, source))
 }
 
 /// Prints usage information.
 fn usage(program: &str) {
-    eprintln!("Usage: {program} -o <output> [-s <size>] <source-dir>");
+    eprintln!("Usage: {program} -o <output> [-s <size>] [-f <factor>] <source-dir>");
     eprintln!();
     eprintln!("Creates a FAT32 RAM filesystem image from a host directory.");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -o <output>      Output image file path (required)");
     eprintln!("  -s <size>        Image size in bytes (default: auto-calculated)");
+    eprintln!(
+        "  -f <factor>      Headroom factor for auto-calculated size (default: {HEADROOM_FACTOR})"
+    );
     eprintln!("  -h, --help       Show this help message");
     eprintln!();
     eprintln!("Examples:");
     eprintln!("  {program} -o rootfs.img ./rootfs-seed/");
     eprintln!("  {program} -o rootfs.img -s 2097152 ./rootfs-seed/");
+    eprintln!("  {program} -o rootfs.img -f {HEADROOM_FACTOR} ./rootfs-seed/");
 }

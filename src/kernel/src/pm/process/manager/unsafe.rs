@@ -10,19 +10,24 @@ use crate::{
         arch::ContextInformation,
         mem::{
             Address,
+            FrameAddress,
             PageAligned,
             VirtualAddress,
         },
         platform::Interrupts,
     },
     mm::{
+        phys::PhysMemoryManager,
         VirtMemoryManager,
         Vmem,
     },
     pm::{
         process::{
             manager::ProcessManager,
-            state::RunningProcess,
+            state::{
+                ProcessRefMut,
+                RunningProcess,
+            },
         },
         sync::{
             condvar::Condvar,
@@ -49,6 +54,7 @@ use crate::{
     PERF_SCHED_SOFT_CONTEXT_SWITCHES,
     PERF_SCHED_WAKEUP,
 };
+use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_SIZE;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::core::{
@@ -64,10 +70,14 @@ use ::core::{
     },
 };
 use ::sys::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::Message,
     pm::{
         ConditionAddress,
+        ExecvArgs,
         MutexAddress,
         ProcessIdentifier,
         ThreadIdentifier,
@@ -100,6 +110,68 @@ pub(super) static FPU_OWNER_TID: AtomicI32 = AtomicI32::new(ThreadIdentifier::KE
 
 /// Nesting depth of exception handlers currently being served.
 static SERVING_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
+
+//==================================================================================================
+// Execv Staging
+//==================================================================================================
+
+/// A transient, physically contiguous, page-aligned region of kernel frames used by `execv()` to
+/// stage small data (currently the argument and environment strings) read from the calling
+/// process's user-space buffers. The kernel heap is a small slab allocator that cannot hold
+/// multi-kilobyte buffers, so the page-frame allocator is used instead. On the microvm platform
+/// physical memory is identity-mapped into the kernel, so the base frame address doubles as a
+/// kernel-readable pointer to the region.
+///
+/// The underlying frames are released when the region is dropped.
+struct KernelRegion {
+    /// Base frame address of the region (also a kernel-usable pointer, identity-mapped).
+    base: FrameAddress,
+    /// Number of contiguous frames in the region.
+    count: usize,
+}
+
+impl KernelRegion {
+    ///
+    /// # Description
+    ///
+    /// Allocates a physically contiguous, page-aligned region of `count` kernel frames and wraps
+    /// it in a [`KernelRegion`]. The underlying frames are released when the region is dropped.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of contiguous frames to allocate. Must be non-zero.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the allocated region is returned. Upon failure, an error is returned instead.
+    ///
+    fn new(count: usize) -> Result<Self, Error> {
+        // SAFETY: the physical memory manager is initialized and access is synchronized (single
+        // core, interrupts disabled during kernel-call servicing).
+        let pmm: &mut PhysMemoryManager = unsafe { PhysMemoryManager::get_mut() };
+        let base: FrameAddress = pmm.alloc_kernel_region(count)?;
+        Ok(Self { base, count })
+    }
+
+    /// Returns the base of the region as a raw kernel address.
+    fn base_addr(&self) -> usize {
+        self.base.into_raw_value()
+    }
+}
+
+impl Drop for KernelRegion {
+    fn drop(&mut self) {
+        if self.count == 0 {
+            return;
+        }
+        // SAFETY: the physical memory manager is initialized and access is synchronized (single
+        // core, interrupts disabled during kernel-call servicing).
+        let pmm: &mut PhysMemoryManager = unsafe { PhysMemoryManager::get_mut() };
+        if let Err(e) = pmm.free_kernel_region(self.base, self.count) {
+            warn!("KernelRegion::drop(): failed to free staging region: {e:?}");
+        }
+    }
+}
 
 //==================================================================================================
 // Implementations
@@ -214,6 +286,9 @@ impl ProcessManager {
     pub unsafe fn exit(status: ExitStatus) -> Result<!, Error> {
         trace!("status={status:?}");
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Terminate the calling process and select another process to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -232,6 +307,206 @@ impl ProcessManager {
         // reached, it indicates a critical bug and undefined behavior. This is considered
         // unreachable by design.
         core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the image of the calling process with a new program, following POSIX `execv()`
+    /// semantics. The address space and main thread of the calling process are replaced with ones
+    /// built from the program image and the argument/environment strings described by `args`, while
+    /// the process identity is preserved.
+    ///
+    /// The ELF image is streamed directly from the calling process's (still-active) address space
+    /// into the new image, so there is no kernel-side staging copy of the program and hence no
+    /// artificial size limit. The much smaller argument and environment strings (each at most one
+    /// page) are staged into transient page-frame-backed kernel regions, because the kernel heap is
+    /// a small slab allocator that cannot hold even page-sized buffers; those regions are released
+    /// before the context switch, which never returns and would otherwise leak them.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the calling process.
+    /// - `args`: Description of the user-space ELF image and argument/environment strings.
+    ///
+    /// # Returns
+    ///
+    /// This function returns only on failure, yielding the error that prevented the image from
+    /// being replaced; the calling process is left intact in that case. On success it does not
+    /// return: control transfers to the entry point of the new image.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it may replace the calling process's image and perform a
+    /// context switch.
+    ///
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The calling thread is not a kernel thread.
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
+    ///
+    pub unsafe fn exec(pid: ProcessIdentifier, args: ExecvArgs) -> Error {
+        trace!(
+            "pid={pid:?}, elf_len={}, args_len={}, env_len={}",
+            args.elf_len,
+            args.args_len,
+            args.env_len
+        );
+
+        // Reap any detached-thread zombies and exec'd-away address spaces deferred from a previous
+        // context switch.
+        Self::reap_deferred();
+
+        // SAFETY: the process manager and virtual memory manager are initialized, access is
+        // synchronized, and the resulting references do not alias.
+        let pm: &mut ProcessManager = unsafe { Self::get_mut() };
+        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+
+        // Stage the (small, at most one page each) argument and environment strings into kernel
+        // frame regions. Empty strings need no backing region. The ELF image itself is NOT staged:
+        // it is streamed directly from the caller's address space by `do_execv`.
+        let args_region: Option<KernelRegion> = if args.args_len > 0 {
+            match unsafe { Self::stage_user_region(pm, pid, args.args_ptr, args.args_len) } {
+                Ok(region) => Some(region),
+                Err(e) => return e,
+            }
+        } else {
+            None
+        };
+        let env_region: Option<KernelRegion> = if args.env_len > 0 {
+            match unsafe { Self::stage_user_region(pm, pid, args.env_ptr, args.env_len) } {
+                Ok(region) => Some(region),
+                Err(e) => return e,
+            }
+        } else {
+            None
+        };
+
+        // Interpret the staged argument/environment bytes as UTF-8 strings.
+        let args_str: &str = match &args_region {
+            // SAFETY: the region holds `args.args_len` valid bytes staged from user space.
+            Some(region) => match core::str::from_utf8(unsafe {
+                core::slice::from_raw_parts(region.base_addr() as *const u8, args.args_len)
+            }) {
+                Ok(s) => s,
+                Err(_) => {
+                    return Error::new(
+                        ErrorCode::InvalidArgument,
+                        "execv argument string is not valid UTF-8",
+                    )
+                },
+            },
+            None => "",
+        };
+        let env_str: &str = match &env_region {
+            // SAFETY: the region holds `args.env_len` valid bytes staged from user space.
+            Some(region) => match core::str::from_utf8(unsafe {
+                core::slice::from_raw_parts(region.base_addr() as *const u8, args.env_len)
+            }) {
+                Ok(s) => s,
+                Err(_) => {
+                    return Error::new(
+                        ErrorCode::InvalidArgument,
+                        "execv environment string is not valid UTF-8",
+                    )
+                },
+            },
+            None => "",
+        };
+
+        if args_str.as_bytes().contains(&0) {
+            return Error::new(
+                ErrorCode::InvalidArgument,
+                "execv argument string contains NUL bytes",
+            );
+        }
+        if env_str.as_bytes().contains(&0) {
+            return Error::new(
+                ErrorCode::InvalidArgument,
+                "execv environment string contains NUL bytes",
+            );
+        }
+        // Build and commit the new image, streaming the ELF from the caller's address space. On
+        // failure the calling process is left untouched (the staging regions are released as they
+        // go out of scope).
+        let (next_pid, next_tid, from, to, user_tda): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+            Option<VirtualAddress>,
+        ) = match pm.do_execv(mm, pid, args.elf_ptr, args.elf_len, args_str, env_str) {
+            Ok(parts) => parts,
+            Err(e) => return e,
+        };
+
+        // The image has been replaced and committed. Release the staging regions now, because the
+        // context switch below never returns and would otherwise leak the frames. After this point
+        // `args_str` and `env_str` must not be used.
+        drop(args_region);
+        drop(env_region);
+
+        // SAFETY: `from` and `to` point to valid context information structures, the next thread
+        // identifier differs from the current one (forcing a hard switch into the new image), and
+        // the processor is running with interrupts disabled.
+        Self::switch(next_pid, next_tid, from, to, user_tda);
+
+        // SAFETY: Self::switch() switches into the new image and never returns to this frame: the
+        // outgoing thread has been retired as a zombie and is never resumed. Reaching this point
+        // indicates a critical bug and undefined behavior.
+        core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Stages `len` bytes from the calling process's user space into a freshly allocated,
+    /// physically contiguous, page-aligned region of kernel frames, returning the region. The
+    /// region's frames are released when it is dropped.
+    ///
+    /// # Parameters
+    ///
+    /// - `pm`: Process manager.
+    /// - `pid`: Identifier of the process whose user space is the source.
+    /// - `src`: Source address in the caller's user space.
+    /// - `len`: Number of bytes to stage. Must be non-zero.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the populated kernel region is returned. Upon failure, an error is returned.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on the global physical memory manager and copies
+    /// from user space. It is safe to call when the process manager and physical memory manager are
+    /// initialized and access to them is synchronized.
+    ///
+    unsafe fn stage_user_region(
+        pm: &mut ProcessManager,
+        pid: ProcessIdentifier,
+        src: VirtualAddress,
+        len: usize,
+    ) -> Result<KernelRegion, Error> {
+        if len == 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "zero-length staging region"));
+        }
+
+        // Number of page frames needed to hold `len` bytes.
+        let count: usize = len.div_ceil(PAGE_SIZE);
+
+        // Allocate the contiguous staging region from the page-frame allocator. The frames are
+        // released when `region` is dropped.
+        let region: KernelRegion = KernelRegion::new(count)?;
+
+        // Copy the bytes from the caller's user space into the staging region. The destination is a
+        // kernel-space (identity-mapped) address; the source is resolved through the caller's page
+        // tables. On failure, `region` is dropped, releasing the frames.
+        pm.vmcopy_from_user(pid, VirtualAddress::from_raw_value(region.base_addr()), src, len)?;
+
+        Ok(region)
     }
 
     ///
@@ -263,6 +538,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn exit_thread(status: ExitStatus) -> Result<!, Error> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Terminate the calling thread and select another thread to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -291,6 +569,26 @@ impl ProcessManager {
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
+
+        // Debug-only: detect use-after-free in the detached-thread exit path. With slab
+        // poison-on-free, a freed ContextInformation block is filled with SLAB_POISON_BYTE. If
+        // `from` points to a poisoned block, the zombie thread's ContextInformation was freed
+        // before the context switch — a use-after-free bug.
+        #[cfg(all(debug_assertions, not(verus_keep_ghost)))]
+        {
+            let from_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    from as *const u8,
+                    core::mem::size_of::<ContextInformation>(),
+                )
+            };
+            debug_assert!(
+                !from_bytes.iter().all(|&b| b == slab::SLAB_POISON_BYTE),
+                "BUG: ContextInformation at {:p} freed before context switch (detached-thread UAF)",
+                from,
+            );
+        }
+
         PERF_SCHED_EXIT_THREAD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
         Self::switch(next_pid, next_tid, from, to, user_tda);
 
@@ -298,6 +596,123 @@ impl ProcessManager {
         // reached, it indicates a critical bug and undefined behavior. This is considered
         // unreachable by design.
         core::hint::unreachable_unchecked()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reaps any detached-thread zombies whose cleanup was deferred because
+    /// their `ContextInformation` was still needed by an in-progress context
+    /// switch. This must be called at PM entry points so that deferred zombies
+    /// are cleaned up once the context switch that produced them has completed.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    unsafe fn reap_deferred() {
+        let deferred: Vec<(ProcessIdentifier, ZombieThread)> =
+            core::mem::take(&mut Self::get_mut().deferred_reap);
+        for (pid, zombie) in deferred {
+            Self::harvest_zombie_thread(pid, zombie);
+        }
+
+        // Reclaim the address spaces of images replaced by `execv()`. By the time this runs, the
+        // context switch into the new image has already loaded a different page directory, so the
+        // outgoing one is no longer the active CR3 and can be torn down safely.
+        let exec_vmems: Vec<Vmem> = core::mem::take(&mut Self::get_mut().deferred_exec_vmem);
+        for mut vmem in exec_vmems {
+            // Free the user frames backing the outgoing image before the address space is dropped:
+            // dropping a `Vmem` alone reclaims only its page-table structures, not the user frames
+            // they map.
+            if let Err(error) = vmem.clear_user_space() {
+                warn!(
+                    "reap_deferred(): failed to reclaim outgoing exec address space (error={:?})",
+                    error
+                );
+            }
+            drop(vmem);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Harvests a zombie thread by reclaiming its kernel and user stacks, unmapping user-stack
+    /// pages from the process address space, and notifying the thread manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier that owns the zombie thread.
+    /// - `zombie_thread`: The zombie thread to harvest.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    unsafe fn harvest_zombie_thread(pid: ProcessIdentifier, zombie_thread: ZombieThread) {
+        // If the zombie has no user stack (kernel-only thread), the kernel stack is
+        // reclaimed via KernelStack::Drop and no page unmapping is needed.
+        if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
+            // Traverse pages belonging to user stack.
+            let base: usize = user_stack.base().into_raw_value();
+            let top: usize = user_stack.top().into_raw_value();
+            // Resolve the process vmem once before the loop.
+            let mut process_ref: ProcessRefMut<'_> = match Self::get_mut().find_process_mut(pid) {
+                Ok(process) => process,
+                Err(error) => {
+                    // Unexpected failure — log but continue since the address space will be
+                    // reclaimed when it is destroyed.
+                    error!("failed to find process (pid={pid:?}, error={error:?})",);
+                    return;
+                },
+            };
+            let vmem: &mut Vmem = process_ref.state_mut().vmem_mut();
+            // TODO: Use an iterator for this.
+            for raw_addr in (base..top).step_by(PAGE_SIZE) {
+                let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr)
+                {
+                    Ok(vaddr) => vaddr,
+                    Err(_) => {
+                        // SAFETY: the following condition is unreachable, because
+                        // pages in the user stack are always page-aligned.
+                        unreachable!("address conversion should succeed")
+                    },
+                };
+                // Attempt to unmap page.
+                match VirtMemoryManager::get_mut().try_unmap_upage(vmem, vaddr) {
+                    Ok(true) => {
+                        // Page was present and has been successfully unmapped.
+                    },
+                    Ok(false) => {
+                        // Page was never mapped (not demand-paged). Skip silently.
+                    },
+                    Err(error) => {
+                        // Unexpected failure — log but continue since the
+                        // address space will be reclaimed when it is destroyed.
+                        warn!(
+                            "harvest_zombie_thread(): failed to unmap page (vaddr={:?}, \
+                             error={:?})",
+                            vaddr, error
+                        );
+                    },
+                }
+            }
+
+            // Frames allocated to the user stack are freed when we exit this scope.
+            // Frames allocated to the kernel stack are freed when we exit this scope.
+        }
+
+        // Notify the thread manager that this thread has been reaped.
+        Self::get_mut().tm.on_thread_reaped();
     }
 
     ///
@@ -337,6 +752,9 @@ impl ProcessManager {
     ) -> Result<ExitStatus, SleepError> {
         trace!("pid={:?}, tid={:?}", pid, tid);
 
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         loop {
             let result: Result<ZombieThread, Result<Condvar, Error>> =
                 Self::get_mut().try_join_thread(pid, tid);
@@ -344,54 +762,7 @@ impl ProcessManager {
             match result {
                 Ok(zombie_thread) => {
                     let status: ExitStatus = zombie_thread.status();
-
-                    // Harvest zombie thread.
-                    if let (Some(_kernel_stack), Some(user_stack)) = zombie_thread.harvest() {
-                        // Traverse pages belonging to user stack.
-                        let base: usize = user_stack.base().into_raw_value();
-                        let top: usize = user_stack.top().into_raw_value();
-                        // TODO: Use an iterator for this.
-                        for raw_addr in (base..top).step_by(PAGE_SIZE) {
-                            let vaddr: PageAligned<VirtualAddress> =
-                                match PageAligned::from_raw_value(raw_addr) {
-                                    Ok(vaddr) => vaddr,
-                                    Err(_) => {
-                                        // SAFETY: the following condition is unreachable, because
-                                        // pages in the user stack are always page-aligned.
-                                        unreachable!("address conversion should succeed")
-                                    },
-                                };
-                            // Attempt to unmap page.
-                            match VirtMemoryManager::get_mut().try_unmap_upage(
-                                Self::get_mut()
-                                    .find_process_mut(pid)
-                                    .map_err(SleepError::Generic)?
-                                    .state_mut()
-                                    .vmem_mut(),
-                                vaddr,
-                            ) {
-                                Ok(true) => {
-                                    // Page was present and has been successfully unmapped.
-                                },
-                                Ok(false) => {
-                                    // Page was never mapped (not demand-paged). Skip silently.
-                                },
-                                Err(error) => {
-                                    // Unexpected failure — log but continue since the
-                                    // address space will be reclaimed when it is destroyed.
-                                    warn!(
-                                        "harvest_zombies(): failed to unmap page (vaddr={:?}, \
-                                         error={:?})",
-                                        vaddr, error
-                                    );
-                                },
-                            }
-                        }
-
-                        // Frames allocated to the user stack are freed when we exit this scope.
-                        // Frames allocated to the kernel stack are freed when we exit this scope.
-                    }
-
+                    Self::harvest_zombie_thread(pid, zombie_thread);
                     break Ok(status);
                 },
 
@@ -401,6 +772,52 @@ impl ProcessManager {
 
                 Err(Err(error)) => break Err(SleepError::Generic(error)),
             }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Detaches a thread in the calling process. A detached thread is automatically harvested when
+    /// it exits, without requiring another thread to join it.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the calling process.
+    /// - `tid`: Thread identifier of the thread to detach.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe to call if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - Access to the process manager is synchronized.
+    /// - The memory manager is initialized.
+    /// - Access to the memory manager is synchronized.
+    ///
+    pub unsafe fn detach_thread(
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<(), Error> {
+        trace!("pid={:?}, tid={:?}", pid, tid);
+
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
+        let result: Result<Option<ZombieThread>, Error> =
+            Self::get_mut().do_detach_thread(pid, tid);
+
+        match result {
+            Ok(Some(zombie_thread)) => {
+                // Thread was already a zombie — harvest it immediately.
+                Self::harvest_zombie_thread(pid, zombie_thread);
+                Ok(())
+            },
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
         }
     }
 
@@ -433,6 +850,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn sleep(alarm: Option<SystemTime>) -> Result<(), SleepError> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         // Suspend the execution of the calling thread and select another thread to run next.
         let (next_pid, next_tid, from, to, user_tda): (
             ProcessIdentifier,
@@ -522,6 +942,9 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn giveup() -> Result<(), Error> {
+        // Reap any detached-thread zombies deferred from a previous context switch.
+        Self::reap_deferred();
+
         REMAINING_QUANTUM.store(0, ORDER);
 
         // Re-schedule the calling thread and select another thread to run next.
@@ -702,6 +1125,35 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Best-effort wakeup of a thread used by synchronization primitives.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: ID of the thread to wake up.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if a sleeping thread with the given identifier was woken, or `false` if no
+    /// such thread is currently sleeping (e.g., it already timed out before this call). Unlike
+    /// [`Self::wakeup`], the not-sleeping case is not treated as an error, so a stale waiter neither
+    /// consumes a notification nor produces a spurious error log.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn wakeup_waiter(tid: ThreadIdentifier) -> bool {
+        PERF_SCHED_WAKEUP.fetch_add(1, ORDER);
+        Self::get_mut().try_wakeup_thread(tid)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Takes a mutex guard from a thread.
     ///
     /// # Parameters
@@ -747,6 +1199,44 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Computes the quantum that the next thread to run should start with when the scheduler
+    /// switches away from a thread of process `previous_pid` to a thread of process `next_pid`.
+    ///
+    /// # Parameters
+    ///
+    /// - `next_pid`: Process identifier of the next thread to run.
+    /// - `previous_pid`: Process identifier of the thread that is being switched out.
+    /// - `remaining`: Quantum that remained for the thread that is being switched out.
+    ///
+    /// # Returns
+    ///
+    /// The quantum that the next thread should start running with.
+    ///
+    pub(super) fn next_thread_quantum(
+        next_pid: ProcessIdentifier,
+        previous_pid: ProcessIdentifier,
+        remaining: usize,
+    ) -> usize {
+        // Reset the quantum to a full slice on a cross-process switch, and also on an intra-process
+        // switch when the outgoing thread had already exhausted its quantum (i.e. it was preempted
+        // through tick()/giveup()). The latter prevents the incoming thread from inheriting an
+        // exhausted quantum and being immediately preempted on the next tick, which would otherwise
+        // starve it relative to its sibling threads.
+        //
+        // Otherwise, on an intra-process switch where the outgoing thread still had quantum to
+        // spare (e.g. a voluntary yield through sleep()/exit()), the incoming thread inherits the
+        // remaining quantum so that a process cannot accumulate more than its fair share of CPU
+        // time across its threads.
+        if next_pid != previous_pid || remaining == 0 {
+            SCHEDULER_FREQ
+        } else {
+            remaining
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Switches the execution to another thread.
     ///
     /// # Parameters
@@ -787,11 +1277,11 @@ impl ProcessManager {
             // We need to perform a context switch.
             PERF_SCHED_HARD_CONTEXT_SWITCHES.fetch_add(1, ORDER);
 
-            // Check whether we need to reset the quantum for the next thread.
-            if next_pid != previous_pid {
-                REMAINING_QUANTUM.store(SCHEDULER_FREQ, ORDER);
-                CURRENT_PID.store(next_pid.into(), ORDER);
-            }
+            // Reset the quantum for the next thread, as required.
+            let remaining: usize = REMAINING_QUANTUM.load(ORDER);
+            REMAINING_QUANTUM
+                .store(Self::next_thread_quantum(next_pid, previous_pid, remaining), ORDER);
+            CURRENT_PID.store(next_pid.into(), ORDER);
             CURRENT_TID.store(next_tid.into(), ORDER);
 
             ContextInformation::switch(from, to, user_tda);

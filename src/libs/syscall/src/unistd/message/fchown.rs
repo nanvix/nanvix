@@ -6,8 +6,8 @@
 //==================================================================================================
 
 use crate::{
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::core::{
     fmt::Debug,
@@ -20,7 +20,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::ffi::c_int;
 use sysapi::sys_types::{
@@ -44,10 +47,10 @@ pub struct FileChownRequest {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileChownRequest, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChownRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileChownRequest {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<c_int>()
         - mem::size_of::<uid_t>()
         - mem::size_of::<gid_t>();
@@ -61,24 +64,29 @@ impl FileChownRequest {
         }
     }
 
-    pub fn from_bytes(bytes: [u8; LinuxDaemonMessage::PAYLOAD_SIZE]) -> Self {
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
         unsafe { mem::transmute(bytes) }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier, fd: c_int, owner: uid_t, group: gid_t) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: c_int,
+        owner: uid_t,
+        group: gid_t,
+        destination: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileChownRequest = FileChownRequest::new(fd, owner, group);
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileChownRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::FileChownRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::from(tid),
-            MessageReceiver::from(crate::LINUXD),
-            MessageType::Ikc,
+            MessageReceiver::from(destination),
+            message_type,
             None,
             message.into_bytes(),
         );
@@ -97,10 +105,10 @@ pub struct FileChownResponse {
     /// Padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(FileChownResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(FileChownResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl FileChownResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -108,20 +116,24 @@ impl FileChownResponse {
         }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: FileChownResponse = FileChownResponse::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::FileChownResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::FileChownResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

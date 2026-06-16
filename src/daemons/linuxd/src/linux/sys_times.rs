@@ -20,7 +20,10 @@ use ::log::{
 };
 use ::sys::{
     error::ErrorCode,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_times::tms;
@@ -88,7 +91,13 @@ pub fn do_times<T>(
                 tms_cstime: libc_buffer.tms_cstime,
             };
 
-            Ok(TimesResponse::build(tid, elapsed, nanvix_buffer))
+            Ok(TimesResponse::build(
+                tid,
+                elapsed,
+                nanvix_buffer,
+                ::syscall::LINUXD,
+                MessageType::Ikc,
+            ))
         },
     }
 }

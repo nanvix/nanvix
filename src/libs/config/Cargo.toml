@@ -18,17 +18,18 @@ cfg-if = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 mmio-tag = { workspace = true }
+static_assert = { workspace = true }
 
 [features]
 default = []
 std = []
-hyperlight = []
 microvm = []
 whp = []
 rustc-dep-of-std = [
     "core",
     "cfg-if/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
+    "static_assert/rustc-dep-of-std",
 ]
 
 [build-dependencies]

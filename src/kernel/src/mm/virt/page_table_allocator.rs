@@ -31,7 +31,7 @@ use ::bump_allocator::{
 //==================================================================================================
 
 /// Number of page tables for identity-mapping all physical memory.
-const NUM_PAGE_TABLES: usize = config::kernel::MEMORY_SIZE / mem::PGTAB_SIZE;
+const NUM_PAGE_TABLES: usize = crate::hal::platform::NUM_PAGE_TABLES;
 
 /// Total number of kernel page-table-sized slots.
 ///
@@ -101,26 +101,3 @@ pub static PAGE_TABLE_ALLOCATOR: FixedSizeBumpAllocator<
     PAGE_TABLE_SLOT_ALIGN,
     PageTableBss,
 > = unsafe { FixedSizeBumpAllocator::new() };
-
-///
-/// # Description
-///
-/// Allocates a zeroed, page-aligned page-table slot from BSS storage.
-///
-/// This is a convenience wrapper around [`PAGE_TABLE_ALLOCATOR`] that returns a direct
-/// mutable reference to a `[PteWord; PAGE_TABLE_LENGTH]` array.
-///
-/// # Safety
-///
-/// The caller must ensure the returned slot is used exclusively (no aliasing).
-///
-/// # Panics
-///
-/// Panics if all page-table slots have been exhausted.
-///
-pub unsafe fn alloc_page_table_slot() -> &'static mut [PteWord; PAGE_TABLE_LENGTH] {
-    PAGE_TABLE_ALLOCATOR
-        .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
-        .expect("BSS page table allocation failed")
-        .assume_init_mut()
-}

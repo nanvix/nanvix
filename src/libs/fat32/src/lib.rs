@@ -36,5 +36,6 @@ pub use crate::{
         Fat,
         FatFile,
         RawMemoryStorage,
+        ReadOnlyMemoryStorage,
     },
 };

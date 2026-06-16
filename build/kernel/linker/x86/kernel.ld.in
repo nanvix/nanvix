@@ -12,22 +12,23 @@ ENTRY(_do_start)
 PAGE_SIZE = 0x1000;
 
 /*
+ * Platform base address.
+ *
+ * Physical address at which the VMM loads the guest binary.
+ */
+PLATFORM_BASE_ADDR = @PLATFORM_BASE_ADDR@;
+
+/*
  * Boot Address
  */
-BOOT_ADDR = 0x00100000;
+BOOT_ADDR = 0x00100000 + PLATFORM_BASE_ADDR;
 
 /*
  * Trampoline Address
- */
-TRAMPOLINE_ADDR = 0x00008000;
-
-/*
- * Kernel Pool Base Address
  *
- * This value is set by build.rs from kpool_base in build/kernel_config.toml,
- * ensuring consistency with config::memory_layout::KPOOL_BASE_RAW.
+ * This is offset to 0x8000 for AP real-mode startup.
  */
-KPOOL_BASE = @KPOOL_BASE@;
+TRAMPOLINE_ADDR = @TRAMPOLINE_ADDR@;
 
 /*
  * Machine Reserved Space
@@ -37,11 +38,16 @@ KPOOL_BASE = @KPOOL_BASE@;
  */
 MACHINE_RESERVED = @MACHINE_RESERVED@;
 
+ASSERT(TRAMPOLINE_ADDR >= PLATFORM_BASE_ADDR, "PLATFORM_BASE_ADDR exceeds TRAMPOLINE_ADDR")
+
 SECTIONS
 {
-	/* Pad with zeroes. */
+	/* Start at the platform/VMM-defined load base. */
+	. = PLATFORM_BASE_ADDR;
+
+	/* Pad with zeroes up to the trampoline address. */
 	.zero : {
-		. = . + TRAMPOLINE_ADDR;
+		. = ABSOLUTE(TRAMPOLINE_ADDR);
 	} = 0
 
     /* Trampoline section. */
@@ -98,12 +104,6 @@ SECTIONS
 	. = ALIGN(PAGE_SIZE);
 
 	__KERNEL_END = .;
-
-	/*
-	 * Ensure the kernel image plus machine-reserved space fits before KPOOL_BASE.
-	 */
-	ASSERT(__KERNEL_END + MACHINE_RESERVED < KPOOL_BASE,
-		"Kernel too large: __KERNEL_END + MACHINE_RESERVED must be < KPOOL_BASE")
 
 	/* Discarded. */
 	/DISCARD/ :

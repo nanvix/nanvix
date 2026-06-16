@@ -4,4 +4,4 @@ skip = .git,.venv,bin,lib,logs,build,target,toolchain,sysroot-debug,sysroot-rele
 
 # Ignore words that are commonly used in systems programming
 # and are flagged as typos by codespell
-ignore-words-list = crate,inout,nd,rdonly,wronly,rdwr,ist,servent
+ignore-words-list = crate,inout,nd,rdonly,wronly,rdwr,ist,servent,vas,statics

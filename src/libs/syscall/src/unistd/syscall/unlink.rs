@@ -5,10 +5,8 @@
 // Modules
 //==================================================================================================
 
-#[cfg(not(feature = "standalone"))]
 use crate::fcntl;
 use ::sys::error::Error;
-#[cfg(not(feature = "standalone"))]
 use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
@@ -37,20 +35,8 @@ use ::sysapi::fcntl::atflags::AT_FDCWD;
 ///
 /// Upon successful completion, `unlink()` returns empty. Otherwise, it returns an error.
 ///
-#[allow(unreachable_code)]
 pub fn unlink(path: &str) -> Result<(), Error> {
     ::syslog::trace!("unlink(): path = {:?}", path);
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_unlink(path).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("unlink(): VFS unlink failed (path={path:?}, error={e})");
-            Error::new(code, "vfs unlink failed")
-        })
-    }
-
-    #[cfg(not(feature = "standalone"))]
     fcntl::unlinkat(AT_FDCWD, path, 0)
 }

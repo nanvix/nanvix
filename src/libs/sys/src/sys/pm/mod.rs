@@ -6,6 +6,7 @@
 //==================================================================================================
 
 mod capability;
+mod execv_args;
 mod gid;
 mod pid;
 mod sync;
@@ -18,6 +19,7 @@ mod uid;
 //==================================================================================================
 
 pub use capability::Capability;
+pub use execv_args::ExecvArgs;
 pub use gid::GroupIdentifier;
 pub use pid::ProcessIdentifier;
 pub use sync::{

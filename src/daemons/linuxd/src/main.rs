@@ -6,7 +6,6 @@
 //==================================================================================================
 
 #![deny(clippy::all)]
-#![feature(str_from_raw_parts)] // dirent requires this.
 
 //==================================================================================================
 // Modules
@@ -108,7 +107,7 @@ pub async fn main() -> Result<()> {
     info!("Listening to user VMs on: {user_vm_sockaddr:?}");
 
     let linuxd: LinuxDaemon<()> = match LinuxDaemon::init(
-        Arc::new(SyscallTable::default()),
+        Arc::new(SyscallTable::new((), args.networking_enabled())?),
         tenant_id.as_deref().unwrap_or_default(),
         control_plane_sockaddr,
         args.control_plane_socket_type(),

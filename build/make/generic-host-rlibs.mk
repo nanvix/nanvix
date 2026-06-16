@@ -9,7 +9,6 @@ MULTI_PROCESS_ONLY_RLIBS := nanvix-sandbox-cache
 
 # Machine-specific feature flags for host rlibs that depend on uservm.
 MACHINE_FEATURES :=
-MACHINE_FEATURES += $(if $(filter hyperlight,$(MACHINE)),hyperlight,)
 MACHINE_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 MACHINE_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 MACHINE_FEATURES := $(strip $(MACHINE_FEATURES))
@@ -41,7 +40,7 @@ HOST_RLIBS_CARGO_FEATURES = $(if $(filter $(1),$(USERVM_DEPENDENT_RLIBS)),$(ALL_
 # Per-package rules retained for direct invocation (e.g., make check-host-rlib-<pkg>).
 define HOST_RLIB_RULES
 check-host-rlib-$(1):
-	$(HOST_CARGO_CHECK_CMD) $(call HOST_RLIBS_CARGO_FEATURES,$(1)) -p $(1)
+	@$(HOST_CARGO_CHECK_CMD) $(call HOST_RLIBS_CARGO_FEATURES,$(1)) -p $(1)
 
 format-host-rlib-$(1):
 	$(HOST_CARGO_FMT_CMD) -p $(1)
@@ -75,13 +74,13 @@ _HOST_RLIBS_MULTI_PKGS := $(foreach pkg,$(_HOST_RLIBS_MULTI),-p $(pkg))
 
 check-host-rlibs:
 ifneq ($(_HOST_RLIBS_PLAIN_PKGS),)
-	$(HOST_CARGO_CHECK_CMD) $(_HOST_RLIBS_PLAIN_PKGS)
+	@$(HOST_CARGO_CHECK_CMD) $(_HOST_RLIBS_PLAIN_PKGS)
 endif
 ifneq ($(_HOST_RLIBS_USERVM_PKGS),)
-	$(HOST_CARGO_CHECK_CMD) $(ALL_HOST_RLIB_CARGO_FEATURES) $(_HOST_RLIBS_USERVM_PKGS)
+	@$(HOST_CARGO_CHECK_CMD) $(ALL_HOST_RLIB_CARGO_FEATURES) $(_HOST_RLIBS_USERVM_PKGS)
 endif
 ifneq ($(_HOST_RLIBS_MULTI_PKGS),)
-	$(HOST_CARGO_CHECK_CMD) $(MULTI_PROCESS_RLIB_CARGO_FEATURES) $(_HOST_RLIBS_MULTI_PKGS)
+	@$(HOST_CARGO_CHECK_CMD) $(MULTI_PROCESS_RLIB_CARGO_FEATURES) $(_HOST_RLIBS_MULTI_PKGS)
 endif
 
 # Batched format: single cargo invocation for all host rlibs.

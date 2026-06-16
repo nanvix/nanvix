@@ -20,6 +20,8 @@ use crate::{
         HTTP_HEADER_MESSAGE_TYPE,
     },
 };
+#[cfg(unix)]
+use ::anyhow::Context;
 use ::anyhow::Result;
 use ::http_body_util::{
     BodyExt,
@@ -35,24 +37,33 @@ use ::hyper::{
     Response,
     StatusCode,
 };
+#[cfg(unix)]
+use ::log::warn;
 use ::log::{
     debug,
     error,
     info,
     trace,
 };
+use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::{
     future::Future,
     marker::PhantomData,
     pin::Pin,
     sync::Arc,
 };
+#[cfg(windows)]
+use ::tokio::net::windows::named_pipe::{
+    NamedPipeServer,
+    ServerOptions,
+};
+#[cfg(unix)]
+use ::tokio::net::UnixListener;
 use ::tokio::{
     io::{
         AsyncReadExt,
         AsyncWriteExt,
     },
-    net::UnixListener,
     sync::Mutex,
     task::JoinHandle,
 };
@@ -69,70 +80,22 @@ use ::uservm::standalone::{
 ///
 /// # Description
 ///
-/// Configuration for standalone mode.
-///
-/// Holds the minimal set of paths required to launch a User VM without the full sandbox
-/// cache infrastructure.
-///
-#[derive(Clone)]
-pub struct StandaloneConfig {
-    /// Path to the guest kernel binary.
-    pub(crate) kernel_binary_path: String,
-    /// Optional path to a RAM filesystem image exposed to the guest.
-    pub(crate) ramfs_filename: Option<String>,
-    /// Optional file path for capturing guest stderr output.
-    pub(crate) console_file: Option<String>,
-    /// Optional snapshot path for restoring VM state instead of cold-booting.
-    pub(crate) snapshot_path: Option<String>,
-    /// Optional GDB server port for debugging the guest.
-    #[cfg(feature = "gdb")]
-    pub(crate) gdb_port: Option<u16>,
-}
-
-impl StandaloneConfig {
-    ///
-    /// # Description
-    ///
-    /// Creates a new standalone configuration.
-    ///
-    /// # Parameters
-    ///
-    /// - `kernel_binary_path`: Path to the guest kernel binary.
-    /// - `ramfs_filename`: Optional path to a RAM filesystem image.
-    /// - `console_file`: Optional file path for guest stderr capture.
-    /// - `snapshot_path`: Optional snapshot path for restoring VM state instead of cold-booting.
-    /// - `gdb_port`: Optional GDB server port.
-    ///
-    pub fn new(
-        kernel_binary_path: String,
-        ramfs_filename: Option<String>,
-        console_file: Option<String>,
-        snapshot_path: Option<String>,
-        #[cfg(feature = "gdb")] gdb_port: Option<u16>,
-    ) -> Self {
-        Self {
-            kernel_binary_path,
-            ramfs_filename,
-            console_file,
-            snapshot_path,
-            #[cfg(feature = "gdb")]
-            gdb_port,
-        }
-    }
-}
-
-///
-/// # Description
-///
-/// Bundles a running VM instance with its gateway bridge task and socket path.
+/// Bundles a running VM instance with its gateway bridge task and endpoint path.
 ///
 struct RunningVm {
     /// Handle for the running VM.
     handle: StandaloneVmHandle,
-    /// Task bridging the gateway Unix socket with the guest's IKC I/O channels.
+    /// Task bridging the cross-platform gateway endpoint with the
+    /// guest's IKC I/O channels.
     _gateway_bridge: JoinHandle<()>,
-    /// Filesystem path of the gateway Unix socket (cleaned up on kill).
-    gateway_socket_path: String,
+    /// Path of the gateway endpoint (UDS path on Unix, named pipe path
+    /// on Windows). On Unix it is read at kill/cleanup to `unlink(2)`
+    /// the underlying socket file; on Windows the named pipe is
+    /// reclaimed automatically when the bridge task drops its server
+    /// handle, so the field is only used to return the endpoint in
+    /// the `NEW` response and is otherwise unread on that platform.
+    #[cfg_attr(windows, allow(dead_code))]
+    gateway_sockaddr: String,
 }
 
 ///
@@ -184,7 +147,15 @@ impl StandaloneState {
             info!("cleanup(): aborting VM");
             vm._gateway_bridge.abort();
             vm.handle.abort_and_wait().await;
-            let _ = ::std::fs::remove_file(&vm.gateway_socket_path);
+            #[cfg(unix)]
+            if let Err(e) = ::std::fs::remove_file(&vm.gateway_sockaddr) {
+                if e.kind() != ::std::io::ErrorKind::NotFound {
+                    warn!(
+                        "cleanup(): failed to remove gateway socket {}: {e}",
+                        vm.gateway_sockaddr
+                    );
+                }
+            }
             debug!("cleanup(): VM cleaned up");
         }
     }
@@ -274,46 +245,60 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
         };
 
         let (handle, io): (StandaloneVmHandle, StandaloneVmIo) = StandaloneVmHandle::spawn(
-            state.config.kernel_binary_path.clone(),
+            state.config.kernel_binary_path().to_string(),
             Some(message.program.clone()),
             initrd_args,
-            state.config.ramfs_filename.clone(),
-            state.config.console_file.clone(),
-            state.config.snapshot_path.clone(),
+            state.config.kernel_args().map(|s| s.to_string()),
+            state.config.ramfs_filename().map(|s| s.to_string()),
+            state.config.console_file().map(|s| s.to_string()),
+            state.config.snapshot_path().map(|s| s.to_string()),
+            state.config.mount_directory().map(|s| s.to_string()),
+            state.config.networking_mode(),
+            state.config.host_filter(),
             #[cfg(feature = "gdb")]
-            state.config.gdb_port,
+            state.config.gdb_port(),
         );
 
-        // Create a Unix socket that serves as the gateway stream. The test harness (or any
-        // consumer) connects to this socket to exchange I/O with the guest — exactly like the
-        // multi-process gateway, but backed by IKC channels instead of a system VM.
-        let gateway_socket_path: String =
-            format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id());
-        let _ = ::std::fs::remove_file(&gateway_socket_path);
-        let listener: UnixListener = match UnixListener::bind(&gateway_socket_path) {
-            Ok(l) => l,
+        // Cross-platform gateway endpoint: a single point at which a
+        // host-side consumer (typically the containerd shim) connects to
+        // exchange guest application stdio.
+        //
+        //   - Unix    : Unix-domain socket
+        //   - Windows : Named pipe (`\\.\pipe\...`)
+        //
+        // The same `gateway_bridge_task` runs on both OSes; only the
+        // binding primitive differs (see `bind_gateway_endpoint`).
+        //
+        // If the operator did not configure a path via `-gateway-sockaddr`,
+        // we fall back to a per-process auto path so legacy consumers
+        // (nanvix-bench / nanvix-terminal / integration tests) keep working
+        // without any flag.
+        let endpoint_path: String = match state.config.gateway_sockaddr() {
+            Some(p) => p.to_string(),
+            None => default_gateway_path(),
+        };
+        let endpoint: GatewayEndpoint = match bind_gateway_endpoint(&endpoint_path).await {
+            Ok(ep) => ep,
             Err(e) => {
                 let reason: String =
-                    format!("failed to bind gateway socket at {gateway_socket_path}: {e}");
+                    format!("failed to bind gateway endpoint at {endpoint_path}: {e}");
                 error!("serve_new(): {reason}");
                 handle.abort();
                 anyhow::bail!(reason);
             },
         };
-
-        debug!("serve_new(): gateway socket bound at {gateway_socket_path}",);
-
-        let gateway_bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(listener, io));
+        debug!("serve_new(): gateway endpoint bound at {endpoint_path}");
+        let gateway_bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(endpoint, io));
 
         *guard = Some(RunningVm {
             handle,
             _gateway_bridge: gateway_bridge,
-            gateway_socket_path: gateway_socket_path.clone(),
+            gateway_sockaddr: endpoint_path.clone(),
         });
 
         Ok(message::NewResponse {
             user_vm_id: STANDALONE_VM_ID,
-            gateway_sockaddr: gateway_socket_path,
+            gateway_sockaddr: endpoint_path,
         })
     }
 
@@ -342,9 +327,28 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
         let vm: Option<RunningVm> = state.running_vm.lock().await.take();
         match vm {
             Some(running) => {
+                // Await VM exit first so the gateway bridge keeps draining
+                // guest stdout/stderr until the guest itself terminates.
+                // Aborting the bridge prematurely drops `output_rx`, which
+                // causes the standalone I/O handler to return `-1` from
+                // guest write() calls (see `uservm::standalone::
+                // handle_write_request`), truncating logs and potentially
+                // disrupting guest shutdown.
+                let wait_result = running.handle.wait().await;
+                // Defensive cleanup: the bridge typically exits on its own
+                // once the guest closes its I/O channels, but abort it here
+                // in case the host-side consumer is still connected.
                 running._gateway_bridge.abort();
-                let _ = ::std::fs::remove_file(&running.gateway_socket_path);
-                match running.handle.wait().await {
+                #[cfg(unix)]
+                if let Err(e) = ::std::fs::remove_file(&running.gateway_sockaddr) {
+                    if e.kind() != ::std::io::ErrorKind::NotFound {
+                        warn!(
+                            "serve_kill(): failed to remove gateway socket {}: {e}",
+                            running.gateway_sockaddr
+                        );
+                    }
+                }
+                match wait_result {
                     Ok(exit_status) => {
                         debug!("serve_kill(): VM exited (exit_status={exit_status})");
                         Ok(message::KillResponse {
@@ -486,81 +490,269 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 // Standalone Functions
 //==================================================================================================
 
-/// Size of the I/O buffer used by the gateway bridge for socket reads.
+/// Size of the I/O buffer used by the gateway bridge for reads from the
+/// connected consumer on Unix, where the input direction is a raw byte stream.
+#[cfg(unix)]
 const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
+
+/// Number of bytes in the length prefix that frames each Windows gateway-input record.
+///
+/// See [`forward_consumer_input`] for the framing rationale: it emulates the UDS half-close
+/// that Windows named pipes lack so the guest still observes an isolated stdin EOF.
+#[cfg(windows)]
+const GATEWAY_INPUT_FRAME_HEADER_LEN: usize = ::std::mem::size_of::<u32>();
+
+/// Maximum payload size (in bytes) accepted for a single Windows gateway-input record.
+///
+/// The length prefix is attacker-controlled, so it is capped to bound the per-record allocation
+/// and prevent a malformed or malicious consumer from requesting an enormous frame (DoS). A frame
+/// exceeding this limit aborts the input relay.
+#[cfg(windows)]
+const GATEWAY_INPUT_FRAME_MAX_PAYLOAD_LEN: usize = 1 << 20;
 
 ///
 /// # Description
 ///
-/// Bridges a Unix socket connection with the guest's IKC-based I/O channels.
+/// Cross-platform listening primitive for the gateway endpoint. The
+/// path determines the protocol: a `\\.\pipe\...` path on Windows yields
+/// a named pipe server, any other path on Unix yields a UDS listener.
 ///
-/// Accepts exactly one connection on the listener, then runs a bidirectional relay:
-/// - Socket reads → guest stdin (via `input_tx`)
-/// - Guest stdout (via `output_rx`) → socket writes
+/// Wrapped in an enum so [`gateway_bridge_task`] is a single async
+/// function on both OSes; only the accept step differs.
 ///
-/// The task exits when either the socket or the guest I/O channel closes.
+enum GatewayEndpoint {
+    #[cfg(unix)]
+    Unix(UnixListener),
+    #[cfg(windows)]
+    Pipe { server: NamedPipeServer },
+}
+
+#[cfg(unix)]
+fn default_gateway_path() -> String {
+    format!("/tmp/nvx-standalone-gw-{}.sock", std::process::id())
+}
+
+#[cfg(windows)]
+fn default_gateway_path() -> String {
+    format!(r"\\.\pipe\nanvix-standalone-gw-{}", std::process::id())
+}
+
+#[cfg(unix)]
+async fn bind_gateway_endpoint(path: &str) -> ::anyhow::Result<GatewayEndpoint> {
+    // Ensure parent directory exists (operator-supplied paths may point
+    // into a per-sandbox state dir that we created earlier). Propagate
+    // any failure here so the operator sees the real cause instead of a
+    // misleading bind error downstream.
+    if let Some(parent) = ::std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            ::std::fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "failed to create parent directory {} for gateway socket {path}",
+                    parent.display()
+                )
+            })?;
+        }
+    }
+    // Pre-bind cleanup: a stale socket file from a prior run is fine to
+    // remove, but any other removal failure (e.g. EACCES, EISDIR) must
+    // surface to the caller instead of being masked by the bind error.
+    match ::std::fs::remove_file(path) {
+        Ok(()) => {},
+        Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => {},
+        Err(e) => {
+            return Err(e)
+                .with_context(|| format!("failed to remove stale gateway socket at {path}"));
+        },
+    }
+    let listener = UnixListener::bind(path)?;
+    // Restrict the gateway socket to the owning user. Without this the socket
+    // inherits the process umask (typically 0755 / 0775) and any local user can
+    // connect to the guest's stdin/stdout. This is in addition to per-sandbox
+    // path isolation provided by the caller.
+    {
+        use ::std::os::unix::fs::PermissionsExt;
+        let mut perms = ::std::fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        ::std::fs::set_permissions(path, perms)?;
+    }
+    Ok(GatewayEndpoint::Unix(listener))
+}
+
+#[cfg(windows)]
+async fn bind_gateway_endpoint(path: &str) -> ::anyhow::Result<GatewayEndpoint> {
+    let server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(path)?;
+    Ok(GatewayEndpoint::Pipe { server })
+}
+
 ///
-/// # Parameters
+/// # Description
 ///
-/// - `listener`: Unix socket listener bound to the gateway path.
-/// - `io`: I/O channels connected to the guest's stdin/stdout via IKC.
+/// Bridges the gateway endpoint with the guest's IKC-based I/O
+/// channels. Accepts exactly one connection (the containerd shim, or a
+/// test harness), then runs a bidirectional relay:
+/// - Connection reads → guest stdin (via `input_tx`)
+/// - Guest stdout/stderr (via `output_rx`) → connection writes
 ///
-async fn gateway_bridge_task(listener: UnixListener, io: StandaloneVmIo) {
+/// The task exits when either the connection or the guest I/O channel
+/// closes. The implementation is identical on Unix and Windows; only the
+/// accept primitive differs (UDS accept vs named pipe connect).
+///
+async fn gateway_bridge_task(endpoint: GatewayEndpoint, io: StandaloneVmIo) {
     let StandaloneVmIo {
-        mut output_rx,
+        output_rx,
         input_tx,
     } = io;
 
-    // Accept exactly one connection (the test harness or gateway consumer).
-    let stream = match listener.accept().await {
-        Ok((stream, _addr)) => {
-            debug!("gateway_bridge_task(): accepted connection");
-            stream
-        },
-        Err(e) => {
-            error!("gateway_bridge_task(): failed to accept connection: {e}");
-            return;
-        },
-    };
-
-    let (mut reader, mut writer) = stream.into_split();
-
-    // Spawn a task that reads from the socket and forwards to guest stdin.
-    let input_handle: JoinHandle<()> = tokio::spawn(async move {
-        let mut buffer: [u8; GATEWAY_BRIDGE_BUFFER_SIZE] = [0u8; GATEWAY_BRIDGE_BUFFER_SIZE];
-        loop {
-            match reader.read(&mut buffer).await {
-                Ok(0) => {
-                    // EOF — consumer closed the write half.
-                    break;
-                },
-                Ok(n) => {
-                    if input_tx.send(buffer[..n].to_vec()).await.is_err() {
-                        break;
-                    }
+    // Accept exactly one connection. On Unix this is a UDS accept; on
+    // Windows we await the client connect on the pre-created pipe server.
+    match endpoint {
+        #[cfg(unix)]
+        GatewayEndpoint::Unix(listener) => {
+            let stream = match listener.accept().await {
+                Ok((stream, _addr)) => {
+                    debug!("gateway_bridge_task(): accepted UDS connection");
+                    stream
                 },
                 Err(e) => {
-                    trace!("gateway_bridge_task(): socket read error: {e}");
-                    break;
+                    error!("gateway_bridge_task(): failed to accept UDS connection: {e}");
+                    return;
                 },
+            };
+            let (reader, writer) = stream.into_split();
+            run_bridge(reader, writer, output_rx, input_tx).await;
+        },
+        #[cfg(windows)]
+        GatewayEndpoint::Pipe { server } => {
+            if let Err(e) = server.connect().await {
+                error!("gateway_bridge_task(): named pipe connect failed: {e}");
+                // Drain output_rx so the guest doesn't see write() = -1.
+                let mut output_rx = output_rx;
+                while output_rx.recv().await.is_some() {}
+                drop(input_tx);
+                return;
             }
-        }
-    });
+            debug!("gateway_bridge_task(): named pipe client connected");
+            let (reader, writer) = tokio::io::split(server);
+            run_bridge(reader, writer, output_rx, input_tx).await;
+        },
+    }
 
-    // Forward guest output to the socket writer.
+    debug!("gateway_bridge_task(): bridge closed");
+}
+
+/// Generic bidirectional pump used by both the Unix and Windows accept
+/// paths. Input records from `reader` go to `input_tx` (guest stdin);
+/// writes to `writer` come from `output_rx` (guest stdout/stderr).
+///
+/// The input direction is decoded by [`forward_consumer_input`], whose wire
+/// format differs per platform: a raw byte stream on Unix (EOF is the UDS
+/// half-close) and a length-prefixed framing on Windows (EOF is an in-band
+/// zero-length record, since named pipes have no half-close primitive).
+async fn run_bridge<R, W>(
+    reader: R,
+    mut writer: W,
+    mut output_rx: ::tokio::sync::mpsc::Receiver<Vec<u8>>,
+    input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>,
+) where
+    R: ::tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: ::tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    // Spawn a task that reads from the connection and forwards to guest
+    // stdin. This runs concurrently with the output direction below.
+    let input_handle: JoinHandle<()> = tokio::spawn(forward_consumer_input(reader, input_tx));
+
+    // Forward guest output to the connection.
     while let Some(data) = output_rx.recv().await {
         if let Err(e) = writer.write_all(&data).await {
-            trace!("gateway_bridge_task(): socket write error: {e}");
+            trace!("gateway_bridge_task(): write error: {e}");
             break;
         }
     }
 
-    // Guest output channel closed — shut down the socket write half so the consumer sees EOF.
+    // Guest output channel closed — shut down the connection write half
+    // so the consumer sees EOF, then unwind the input relay.
     let _ = writer.shutdown().await;
-
-    // Wait for the input relay to finish.
     input_handle.abort();
     let _ = input_handle.await;
+}
 
-    debug!("gateway_bridge_task(): bridge closed");
+/// Forwards consumer input to the guest's stdin channel on Unix, where the
+/// gateway input direction is a raw byte stream. A zero-length read is the
+/// transport EOF (a UDS `shutdown(SHUT_WR)` half-close); returning from this
+/// function drops `input_tx`, which delivers EOF to the guest's stdin.
+#[cfg(unix)]
+async fn forward_consumer_input<R>(mut reader: R, input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>)
+where
+    R: ::tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let mut buffer: [u8; GATEWAY_BRIDGE_BUFFER_SIZE] = [0u8; GATEWAY_BRIDGE_BUFFER_SIZE];
+    loop {
+        match reader.read(&mut buffer).await {
+            Ok(0) => break,
+            Ok(n) => {
+                if input_tx.send(buffer[..n].to_vec()).await.is_err() {
+                    break;
+                }
+            },
+            Err(e) => {
+                trace!("gateway_bridge_task(): read error: {e}");
+                break;
+            },
+        }
+    }
+}
+
+/// Forwards consumer input to the guest's stdin channel on Windows, where the
+/// gateway input direction is framed to emulate the UDS half-close that named
+/// pipes lack.
+///
+/// Each record is a little-endian `u32` length followed by that many payload
+/// bytes; a zero-length record is the in-band EOF marker. Decoding stops at the
+/// EOF record (or when the pipe closes), and returning from this function drops
+/// `input_tx`, which delivers EOF to the guest's stdin while the output
+/// direction stays open. Because the records share the pipe's FIFO with the
+/// preceding data, every stdin byte is guaranteed to reach the guest before the
+/// EOF is observed — there is no data/control race.
+#[cfg(windows)]
+async fn forward_consumer_input<R>(mut reader: R, input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>)
+where
+    R: ::tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    loop {
+        let mut header: [u8; GATEWAY_INPUT_FRAME_HEADER_LEN] =
+            [0u8; GATEWAY_INPUT_FRAME_HEADER_LEN];
+        if let Err(e) = reader.read_exact(&mut header).await {
+            // A clean pipe close before the next record boundary is the consumer going away;
+            // anything else is logged for diagnostics. Either way the guest's stdin is closed.
+            if e.kind() != ::std::io::ErrorKind::UnexpectedEof {
+                trace!("gateway_bridge_task(): input header read error: {e}");
+            }
+            break;
+        }
+        let payload_len: usize = u32::from_le_bytes(header) as usize;
+        if payload_len == 0 {
+            // In-band EOF record: the consumer finished writing stdin.
+            break;
+        }
+        if payload_len > GATEWAY_INPUT_FRAME_MAX_PAYLOAD_LEN {
+            // The length prefix is attacker-controlled; reject oversized frames to bound the
+            // allocation below and avoid a memory-exhaustion DoS.
+            trace!(
+                "gateway_bridge_task(): input frame too large ({} > {} bytes), aborting relay",
+                payload_len,
+                GATEWAY_INPUT_FRAME_MAX_PAYLOAD_LEN
+            );
+            break;
+        }
+        let mut payload: Vec<u8> = vec![0u8; payload_len];
+        if let Err(e) = reader.read_exact(&mut payload).await {
+            trace!("gateway_bridge_task(): input payload read error: {e}");
+            break;
+        }
+        if input_tx.send(payload).await.is_err() {
+            break;
+        }
+    }
 }

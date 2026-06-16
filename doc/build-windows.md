@@ -85,7 +85,7 @@ Available build parameters:
 |-------------------|--------------|----------------------------------------------------|
 | `DEPLOYMENT_MODE` | `standalone` | `standalone`                                       |
 | `LOG_LEVEL`       | `error`      | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
-| `MACHINE`         | `microvm`    | `microvm`, `hyperlight`                            |
+| `MACHINE`         | `microvm`    | `microvm`                                          |
 | `MESSAGE_FORMAT`  | (none)       | `json`, `json-diagnostic-rendered-ansi`            |
 | `RELEASE`         | `no`         | `yes`, `no`                                        |
 | `TARGET`          | `x86`        | `x86`                                              |
@@ -117,7 +117,7 @@ Available build parameters:
 .\z.ps1 build -- run-unit-tests
 
 # Run standalone integration tests on Windows.
-.\z.ps1 test -- MACHINE=microvm
+.\z.ps1 build -- run-nanvix-tests
 ```
 
 ## Formal Verification with Verus

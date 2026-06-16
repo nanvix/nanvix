@@ -23,7 +23,10 @@ use ::log::{
 };
 use ::sys::{
     error::ErrorCode,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_select::{
@@ -122,8 +125,15 @@ pub fn do_select<T>(
                 let writefds: Option<fd_set> = write_ptr.map(|set| set.try_into()).transpose()?;
                 let errorfds: Option<fd_set> = error_ptr.map(|set| set.try_into()).transpose()?;
 
-                let response: Message =
-                    SelectResponse::build(tid, ready_u8, &readfds, &writefds, &errorfds);
+                let response: Message = SelectResponse::build(
+                    tid,
+                    ready_u8,
+                    &readfds,
+                    &writefds,
+                    &errorfds,
+                    ::syscall::LINUXD,
+                    MessageType::Ikc,
+                );
                 Ok(response)
             },
             Err(_e) => {

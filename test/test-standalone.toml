@@ -53,7 +53,6 @@ extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "http"
@@ -65,31 +64,58 @@ expected_exit_code = 0
 
 [[tests]]
 executor = "http"
-program = "./bin/echo-rust-nostd.elf"
+program = "./bin/echo-rust-nostd.initrd"
 input = '["hello world!"]'
 expected_output = "hello world!"
 
 [[tests]]
 executor = "http"
-program = "./bin/thread-rust.elf"
+program = "./bin/thread-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 executor = "http"
-program = "./bin/stress-rust.elf"
+program = "./bin/test-fork-kcall.initrd"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "http"
+program = "./bin/test-fork-guestfs.initrd"
+extra_nanvixd_args = "-ramfs ./bin/test-fork-guestfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "http"
+program = "./bin/waitpid-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 executor = "http"
-program = "./bin/arch-rust.elf"
+program = "./bin/setenv-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 executor = "http"
-program = "./bin/linux-app.elf"
+program = "./bin/stress-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/arch-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 input = "[]"
 expected_output = "ok"
@@ -113,7 +139,6 @@ extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 3
-runs_on = ["microvm"]
 
 [[tests]]
 executor = "terminal"
@@ -125,27 +150,276 @@ expected_exit_code = 0
 
 [[tests]]
 executor = "terminal"
-program = "./bin/echo-rust-nostd.elf"
+program = "./bin/echo-rust-nostd.initrd"
 input = "hello world"
 expected_output = "hello world"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/thread-rust.elf"
+program = "./bin/thread-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/stress-rust.elf"
+program = "./bin/test-fork-kcall.initrd"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-fork-guestfs.initrd"
+extra_nanvixd_args = "-ramfs ./bin/test-fork-guestfs.img"
+expect_empty_output = true
+expected_exit_code = 13
+
+[[tests]]
+executor = "terminal"
+program = "./bin/waitpid-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/arch-rust.elf"
+program = "./bin/setenv-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
-program = "./bin/linux-app.elf"
+program = "./bin/stress-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/arch-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+name = "execv-small"
+program = "./bin/execv-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/execv-test.img"
+expected_output = "ok"
+expected_exit_code = 0
+
+# execv() of a large binary (target inflated to MEMORY_SIZE/8). Reuses the same caller, pointed at
+# a ramfs whose `/target` is the large program, to exercise loading a big image with no size cap.
+[[tests]]
+executor = "terminal"
+name = "execv-big"
+program = "./bin/execv-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/execv-big-test.img"
+expected_output = "ok"
+expected_exit_code = 0
+
+[[tests]]
+executor = "terminal"
+program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-len-rust.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
+program_args_padding_len = 4071
+expected_output = "ok"
+
+
+#===================================================================================================
+# Host Mount Tests
+#===================================================================================================
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-test.initrd"
+extra_nanvixd_args = "-mount ./bin/mount-test-data"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-fork-hostfs.initrd"
+extra_nanvixd_args = "-mount ./bin/test-fork-hostfs-data"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
+
+[[tests]]
+executor = "terminal"
+program = "./bin/mount-multipart-test.initrd"
+input = "[]"
+expected_output = "ok"
+expected_exit_code = 0
+runs_on = ["microvm"]
+
+#===================================================================================================
+# Networking Tests
+#===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/network-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/network-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+expected_output = "ok"
+
+#===================================================================================================
+# Environment Variable Tests
+#===================================================================================================
+
+# Single environment variable.
+[[tests]]
+executor = "http"
+program = "./bin/env-rust-nostd.elf"
+program_env = "TEST_VAR=hello"
+input = "[]"
+expected_output = "TEST_VAR=hello\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/env-rust-nostd.elf"
+program_env = "TEST_VAR=hello"
+expected_output = "TEST_VAR=hello\nok"
+
+# Multiple environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/env-rust-nostd.elf"
+program_env = "FOO=bar BAZ=qux"
+input = "[]"
+expected_output = "FOO=bar\nBAZ=qux\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/env-rust-nostd.elf"
+program_env = "FOO=bar BAZ=qux"
+expected_output = "FOO=bar\nBAZ=qux\nok"
+
+# Environment variable with special characters in value.
+[[tests]]
+executor = "http"
+program = "./bin/env-rust-nostd.elf"
+program_env = "SPECIAL=a/b:c-d_e.f"
+input = "[]"
+expected_output = "SPECIAL=a/b:c-d_e.f\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/env-rust-nostd.elf"
+program_env = "SPECIAL=a/b:c-d_e.f"
+expected_output = "SPECIAL=a/b:c-d_e.f\nok"
+
+#===================================================================================================
+# Combined Command-Line Argument and Environment Variable Tests
+#===================================================================================================
+
+# Program with args and environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+program_env = "FOO=bar"
+input = "[]"
+expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+program_env = "FOO=bar"
+expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
+
+# Program with args and no environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+input = "[]"
+expected_output = "ARGS:hello world\nENV:\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello world"
+expected_output = "ARGS:hello world\nENV:\nok"
+
+# Program with no args and with environment variables.
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_env = "FOO=bar"
+input = "[]"
+expected_output = "ARGS:\nENV:FOO=bar\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_env = "FOO=bar"
+expected_output = "ARGS:\nENV:FOO=bar\nok"
+
+# Program with escaped args (literal semicolon in arguments).
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "a;b"
+program_env = "X=1"
+input = "[]"
+expected_output = "ARGS:a;b\nENV:X=1\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "a;b"
+program_env = "X=1"
+expected_output = "ARGS:a;b\nENV:X=1\nok"
+
+# Program with escaped environment variables (literal semicolon in env value).
+[[tests]]
+executor = "http"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello"
+program_env = "PATH=a;b"
+input = "[]"
+expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/cmdline-env-rust-nostd.elf"
+program_args = "hello"
+program_env = "PATH=a;b"
+expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
+
+#===================================================================================================
+# Snapshot Save / Restore Tests
+#===================================================================================================
+
+[[tests]]
+executor = "snapshot-restore"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 32
+
+# Asserts that the host nanvixd process exits on its own after the snapshot artifacts are
+# written to disk. The guest workload spins forever after taking the snapshot, so the only
+# path to a clean nanvixd exit is the host-side snapshot-completion tear-down.
+[[tests]]
+executor = "snapshot-save-exit"
+program = "./bin/snapshot-test.elf"
+iterations = 1
+expected_exit_code = 0

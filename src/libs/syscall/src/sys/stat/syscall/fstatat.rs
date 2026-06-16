@@ -5,23 +5,20 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
-use ::sysapi::sys_stat;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        sys::stat::message::FileStatAtRequest,
-    },
-    ::alloc::{
-        string::ToString,
-        vec::Vec,
-    },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+use crate::{
+    message::MessagePartitioner,
+    sys::stat::message::FileStatAtRequest,
 };
+use ::alloc::{
+    string::ToString,
+    vec::Vec,
+};
+use ::sys::{
+    error::Error,
+    ipc::Message,
+    pm::ThreadIdentifier,
+};
+use ::sysapi::sys_stat;
 
 //==================================================================================================
 // Standalone Functions
@@ -43,39 +40,17 @@ use {
 /// Upon successful completion, empty result is returned. Upon failure, an error is returned
 /// instead.
 ///
-#[allow(unreachable_code, unused_variables)]
 pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> Result<(), Error> {
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_stat(path, buf).map_err(|e| {
-            let code: ::sys::error::ErrorCode = e.into();
-            ::syslog::warn!("fstatat(): VFS stat failed (path={path:?}, error={e})");
-            ::sys::error::Error::new(code, "vfs stat failed")
-        })
-    }
-
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    fstatat_linuxd(dirfd, path, buf, flag)
-}
-
-/// Forwards a `fstatat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn fstatat_linuxd(
-    dirfd: i32,
-    path: &str,
-    buf: &mut sys_stat::stat,
-    flag: i32,
-) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
 
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     for request in &requests {
-        ::sys::kcall::ipc::send(request)?;
+        ::sys::kcall::ipc::__kcall_send(request)?;
     }
 
     *buf = crate::sys::stat::syscall::fstatat_response()?;

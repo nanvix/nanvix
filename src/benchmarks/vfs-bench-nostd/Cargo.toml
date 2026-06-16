@@ -16,6 +16,7 @@ name = "vfs-bench-nostd"
 [dependencies]
 cfg-if = { workspace = true }
 nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
 libc_string = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 sysalloc = { workspace = true }
@@ -36,12 +37,12 @@ vfs-bench-common = { workspace = true }
 
 [features]
 default = ["panic"]
-trace = ["nvx/trace", "syslog/trace"]
-debug = ["nvx/debug", "syslog/debug"]
-info = ["nvx/info", "syslog/info"]
-warn = ["nvx/warn", "syslog/warn"]
-error = ["nvx/error", "syslog/error"]
-panic = ["nvx/panic", "syslog/panic"]
+trace = ["nvx/trace", "syslog/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "syslog/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "syslog/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "syslog/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "syslog/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "syslog/panic", "nvx-crt0/panic"]
 
 [lints]
 workspace = true

@@ -44,7 +44,7 @@ pub struct New {
     pub app_name: String,
     /// Path to the program binary to execute inside the User VM.
     pub program: String,
-    /// Command-line arguments to pass to the program.
+    /// Command-line arguments and environment variables to pass to the program.
     pub program_args: String,
 }
 
@@ -60,7 +60,11 @@ pub struct New {
 pub struct NewResponse {
     /// Unique identifier assigned to the User VM instance.
     pub user_vm_id: UserVmIdentifier,
-    /// Socket address where clients can interact with the VM's stdin/stdout through the gateway.
+    /// Gateway endpoint where the host-side consumer (typically the
+    /// containerd shim) exchanges the guest's stdin/stdout.
+    ///
+    /// - Unix: Unix-domain socket path
+    /// - Windows: named pipe path (e.g. `\\.\pipe\nanvix-standalone-gw-<pid>`)
     pub gateway_sockaddr: String,
 }
 

@@ -10,8 +10,8 @@ use crate::{
         TimesRequest,
         TimesResponse,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::sys::{
     error::{
@@ -60,32 +60,32 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
         return Ok(0);
     }
 
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = TimesRequest::build(tid)?;
-    ::sys::kcall::ipc::send(&request)?;
+    let request: Message = TimesRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc)?;
+    ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
+        ::syslog::warn!("times(): failed (buffer={:?}, status={:?})", buffer, { response.status });
         // System call failed, parse error code and return it.
         match ErrorCode::try_from(response.status) {
             Ok(error_code) => Err(Error::new(error_code, "times() failed")),
             Err(error) => {
-                ::syslog::error!("times(): failed to parse error code (error={:?})", error);
+                ::syslog::warn!("times(): failed to parse error code (error={:?})", error);
                 Err(Error::new(ErrorCode::TryAgain, "times() failed"))
             },
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::TimesResponse => {
+            SystemCallMessageHeader::TimesResponse => {
                 // Parse response.
                 let response: TimesResponse = TimesResponse::from_bytes(message.payload);
 
@@ -101,7 +101,7 @@ pub fn times(buffer: &mut Option<&mut tms>) -> Result<clock_t, Error> {
                 Ok(elapsed)
             },
             header => {
-                ::syslog::error!("times(): failed (buffer={:?}, header={:?})", buffer, header);
+                ::syslog::warn!("times(): failed (buffer={:?}, header={:?})", buffer, header);
                 Err(Error::new(ErrorCode::InvalidMessage, "times() failed"))
             },
         }

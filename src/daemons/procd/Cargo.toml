@@ -14,6 +14,8 @@ homepage.workspace = true
 sys = { workspace = true }
 proc = { workspace = true, features = ["daemon"] }
 nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
 libc_string = { workspace = true }
 syslog = { workspace = true, default-features = true }
 
@@ -23,12 +25,12 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["panic"]
-trace = ["nvx/trace"]
-debug = ["nvx/debug"]
-info = ["nvx/info"]
-warn = ["nvx/warn"]
-error = ["nvx/error"]
-panic = ["nvx/panic"]
+trace = ["nvx/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "nvx-crt0/panic"]
 
 [lints]
 workspace = true

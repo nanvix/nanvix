@@ -9,7 +9,7 @@ use crate::runtime::monotonic_now;
 use ::core::time::Duration;
 use ::sys::{
     error::Error,
-    kcall::pm::sleep,
+    kcall::pm::__kcall_sleep,
 };
 
 //==================================================================================================
@@ -33,7 +33,7 @@ fn test_monotonic_clock() -> Result<(), Error> {
 fn test_sleep_elapsed_time() -> Result<(), Error> {
     let before = monotonic_now()?;
     let target = Duration::from_millis(5);
-    sleep(target)?;
+    __kcall_sleep(target)?;
     let after = monotonic_now()?;
 
     match after.checked_sub(&before) {

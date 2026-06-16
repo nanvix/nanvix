@@ -23,8 +23,8 @@ use ::sys::{
         ErrorCode,
     },
     kcall::{
-        pm::create_thread,
-        sched::sched_yield,
+        pm::__kcall_create_thread,
+        sched::__kcall_sched_yield,
     },
     pm::{
         ThreadCreateArgs,
@@ -72,14 +72,14 @@ pub fn run() -> Result<(), StressError> {
     for worker_id in 0..CONCURRENT_SPAWNERS {
         let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, spawner_worker, worker_id);
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
         tids.push(tid);
         stacks.push(stack);
     }
 
-    for (tid, stack) in tids.into_iter().zip(stacks.into_iter()) {
+    for (tid, stack) in tids.into_iter().zip(stacks) {
         let mut retval: usize = 0;
-        ::sys::kcall::pm::join_thread(tid, &mut retval)?;
+        ::sys::kcall::pm::__kcall_join_thread(tid, &mut retval)?;
         drop(stack);
         if retval == SPAWN_FAILURE {
             let code_raw: usize = SPAWN_ERROR_CODE.swap(0, Ordering::AcqRel);
@@ -143,10 +143,10 @@ fn spawner_worker_impl(worker_id: usize) -> Result<usize, Error> {
         let signature: usize = (worker_id << 8) | child_index;
         let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
         let mut args: ThreadCreateArgs = thread_args(&stack, spawn_child_worker, signature);
-        let tid: ThreadIdentifier = create_thread(&mut args)?;
+        let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
 
         let mut retval: usize = 0;
-        ::sys::kcall::pm::join_thread(tid, &mut retval)?;
+        ::sys::kcall::pm::__kcall_join_thread(tid, &mut retval)?;
         drop(stack);
         assert_eq!(retval, signature ^ SPAWN_CHILD_RETURN_TAG, "child returned wrong signature");
         PARALLEL_SPAWNED.fetch_add(1, Ordering::AcqRel);
@@ -191,7 +191,7 @@ extern "C" fn spawn_child_worker(signature: usize) -> usize {
 /// `Ok(tag)` on success where `tag` combines the signature and return marker.
 fn spawn_child_worker_impl(signature: usize) -> Result<usize, Error> {
     for _ in 0..FAN_OUT_SPINS {
-        sched_yield()?;
+        __kcall_sched_yield()?;
     }
     Ok(signature ^ SPAWN_CHILD_RETURN_TAG)
 }

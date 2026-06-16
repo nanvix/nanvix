@@ -11,10 +11,17 @@ use crate::{
     error::Fat32Error,
     fat::{
         error::map_fatfs_error,
-        file::FatFile,
-        storage::RawMemoryStorage,
+        file::{
+            FatFile,
+            IntoFileInner,
+        },
+        storage::{
+            RawMemoryStorage,
+            ReadOnlyMemoryStorage,
+        },
         time::NanvixTimeProvider,
         InternalFatFs,
+        ReadOnlyInternalFatFs,
     },
 };
 use ::core::fmt;
@@ -24,13 +31,39 @@ use ::fatfs::{
 };
 
 //==================================================================================================
+// Internal Enum
+//==================================================================================================
+
+/// Internal filesystem backend that wraps either a read-write or read-only storage.
+enum FatInner {
+    /// Read-write filesystem backed by [`RawMemoryStorage`].
+    ReadWrite(InternalFatFs),
+    /// Read-only filesystem backed by [`ReadOnlyMemoryStorage`].
+    ReadOnly(ReadOnlyInternalFatFs),
+}
+
+/// Dispatches a closure over the inner filesystem, regardless of storage variant.
+///
+/// Both arms expand the same body textually. Each expansion is type-checked
+/// independently against the corresponding `fatfs::FileSystem<IO, …>` type.
+macro_rules! dispatch_fs {
+    ($self:expr, |$fs:ident| $body:expr) => {
+        match &$self.inner {
+            FatInner::ReadWrite($fs) => $body,
+            FatInner::ReadOnly($fs) => $body,
+        }
+    };
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
 /// High-level FAT filesystem wrapper.
 ///
-/// Wraps a `fatfs::FileSystem` over [`RawMemoryStorage`] and provides a
-/// clean API that returns [`Fat32Error`] instead of fatfs error types.
+/// Wraps a `fatfs::FileSystem` over either [`RawMemoryStorage`] (read-write) or
+/// [`ReadOnlyMemoryStorage`] (read-only) and provides a clean API that returns
+/// [`Fat32Error`] instead of fatfs error types.
 ///
 /// # Description
 ///
@@ -38,7 +71,7 @@ use ::fatfs::{
 /// containing a FAT image, this type allows reading and writing files.
 pub struct Fat {
     /// The underlying fatfs FileSystem.
-    fs: InternalFatFs,
+    inner: FatInner,
     /// Base pointer to the FAT image in memory (for zero-copy file access).
     base_ptr: *const u8,
 }
@@ -53,6 +86,11 @@ unsafe impl Send for Fat {}
 //==================================================================================================
 
 impl Fat {
+    /// Returns `true` if this filesystem is backed by read-only storage.
+    fn is_readonly(&self) -> bool {
+        matches!(self.inner, FatInner::ReadOnly(_))
+    }
+
     /// Opens an existing FAT filesystem from a memory region.
     ///
     /// # Parameters
@@ -80,8 +118,44 @@ impl Fat {
         let fs: InternalFatFs =
             ::fatfs::FileSystem::new(storage, options).map_err(map_fatfs_error)?;
         Ok(Self {
-            fs,
+            inner: FatInner::ReadWrite(fs),
             base_ptr: ptr as *const u8,
+        })
+    }
+
+    /// Opens an existing FAT filesystem from a read-only memory region.
+    ///
+    /// Uses [`ReadOnlyMemoryStorage`] with an immutable `*const u8` pointer,
+    /// preventing mutation of the underlying memory. Write operations through
+    /// the returned [`Fat`] will fail at runtime.
+    ///
+    /// # Parameters
+    ///
+    /// - `ptr`: Immutable pointer to the start of the FAT image in memory.
+    /// - `size`: Size of the memory region in bytes.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Fat`] instance backed by read-only storage, or an error.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::InvalidArgument`] if `ptr` is null or `size` is zero.
+    /// - [`Fat32Error::IoError`] if the FAT image is invalid or corrupted.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the memory region is valid, properly aligned,
+    /// and remains valid for the lifetime of this [`Fat`].
+    pub unsafe fn from_memory_readonly(ptr: *const u8, size: usize) -> Result<Self, Fat32Error> {
+        // SAFETY: Caller guarantees memory region validity.
+        let storage: ReadOnlyMemoryStorage = unsafe { ReadOnlyMemoryStorage::new(ptr, size)? };
+        let options = ::fatfs::FsOptions::new().time_provider(NanvixTimeProvider);
+        let fs: ReadOnlyInternalFatFs =
+            ::fatfs::FileSystem::new(storage, options).map_err(map_fatfs_error)?;
+        Ok(Self {
+            inner: FatInner::ReadOnly(fs),
+            base_ptr: ptr,
         })
     }
 
@@ -111,29 +185,35 @@ impl Fat {
         create: bool,
         truncate: bool,
     ) -> Result<FatFile<'_>, Fat32Error> {
-        let root = self.fs.root_dir();
-
-        if create {
-            match root.open_file(path) {
-                Ok(mut file) => {
-                    if truncate {
-                        file.truncate().map_err(map_fatfs_error)?;
-                    }
-                    Ok(FatFile::new(file, read, write))
-                },
-                Err(::fatfs::Error::NotFound) => {
-                    let file = root.create_file(path).map_err(map_fatfs_error)?;
-                    Ok(FatFile::new(file, read, write))
-                },
-                Err(e) => Err(map_fatfs_error(e)),
-            }
-        } else {
-            let mut file = root.open_file(path).map_err(map_fatfs_error)?;
-            if truncate && write {
-                file.truncate().map_err(map_fatfs_error)?;
-            }
-            Ok(FatFile::new(file, read, write))
+        // Reject mutating open modes on a read-only filesystem.
+        if self.is_readonly() && (write || create || truncate) {
+            return Err(Fat32Error::ReadOnly);
         }
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
+
+            if create {
+                match root.open_file(path) {
+                    Ok(mut file) => {
+                        if truncate {
+                            file.truncate().map_err(map_fatfs_error)?;
+                        }
+                        Ok(FatFile::new(file.into_file_inner(), read, write))
+                    },
+                    Err(::fatfs::Error::NotFound) => {
+                        let file = root.create_file(path).map_err(map_fatfs_error)?;
+                        Ok(FatFile::new(file.into_file_inner(), read, write))
+                    },
+                    Err(e) => Err(map_fatfs_error(e)),
+                }
+            } else {
+                let mut file = root.open_file(path).map_err(map_fatfs_error)?;
+                if truncate && write {
+                    file.truncate().map_err(map_fatfs_error)?;
+                }
+                Ok(FatFile::new(file.into_file_inner(), read, write))
+            }
+        })
     }
 
     /// Creates a new file, failing if it already exists.
@@ -160,16 +240,21 @@ impl Fat {
         read: bool,
         write: bool,
     ) -> Result<FatFile<'_>, Fat32Error> {
-        let root = self.fs.root_dir();
-
-        // fatfs::Dir::create_file does NOT fail if file exists - it opens it.
-        // We must explicitly check for existence first.
-        if root.open_file(path).is_ok() {
-            return Err(Fat32Error::AlreadyExists);
+        if self.is_readonly() {
+            return Err(Fat32Error::ReadOnly);
         }
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
 
-        let file = root.create_file(path).map_err(map_fatfs_error)?;
-        Ok(FatFile::new(file, read, write))
+            // fatfs::Dir::create_file does NOT fail if file exists - it opens it.
+            // We must explicitly check for existence first.
+            if root.open_file(path).is_ok() {
+                return Err(Fat32Error::AlreadyExists);
+            }
+
+            let file = root.create_file(path).map_err(map_fatfs_error)?;
+            Ok(FatFile::new(file.into_file_inner(), read, write))
+        })
     }
 
     /// Gets file/directory metadata.
@@ -186,33 +271,35 @@ impl Fat {
     ///
     /// - [`Fat32Error::NotFound`] if path doesn't exist.
     pub fn stat(&self, path: &str) -> Result<FatStat, Fat32Error> {
-        let root = self.fs.root_dir();
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
 
-        if path.is_empty() || path == "/" || path == "." {
-            return Ok(FatStat {
-                size: 0,
-                is_dir: true,
-            });
-        }
+            if path.is_empty() || path == "/" || path == "." {
+                return Ok(FatStat {
+                    size: 0,
+                    is_dir: true,
+                });
+            }
 
-        // Try opening as file first.
-        if let Ok(mut file) = root.open_file(path) {
-            let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
-            return Ok(FatStat {
-                size,
-                is_dir: false,
-            });
-        }
+            // Try opening as file first.
+            if let Ok(mut file) = root.open_file(path) {
+                let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
+                return Ok(FatStat {
+                    size,
+                    is_dir: false,
+                });
+            }
 
-        // Try opening as directory.
-        if root.open_dir(path).is_ok() {
-            return Ok(FatStat {
-                size: 0,
-                is_dir: true,
-            });
-        }
+            // Try opening as directory.
+            if root.open_dir(path).is_ok() {
+                return Ok(FatStat {
+                    size: 0,
+                    is_dir: true,
+                });
+            }
 
-        Err(Fat32Error::NotFound)
+            Err(Fat32Error::NotFound)
+        })
     }
 
     /// Returns a pointer and size for zero-copy access to a file's data.
@@ -226,43 +313,35 @@ impl Fat {
     ///
     /// - `path`: Path relative to the FAT root.
     pub fn file_raw_region(&self, path: &str) -> Option<(*const u8, usize)> {
-        let root: ::fatfs::Dir<
-            '_,
-            RawMemoryStorage,
-            NanvixTimeProvider,
-            ::fatfs::LossyOemCpConverter,
-        > = self.fs.root_dir();
-        let mut file: ::fatfs::File<
-            '_,
-            RawMemoryStorage,
-            NanvixTimeProvider,
-            ::fatfs::LossyOemCpConverter,
-        > = root.open_file(path).ok()?;
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
+            let mut file = root.open_file(path).ok()?;
 
-        let mut first_offset: Option<u64> = None;
-        let mut total_size: usize = 0;
-        let mut next_expected: u64 = 0;
+            let mut first_offset: Option<u64> = None;
+            let mut total_size: usize = 0;
+            let mut next_expected: u64 = 0;
 
-        for (i, extent_result) in file.extents().enumerate() {
-            let extent: ::fatfs::Extent = extent_result.ok()?;
-            if i == 0 {
-                first_offset = Some(extent.offset);
-            } else if extent.offset != next_expected {
-                return None; // Not contiguous.
+            for (i, extent_result) in file.extents().enumerate() {
+                let extent: ::fatfs::Extent = extent_result.ok()?;
+                if i == 0 {
+                    first_offset = Some(extent.offset);
+                } else if extent.offset != next_expected {
+                    return None; // Not contiguous.
+                }
+                next_expected = extent.offset + extent.size as u64;
+                total_size += extent.size as usize;
             }
-            next_expected = extent.offset + extent.size as u64;
-            total_size += extent.size as usize;
-        }
 
-        let offset: u64 = first_offset?;
-        if total_size == 0 {
-            return None;
-        }
+            let offset: u64 = first_offset?;
+            if total_size == 0 {
+                return None;
+            }
 
-        // SAFETY: base_ptr is valid for the lifetime of the Fat instance,
-        // and offset + total_size is within the FAT image bounds.
-        let data_ptr: *const u8 = unsafe { self.base_ptr.add(offset as usize) };
-        Some((data_ptr, total_size))
+            // SAFETY: base_ptr is valid for the lifetime of the Fat instance,
+            // and offset + total_size is within the FAT image bounds.
+            let data_ptr: *const u8 = unsafe { self.base_ptr.add(offset as usize) };
+            Some((data_ptr, total_size))
+        })
     }
 
     /// Reads directory contents.
@@ -280,31 +359,33 @@ impl Fat {
     /// - [`Fat32Error::NotFound`] if directory doesn't exist.
     /// - [`Fat32Error::IoError`] if path is a file.
     pub fn read_dir(&self, path: &str) -> Result<alloc::vec::Vec<FatDirEntry>, Fat32Error> {
-        let root = self.fs.root_dir();
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
 
-        let dir = if path.is_empty() || path == "/" || path == "." {
-            root
-        } else {
-            root.open_dir(path).map_err(map_fatfs_error)?
-        };
+            let dir = if path.is_empty() || path == "/" || path == "." {
+                root
+            } else {
+                root.open_dir(path).map_err(map_fatfs_error)?
+            };
 
-        let mut entries: alloc::vec::Vec<FatDirEntry> = alloc::vec::Vec::new();
-        for entry in dir.iter() {
-            let entry = entry.map_err(map_fatfs_error)?;
-            let name: alloc::string::String = entry.file_name();
+            let mut entries: alloc::vec::Vec<FatDirEntry> = alloc::vec::Vec::new();
+            for entry in dir.iter() {
+                let entry = entry.map_err(map_fatfs_error)?;
+                let name: alloc::string::String = entry.file_name();
 
-            if name == "." || name == ".." {
-                continue;
+                if name == "." || name == ".." {
+                    continue;
+                }
+
+                entries.push(FatDirEntry {
+                    name,
+                    is_dir: entry.is_dir(),
+                    size: entry.len(),
+                });
             }
 
-            entries.push(FatDirEntry {
-                name,
-                is_dir: entry.is_dir(),
-                size: entry.len(),
-            });
-        }
-
-        Ok(entries)
+            Ok(entries)
+        })
     }
 
     /// Creates a directory.
@@ -318,16 +399,27 @@ impl Fat {
     /// - [`Fat32Error::AlreadyExists`] if directory already exists.
     /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
     pub fn mkdir(&self, path: &str) -> Result<(), Fat32Error> {
-        let root = self.fs.root_dir();
-
-        // fatfs::Dir::create_dir does NOT fail if the directory exists — it
-        // silently opens it. Check explicitly so callers get AlreadyExists.
-        if root.open_dir(path).is_ok() {
-            return Err(Fat32Error::AlreadyExists);
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+        if self.is_readonly() {
+            return Err(Fat32Error::ReadOnly);
         }
 
-        root.create_dir(path).map_err(map_fatfs_error)?;
-        Ok(())
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
+
+            // fatfs::Dir::create_dir does NOT fail if the directory exists — it
+            // silently opens it. Check explicitly so callers get AlreadyExists.
+            if root.open_dir(path).is_ok() {
+                return Err(Fat32Error::AlreadyExists);
+            }
+
+            root.create_dir(path).map_err(map_fatfs_error)?;
+            Ok(())
+        })
     }
 
     /// Removes an empty directory.
@@ -342,17 +434,28 @@ impl Fat {
     /// - [`Fat32Error::NotEmpty`] if directory is not empty.
     /// - [`Fat32Error::NotADirectory`] if path is a file.
     pub fn rmdir(&self, path: &str) -> Result<(), Fat32Error> {
-        let root = self.fs.root_dir();
-
-        // Verify it is a directory, not a file.
-        if root.open_file(path).is_ok() {
-            return Err(Fat32Error::NotADirectory);
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+        if self.is_readonly() {
+            return Err(Fat32Error::ReadOnly);
         }
 
-        // Verify directory exists before removing.
-        root.open_dir(path).map_err(map_fatfs_error)?;
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
 
-        root.remove(path).map_err(map_fatfs_error)
+            // Verify it is a directory, not a file.
+            if root.open_file(path).is_ok() {
+                return Err(Fat32Error::NotADirectory);
+            }
+
+            // Verify directory exists before removing.
+            root.open_dir(path).map_err(map_fatfs_error)?;
+
+            root.remove(path).map_err(map_fatfs_error)
+        })
     }
 
     /// Deletes a file.
@@ -366,17 +469,28 @@ impl Fat {
     /// - [`Fat32Error::NotFound`] if file doesn't exist.
     /// - [`Fat32Error::NotAFile`] if path is a directory.
     pub fn unlink(&self, path: &str) -> Result<(), Fat32Error> {
-        let root = self.fs.root_dir();
-
-        // Verify it is a file, not a directory.
-        if root.open_dir(path).is_ok() {
-            return Err(Fat32Error::NotAFile);
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+        if self.is_readonly() {
+            return Err(Fat32Error::ReadOnly);
         }
 
-        // Verify file exists before removing.
-        root.open_file(path).map_err(map_fatfs_error)?;
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
 
-        root.remove(path).map_err(map_fatfs_error)
+            // Verify it is a file, not a directory.
+            if root.open_dir(path).is_ok() {
+                return Err(Fat32Error::NotAFile);
+            }
+
+            // Verify file exists before removing.
+            root.open_file(path).map_err(map_fatfs_error)?;
+
+            root.remove(path).map_err(map_fatfs_error)
+        })
     }
 
     /// Renames/moves a file or directory.
@@ -391,9 +505,20 @@ impl Fat {
     /// - [`Fat32Error::NotFound`] if source doesn't exist.
     /// - [`Fat32Error::AlreadyExists`] if destination already exists.
     pub fn rename(&self, old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
-        let root = self.fs.root_dir();
-        root.rename(old_path, &root, new_path)
-            .map_err(map_fatfs_error)
+        // Empty path means the caller resolved to the root — reject
+        // before reaching fatfs, which would panic on an empty name.
+        if old_path.is_empty() || new_path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+        if self.is_readonly() {
+            return Err(Fat32Error::ReadOnly);
+        }
+
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
+            root.rename(old_path, &root, new_path)
+                .map_err(map_fatfs_error)
+        })
     }
 }
 
@@ -680,6 +805,14 @@ mod tests {
         assert_eq!(result.unwrap_err(), Fat32Error::AlreadyExists);
     }
 
+    /// Tests that mkdir with an empty path returns NotFound (defense-in-depth).
+    #[test]
+    fn mkdir_empty_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.mkdir("");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
     /// Tests removing an empty directory.
     #[test]
     fn rmdir_empty() {
@@ -703,6 +836,14 @@ mod tests {
         }
         let result: Result<(), Fat32Error> = fat.rmdir("file-a.txt");
         assert_eq!(result.unwrap_err(), Fat32Error::NotADirectory);
+    }
+
+    /// Tests that rmdir with an empty path returns NotFound (defense-in-depth).
+    #[test]
+    fn rmdir_empty_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.rmdir("");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
     }
 
     // -- unlink tests ------------------------------------------------------------
@@ -729,6 +870,14 @@ mod tests {
         fat.mkdir("adir").expect("mkdir should succeed");
         let result: Result<(), Fat32Error> = fat.unlink("adir");
         assert_eq!(result.unwrap_err(), Fat32Error::NotAFile);
+    }
+
+    /// Tests that unlink with an empty path returns NotFound (defense-in-depth).
+    #[test]
+    fn unlink_empty_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.unlink("");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
     }
 
     // -- read_dir tests ----------------------------------------------------------
@@ -784,6 +933,23 @@ mod tests {
         assert_eq!(info.size, 7);
     }
 
+    /// Tests that rename with an empty old path returns NotFound.
+    #[test]
+    fn rename_empty_old_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        let result: Result<(), Fat32Error> = fat.rename("", "new.txt");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
+    /// Tests that rename with an empty new path returns NotFound.
+    #[test]
+    fn rename_empty_new_path_fails() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("src").expect("mkdir should succeed");
+        let result: Result<(), Fat32Error> = fat.rename("src", "");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
     // -- file_raw_region tests ---------------------------------------------------
 
     /// Tests that file_raw_region returns None for non-existent files.
@@ -823,5 +989,242 @@ mod tests {
         let fat: &Fat = &handle;
         let debug: alloc::string::String = alloc::format!("{fat:?}");
         assert!(debug.contains("Fat"), "debug should contain type name");
+    }
+}
+
+//==================================================================================================
+// Unit Tests (Read-Only)
+//==================================================================================================
+
+#[cfg(all(test, feature = "std"))]
+#[allow(clippy::expect_used)]
+mod readonly_tests {
+    use super::*;
+    use crate::fat::RawMemoryStorage;
+    use ::alloc::{
+        vec,
+        vec::Vec,
+    };
+
+    const IMG_SIZE: usize = 128 * 1024;
+
+    /// Helper: creates a formatted FAT image with a pre-populated file and directory,
+    /// then re-opens it as read-only via `Fat::from_memory_readonly`.
+    ///
+    /// Returns the read-only `Fat` and the backing buffer (which must outlive `Fat`).
+    fn make_readonly_fat() -> (Fat, Vec<u8>) {
+        let mut buf: Vec<u8> = vec![0u8; IMG_SIZE];
+        let ptr: *mut u8 = buf.as_mut_ptr();
+
+        // Format and seed with content using the read-write path.
+        {
+            let mut storage: RawMemoryStorage =
+                unsafe { RawMemoryStorage::new(ptr, IMG_SIZE).expect("valid storage") };
+            ::fatfs::format_volume(&mut storage, ::fatfs::FormatVolumeOptions::new())
+                .expect("format should succeed");
+
+            let fat: Fat = unsafe { Fat::from_memory(ptr, IMG_SIZE).expect("valid fat") };
+            {
+                let mut file = fat
+                    .open("hello.txt", false, true, true, false)
+                    .expect("create file should succeed");
+                file.write(b"hello readonly").expect("write should succeed");
+                file.flush().expect("flush should succeed");
+            }
+            fat.mkdir("subdir").expect("mkdir should succeed");
+            // Drop `fat` to flush all metadata before re-opening as read-only.
+        }
+
+        // Re-open as read-only.
+        let fat: Fat = unsafe {
+            Fat::from_memory_readonly(buf.as_ptr(), IMG_SIZE)
+                .expect("readonly mount should succeed")
+        };
+        (fat, buf)
+    }
+
+    /// Wrapper that ensures `Fat` is dropped before its backing buffer.
+    struct ReadOnlyFatHandle {
+        fat: core::mem::ManuallyDrop<Fat>,
+        _buf: Vec<u8>,
+    }
+
+    impl ReadOnlyFatHandle {
+        fn new() -> Self {
+            let (fat, buf) = make_readonly_fat();
+            Self {
+                fat: core::mem::ManuallyDrop::new(fat),
+                _buf: buf,
+            }
+        }
+    }
+
+    impl core::ops::Deref for ReadOnlyFatHandle {
+        type Target = Fat;
+        fn deref(&self) -> &Fat {
+            &self.fat
+        }
+    }
+
+    impl Drop for ReadOnlyFatHandle {
+        fn drop(&mut self) {
+            // SAFETY: `fat` is dropped exactly once, before `_buf`.
+            unsafe {
+                core::mem::ManuallyDrop::drop(&mut self.fat);
+            }
+        }
+    }
+
+    // -- Constructor tests -------------------------------------------------------
+
+    /// Tests that `from_memory_readonly` rejects a null pointer.
+    #[test]
+    fn from_memory_readonly_null_ptr_fails() {
+        let result: Result<Fat, Fat32Error> =
+            unsafe { Fat::from_memory_readonly(core::ptr::null(), 1024) };
+        assert!(result.is_err(), "null pointer should be rejected");
+    }
+
+    /// Tests that `from_memory_readonly` rejects zero size.
+    #[test]
+    fn from_memory_readonly_zero_size_fails() {
+        let buf: [u8; 1024] = [0; 1024];
+        let result: Result<Fat, Fat32Error> = unsafe { Fat::from_memory_readonly(buf.as_ptr(), 0) };
+        assert!(result.is_err(), "zero size should be rejected");
+    }
+
+    /// Tests that `from_memory_readonly` succeeds on a formatted image.
+    #[test]
+    fn from_memory_readonly_valid_image() {
+        let _fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+    }
+
+    // -- Read-only read operations -----------------------------------------------
+
+    /// Tests that stat works on a read-only filesystem.
+    #[test]
+    fn readonly_stat_file() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let info: FatStat = fat.stat("hello.txt").expect("stat should succeed");
+        assert!(!info.is_dir, "should not be a directory");
+        assert_eq!(info.size, 14, "file size should match written content");
+    }
+
+    /// Tests that stat on a directory works on a read-only filesystem.
+    #[test]
+    fn readonly_stat_dir() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let info: FatStat = fat.stat("subdir").expect("stat subdir should succeed");
+        assert!(info.is_dir, "should be a directory");
+    }
+
+    /// Tests that stat on root works on a read-only filesystem.
+    #[test]
+    fn readonly_stat_root() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let info: FatStat = fat.stat("/").expect("stat root should succeed");
+        assert!(info.is_dir, "root should be a directory");
+    }
+
+    /// Tests reading a file on a read-only filesystem.
+    #[test]
+    fn readonly_read_file() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let mut file = fat
+            .open("hello.txt", true, false, false, false)
+            .expect("open for read should succeed");
+        let mut buf: [u8; 64] = [0u8; 64];
+        let n: usize = file.read(&mut buf).expect("read should succeed");
+        assert_eq!(&buf[..n], b"hello readonly");
+    }
+
+    /// Tests read_dir on a read-only filesystem.
+    #[test]
+    fn readonly_read_dir() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let entries: Vec<FatDirEntry> = fat.read_dir("").expect("read_dir should succeed");
+        assert_eq!(entries.len(), 2, "should have 2 entries (file + dir)");
+
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"hello.txt"), "should contain hello.txt");
+        assert!(names.contains(&"subdir"), "should contain subdir");
+    }
+
+    // -- Read-only write guards --------------------------------------------------
+
+    /// Tests that open with write flag returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_open_write_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result = fat.open("hello.txt", true, true, false, false);
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::ReadOnly,
+            "open with write should return ReadOnly"
+        );
+    }
+
+    /// Tests that open with create flag returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_open_create_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result = fat.open("new.txt", true, false, true, false);
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::ReadOnly,
+            "open with create should return ReadOnly"
+        );
+    }
+
+    /// Tests that open with truncate flag returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_open_truncate_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result = fat.open("hello.txt", true, false, false, true);
+        assert_eq!(
+            result.unwrap_err(),
+            Fat32Error::ReadOnly,
+            "open with truncate should return ReadOnly"
+        );
+    }
+
+    /// Tests that create_new returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_create_new_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result = fat.create_new("brand-new.txt", true, true);
+        assert_eq!(result.unwrap_err(), Fat32Error::ReadOnly, "create_new should return ReadOnly");
+    }
+
+    /// Tests that mkdir returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_mkdir_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result: Result<(), Fat32Error> = fat.mkdir("newdir");
+        assert_eq!(result.unwrap_err(), Fat32Error::ReadOnly, "mkdir should return ReadOnly");
+    }
+
+    /// Tests that rmdir returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_rmdir_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result: Result<(), Fat32Error> = fat.rmdir("subdir");
+        assert_eq!(result.unwrap_err(), Fat32Error::ReadOnly, "rmdir should return ReadOnly");
+    }
+
+    /// Tests that unlink returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_unlink_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result: Result<(), Fat32Error> = fat.unlink("hello.txt");
+        assert_eq!(result.unwrap_err(), Fat32Error::ReadOnly, "unlink should return ReadOnly");
+    }
+
+    /// Tests that rename returns ReadOnly on a read-only filesystem.
+    #[test]
+    fn readonly_rename_fails() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        let result: Result<(), Fat32Error> = fat.rename("hello.txt", "renamed.txt");
+        assert_eq!(result.unwrap_err(), Fat32Error::ReadOnly, "rename should return ReadOnly");
     }
 }

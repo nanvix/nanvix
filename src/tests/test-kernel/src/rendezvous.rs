@@ -131,7 +131,7 @@ fn spawn_child_thread(
         user_stack_size: USER_THREAD_STACK_SIZE,
         user_tda: None,
     };
-    pm::create_thread(&mut args)
+    pm::__kcall_create_thread(&mut args)
 }
 
 ///
@@ -149,7 +149,7 @@ fn spawn_child_thread(
 ///
 fn join_child_thread(tid: ThreadIdentifier) -> Result<(), Error> {
     let mut retval: usize = 0;
-    pm::join_thread(tid, &mut retval)?;
+    pm::__kcall_join_thread(tid, &mut retval)?;
     if retval != 0 {
         ::syslog::error!("child thread failed (tid={:?}, retval={})", tid, retval);
         return Err(Error::new(ErrorCode::OperationNotPermitted, "child thread reported failure"));
@@ -168,11 +168,11 @@ fn join_child_thread(tid: ThreadIdentifier) -> Result<(), Error> {
 /// A tuple of (pid, main_tid).
 ///
 fn store_caller_ids() -> Result<(ProcessIdentifier, ThreadIdentifier), Error> {
-    let pid: ProcessIdentifier = pm::getpid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
     let pid_raw: u32 = u32::try_from(pid)?;
     SELF_PID.store(pid_raw, ORDER);
 
-    let main_tid: ThreadIdentifier = pm::gettid()?;
+    let main_tid: ThreadIdentifier = pm::__kcall_gettid()?;
     let main_tid_raw: u32 = u32::try_from(main_tid)?;
     MAIN_TID.store(main_tid_raw, ORDER);
 
@@ -252,7 +252,7 @@ extern "C" fn pusher_thread_basic(_arg: usize) -> usize {
         Err(()) => return 1,
     };
 
-    match ipc::push(pid, main_tid, &TEST_PAYLOAD_16) {
+    match ipc::__kcall_push(pid, main_tid, &TEST_PAYLOAD_16) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -275,7 +275,7 @@ fn test_basic_push_pull() -> Result<(), Error> {
 
     // Pull data from the child thread.
     let mut recv_buf: [u8; 16] = [0u8; 16];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     // Validate byte count.
     if bytes_transferred != TEST_PAYLOAD_16.len() {
@@ -318,12 +318,12 @@ extern "C" fn pusher_thread_pull_first(_arg: usize) -> usize {
 
     // Yield several times to give the main thread time to call pull() and sleep.
     for _ in 0..5 {
-        if sched::sched_yield().is_err() {
+        if sched::__kcall_sched_yield().is_err() {
             return 1;
         }
     }
 
-    match ipc::push(pid, main_tid, &TEST_PAYLOAD_16) {
+    match ipc::__kcall_push(pid, main_tid, &TEST_PAYLOAD_16) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -346,7 +346,7 @@ fn test_pull_first() -> Result<(), Error> {
 
     // Pull immediately — the child yields multiple times, so we should sleep first.
     let mut recv_buf: [u8; 16] = [0u8; 16];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     if bytes_transferred != TEST_PAYLOAD_16.len() {
         ::syslog::error!(
@@ -386,7 +386,7 @@ extern "C" fn pusher_thread_one_byte(_arg: usize) -> usize {
     };
 
     let payload: [u8; 1] = [0x42];
-    match ipc::push(pid, main_tid, &payload) {
+    match ipc::__kcall_push(pid, main_tid, &payload) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -407,7 +407,7 @@ fn test_single_byte() -> Result<(), Error> {
     let child_tid: ThreadIdentifier = spawn_child_thread(pusher_thread_one_byte, stack_base)?;
 
     let mut recv_buf: [u8; 1] = [0u8; 1];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     if bytes_transferred != 1 {
         ::syslog::error!(
@@ -449,7 +449,7 @@ extern "C" fn pusher_thread_asymmetric(_arg: usize) -> usize {
         Err(()) => return 1,
     };
 
-    match ipc::push(pid, main_tid, &TEST_PAYLOAD_16) {
+    match ipc::__kcall_push(pid, main_tid, &TEST_PAYLOAD_16) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -472,7 +472,7 @@ fn test_asymmetric_buffers() -> Result<(), Error> {
 
     // Provide only 8 bytes to the pull.
     let mut recv_buf: [u8; 8] = [0u8; 8];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     // The kernel should transfer min(16, 8) = 8 bytes.
     if bytes_transferred != 8 {
@@ -513,7 +513,7 @@ extern "C" fn pusher_thread_zero(_arg: usize) -> usize {
     };
 
     let empty: [u8; 0] = [];
-    match ipc::push(pid, main_tid, &empty) {
+    match ipc::__kcall_push(pid, main_tid, &empty) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -535,7 +535,7 @@ fn test_zero_length() -> Result<(), Error> {
     let child_tid: ThreadIdentifier = spawn_child_thread(pusher_thread_zero, stack_base)?;
 
     let mut recv_buf: [u8; 0] = [];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     if bytes_transferred != 0 {
         ::syslog::error!(
@@ -587,7 +587,7 @@ extern "C" fn pusher_thread_large(_arg: usize) -> usize {
         unsafe { ::core::slice::from_raw_parts_mut(send_ptr, size) };
     fill_pattern(send_buf);
 
-    let result: usize = match ipc::push(pid, main_tid, send_buf) {
+    let result: usize = match ipc::__kcall_push(pid, main_tid, send_buf) {
         Ok(()) => 0,
         Err(_) => 1,
     };
@@ -631,7 +631,7 @@ fn test_large_transfer(size: usize) -> Result<(), Error> {
     // SAFETY: recv_ptr is valid for `size` bytes.
     let recv_buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(recv_ptr, size) };
 
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, recv_buf)?;
 
     if bytes_transferred != size {
         ::syslog::error!(
@@ -691,7 +691,7 @@ extern "C" fn pusher_thread_multi(_arg: usize) -> usize {
             *b = fill_byte;
         }
 
-        if ipc::push(pid, main_tid, &payload).is_err() {
+        if ipc::__kcall_push(pid, main_tid, &payload).is_err() {
             return 1;
         }
     }
@@ -720,7 +720,7 @@ fn test_multi_round() -> Result<(), Error> {
 
     for i in 0..ROUNDS {
         let mut recv_buf: [u8; 16] = [0u8; 16];
-        let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+        let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
         if bytes_transferred != 16 {
             ::syslog::error!(
@@ -766,11 +766,11 @@ fn test_multi_round() -> Result<(), Error> {
 fn test_self_push_rejected() -> Result<(), Error> {
     ::syslog::info!("test_self_push_rejected: starting");
 
-    let pid: ProcessIdentifier = pm::getpid()?;
-    let tid: ThreadIdentifier = pm::gettid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     let payload: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
-    match ipc::push(pid, tid, &payload) {
+    match ipc::__kcall_push(pid, tid, &payload) {
         Err(e) if e.code == ErrorCode::InvalidArgument => {
             // Expected: self-push is rejected.
         },
@@ -804,11 +804,11 @@ fn test_self_push_rejected() -> Result<(), Error> {
 fn test_self_pull_rejected() -> Result<(), Error> {
     ::syslog::info!("test_self_pull_rejected: starting");
 
-    let pid: ProcessIdentifier = pm::getpid()?;
-    let tid: ThreadIdentifier = pm::gettid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     let mut recv_buf: [u8; 4] = [0u8; 4];
-    match ipc::pull(pid, tid, &mut recv_buf) {
+    match ipc::__kcall_pull(pid, tid, &mut recv_buf) {
         Err(e) if e.code == ErrorCode::InvalidArgument => {
             // Expected: self-pull is rejected.
         },
@@ -846,7 +846,7 @@ extern "C" fn puller_thread_reverse(_arg: usize) -> usize {
     };
 
     let mut recv_buf: [u8; 16] = [0u8; 16];
-    let bytes_transferred: usize = match ipc::pull(pid, main_tid, &mut recv_buf) {
+    let bytes_transferred: usize = match ipc::__kcall_pull(pid, main_tid, &mut recv_buf) {
         Ok(n) => n,
         Err(_) => return 1,
     };
@@ -877,10 +877,10 @@ fn test_reverse_direction() -> Result<(), Error> {
     let child_tid: ThreadIdentifier = spawn_child_thread(puller_thread_reverse, stack_base)?;
 
     // Retrieve our own PID for the push call.
-    let pid: ProcessIdentifier = pm::getpid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
 
     // Push data to the child thread.
-    ipc::push(pid, child_tid, &TEST_PAYLOAD_16)?;
+    ipc::__kcall_push(pid, child_tid, &TEST_PAYLOAD_16)?;
 
     join_child_thread(child_tid)?;
     // SAFETY: stack is no longer in use after join.
@@ -908,13 +908,13 @@ extern "C" fn bidir_child_thread(_arg: usize) -> usize {
 
     // Phase 1: push data to the main thread.
     let outgoing: [u8; 4] = [0xAA, 0xBB, 0xCC, 0xDD];
-    if ipc::push(pid, main_tid, &outgoing).is_err() {
+    if ipc::__kcall_push(pid, main_tid, &outgoing).is_err() {
         return 1;
     }
 
     // Phase 2: pull data from the main thread.
     let mut incoming: [u8; 4] = [0u8; 4];
-    let n: usize = match ipc::pull(pid, main_tid, &mut incoming) {
+    let n: usize = match ipc::__kcall_pull(pid, main_tid, &mut incoming) {
         Ok(n) => n,
         Err(_) => return 1,
     };
@@ -948,7 +948,7 @@ fn test_bidirectional() -> Result<(), Error> {
 
     // Phase 1: pull from the child.
     let mut recv_buf: [u8; 4] = [0u8; 4];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     if bytes_transferred != 4 {
         ::syslog::error!(
@@ -970,7 +970,7 @@ fn test_bidirectional() -> Result<(), Error> {
 
     // Phase 2: push to the child.
     let reply: [u8; 4] = [0x11, 0x22, 0x33, 0x44];
-    ipc::push(pid, child_tid, &reply)?;
+    ipc::__kcall_push(pid, child_tid, &reply)?;
 
     join_child_thread(child_tid)?;
     // SAFETY: stack is no longer in use after join.
@@ -1019,7 +1019,7 @@ extern "C" fn concurrent_pusher_thread(arg: usize) -> usize {
         *b = fill_byte;
     }
 
-    let result: usize = match ipc::push(pid, main_tid, send_buf) {
+    let result: usize = match ipc::__kcall_push(pid, main_tid, send_buf) {
         Ok(()) => 0,
         Err(_) => 1,
     };
@@ -1072,7 +1072,7 @@ fn test_concurrent_push(transfer_size: usize) -> Result<(), Error> {
             user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
-        let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+        let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
         child_tids[i] = Some(tid);
     }
 
@@ -1094,7 +1094,7 @@ fn test_concurrent_push(transfer_size: usize) -> Result<(), Error> {
         let recv_buf: &mut [u8] =
             unsafe { ::core::slice::from_raw_parts_mut(recv_ptr, transfer_size) };
 
-        let bytes_transferred: usize = ipc::pull(pid, child_tid, recv_buf)?;
+        let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, recv_buf)?;
 
         if bytes_transferred != transfer_size {
             ::syslog::error!(
@@ -1166,7 +1166,7 @@ extern "C" fn concurrent_puller_thread(arg: usize) -> usize {
     // SAFETY: recv_ptr is valid for `size` bytes.
     let recv_buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(recv_ptr, size) };
 
-    let bytes_transferred: usize = match ipc::pull(pid, main_tid, recv_buf) {
+    let bytes_transferred: usize = match ipc::__kcall_pull(pid, main_tid, recv_buf) {
         Ok(n) => n,
         Err(_) => {
             unsafe { ::alloc::alloc::dealloc(recv_ptr, layout) };
@@ -1228,13 +1228,13 @@ fn test_concurrent_pull(transfer_size: usize) -> Result<(), Error> {
             user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
-        let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+        let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
         child_tids[i] = Some(tid);
     }
 
     // Yield to let children register their pull requests.
     for _ in 0..5 {
-        sched::sched_yield()?;
+        sched::__kcall_sched_yield()?;
     }
 
     // Push unique data to each child.
@@ -1260,7 +1260,7 @@ fn test_concurrent_pull(transfer_size: usize) -> Result<(), Error> {
             *b = fill_byte;
         }
 
-        ipc::push(pid, child_tid, send_buf)?;
+        ipc::__kcall_push(pid, child_tid, send_buf)?;
 
         // SAFETY: send_ptr was allocated with send_layout.
         unsafe { ::alloc::alloc::dealloc(send_ptr, send_layout) };
@@ -1366,7 +1366,7 @@ extern "C" fn independent_pair_thread(arg: usize) -> usize {
 
     // Spin-yield until the main thread signals that all partner TIDs are written.
     while !PARTNER_TIDS_READY.load(ORDER) {
-        if sched::sched_yield().is_err() {
+        if sched::__kcall_sched_yield().is_err() {
             return 1;
         }
     }
@@ -1400,7 +1400,7 @@ extern "C" fn independent_pair_thread(arg: usize) -> usize {
         for b in buf.iter_mut() {
             *b = fill_byte;
         }
-        let result: usize = match ipc::push(pid, partner_tid, buf) {
+        let result: usize = match ipc::__kcall_push(pid, partner_tid, buf) {
             Ok(()) => 0,
             Err(_) => 1,
         };
@@ -1420,7 +1420,7 @@ extern "C" fn independent_pair_thread(arg: usize) -> usize {
         // SAFETY: buf_ptr is valid for `size` bytes.
         let buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buf_ptr, size) };
 
-        let result: usize = match ipc::pull(pid, partner_tid, buf) {
+        let result: usize = match ipc::__kcall_pull(pid, partner_tid, buf) {
             Ok(n) if n == size && buf.iter().all(|&b| b == fill_byte) => 0,
             _ => 1,
         };
@@ -1443,7 +1443,7 @@ fn test_independent_pairs() -> Result<(), Error> {
 
     ::syslog::info!("test_independent_pairs: starting (pairs={})", NUM_PAIRS);
 
-    let pid: ProcessIdentifier = pm::getpid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
     let pid_raw: u32 = u32::try_from(pid)?;
     SELF_PID.store(pid_raw, ORDER);
     TRANSFER_SIZE.store(TRANSFER as u32, ORDER);
@@ -1472,7 +1472,7 @@ fn test_independent_pairs() -> Result<(), Error> {
             user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
-        let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+        let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
         child_tids[i] = Some(tid);
 
         // Store TID so partner can find it.
@@ -1536,7 +1536,7 @@ extern "C" fn stress_pusher_thread(_arg: usize) -> usize {
         for b in buf.iter_mut() {
             *b = fill_byte;
         }
-        if ipc::push(pid, main_tid, buf).is_err() {
+        if ipc::__kcall_push(pid, main_tid, buf).is_err() {
             unsafe { ::alloc::alloc::dealloc(buf_ptr, layout) };
             return 1;
         }
@@ -1587,7 +1587,7 @@ fn test_stress_sequential() -> Result<(), Error> {
             *b = 0;
         }
 
-        let bytes_transferred: usize = ipc::pull(pid, child_tid, recv_buf)?;
+        let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, recv_buf)?;
 
         if bytes_transferred != SIZE {
             ::syslog::error!(
@@ -1661,7 +1661,7 @@ extern "C" fn bidir_large_child_thread(_arg: usize) -> usize {
     let buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buf_ptr, size) };
     fill_pattern(buf);
 
-    if ipc::push(pid, main_tid, buf).is_err() {
+    if ipc::__kcall_push(pid, main_tid, buf).is_err() {
         unsafe { ::alloc::alloc::dealloc(buf_ptr, layout) };
         return 1;
     }
@@ -1671,7 +1671,7 @@ extern "C" fn bidir_large_child_thread(_arg: usize) -> usize {
         *b = 0;
     }
 
-    let bytes_transferred: usize = match ipc::pull(pid, main_tid, buf) {
+    let bytes_transferred: usize = match ipc::__kcall_pull(pid, main_tid, buf) {
         Ok(n) => n,
         Err(_) => {
             unsafe { ::alloc::alloc::dealloc(buf_ptr, layout) };
@@ -1732,7 +1732,7 @@ fn test_large_bidirectional() -> Result<(), Error> {
     // SAFETY: buf_ptr is valid for SIZE bytes.
     let buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buf_ptr, SIZE) };
 
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, buf)?;
 
     if bytes_transferred != SIZE {
         ::syslog::error!(
@@ -1759,7 +1759,7 @@ fn test_large_bidirectional() -> Result<(), Error> {
         *byte = 0xFF ^ (((i.wrapping_mul(37).wrapping_add(7)) & 0xFF) as u8);
     }
 
-    ipc::push(pid, child_tid, buf)?;
+    ipc::__kcall_push(pid, child_tid, buf)?;
 
     // SAFETY: buf_ptr was allocated with buf_layout and is no longer in use.
     unsafe { ::alloc::alloc::dealloc(buf_ptr, buf_layout) };
@@ -1790,7 +1790,7 @@ extern "C" fn puller_thread_reverse_asymmetric(_arg: usize) -> usize {
     };
 
     let mut recv_buf: [u8; 16] = [0u8; 16];
-    let bytes_transferred: usize = match ipc::pull(pid, main_tid, &mut recv_buf) {
+    let bytes_transferred: usize = match ipc::__kcall_pull(pid, main_tid, &mut recv_buf) {
         Ok(n) => n,
         Err(_) => return 1,
     };
@@ -1824,11 +1824,11 @@ fn test_reverse_asymmetric() -> Result<(), Error> {
     let child_tid: ThreadIdentifier =
         spawn_child_thread(puller_thread_reverse_asymmetric, stack_base)?;
 
-    let pid: ProcessIdentifier = pm::getpid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
 
     // Push only 4 bytes to the child that expects up to 16.
     let payload: [u8; 4] = [0xA1, 0xB2, 0xC3, 0xD4];
-    ipc::push(pid, child_tid, &payload)?;
+    ipc::__kcall_push(pid, child_tid, &payload)?;
 
     join_child_thread(child_tid)?;
     // SAFETY: stack is no longer in use after join.
@@ -1873,7 +1873,7 @@ extern "C" fn mixed_size_pusher_thread(_arg: usize) -> usize {
         let buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(buf_ptr, size) };
         fill_pattern(buf);
 
-        let result: bool = ipc::push(pid, main_tid, buf).is_ok();
+        let result: bool = ipc::__kcall_push(pid, main_tid, buf).is_ok();
 
         // SAFETY: buf_ptr was allocated with the same layout.
         unsafe { ::alloc::alloc::dealloc(buf_ptr, layout) };
@@ -1917,7 +1917,7 @@ fn test_mixed_transfer_sizes() -> Result<(), Error> {
         // SAFETY: recv_ptr is valid for `size` bytes.
         let recv_buf: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(recv_ptr, size) };
 
-        let bytes_transferred: usize = ipc::pull(pid, child_tid, recv_buf)?;
+        let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, recv_buf)?;
 
         if bytes_transferred != size {
             ::syslog::error!(
@@ -1976,13 +1976,13 @@ extern "C" fn multi_round_bidir_child(_arg: usize) -> usize {
         for b in outgoing.iter_mut() {
             *b = fill_byte;
         }
-        if ipc::push(pid, main_tid, &outgoing).is_err() {
+        if ipc::__kcall_push(pid, main_tid, &outgoing).is_err() {
             return 1;
         }
 
         // Phase B: pull from main, expect complement fill byte.
         let mut incoming: [u8; 16] = [0u8; 16];
-        let n: usize = match ipc::pull(pid, main_tid, &mut incoming) {
+        let n: usize = match ipc::__kcall_pull(pid, main_tid, &mut incoming) {
             Ok(n) => n,
             Err(_) => return 1,
         };
@@ -2025,7 +2025,7 @@ fn test_multi_round_bidirectional() -> Result<(), Error> {
     for i in 0..ROUNDS {
         // Phase A: pull from child.
         let mut recv_buf: [u8; 16] = [0u8; 16];
-        let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+        let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
         if bytes_transferred != 16 {
             ::syslog::error!(
@@ -2053,7 +2053,7 @@ fn test_multi_round_bidirectional() -> Result<(), Error> {
         for b in reply.iter_mut() {
             *b = reply_byte;
         }
-        ipc::push(pid, child_tid, &reply)?;
+        ipc::__kcall_push(pid, child_tid, &reply)?;
     }
 
     join_child_thread(child_tid)?;
@@ -2092,7 +2092,7 @@ extern "C" fn stress_pair_thread(arg: usize) -> usize {
 
     // Spin-yield until the main thread signals that all partner TIDs are written.
     while !PARTNER_TIDS_READY.load(ORDER) {
-        if sched::sched_yield().is_err() {
+        if sched::__kcall_sched_yield().is_err() {
             return 1;
         }
     }
@@ -2130,7 +2130,7 @@ extern "C" fn stress_pair_thread(arg: usize) -> usize {
             for b in buf.iter_mut() {
                 *b = fill_byte;
             }
-            if ipc::push(pid, partner_tid, buf).is_err() {
+            if ipc::__kcall_push(pid, partner_tid, buf).is_err() {
                 unsafe { ::alloc::alloc::dealloc(buf_ptr, layout) };
                 return 1;
             }
@@ -2153,7 +2153,7 @@ extern "C" fn stress_pair_thread(arg: usize) -> usize {
                 *b = 0;
             }
 
-            let n: usize = match ipc::pull(pid, partner_tid, buf) {
+            let n: usize = match ipc::__kcall_pull(pid, partner_tid, buf) {
                 Ok(n) => n,
                 Err(_) => {
                     unsafe { ::alloc::alloc::dealloc(buf_ptr, layout) };
@@ -2194,7 +2194,7 @@ fn test_stress_concurrent_pairs() -> Result<(), Error> {
         TRANSFER
     );
 
-    let pid: ProcessIdentifier = pm::getpid()?;
+    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
     let pid_raw: u32 = u32::try_from(pid)?;
     SELF_PID.store(pid_raw, ORDER);
     TRANSFER_SIZE.store(TRANSFER as u32, ORDER);
@@ -2223,7 +2223,7 @@ fn test_stress_concurrent_pairs() -> Result<(), Error> {
             user_stack_size: USER_THREAD_STACK_SIZE,
             user_tda: None,
         };
-        let tid: ThreadIdentifier = pm::create_thread(&mut args)?;
+        let tid: ThreadIdentifier = pm::__kcall_create_thread(&mut args)?;
         child_tids[i] = Some(tid);
 
         // Store TID so partner can find it.
@@ -2275,7 +2275,7 @@ extern "C" fn cleanup_pusher_thread(_arg: usize) -> usize {
         Err(()) => return 1,
     };
 
-    match ipc::push(pid, main_tid, &CLEANUP_PAYLOAD) {
+    match ipc::__kcall_push(pid, main_tid, &CLEANUP_PAYLOAD) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -2293,7 +2293,7 @@ extern "C" fn cleanup_puller_thread(_arg: usize) -> usize {
     };
 
     let mut recv_buf: [u8; 16] = [0u8; 16];
-    match ipc::pull(pid, main_tid, &mut recv_buf) {
+    match ipc::__kcall_pull(pid, main_tid, &mut recv_buf) {
         Ok(_) => 0,
         Err(_) => 1,
     }
@@ -2325,7 +2325,7 @@ fn test_thread_exit_cleanup() -> Result<(), Error> {
 
             // Pull data from the child thread.
             let mut recv_buf: [u8; 16] = [0u8; 16];
-            let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+            let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
             // Validate byte count and payload.
             if bytes_transferred != 16 {
@@ -2350,11 +2350,11 @@ fn test_thread_exit_cleanup() -> Result<(), Error> {
 
             // Yield to give the child time to call pull() and sleep.
             for _ in 0..5 {
-                sched::sched_yield()?;
+                sched::__kcall_sched_yield()?;
             }
 
             // Push data to the child thread.
-            ipc::push(pid, child_tid, &CLEANUP_PAYLOAD)?;
+            ipc::__kcall_push(pid, child_tid, &CLEANUP_PAYLOAD)?;
 
             join_child_thread(child_tid)?;
         }
@@ -2368,7 +2368,7 @@ fn test_thread_exit_cleanup() -> Result<(), Error> {
     let child_tid: ThreadIdentifier = spawn_child_thread(pusher_thread_basic, stack_base)?;
 
     let mut recv_buf: [u8; 16] = [0u8; 16];
-    let bytes_transferred: usize = ipc::pull(pid, child_tid, &mut recv_buf)?;
+    let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tid, &mut recv_buf)?;
 
     if bytes_transferred != TEST_PAYLOAD_16.len() || recv_buf != TEST_PAYLOAD_16 {
         ::syslog::error!("test_thread_exit_cleanup: final validation failed");
@@ -2417,13 +2417,13 @@ fn test_interleaved_pending_order() -> Result<(), Error> {
 
     // Yield to give all children time to call push() and register their pending entries.
     for _ in 0..10 {
-        sched::sched_yield()?;
+        sched::__kcall_sched_yield()?;
     }
 
     // Pull from children in reverse order (2, 1, 0) to exercise swap_remove on non-last indices.
     for i in (0..NUM_CHILDREN).rev() {
         let mut recv_buf: [u8; 16] = [0u8; 16];
-        let bytes_transferred: usize = ipc::pull(pid, child_tids[i], &mut recv_buf)?;
+        let bytes_transferred: usize = ipc::__kcall_pull(pid, child_tids[i], &mut recv_buf)?;
 
         if bytes_transferred != 16 {
             ::syslog::error!(

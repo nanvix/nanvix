@@ -24,6 +24,10 @@ use ::log::{
     error,
     info,
 };
+use ::nanvix_sandbox_config::{
+    HostFilter,
+    NetworkingMode,
+};
 #[cfg(target_os = "linux")]
 use ::std::str::FromStr;
 use ::std::{
@@ -95,6 +99,7 @@ pub async fn main() -> Result<ExitCode> {
     let kernel_filename: String = args.kernel_filename().to_string();
     let initrd_filename: Option<String> = args.initrd_filename();
     let initrd_args: Option<String> = args.initrd_args();
+    let kernel_args: Option<String> = args.kernel_args();
     let ramfs_filename: Option<String> = args.ramfs_filename();
     let stderr: Option<String> = args.take_vm_stderr();
     let user_vm_id: UserVmIdentifier = args.user_vm_id();
@@ -111,7 +116,7 @@ pub async fn main() -> Result<ExitCode> {
         "main(): starting user VM (user_vm_id={:?}, kernel={:?}, initrd={:?}, ramfs={:?}, \
          standalone={})",
         user_vm_id,
-        &kernel_filename,
+        kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
         standalone
@@ -122,6 +127,7 @@ pub async fn main() -> Result<ExitCode> {
             kernel_filename,
             initrd_filename,
             initrd_args,
+            kernel_args,
             ramfs_filename,
             stderr,
             snapshot_path,
@@ -132,8 +138,16 @@ pub async fn main() -> Result<ExitCode> {
     } else {
         #[cfg(target_os = "linux")]
         {
-            run_managed(args, kernel_filename, initrd_filename, initrd_args, ramfs_filename, stderr)
-                .await
+            run_managed(
+                args,
+                kernel_filename,
+                initrd_filename,
+                initrd_args,
+                kernel_args,
+                ramfs_filename,
+                stderr,
+            )
+            .await
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -174,6 +188,7 @@ async fn run_standalone(
     kernel_filename: String,
     initrd_filename: Option<String>,
     initrd_args: Option<String>,
+    kernel_args: Option<String>,
     ramfs_filename: Option<String>,
     stderr: Option<String>,
     snapshot_path: Option<String>,
@@ -185,9 +200,13 @@ async fn run_standalone(
         kernel_filename,
         initrd_filename,
         initrd_args,
+        kernel_args,
         ramfs_filename,
         stderr,
         snapshot_path,
+        None,
+        NetworkingMode::Disabled,
+        HostFilter::AllowAll,
         #[cfg(feature = "gdb")]
         gdb_port,
     );
@@ -207,6 +226,7 @@ async fn run_standalone(
 /// - `kernel_filename`: Path to the kernel binary.
 /// - `initrd_filename`: Optional path to the initrd payload.
 /// - `initrd_args`: Optional arguments forwarded to the initrd payload.
+/// - `kernel_args`: Optional kernel arguments written to guest control registers.
 /// - `ramfs_filename`: Optional path to a RAM filesystem image.
 /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
 ///
@@ -226,6 +246,7 @@ async fn run_managed(
     kernel_filename: String,
     initrd_filename: Option<String>,
     initrd_args: Option<String>,
+    kernel_args: Option<String>,
     ramfs_filename: Option<String>,
     stderr: Option<String>,
 ) -> Result<ExitCode> {
@@ -361,13 +382,14 @@ async fn run_managed(
     // Run virtual machine and check exit status code.
     debug!(
         "main(): launching uservm (kernel={:?}, initrd={:?}, ramfs={:?})",
-        &kernel_filename,
+        kernel_filename,
         initrd_filename.as_deref().unwrap_or("none"),
         ramfs_filename.as_deref().unwrap_or("none"),
     );
     let vmm_handle: JoinHandle<Result<u16>> = UserVm::spawn(UserVmArgs {
         initrd_filename,
         initrd_args,
+        kernel_args,
         ramfs_filename,
         stderr,
         vcpu_thread_stdout_tx,
@@ -381,6 +403,7 @@ async fn run_managed(
         gdb_port: None,
         #[cfg(feature = "profile-time")]
         perf_timings: ::uservm::perf::PerfTimings::new(),
+        guest_profile_path: std::env::var("NANVIX_GUEST_PROFILE_PATH").ok(),
     });
 
     let vm_exit_status: Result<u16> = vmm_handle.await?;

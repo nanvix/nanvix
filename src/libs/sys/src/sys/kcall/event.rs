@@ -24,7 +24,8 @@ use crate::{
 // Resume Event
 //==================================================================================================
 
-pub fn resume(event: EventDescriptor) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_resume(event: EventDescriptor) -> Result<(), Error> {
     let result: i64 = kcall1!(KcallNumber::Resume.into(), usize::from(event) as u32);
 
     if result == 0 {
@@ -38,7 +39,8 @@ pub fn resume(event: EventDescriptor) -> Result<(), Error> {
 // Controls an Event
 //==================================================================================================
 
-pub fn evctrl(ev: Event, req: EventCtrlRequest) -> Result<(), Error> {
+#[unsafe(no_mangle)]
+pub fn __kcall_evctrl(ev: Event, req: EventCtrlRequest) -> Result<(), Error> {
     let result: i64 = kcall2!(KcallNumber::EventCtrl.into(), u32::from(ev), u32::from(req));
 
     if result == 0 {

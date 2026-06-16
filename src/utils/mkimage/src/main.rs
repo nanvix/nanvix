@@ -35,8 +35,9 @@ fn main() {
         process::exit(1);
     }
 
-    // Parse -o <output> flag.
+    // Parse -o <output> and -k <kernel_args> flags.
     let mut output_path: Option<&str> = None;
+    let mut kernel_args: Option<&str> = None;
     let mut entry_args: Vec<&str> = Vec::new();
     let mut i: usize = 1;
 
@@ -48,6 +49,14 @@ fn main() {
                     process::exit(1);
                 }
                 output_path = Some(&args[i + 1]);
+                i += 2;
+            },
+            "-k" => {
+                if i + 1 >= args.len() {
+                    eprintln!("{}: error: -k requires a kernel arguments string", PROGRAM_NAME);
+                    process::exit(1);
+                }
+                kernel_args = Some(&args[i + 1]);
                 i += 2;
             },
             "-h" | "--help" => {
@@ -107,7 +116,16 @@ fn main() {
             elf_data.len(),
             cmdline
         );
-        builder.add(elf_data, cmdline);
+        if let Err(err) = builder.add(elf_data, cmdline) {
+            eprintln!("{}: error: {:?}", PROGRAM_NAME, err);
+            process::exit(1);
+        }
+    }
+
+    // Set kernel arguments if provided.
+    if let Some(kargs) = kernel_args {
+        eprintln!("{}: kernel args: '{}'", PROGRAM_NAME, kargs);
+        builder.set_kernel_args(kargs);
     }
 
     let image: Vec<u8> = match builder.build() {
@@ -142,7 +160,8 @@ fn main() {
 ///
 fn usage() {
     eprintln!(
-        "Usage: {} -o <output.img> <binary.elf;cmdline> [<binary.elf;cmdline> ...]",
+        "Usage: {} -o <output.img> [-k <kernel_args>] <binary.elf;cmdline> [<binary.elf;cmdline> \
+         ...]",
         PROGRAM_NAME
     );
     eprintln!();
@@ -151,6 +170,13 @@ fn usage() {
     eprintln!("Each entry is specified as 'path/to/binary.elf;cmdline' where the");
     eprintln!("semicolon separates the file path from the command line string.");
     eprintln!();
+    eprintln!("Options:");
+    eprintln!("  -o <output>       Output image file path (required).");
+    eprintln!("  -k <kernel_args>  Kernel arguments shared by all binaries in the image.");
+    eprintln!();
     eprintln!("Example:");
-    eprintln!("  {} -o nanvix.img procd.elf;procd memd.elf;memd testd.elf;testd", PROGRAM_NAME);
+    eprintln!(
+        "  {} -o nanvix.img -k snapshot procd.elf;procd memd.elf;memd testd.elf;testd",
+        PROGRAM_NAME
+    );
 }

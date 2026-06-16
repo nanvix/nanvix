@@ -6,7 +6,8 @@ description: "Set up native build environment for CI jobs (container-aware)"
 
 inputs:
   components:
-    description: "Space-separated list of additional Rust components to install (e.g., 'rustfmt clippy')"
+    description: "Space-separated list of additional Rust components to install
+      (e.g., 'rustfmt clippy')"
     required: false
     default: ""
   install-cloud-hypervisor:
@@ -35,12 +36,8 @@ runs:
       shell: bash
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-    # When running outside the CI container, free disk space and install system
-    # dependencies from scratch.  Inside the container these are already present.
-    - name: "Free Disk Space"
-      if: steps.detect-container.outputs.in-container != 'true'
-      uses: ./.github/actions/free-disk-space
-
+    # When running outside the CI container, install system dependencies from
+    # scratch.  Inside the container these are already present.
     - name: "Install Rust Toolchain"
       shell: bash
       env:

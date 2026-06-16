@@ -52,22 +52,21 @@ Set these as environment variables or pass them after `--` in the `z` command:
 
 | Parameter        | Values                   | Default         |
 |------------------|--------------------------|-----------------|
-| `MACHINE`        | `microvm`, `hyperlight`  | `microvm`       |
+| `MACHINE`        | `microvm`                | `microvm`       |
 | `TARGET`         | `x86`                    | `x86`           |
 | `RELEASE`        | `yes`, `no`              | `no`            |
 | `LOG_LEVEL`      | `trace`, `debug`,        | `error`         |
 |                  | `info`, `warn`,          |                 |
 |                  | `error`, `panic`         |                 |
 | `PROFILER`       | `yes`, `no`              | `no`            |
-| `DEPLOYMENT_MODE`| `standalone`,            | `multi-process` |
+| `DEPLOYMENT_MODE`| `standalone`,            | `standalone`    |
 |                  | `single-process`,        |                 |
 |                  | `multi-process`, `l2`    |                 |
 
 Example with custom parameters:
 
 ```bash
-./z build -- all MACHINE=hyperlight \
-    RELEASE=yes LOG_LEVEL=error
+./z build -- all RELEASE=yes LOG_LEVEL=error
 ```
 
 ### Manual Build Variants

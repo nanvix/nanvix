@@ -6,22 +6,24 @@
 # ======================================================================
 
 import argparse
+import collections
 import csv
 import io
 import itertools
+import math
 import os
 import pathlib
 import platform
 import re
 import signal
 import subprocess
+import sys
 from typing import Optional
 
 # ======================================================================
 # Constants
 # ======================================================================
 
-HYPERLIGHT_MACHINE_TYPE = "hyperlight"
 MICROVM_MACHINE_TYPE = "microvm"
 IS_WINDOWS = platform.system() == "Windows"
 NA = "NA"
@@ -79,6 +81,35 @@ PERCENTILE_BENCHMARKS = [
 # ======================================================================
 # Helper Functions
 # ======================================================================
+
+
+def _positive_int(value: str) -> int:
+    """Argparse type: require a positive integer (> 0)."""
+    try:
+        ivalue = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: '{value}'")
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {ivalue}")
+    return ivalue
+
+
+def _non_negative_float(value: str) -> float:
+    """Argparse type: require a finite, non-negative float (>= 0)."""
+    try:
+        fvalue = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid float value: '{value}'")
+    if math.isnan(fvalue) or math.isinf(fvalue) or fvalue < 0:
+        raise argparse.ArgumentTypeError(
+            f"must be a finite non-negative float, got {value}"
+        )
+    return fvalue
+
+
+def _split_csv_arg(value: str) -> list[str]:
+    """Split a comma-separated string, stripping whitespace and dropping empties."""
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def wait_for_tcp_cleanup(max_wait_seconds=70):
@@ -243,11 +274,32 @@ def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str
     A CSV string (header + data rows) with the benchmark metrics.
     """
     if benchmark in PERCENTILE_BENCHMARKS:
+        # The snapshot-restore benchmark prints multiple percentile blocks
+        # (Cold-start, Snapshot restore, Post-restore execution). Restrict
+        # parsing to the headline "Snapshot restore (...)" section so the
+        # CSV continues to track the same metric across releases. For all
+        # other percentile benchmarks the full stdout is scanned.
+        if benchmark == SNAPSHOT_RESTORE_BENCH:
+            section_match = re.search(
+                r"^Snapshot restore \(.*?\):\s*\n(?P<body>(?:[ \t]+.*\n?)+)",
+                raw_stdout,
+                re.MULTILINE,
+            )
+            if section_match is None:
+                print(
+                    "ERROR: missing 'Snapshot restore (...)' section in "
+                    f"benchmark '{benchmark}' output"
+                )
+                raise ValueError("Missing 'Snapshot restore' section")
+            search_scope = section_match.group("body")
+        else:
+            search_scope = raw_stdout
+
         pattern = re.compile(
             r"^\s*(p50|p95|p99)\s*:\s*([0-9]+)\s*us\b", re.IGNORECASE | re.MULTILINE
         )
         values = {}
-        for k, v in pattern.findall(raw_stdout):
+        for k, v in pattern.findall(search_scope):
             values[k.lower()] = int(v)
 
         # Ensure all three percentiles are present.
@@ -698,9 +750,9 @@ def ci_summary(args):
         f"machine_types={args.machine_types}, archs={args.archs})"
     )
 
-    benchmarks = args.benchmarks.split(",")
-    machines = args.machine_types.split(",")
-    archs = args.archs.split(",")
+    benchmarks = _split_csv_arg(args.benchmarks)
+    machines = _split_csv_arg(args.machine_types)
+    archs = _split_csv_arg(args.archs)
 
     # General-purpose benchmarks that we put in similar tables.
     bench_summary = "```"
@@ -804,6 +856,162 @@ def ci_summary(args):
         fh.write(bench_summary)
 
 
+def _read_baseline_moving_avg(
+    benchmark: str, file_path: str, window: int = 20
+) -> Optional[float]:
+    """
+    Read the last ``window`` p50 values from a baseline CSV and return their average.
+
+    Only works for percentile benchmarks (``commit,p50,p95,p99`` format).
+    Returns ``None`` when the file is missing or contains no valid p50 values.
+
+    # Parameters
+
+    - ``benchmark``: Name of the benchmark.
+    - ``file_path``: Path to the baseline CSV file.
+    - ``window``: Number of most-recent data rows to average.
+    """
+    if benchmark not in PERCENTILE_BENCHMARKS:
+        return None
+
+    try:
+        with open(file_path, "r") as fh:
+            reader = iter(fh)
+            # Skip header.
+            header = next(reader, None)
+            if header is None:
+                print(f"WARNING: no data rows in baseline: {file_path}")
+                return None
+            tail: collections.deque[str] = collections.deque(maxlen=window)
+            for line in reader:
+                stripped = line.strip()
+                if stripped:
+                    tail.append(stripped)
+    except FileNotFoundError:
+        print(f"WARNING: baseline file not found: {file_path}")
+        return None
+
+    if not tail:
+        print(f"WARNING: no data rows in baseline: {file_path}")
+        return None
+
+    p50_values: list[float] = []
+    for row in tail:
+        parts = row.split(",")
+        if len(parts) < 2:
+            continue
+        try:
+            p50_values.append(float(parts[1]))
+        except (ValueError, TypeError):
+            continue
+
+    if not p50_values:
+        print(f"WARNING: no valid p50 values in baseline: {file_path}")
+        return None
+
+    return sum(p50_values) / len(p50_values)
+
+
+def ci_gate(args) -> int:
+    """
+    Check benchmark results for performance regressions against baseline.
+
+    Compares the p50 value of each benchmark CSV in target-dir against the
+    moving average of the last N baseline p50 values in dev-dir. Exits
+    non-zero if any benchmark regresses beyond the configured threshold.
+
+    Only percentile benchmarks (commit,p50,p95,p99) are checked. Benchmarks
+    with missing baseline or missing results are skipped with a warning.
+    """
+    threshold = args.regression_threshold
+    window = args.baseline_window
+    benchmarks = _split_csv_arg(args.benchmarks)
+    machines = _split_csv_arg(args.machine_types)
+    archs = _split_csv_arg(args.archs)
+
+    regressions = []
+    checked = 0
+
+    for benchmark in benchmarks:
+        if benchmark not in PERCENTILE_BENCHMARKS:
+            print(f"SKIP: '{benchmark}' is not a percentile benchmark")
+            continue
+
+        for machine, arch in itertools.product(machines, archs):
+            csv_name = gen_filename_for_benchmark(benchmark, machine, arch)
+            dev_path = os.path.join(args.dev_dir, csv_name)
+            tgt_path = os.path.join(args.target_dir, csv_name)
+
+            # Read baseline moving average of p50 values.
+            dev_avg = _read_baseline_moving_avg(benchmark, dev_path, window)
+            if dev_avg is None:
+                print(f"SKIP: no baseline for {benchmark} ({machine}/{arch})")
+                continue
+            if dev_avg == 0:
+                print(
+                    f"WARNING: zero baseline avg for {benchmark} "
+                    f"({machine}/{arch}), skipping"
+                )
+                continue
+
+            # Read current p50.
+            tgt_vals = read_benchmark_values_from_file(benchmark, tgt_path)
+            if tgt_vals.get("p50", NA) == NA:
+                print(f"SKIP: no results for {benchmark} ({machine}/{arch})")
+                continue
+
+            try:
+                tgt_p50 = float(tgt_vals["p50"])
+            except (ValueError, TypeError) as e:
+                print(
+                    f"SKIP: invalid p50 value for {benchmark} ({machine}/{arch}): {e}"
+                )
+                continue
+
+            checked += 1
+
+            delta_pct = (tgt_p50 - dev_avg) / dev_avg * 100
+
+            if delta_pct > threshold:
+                regressions.append(
+                    {
+                        "benchmark": benchmark,
+                        "machine": machine,
+                        "arch": arch,
+                        "dev_avg": round(dev_avg, 1),
+                        "tgt_p50": tgt_p50,
+                        "delta_pct": round(delta_pct, 1),
+                    }
+                )
+                print(
+                    f"REGRESSION: {benchmark} ({machine}/{arch}): "
+                    f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} "
+                    f"(+{round(delta_pct, 1)}%, threshold: {threshold}%)"
+                )
+            else:
+                status = f"+{delta_pct:.1f}%" if delta_pct > 0 else f"{delta_pct:.1f}%"
+                print(
+                    f"OK: {benchmark} ({machine}/{arch}): "
+                    f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} ({status})"
+                )
+
+    print(
+        f"\nChecked {checked} benchmark(s), "
+        f"found {len(regressions)} regression(s) "
+        f"(threshold: >{threshold}% vs {window}-point moving avg)."
+    )
+
+    if regressions:
+        print(
+            f"\nFAILED: {len(regressions)} benchmark(s) exceeded "
+            f"the {threshold}% regression threshold."
+        )
+        return 1
+
+    print("PASSED: No regressions detected.")
+    return 0
+
+
 def _kill_process_tree(proc: subprocess.Popen) -> None:
     """Forcefully terminate a process and all its descendants.
 
@@ -876,11 +1084,11 @@ def run_benchmark(args):
     # Normalize paths so that Unix-style "./" prefixes are converted to
     # platform-native form (cmd.exe does not understand "./").
     args.bin_dir = os.path.normpath(args.bin_dir)
-    args.toolchain_bin_dir = os.path.normpath(args.toolchain_bin_dir)
+    args.clh_bin_path = os.path.normpath(args.clh_bin_path)
 
     print(
         f"[BENCHMARK] Paths: bin_dir={args.bin_dir}, "
-        f"toolchain_bin_dir={args.toolchain_bin_dir}"
+        f"clh_bin_path={args.clh_bin_path}"
     )
 
     # Resolve the commit SHA used to tag this benchmark result.
@@ -935,7 +1143,7 @@ def run_benchmark(args):
             if not is_concurrent_bench
             else f"-num-concurrent-vms {NUM_CONCURRENT_VMS}"
         ),
-        f"-toolchain-bin-dir {args.toolchain_bin_dir}",
+        f"-clh-bin-path {args.clh_bin_path}",
     ]
     nanvix_bench_cmd = " ".join(nanvix_bench_cmd)
     print(f"[BENCHMARK] Executing command: {nanvix_bench_cmd}")
@@ -1088,9 +1296,9 @@ def persist_results(args: argparse.Namespace) -> None:
       archs, source_dir, target_dir, and max_history.
     """
     max_history: int = getattr(args, "max_history", 0)
-    benchmarks = args.benchmarks.split(",")
-    machines = args.machine_types.split(",")
-    archs = args.archs.split(",")
+    benchmarks = _split_csv_arg(args.benchmarks)
+    machines = _split_csv_arg(args.machine_types)
+    archs = _split_csv_arg(args.archs)
     groups = list(itertools.product(benchmarks, machines, archs))
 
     for benchmark, machine, arch in groups:
@@ -1242,7 +1450,7 @@ if __name__ == "__main__":
     run_parser.add_argument(
         "--machine-type",
         required=True,
-        choices=[MICROVM_MACHINE_TYPE, HYPERLIGHT_MACHINE_TYPE],
+        choices=[MICROVM_MACHINE_TYPE],
         help="Type of machine to run the benchmarks on",
     )
     run_parser.add_argument(
@@ -1257,8 +1465,8 @@ if __name__ == "__main__":
         default="./bin",
     )
     run_parser.add_argument(
-        "--toolchain-bin-dir",
-        help="Toolchain binary directory",
+        "--clh-bin-path",
+        help="Cloud-hypervisor binary directory",
         default="./toolchain/bin",
     )
     run_parser.add_argument(
@@ -1307,6 +1515,44 @@ if __name__ == "__main__":
     )
     ci_summary_parser.set_defaults(func=ci_summary)
 
+    # Command-line arguments for the ci-gate command.
+    ci_gate_parser = sub_parser.add_parser(
+        "ci-gate",
+        help="Check benchmark results for performance regressions against baseline",
+    )
+    ci_gate_parser.add_argument(
+        "--dev-dir", required=True, help="Directory with baseline results from dev"
+    )
+    ci_gate_parser.add_argument(
+        "--target-dir", required=True, help="Directory with current benchmark results"
+    )
+    ci_gate_parser.add_argument(
+        "--benchmarks",
+        required=True,
+        help="Comma-separated list of benchmarks to check",
+    )
+    ci_gate_parser.add_argument(
+        "--machine-types",
+        required=True,
+        help="Comma-separated list of machine types",
+    )
+    ci_gate_parser.add_argument(
+        "--archs", required=True, help="Comma-separated list of architectures"
+    )
+    ci_gate_parser.add_argument(
+        "--regression-threshold",
+        type=_non_negative_float,
+        default=20,
+        help="Fail if any benchmark p50 regresses more than this percentage (default: 20)",
+    )
+    ci_gate_parser.add_argument(
+        "--baseline-window",
+        type=_positive_int,
+        default=20,
+        help="Number of most-recent baseline data points to average (default: 20)",
+    )
+    ci_gate_parser.set_defaults(func=ci_gate)
+
     # Command-line arguments for the persist command.
     persist_parser.add_argument(
         "--source-dir", required=True, help="Directory with single-run result files"
@@ -1339,4 +1585,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # Dispatch the arguments to the selected top-level command.
-    args.func(args)
+    result = args.func(args)
+    if isinstance(result, int) and result != 0:
+        sys.exit(result)

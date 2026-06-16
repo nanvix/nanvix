@@ -71,6 +71,9 @@ pub mod file;
 /// Mount table and path resolution.
 pub mod mount;
 
+/// Path-resolution cache used by the mount table.
+mod path_cache;
+
 /// Global VFS state management.
 pub mod state;
 

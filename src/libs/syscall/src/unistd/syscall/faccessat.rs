@@ -5,25 +5,22 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    message::MessagePartitioner,
+    unistd::message::FileAccessAtRequest,
+    SystemCallMessage,
+    SystemCallMessageHeader,
+};
+use ::alloc::vec::Vec;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        message::MessagePartitioner,
-        unistd::message::FileAccessAtRequest,
-        LinuxDaemonMessage,
-        LinuxDaemonMessageHeader,
-    },
-    ::alloc::vec::Vec,
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
-};
 
 //==================================================================================================
 // Standalone Functions
@@ -54,59 +51,45 @@ pub fn faccessat(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(
         flag
     );
 
-    // In standalone mode, forward operation to virtual file system (VFS).
-    #[cfg(feature = "standalone")]
-    {
-        ::nvx::vfs::fd::vfs_access(path).map_err(|e| {
-            let code: ErrorCode = e.into();
-            ::syslog::warn!("faccessat(): VFS access failed (path={path:?}, error={e})");
-            Error::new(code, "vfs access failed")
-        })
-    }
+    let path: alloc::borrow::Cow<'_, str> = crate::path::expand_path(path);
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    // Forward to linuxd via IPC.
-    #[cfg(not(feature = "standalone"))]
-    faccessat_linuxd(dirfd, path, mode, flag)
-}
+    let request: FileAccessAtRequest = FileAccessAtRequest::new(dirfd, &path, mode, flag)?;
 
-/// Forwards a `faccessat` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn faccessat_linuxd(dirfd: c_int, path: &str, mode: c_int, flag: c_int) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::gettid()?;
-
-    let request: FileAccessAtRequest = FileAccessAtRequest::new(dirfd, path, mode, flag)?;
-
-    let requests: Vec<Message> = request.into_parts(tid)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     for request in requests {
-        ::sys::kcall::ipc::send(&request)?;
+        ::sys::kcall::ipc::__kcall_send(&request)?;
     }
 
-    let response: Message = ::sys::kcall::ipc::recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
-        ::syslog::error!(
-            "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, error_code={:?})",
-            dirfd,
-            path,
-            mode,
-            flag,
-            { response.status },
-        );
-
         match ErrorCode::try_from(response.status) {
-            Ok(error_code) => Err(Error::new(error_code, "failed")),
+            Ok(error_code) => {
+                ::syslog::warn!(
+                    "faccessat(): failed (dirfd={:?}, path={:?}, mode={:?}, flag={:?}, \
+                     error_code={:?})",
+                    dirfd,
+                    path,
+                    mode,
+                    flag,
+                    error_code,
+                );
+                Err(Error::new(error_code, "faccessat() failed"))
+            },
             Err(_) => Err(Error::new(ErrorCode::InvalidMessage, "failed to parse error code")),
         }
     } else {
         // System call succeeded, parse response.
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::try_from_bytes(response.payload)?;
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
         match message.header {
-            LinuxDaemonMessageHeader::FileAccessAtResponse => Ok(()),
+            SystemCallMessageHeader::FileAccessAtResponse => Ok(()),
             header => {
-                ::syslog::error!(
+                ::syslog::warn!(
                     "faccessat(): failed to parse response (dirfd={:?}, path={:?}, mode={:?}, \
                      flag={:?}, header={:?})",
                     dirfd,

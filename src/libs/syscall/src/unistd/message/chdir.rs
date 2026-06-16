@@ -7,13 +7,13 @@
 
 use crate::{
     message::{
-        LinuxDaemonMessagePart,
         MessageDeserializer,
         MessagePartitioner,
         MessageSerializer,
+        SystemCallMessagePart,
     },
-    LinuxDaemonMessage,
-    LinuxDaemonMessageHeader,
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
 use ::alloc::{
     string::{
@@ -37,7 +37,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use sysapi::limits::PATH_MAX;
 
@@ -80,7 +83,7 @@ impl ChangeDirectoryRequest {
         // Check if path is too long.
         if path.len() > PATH_MAX {
             #[cfg(target_os = "none")]
-            ::syslog::error!("new(): path too long (path.len={:?})", path.len());
+            ::syslog::warn!("new(): path too long (path.len={:?})", path.len());
             return Err(Error::new(ErrorCode::InvalidArgument, "path too long"));
         }
 
@@ -129,7 +132,7 @@ impl MessageDeserializer for ChangeDirectoryRequest {
         // Check if message is too short.
         if bytes.len() < Self::OFFSET_OF_PATH {
             #[cfg(target_os = "none")]
-            ::syslog::error!("try_from_bytes(): message too short (bytes.len={:?})", bytes.len());
+            ::syslog::warn!("try_from_bytes(): message too short (bytes.len={:?})", bytes.len());
             return Err(Error::new(ErrorCode::InvalidMessage, "message too short"));
         }
 
@@ -178,15 +181,19 @@ impl MessagePartitioner for ChangeDirectoryRequest {
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
-        payload: [u8; LinuxDaemonMessagePart::PAYLOAD_SIZE],
+        payload: [u8; SystemCallMessagePart::PAYLOAD_SIZE],
+        destination: ProcessIdentifier,
+        message_type: MessageType,
     ) -> Result<Message, Error> {
-        LinuxDaemonMessagePart::build_request(
+        SystemCallMessagePart::build_request(
             tid,
-            LinuxDaemonMessageHeader::ChangeDirectoryRequestPart,
+            SystemCallMessageHeader::ChangeDirectoryRequestPart,
             total_parts,
             part_number,
             payload_size,
             payload,
+            destination,
+            message_type,
         )
     }
 }
@@ -200,10 +207,10 @@ impl MessagePartitioner for ChangeDirectoryRequest {
 pub struct ChangeDirectoryResponse {
     _padding: [u8; Self::PADDING_SIZE],
 }
-::static_assert::assert_eq_size!(ChangeDirectoryResponse, LinuxDaemonMessage::PAYLOAD_SIZE);
+::static_assert::assert_eq_size!(ChangeDirectoryResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ChangeDirectoryResponse {
-    pub const PADDING_SIZE: usize = LinuxDaemonMessage::PAYLOAD_SIZE;
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE;
 
     fn new() -> Self {
         Self {
@@ -211,20 +218,24 @@ impl ChangeDirectoryResponse {
         }
     }
 
-    fn into_bytes(self) -> [u8; LinuxDaemonMessage::PAYLOAD_SIZE] {
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(tid: ThreadIdentifier) -> Message {
+    pub fn build(
+        tid: ThreadIdentifier,
+        source: ProcessIdentifier,
+        message_type: MessageType,
+    ) -> Message {
         let message: ChangeDirectoryResponse = ChangeDirectoryResponse::new();
-        let message: LinuxDaemonMessage = LinuxDaemonMessage::new(
-            LinuxDaemonMessageHeader::ChangeDirectoryResponse,
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::ChangeDirectoryResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::LINUXD),
+            MessageSender::from(source),
             MessageReceiver::from(tid),
-            MessageType::Ikc,
+            message_type,
             None,
             message.into_bytes(),
         );

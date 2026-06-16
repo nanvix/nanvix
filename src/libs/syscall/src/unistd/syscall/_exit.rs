@@ -26,5 +26,5 @@ use ::sys::error::Error;
 /// instead.
 ///
 pub fn _exit(status: i32) -> Result<!, Error> {
-    ::sys::kcall::pm::exit(status)?;
+    ::sys::kcall::pm::__kcall_exit(status)?;
 }

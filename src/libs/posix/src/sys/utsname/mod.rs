@@ -42,7 +42,7 @@ use ::syslog::trace_syscall;
 pub unsafe extern "C" fn uname(name: *mut utsname::utsname) -> c_int {
     // Check if name is not valid.
     if name.is_null() {
-        ::syslog::error!("uname(): name is null");
+        ::syslog::warn!("uname(): name is null");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }

@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use ::alloc::{
+    format,
+    string::String,
+};
 use ::sys::{
     error::Error,
     mm::{
@@ -12,13 +16,16 @@ use ::sys::{
         VirtualAddress,
     },
 };
-use ::syscall::dlfcn::{
-    DlHandle,
-    DlInfo,
-    dladdr,
-    dlclose,
-    dlopen,
-    dlsym,
+use ::syscall::{
+    dlfcn::{
+        DlHandle,
+        DlInfo,
+        dladdr,
+        dlclose,
+        dlopen,
+        dlsym,
+    },
+    unistd,
 };
 use core::{
     ffi::{
@@ -35,6 +42,11 @@ use core::{
 
 /// Path to the shared library used by the non-PIE dlfcn tests.
 const LIB_PATH: &str = "lib/libmul.so";
+
+/// A non-root directory (relative to the startup CWD) to switch into for the
+/// non-root-CWD regression tests. It holds `libmul.so`, so the relative-path
+/// negative case has a valid directory to stand in.
+const NON_ROOT_DIR: &str = "lib";
 
 //==================================================================================================
 // Compile-Time Assertions
@@ -56,7 +68,7 @@ const _: () = assert!(
 
 /// Opens a dynamic load library.
 fn open_library(path: &str) -> Result<DlHandle, Error> {
-    dlopen(path)
+    dlopen(path, false)
 }
 
 /// Closes a dynamic load library.
@@ -175,6 +187,69 @@ fn test_dladdr() -> Result<(), Error> {
     Ok(())
 }
 
+/// Regression test for absolute-path resolution when the caller's CWD is not
+/// the startup directory.
+///
+/// A previous revision of `resolve_library_path()` stripped the leading `/`
+/// from absolute paths, turning them into relative ones. The subsequent
+/// `openat(AT_FDCWD, ...)` then resolved them against the caller's CWD instead
+/// of the filesystem root, silently breaking `dlopen("/lib/foo.so")` for any
+/// caller whose CWD was not the directory the path was anchored against.
+///
+/// The absolute path is derived from the startup CWD rather than hard-coded:
+/// under the linuxd-backed deployments the guest filesystem is the host
+/// filesystem rooted at the daemon's CWD, so a literal `/lib/libmul.so` would
+/// escape to the host root. Building the path from `getcwd()` keeps the test
+/// valid across backends while still exercising the bug, since a stripped
+/// leading `/` would re-anchor the path against the (changed) CWD and fail.
+fn test_dlopen_absolute_path_from_non_root_cwd() -> Result<(), Error> {
+    // Build an absolute path to the library from the startup CWD.
+    let start_cwd: String = unistd::getcwd()?;
+    let absolute: String = format!("{}/{}", start_cwd.trim_end_matches('/'), LIB_PATH);
+
+    // Switch into a non-root directory so that a (buggy) relative resolution
+    // would fail to find the library.
+    unistd::chdir(NON_ROOT_DIR)?;
+
+    // Open the library via its absolute path, restore the CWD, and only then
+    // propagate any error so that later tests always run from the start CWD.
+    let result: Result<DlHandle, Error> = open_library(&absolute);
+    unistd::chdir(&start_cwd)?;
+    let handle: DlHandle = result?;
+
+    close_library(&handle)?;
+    Ok(())
+}
+
+/// Companion to [`test_dlopen_absolute_path_from_non_root_cwd`] that pins down
+/// the relative-path side of the contract.
+///
+/// A path with a directory component (`lib/libmul.so`) bypasses the configured
+/// search paths and is resolved against the caller's CWD, just like on Linux.
+/// From a non-root CWD it must therefore *fail*, proving that the fix keeps
+/// absolute and relative paths distinct rather than papering over the bug by
+/// always falling back to the filesystem root.
+fn test_dlopen_relative_path_from_non_root_cwd() -> Result<(), Error> {
+    // From `<cwd>/lib`, the relative path resolves to `<cwd>/lib/lib/libmul.so`,
+    // which does not exist.
+    let start_cwd: String = unistd::getcwd()?;
+    unistd::chdir(NON_ROOT_DIR)?;
+
+    // Attempt the open, restore the CWD, and only then inspect the result so
+    // that later tests always run from the start CWD.
+    let result: Result<DlHandle, Error> = open_library(LIB_PATH);
+    unistd::chdir(&start_cwd)?;
+
+    // The open must fail; if it unexpectedly succeeded, close the handle to
+    // avoid leaking it before reporting the failure.
+    if let Ok(handle) = result {
+        close_library(&handle)?;
+        panic!("dlopen of a relative path from a non-root CWD should fail");
+    }
+
+    Ok(())
+}
+
 //==================================================================================================
 // Public Interface
 //==================================================================================================
@@ -184,5 +259,7 @@ pub fn run() -> Result<(), Error> {
     test_dlopen_dlclose()?;
     test_dlsym()?;
     test_dladdr()?;
+    test_dlopen_absolute_path_from_non_root_cwd()?;
+    test_dlopen_relative_path_from_non_root_cwd()?;
     Ok(())
 }

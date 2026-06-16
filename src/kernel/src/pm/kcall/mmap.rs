@@ -16,6 +16,7 @@ use crate::{
     mm::VirtMemoryManager,
     pm::ProcessManager,
 };
+use ::arch::mem;
 use ::sys::{
     error::{
         Error,
@@ -36,9 +37,10 @@ fn do_mmap(
     mm: &mut VirtMemoryManager,
     pid: ProcessIdentifier,
     vaddr: PageAligned<VirtualAddress>,
+    npages: usize,
     access: AccessPermission,
 ) -> Result<(), Error> {
-    pm.mmap(mm, pid, vaddr, access)
+    pm.mmap(mm, pid, vaddr, npages, access)
 }
 
 ///
@@ -51,13 +53,20 @@ fn do_mmap(
 /// - `caller_pid`: Identifier of the calling process.
 /// - `arg0`: Target process identifier.
 /// - `arg1`: Virtual address to map.
-/// - `arg2`: Access permission.
+/// - `arg2`: Number of pages to map.
+/// - `arg3`: Access permission.
 ///
 /// # Returns
 ///
 /// A [`KcallResult`] indicating success or the error code.
 ///
-pub fn mmap(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32) -> KcallResult {
+pub fn mmap(
+    caller_pid: ProcessIdentifier,
+    arg0: u32,
+    arg1: u32,
+    arg2: u32,
+    arg3: u32,
+) -> KcallResult {
     // SAFETY: the process manager is initialized and access is synchronized.
     let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
     // SAFETY: the virtual memory manager is initialized and access is synchronized.
@@ -75,10 +84,43 @@ pub fn mmap(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32) -> K
         Ok(vaddr) => vaddr,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
-    let access: AccessPermission = match AccessPermission::try_from(arg2) {
+    let npages: usize = arg2 as usize;
+    let access: AccessPermission = match AccessPermission::try_from(arg3) {
         Ok(access) => access,
         Err(e) => return KcallResult::Error(e.code.into()),
     };
+
+    // Validate npages.
+    if npages == 0 {
+        let reason: &str = "zero page count";
+        error!("{reason}");
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+    }
+
+    // Cap npages to the maximum number of pages that fit in the user mmap region.
+    const MMAP_MAX_PAGES: usize = ::config::memory_layout::USER_MMAP_SIZE / mem::PAGE_SIZE;
+    if npages > MMAP_MAX_PAGES {
+        let reason: &str = "page count exceeds mmap region capacity";
+        error!("{reason} (npages={npages}, max={MMAP_MAX_PAGES})");
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+    }
+
+    // Sanity check: ensure the range doesn't overflow.
+    let range_size: usize = match npages.checked_mul(mem::PAGE_SIZE) {
+        Some(size) => size,
+        None => {
+            let reason: &str = "page count overflow";
+            error!("{reason}");
+            return KcallResult::Error(ErrorCode::InvalidArgument.into());
+        },
+    };
+
+    // Sanity check: ensure the mapped range doesn't overflow the address space.
+    if vaddr.into_raw_value().checked_add(range_size).is_none() {
+        let reason: &str = "address range overflow";
+        error!("{reason}");
+        return KcallResult::Error(ErrorCode::InvalidArgument.into());
+    }
 
     // Check if attempting to map memory into a different process.
     if pid != caller_pid {
@@ -94,7 +136,7 @@ pub fn mmap(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32) -> K
         }
     }
 
-    match do_mmap(pm, mm, pid, vaddr, access) {
+    match do_mmap(pm, mm, pid, vaddr, npages, access) {
         Ok(_) => KcallResult::ok(),
         Err(e) => KcallResult::Error(e.code.into()),
     }

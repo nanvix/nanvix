@@ -30,7 +30,7 @@ export TIMESTAMP_MSG ?= no
 export HOST_CPU ?=
 
 # Deployment mode: standalone, single-process, multi-process, l2
-export DEPLOYMENT_MODE ?= multi-process
+export DEPLOYMENT_MODE ?= standalone
 
 # Validate DEPLOYMENT_MODE.
 VALID_DEPLOYMENT_MODES := standalone single-process multi-process l2
@@ -45,18 +45,15 @@ else
 export LOG_LEVEL ?= trace
 endif
 
-# Wasm binary to embed in the WASM Daemon
-export WASM_BINARY ?= $(BINARIES_DIR)/hello-wasm.wasm
-export WASM_BINARY_ARGS ?= ""
-
-# Wasm Daemon Socket Address
-export WASMD_SOCKADDR ?= 127.0.0.1:8585
-
 # Default System Image
 export IMAGE ?= nanvix.img
 
 # Enable WHP backend?
 export WHP ?= no
+
+# Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
+# Example: make all MEMORY_SIZE=256
+export MEMORY_SIZE ?= 128
 
 #===================================================================================================
 # OS Detection
@@ -103,6 +100,14 @@ export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
 export OBJECTS_DIR   := $(ROOT_DIR)/target
 
+# Python interpreter used by helper scripts invoked from the Makefile.
+# Override by passing PYTHON=... on the make command line.
+ifeq ($(IS_WINDOWS),yes)
+export PYTHON ?= python
+else
+export PYTHON ?= python3
+endif
+
 # Targets that do not produce reusable compilation artifacts.
 # Disable sccache unconditionally for these targets to avoid intermittent
 # sccache server crashes inside Docker BuildKit containers (see #1395).
@@ -138,9 +143,18 @@ RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
 RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1))
 
-# Extract memory_size (bytes) from kernel config and convert to megabytes.
-MEMORY_SIZE_BYTES = $(strip $(shell sed -nE 's/^[[:space:]]*memory_size[[:space:]]*=[[:space:]]*(0x[0-9a-fA-F]+|[0-9]+).*/\1/p' $(BUILD_DIR)/kernel_config.toml | head -n1))
-MEMORY_SIZE_MB = $(shell echo $$(($(MEMORY_SIZE_BYTES) / 1048576)))
+# Validate MEMORY_SIZE.
+MEMORY_SIZE_MB := $(strip $(MEMORY_SIZE))
+ifeq ($(MEMORY_SIZE_MB),)
+$(error Invalid MEMORY_SIZE '$(MEMORY_SIZE)'. Expected a positive integer value in MB)
+endif
+ifneq ($(shell printf '%s\n' '$(MEMORY_SIZE_MB)' | grep -E '^[1-9][0-9]*$$'),$(MEMORY_SIZE_MB))
+$(error Invalid MEMORY_SIZE '$(MEMORY_SIZE)'. Expected a positive integer value in MB)
+endif
+
+# Derive memory size in bytes and megabytes from MEMORY_SIZE (MB).
+# Exported so that build.rs scripts read it via the MEMORY_SIZE_BYTES env var.
+export MEMORY_SIZE_BYTES := $(shell echo $$(($(MEMORY_SIZE_MB) * 1048576)))
 
 # VFS benchmark image filename.
 export VFS_BENCH_IMG ?= vfs-bench.img
@@ -156,23 +170,22 @@ MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 export EXEC_FORMAT := elf
 # Libraries
 export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+export LIBNVX_CRT0 := $(LIBRARIES_DIR)/libnvx_crt0.a
 
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
 LINUXD := $(BINARIES_DIR)/linuxd.$(HOST_BIN_EXT)
+MEMD := $(BINARIES_DIR)/memd.$(EXEC_FORMAT)
 MKIMAGE := $(BINARIES_DIR)/mkimage.$(HOST_BIN_EXT)
 MKRAMFS := $(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT)
 NANVIXD := $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
+PROCD := $(BINARIES_DIR)/procd.$(EXEC_FORMAT)
 USERVM := $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
+VFSD := $(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)
 
 #===================================================================================================
 # Nanvix Variables
 #===================================================================================================
-
-# Socket address for the WASM Daemon
-ifneq ($(WASMD_SOCKADDR),)
-export NANVIX_WASMD_SOCKADDR := $(WASMD_SOCKADDR)
-endif
 
 # Name of the system.
 export NANVIX_SYSNAME := nanvix
@@ -200,12 +213,12 @@ endif
 
 # Rust flags for guest target.
 export GUEST_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
-export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc
+export GUEST_CARGO_FLAGS := -Zbuild-std=core,alloc -Zjson-target-spec
 export GUEST_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-user.json
 export KERNEL_RUST_FLAGS := "-C relocation-model=static -C prefer-dynamic=no"
 # Note: use '-Z flag' (with a space) instead of '-Zflag' so that cargo-verus can parse and forward
 # the flags correctly. Regular cargo accepts both forms.
-export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem
+export KERNEL_CARGO_FLAGS := -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec
 export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
 
 # Rust flags for host target.
@@ -213,15 +226,22 @@ export HOST_RUST_FLAGS := $(if $(HOST_CPU),-C target-cpu=$(HOST_CPU))
 
 # Optimization Flags
 ifeq ($(RELEASE),yes)
-export BUILD_MODE := release
-export CARGO_PROFILE := --release
-export WASM_CARGO_PROFILE := --profile release-wasm
-export WASM_BUILD_MODE := release-wasm
+  ifeq ($(PROFILER),yes)
+    # Profiling build: release performance + debug symbols + frame pointers.
+    # Uses the release-profiling Cargo profile (inherits release, adds
+    # debug=line-tables-only, strip=false) so that:
+    #   - nanvixd.pdb contains function symbols (resolvable by xperf/WPA)
+    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+    #   - Frame pointers are preserved for stack walking
+    export BUILD_MODE := release-profiling
+    export CARGO_PROFILE := --profile release-profiling
+  else
+    export BUILD_MODE := release
+    export CARGO_PROFILE := --release
+  endif
 else
 export BUILD_MODE := debug
 export CARGO_PROFILE :=
-export WASM_CARGO_PROFILE := --profile dev-wasm
-export WASM_BUILD_MODE := dev-wasm
 endif
 
 #===================================================================================================
@@ -229,10 +249,10 @@ endif
 #===================================================================================================
 
 # Cargo commands for guest target.
-export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) build $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) $(CARGO_PROFILE)
+export GUEST_CARGO_BUILD_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) build --locked $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) $(CARGO_PROFILE)
 export GUEST_CARGO_CLEAN_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clean $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
-export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) check $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) --message-format=json
-export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clippy $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
+export GUEST_CARGO_CHECK_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) check --locked $(GUEST_CARGO_FLAGS)  $(GUEST_CARGO_TARGET) --message-format=json
+export GUEST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) clippy --locked $(GUEST_CARGO_FLAGS) $(GUEST_CARGO_TARGET)
 export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) fmt
 
 # Note: place cargo-native options (--no-default-features, --message-format, etc.) before
@@ -242,25 +262,18 @@ export GUEST_CARGO_FMT_CMD := RUSTFLAGS=$(GUEST_RUST_FLAGS) $(CARGO) fmt
 # Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
 # build-std configuration and a non-standard target triple that can produce incorrect or stale
 # artifacts when cached by sccache, including .S assembly files compiled during build-std.
-export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_BUILD_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) build --locked --no-default-features $(CARGO_PROFILE) $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_CLEAN_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clean $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_CHECK_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) check --no-default-features --message-format=json $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
-export KERNEL_CARGO_CLIPPY_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clippy --no-default-features $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CHECK_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) check --locked --no-default-features --message-format=json $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+export KERNEL_CARGO_CLIPPY_CMD := RUSTC_WRAPPER= RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) clippy --locked --no-default-features $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 export KERNEL_CARGO_FMT_CMD := RUSTFLAGS=$(KERNEL_RUST_FLAGS) $(CARGO) fmt
 
-# Cargo commands for wasm target.
-export WASM_CARGO_BUILD_CMD := $(CARGO) build $(WASM_CARGO_PROFILE) --target wasm32-wasip1 --no-default-features
-export WASM_CARGO_CLEAN_CMD := $(CARGO) clean --target wasm32-wasip1
-export WASM_CARGO_CHECK_CMD := $(CARGO) check --target wasm32-wasip1 --message-format=json --no-default-features
-export WASM_CARGO_CLIPPY_CMD := $(CARGO) clippy --target wasm32-wasip1 --no-default-features
-export WASM_CARGO_FMT_CMD := $(CARGO) fmt
-
 # Cargo commands for host target.
-export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) build $(CARGO_PROFILE) --no-default-features
+export HOST_CARGO_BUILD_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) build --locked $(CARGO_PROFILE) --no-default-features
 export HOST_CARGO_CLEAN_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clean
-export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) check --message-format=json --no-default-features
-export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clippy --no-default-features
-export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) test --no-default-features
+export HOST_CARGO_CHECK_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) check --locked --message-format=json --no-default-features
+export HOST_CARGO_CLIPPY_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) clippy --locked --no-default-features
+export HOST_CARGO_TEST_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) test --locked --no-default-features
 export HOST_CARGO_FMT_CMD := RUSTFLAGS=$(HOST_RUST_FLAGS) $(CARGO) fmt
 
 # Utility Commands
@@ -268,7 +281,7 @@ export RM_CMD := rm -f
 export FORCE_RM_CMD := rm -rf
 export MKDIR_CMD := mkdir -p
 ifeq ($(IS_WINDOWS),yes)
-export CP_CMD := cp -f
+export CP_CMD := cp -f --preserve=timestamps
 export SUDO_CMD :=
 export SETCAP_CMD :=
 else
@@ -285,7 +298,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap slab
+VERUS_CRATES := bitmap nanvix-slab kernel
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
@@ -307,20 +320,22 @@ endif
 
 export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
-	$(CARGO) verus verify --no-default-features
+	$(CARGO) verus verify --locked --no-default-features
+
+export VERUS_KERNEL_FEATURES := microvm trace
 
 #===================================================================================================
 # Top-Level Targets
 #===================================================================================================
 
-ALL_GUEST_STATIC_LIBS := posix
-ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator config elf error fat32 type-safe nvx proc raw-array slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmio-tag vfs-bench-common
-ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator config elf error fat32 type-safe proc raw-array slab sorted-vec static_assert libc_string syslog-macros syslog mmio-tag
+ALL_GUEST_STATIC_LIBS := posix nvx-crt0
+ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_stdlib libc_string mmio-tag multiimage vfs-bench-common
+ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions proc raw-array nanvix-slab sorted-vec static_assert libc_string syslog-macros syslog mmio-tag
 
-ALL_GUEST_DAEMONS := memd procd
-ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd
+ALL_GUEST_DAEMONS := memd procd vfsd
+ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust
+ALL_GUEST_TESTS := testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target execv-big-target
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
@@ -331,13 +346,12 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
-ALL_HOST_RUST_LIBS := control-plane-api hwloc multibin profiler nanvix nanvix-http nanvix-registry nanvix-sandbox nanvix-sandbox-cache nanvix-terminal syscomm user-vm-api
+ALL_HOST_RUST_LIBS := control-plane-api hostfsd hwloc multibin multiimage net-backend profiler nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
 #  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
 #  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.
-#  - nanvix-registry: test code uses std::fs::symlink (Unix-only).
 ifeq ($(IS_WINDOWS),yes)
-WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm nanvix-registry
+WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm
 ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
 endif
 ALL_HOST_UTILS := echo-client mkimage mkramfs strace
@@ -396,20 +410,22 @@ all-nanvix: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
-	all-wasmd \
 	all-kernel \
-	all-wasm-binaries \
 	all-snapshot
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
 # The containerd shim is not needed in standalone mode.
 ifneq ($(DEPLOYMENT_MODE),standalone)
 all-nanvix: all-nanvix-shim
 endif
+# Standalone mode bundles daemon binaries into per-test multibinary images.
+ifeq ($(DEPLOYMENT_MODE),standalone)
+all-nanvix: standalone-images
+endif
 endif
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-nanvix-bench
 endif
 
@@ -426,14 +442,13 @@ init-repo:
 clean: \
 	clean-guest-staticlibs \
 	clean-guest-binaries \
-	clean-wasmd \
 	clean-kernel \
-	clean-wasm-binaries \
+	clean-test-kernel \
 	clean-snapshot \
 	image-clean
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
-clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanvix-test clean-test-kernel-ramfs standalone-images-clean
 ifneq ($(IS_WINDOWS),yes)
 clean: clean-nanvix-shim
 endif
@@ -444,7 +459,6 @@ clean: clean-nanvix-bench
 endif
 
 distclean: clean
-	$(FORCE_RM_CMD) Cargo.lock
 ifeq ($(IS_WINDOWS),yes)
 	$(FORCE_RM_CMD) "$(OBJECTS_DIR)"
 else
@@ -467,16 +481,22 @@ install: all-nanvix
 	@mkdir -p ${SYSROOT_DIR}/lib
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts
 	@cp ${KERNEL} ${SYSROOT_DIR}/bin/
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
 	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
+ifneq ($(filter standalone,$(DEPLOYMENT_MODE)),)
+	@cp ${MEMD} ${SYSROOT_DIR}/bin/
+	@cp ${PROCD} ${SYSROOT_DIR}/bin/
+	@cp ${VFSD} ${SYSROOT_DIR}/bin/
+endif
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
 endif
 	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
+	@cp ${LIBNVX_CRT0} ${SYSROOT_DIR}/lib/
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts/common
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/common/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
@@ -485,13 +505,15 @@ endif
 # Generates a JSON manifest with build metadata and git info.
 .PHONY: release-generate-manifest
 release-generate-manifest:
+	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: MEMORY_SIZE is not set"; exit 1; }
+	@test -n "$(MEMORY_SIZE_BYTES)" || { echo "ERROR: MEMORY_SIZE_BYTES is not set"; exit 1; }
 	@echo "Generating manifest $(MANIFEST_FILE)..."
-	@bash $(SCRIPTS_DIR)/generate-manifest.sh $(MANIFEST_FILE) \
-		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(DEPLOYMENT_MODE) $(RELEASE_BUILD_MODE) $(LOG_LEVEL) \
-		$(BUILD_DIR)/kernel_config.toml
+	@MEMORY_SIZE_MB="$(MEMORY_SIZE_MB)" MEMORY_SIZE_BYTES="$(MEMORY_SIZE_BYTES)" \
+		bash $(SCRIPTS_DIR)/generate-manifest.sh $(MANIFEST_FILE) \
+		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(DEPLOYMENT_MODE) $(RELEASE_BUILD_MODE) $(LOG_LEVEL)
 
 release: all install release-generate-manifest
-	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: Failed to extract memory_size from kernel_config.toml"; exit 1; }
+	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: MEMORY_SIZE is not set"; exit 1; }
 	@echo "Creating release archive ${RELEASE_ARCHIVE} from ${SYSROOT_DIR}..."
 	@$(RM_CMD) ${RELEASE_ARCHIVE}
 	@tar -cjf ${RELEASE_ARCHIVE} --exclude=./src -C ${SYSROOT_DIR} .
@@ -539,11 +561,12 @@ help:
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  CLH_DIR          Cloud-hypervisor installation directory (default: $(CLH_DIR))"
+	@echo "  MEMORY_SIZE      Memory size in megabytes (default: $(MEMORY_SIZE))"
 	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
-	@echo "  MACHINE         hyperlight, microvm"
+	@echo "  MACHINE         microvm"
 	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
@@ -578,13 +601,21 @@ else
 	echo "Using Verus installation at $(VERUS_EXECUTABLE_DIR)."
 endif
 
-# Pattern rule for verifying individual crates.
+# Pattern rule for verifying individual library crates.
 # Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
-$(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
+$(filter-out verify-kernel,$(addprefix verify-,$(VERUS_CRATES))): verify-%: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
 	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+endif
+
+.PHONY: verify-kernel
+verify-kernel: ensure-verus
+ifeq ($(VERUS_EXECUTABLE_DIR),)
+	@true
+else
+	$(VERUS_VERIFY_CMD) --features "$(VERUS_KERNEL_FEATURES)" -p kernel $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
 endif
 
 # Fixes code linting issues.
@@ -611,11 +642,9 @@ rust-lint-check: \
 	rust-lint-check-kernel \
 	rust-lint-check-guest-binaries \
 	rust-lint-check-guest-rlibs \
-	rust-lint-check-guest-staticlibs \
-	rust-lint-check-wasmd \
-	rust-lint-check-wasm-binaries
+	rust-lint-check-guest-staticlibs
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-lint-check: rust-lint-check-host-binaries rust-lint-check-host-rlibs rust-lint-check-nanvixd rust-lint-check-uservm rust-lint-check-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-lint-check: rust-lint-check-nanvix-shim
@@ -631,11 +660,9 @@ rust-lint: \
 	rust-lint-kernel \
 	rust-lint-guest-binaries \
 	rust-lint-guest-rlibs \
-	rust-lint-guest-staticlibs \
-	rust-lint-wasmd \
-	rust-lint-wasm-binaries
+	rust-lint-guest-staticlibs
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-lint: rust-lint-host-binaries rust-lint-host-rlibs rust-lint-nanvixd rust-lint-uservm rust-lint-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-lint: rust-lint-nanvix-shim
@@ -695,11 +722,9 @@ rust-format: \
 	format-guest-binaries \
 	format-guest-rlibs \
 	format-guest-staticlibs \
-	format-kernel \
-	format-wasmd \
-	format-wasm-binaries
+	format-kernel
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-format: format-host-binaries format-host-rlibs format-nanvixd format-uservm format-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-format: format-nanvix-shim
@@ -715,11 +740,9 @@ rust-format-check: \
 	format-check-guest-binaries \
 	format-check-guest-rlibs \
 	format-check-guest-staticlibs \
-	format-check-kernel \
-	format-check-wasmd \
-	format-check-wasm-binaries
+	format-check-kernel
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 rust-format-check: format-check-host-binaries format-check-host-rlibs format-check-nanvixd format-check-uservm format-check-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 rust-format-check: format-check-nanvix-shim
@@ -755,25 +778,13 @@ PYTHON_STAMP=$(PYTHON_VENV_DIRECTORY)/.requirements.stamp
 
 python-init: $(PYTHON_STAMP)
 
-ifeq ($(IS_WINDOWS),yes)
-# On Windows, Make uses bash from Git-for-Windows; use POSIX syntax.
-# Use 'python' (not 'python3') since the Windows Python launcher differs.
 $(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
 	@if [ ! -f "$(PYTHON_VENV_PIP)" ] && [ ! -f "$(PYTHON_VENV_PIP).exe" ]; then \
 		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
-		python -m venv $(PYTHON_VENV_DIRECTORY); \
+		$(PYTHON) -m venv $(PYTHON_VENV_DIRECTORY); \
 	fi
 	@$(PYTHON_VENV_PIP) install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
 	@touch $(PYTHON_STAMP)
-else
-$(PYTHON_STAMP): $(ROOT_DIR)/requirements.txt
-	@if [ ! -f $(PYTHON_VENV_PIP) ]; then \
-		$(FORCE_RM_CMD) $(PYTHON_VENV_DIRECTORY); \
-		python3 -m venv $(PYTHON_VENV_DIRECTORY); \
-	fi
-	@$(PYTHON_VENV_PIP) install -r $(ROOT_DIR)/requirements.txt $(PY_VERBOSE)
-	@touch $(PYTHON_STAMP)
-endif
 
 python-format: python-init
 	@$(PYTHON_VENV_PYTHON) -m black $(PYTHON_FILES) $(PY_VERBOSE)
@@ -800,11 +811,9 @@ check: \
 	check-kernel \
 	check-guest-binaries \
 	check-guest-rlibs \
-	check-guest-staticlibs \
-	check-wasmd \
-	check-wasm-binaries
+	check-guest-staticlibs
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 check: check-host-binaries check-host-rlibs check-nanvixd check-uservm check-nanvix-test
 ifneq ($(IS_WINDOWS),yes)
 check: check-nanvix-shim
@@ -821,11 +830,11 @@ endif
 
 # Runs system in release mode.
 run: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 # Runs system in debug mode.
 debug: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -toolchain-bin-dir $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 #===================================================================================================
 # Build Rules for Test Kernel RAMFS Image
@@ -860,10 +869,98 @@ image: all-nanvix
 	$(MKIMAGE) -o $(IMAGE) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
 		$(BINARIES_DIR)/testd.$(EXEC_FORMAT)\;testd
 
 image-clean:
 	$(RM_CMD) $(IMAGE)
+
+# Standalone tests that do NOT require daemons (run as bare .elf binaries).
+STANDALONE_NO_DAEMON_TESTS := test-kernel
+
+# Guest binaries that are bundled into a ramfs image rather than launched directly, so they must
+# not have a standalone .initrd of their own. The execv targets are loaded at runtime by
+# execv-test (the small target as `/target` in execv-test.img, the large target as `/target` in
+# execv-big-test.img).
+STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target
+
+# Standalone binaries that manage VFS locally and must NOT include vfsd in their
+# .initrd image (vfsd would claim the RAMFS MMIO region before the benchmark).
+STANDALONE_NO_VFS_BINARIES := vfs-bench-nostd
+
+# List of standalone test binaries that need multibinary images with daemons.
+# Each image bundles procd, memd, vfsd, and the test binary itself.
+STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDALONE_NO_VFS_BINARIES) $(STANDALONE_RAMFS_ONLY_BINARIES),$(ALL_GUEST_TESTS)) $(filter-out $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_BENCHMARKS)) $(ALL_GUEST_APPLICATIONS)
+
+.PHONY: standalone-images standalone-images-clean
+
+# Resolved .initrd target paths.
+#
+# These are emitted as one-recipe-per-image rules so that each mkimage invocation is its own
+# command line. The chained form blows past the Windows command-line length limit (8191 chars
+# under cmd.exe-style argument passing) when absolute paths are long, truncating arguments
+# mid-path and producing 'invalid entry' errors from mkimage.
+STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
+STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.initrd)
+
+# Bridge from the side-effect-producing build targets to the actual ELF/mkimage files they
+# leave in $(BINARIES_DIR). These rules have an empty recipe (the trailing `;`) and a normal
+# prerequisite on the underlying build target.
+#
+# For guest ELFs we depend on the batched `all-guest-binaries` target rather than on the
+# per-package `all-guest-binaries-<pkg>` ones: requesting many .initrd outputs at once would
+# otherwise spawn one `cargo build -p <pkg>` per bundled binary, which adds significant
+# overhead (especially on Windows) even when each invocation is a cargo no-op. Depending on the
+# batched target collapses this to a single cargo invocation per build.
+#
+# The build targets are pseudo-targets (they never produce a file matching their own name) and
+# are therefore always considered out of date by Make. The recipes inside them invoke cargo,
+# which handles source-level incrementality and only touches the ELF/mkimage binary when its
+# Rust sources actually changed (CP_CMD preserves timestamps, see above). Downstream consumers
+# (the per-image rules below) key off that mtime via normal prerequisites, giving us both
+# correct rebuilds when sources change and minimal mkimage work when they don't.
+$(BINARIES_DIR)/%.$(EXEC_FORMAT): all-guest-binaries ;
+$(MKIMAGE): all-host-binaries-mkimage ;
+
+# Per-image rules.
+#
+# Each .initrd lists the actual files it bundles (the daemons, the guest ELF, and mkimage
+# itself) as normal prerequisites, so an incremental `make standalone-images` only re-runs
+# mkimage for images whose inputs have actually changed.
+#
+# Note: we intentionally do NOT depend on all-nanvix here, because in standalone mode all-nanvix
+# itself depends on standalone-images (see DEPLOYMENT_MODE handling above), which would create a
+# circular dependency.
+$(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
+		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
+		$(MKIMAGE)
+	$(MKIMAGE) -o $@ \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
+		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
+
+$(STANDALONE_NO_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
+		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
+		$(MKIMAGE)
+	$(MKIMAGE) -o $@ \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
+
+# Build standalone multibinary images for all test/benchmark/application binaries. Uses .initrd
+# extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
+standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_NO_VFS_INITRDS)
+	@echo "Standalone images built successfully."
+
+standalone-images-clean:
+	$(foreach bin,$(STANDALONE_TEST_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
+	$(foreach bin,$(STANDALONE_NO_VFS_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
 
 #===================================================================================================
 # Build Rules for Running Tests
@@ -872,7 +969,9 @@ image-clean:
 .PHONY: test
 test:
 	@$(MAKE) run-unit-tests
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+	@$(MAKE) run-kernel-tests
+	@$(MAKE) run-smoke-test
 	@$(MAKE) run-nanvix-tests
 endif
 
@@ -883,7 +982,7 @@ ifneq ($(IS_WINDOWS),yes)
 run-unit-tests: test-python
 endif
 
-ifneq ($(strip $(filter $(MACHINE),microvm hyperlight)),)
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
 # On Windows, only test uservm (other host rlibs have Unix-only test dependencies).
 ifeq ($(IS_WINDOWS),yes)
 run-unit-tests: test-uservm
@@ -935,6 +1034,47 @@ run-nanvix-tests: all-nanvix
 	@echo "Running integration tests with configuration: $(NANVIX_TEST_CONFIG)"
 	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(NANVIX_TEST_CONFIG)
 
+# Expected VM exit code for the smoke test image.
+# testd deliberately triggers a page fault as its final test; the kernel kills it
+# with ErrorCode::Interrupted (4) and procd propagates that status as the VM exit code.
+SMOKE_TEST_EXPECTED_EXIT_CODE := 4
+
+# Kernel magic string emitted at debug log level during boot.
+SMOKE_TEST_MAGIC_STRING := hello, world!
+
+# Smoke test: boot the system image and verify correct behavior.
+# Only applicable in standalone mode (the smoke image bundles guest daemons).
+# - Release mode (RELEASE=yes): validates the VM exits with the expected status code.
+# - Debug mode (RELEASE=no): validates the kernel magic string appears in console
+#   output AND the VM exits with the expected status code (the magic string is
+#   compiled out of release builds, so it can only be checked in debug builds).
+#
+# Driven by a single cross-platform Python helper (scripts/run-smoke-test.py)
+# that auto-detects the host OS: on Linux it launches nanvixd against
+# cloud-hypervisor; on Windows it launches nanvixd.exe directly under WHP.
+.PHONY: run-smoke-test
+ifeq ($(DEPLOYMENT_MODE),standalone)
+SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
+	$(MACHINE) $(IMAGE) \
+	--timeout $(TIMEOUT) \
+	--magic-string "$(SMOKE_TEST_MAGIC_STRING)" \
+	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE) \
+	--clh-bin-path $(CLH_DIR)/bin \
+	--log-dir $(LOGS_DIR)
+
+run-smoke-test: image
+ifeq ($(RELEASE),yes)
+	@echo "Running smoke test (expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
+	@$(SMOKE_TEST_CMD) --release
+else
+	@echo "Running smoke test (magic string + expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
+	@$(SMOKE_TEST_CMD)
+endif
+else
+run-smoke-test:
+	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
+endif
+
 #===================================================================================================
 # Build Rules for L2 System VM Snapshot
 #===================================================================================================
@@ -960,22 +1100,10 @@ include build/make/generic-guest-rlibs.mk
 include build/make/generic-guest-binaries.mk
 
 #===================================================================================================
-# Build Rules for WASM Daemon Binary
-#===================================================================================================
-
-include build/make/wasmd.mk
-
-#===================================================================================================
 # Build Rules for Kernel Binary
 #===================================================================================================
 
 include build/make/kernel.mk
-
-#===================================================================================================
-# Build Rules for Generic WASM Binaries
-#===================================================================================================
-
-include build/make/generic-wasm-binaries.mk
 
 #===================================================================================================
 # Build Rules for Generic Host Rust Libraries

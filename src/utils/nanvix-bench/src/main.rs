@@ -198,7 +198,7 @@ async fn main() -> Result<()> {
             .timeout(Duration::from_secs(NANVIXD_HTTP_TIMEOUT_SECS))
             .build()?,
         #[cfg(any(feature = "multi-process", feature = "single-process"))]
-        nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
+        nanvixd_clh_bin_path: args.clh_bin_path(),
         #[cfg(any(feature = "multi-process", feature = "single-process"))]
         nanvixd_netns_pool_size: args.netns_pool_size(),
         #[cfg(any(feature = "multi-process", feature = "single-process"))]

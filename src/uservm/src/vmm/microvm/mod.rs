@@ -50,7 +50,6 @@ use crate::{
     vmm::microvm::kvm::vcpu::{
         VirtualProcessor,
         VirtualProcessorDumpInfo,
-        VirtualProcessorExitContext,
         VirtualProcessorExitReasonRef,
     },
 };
@@ -127,6 +126,8 @@ use ::std::time::Instant;
 #[cfg(target_os = "linux")]
 pub use kvm::vmem::VirtualMemory;
 #[cfg(target_os = "linux")]
+pub use ramfs::MultiRamFs;
+#[cfg(target_os = "linux")]
 pub use ramfs::RamFs;
 
 //==================================================================================================
@@ -136,6 +137,26 @@ pub use ramfs::RamFs;
 /// IRQ number used for IKC (inter-kernel communication) notifications.
 #[cfg(target_os = "linux")]
 const IKC_IRQ: u32 = 9;
+
+/// Default profiling frequency in Hz for the guest profiler timer.
+#[cfg(target_os = "linux")]
+const DEFAULT_PROFILER_FREQ_HZ: u64 = 1000;
+
+/// Minimum allowed profiler frequency (Hz) to avoid division by zero.
+#[cfg(target_os = "linux")]
+const MIN_PROFILER_FREQ_HZ: u64 = 1;
+
+/// Maximum allowed profiler frequency (Hz) to avoid spin-loops.
+#[cfg(target_os = "linux")]
+const MAX_PROFILER_FREQ_HZ: u64 = 10_000;
+
+/// Microseconds per second, used to compute the profiler timer period.
+#[cfg(target_os = "linux")]
+const MICROS_PER_SECOND: u64 = 1_000_000;
+
+/// Environment variable controlling the profiling frequency (Hz).
+#[cfg(target_os = "linux")]
+const PROFILER_FREQ_ENV: &str = "NANVIX_PROFILER_FREQ_HZ";
 
 ///
 /// # Description
@@ -236,6 +257,13 @@ impl IkcNotifier {
 #[cfg(target_os = "linux")]
 pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 
+/// Signal used for profiler timer interrupts. We use SIGUSR2 (not SIGUSR1)
+/// because SIGUSR1 is already used by the orchestrator for shutdown, and its
+/// handler sets the SHUTDOWN flag. The profiler needs a signal that merely
+/// interrupts KVM_RUN with -EINTR without triggering shutdown.
+#[cfg(target_os = "linux")]
+pub const PROFILER_SIGNAL: c_int = libc::SIGUSR2;
+
 /// Signal used to kill the vCPU thread.
 #[cfg(target_os = "linux")]
 pub const KILL_SIGNAL: c_int = libc::SIGKILL;
@@ -286,6 +314,9 @@ pub struct Vmm {
     /// Optional GDB server TCP port (standalone mode only).
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
+    /// Guest profiler handle (used by the run loop to record samples).
+    guest_profiler:
+        Option<std::sync::Arc<std::sync::Mutex<Vec<crate::guest_profiler::StackSample>>>>,
 }
 
 ///
@@ -315,6 +346,9 @@ pub(crate) struct InteriorMicroVmHandle {
     /// When true, skip the next snapshot command (set after loading a snapshot to avoid
     /// re-triggering the snapshot when KVM re-executes the `out` instruction on restore).
     skip_next_snapshot: bool,
+    /// When true, the guest is entitled to take exactly one snapshot.
+    /// Set from the `snapshot` kernel option; consumed on the first successful request.
+    snapshot_allowed: bool,
 }
 
 //==================================================================================================
@@ -336,10 +370,19 @@ pub type StderrFn = dyn Write + Send;
 // Implementations (Linux/KVM only)
 //==================================================================================================
 
-/// Signal handler for the vCPU thread. We install an empty handler to trigger an -EINTR.
+/// Signal handler for the vCPU thread. Sets the shutdown flag to stop re-entering KVM_RUN.
 #[cfg(target_os = "linux")]
 extern "C" fn vcpu_thread_signal_handler(_: i32) {
     SHUTDOWN.with(|shutdown| shutdown.store(true, Ordering::SeqCst));
+}
+
+/// No-op signal handler for profiler timer. Only purpose is to interrupt
+/// KVM_RUN with -EINTR so we can read guest registers for stack sampling.
+/// Must NOT set SHUTDOWN — the VM continues running after sampling.
+#[cfg(target_os = "linux")]
+extern "C" fn profiler_signal_handler(_: i32) {
+    // Intentionally empty: the signal itself causes KVM_RUN to return
+    // with errno=EINTR, which surfaces as an Interrupted exit reason.
 }
 
 #[cfg(target_os = "linux")]
@@ -383,6 +426,7 @@ impl Vmm {
         let timer: Timer = Timer::new(&mut kvm, &mut vm)?;
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_partition_create(partition_create_start.elapsed().as_micros() as u64);
 
         #[cfg(feature = "profile-time")]
@@ -391,6 +435,7 @@ impl Vmm {
         let mut vcpu: VirtualProcessor = VirtualProcessor::new(&mut kvm, &mut vm, 0)?;
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_vcpu_create(vcpu_create_start.elapsed().as_micros() as u64);
 
         #[cfg(feature = "profile-time")]
@@ -400,7 +445,13 @@ impl Vmm {
             VirtualMemory::new(&mut kvm, &mut vm, ::config::kernel::MEMORY_SIZE)?;
 
         #[cfg(feature = "profile-time")]
+        #[allow(clippy::cast_possible_truncation)]
         perf_timings.set_vmem_create(vmem_create_start.elapsed().as_micros() as u64);
+
+        // Determine whether the snapshot kernel option is present.
+        let snapshot_allowed: bool = args.kernel_args.as_deref().is_some_and(|kargs| {
+            ::koptions::parse(kargs).contains(&::koptions::KernelOption::Snapshot)
+        });
 
         let guest: Arc<Mutex<Guest>> = if args.restoring_from_snapshot {
             // When restoring from a snapshot, skip kernel/initrd/ramfs loading and vCPU reset.
@@ -416,7 +467,17 @@ impl Vmm {
             guest.load_kernel(&mut vmem, &args.kernel_filename)?;
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_kernel_load(kernel_load_start.elapsed().as_micros() as u64);
+
+            // Write kernel arguments to guest control registers. These registers reside in
+            // the kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default, so
+            // this write must happen after it. (With the `nightly-performance-optimizations`
+            // feature the loader skips that zeroing and relies on the freshly allocated guest
+            // memory already being zero, but writing after `load_kernel()` remains correct.)
+            if let Some(ref kargs) = args.kernel_args {
+                Guest::write_kernel_args(&mut vmem, kargs)?;
+            }
 
             // Phase: Initrd loading.
             #[cfg(feature = "profile-time")]
@@ -430,36 +491,39 @@ impl Vmm {
                 .transpose()?;
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_initrd_load(initrd_load_start.elapsed().as_micros() as u64);
 
             // Phase: RamFS loading.
             #[cfg(feature = "profile-time")]
             let ramfs_load_start: Instant = Instant::now();
 
-            let ramfs_region: Option<(usize, usize)> =
-                if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
-                    let initrd_end: usize = match guest.initrd_region() {
-                        Some((base, size)) => match base.checked_add(size) {
-                            Some(end) => end,
-                            None => {
-                                let reason: String = "initrd region overflowed while computing \
-                                                      ramfs placement"
-                                    .to_string();
-                                error!("new(): {reason}");
-                                anyhow::bail!(reason)
-                            },
+            let ramfs_region: Option<(usize, usize)> = {
+                let initrd_end: usize = match guest.initrd_region() {
+                    Some((base, size)) => match base.checked_add(size) {
+                        Some(end) => end,
+                        None => {
+                            let reason: String = "initrd region overflowed while computing ramfs \
+                                                  placement"
+                                .to_string();
+                            error!("new(): {reason}");
+                            anyhow::bail!(reason)
                         },
-                        None => ::config::microvm::DEFAULT_INITRD_BASE,
-                    };
-
-                    let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
-                    let (ramfs_base, ramfs_size) =
-                        ramfs.load_into_virtual_memory(&mut vmem, initrd_end)?;
-                    vmem.attach_ramfs(ramfs);
-                    Some((ramfs_base, ramfs_size))
-                } else {
-                    None
+                    },
+                    None => ::config::microvm::DEFAULT_INITRD_BASE,
                 };
+
+                let loaded: ramfs::LoadedRamFs =
+                    ramfs::load_ramfs(&mut vmem, initrd_end, args.ramfs_filename.as_deref(), &[])?;
+
+                match loaded {
+                    ramfs::LoadedRamFs::Single { ramfs, base, size } => {
+                        vmem.attach_ramfs(ramfs);
+                        Some((base, size))
+                    },
+                    ramfs::LoadedRamFs::None => None,
+                }
+            };
 
             RamFs::write_registers(&mut vmem, ramfs_region)?;
 
@@ -473,6 +537,7 @@ impl Vmm {
             trace!("ctrl: tsc_freq_mhz={tsc_freq_mhz}");
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_ramfs_load(ramfs_load_start.elapsed().as_micros() as u64);
 
             // Phase: vCPU reset and pvclock setup.
@@ -485,11 +550,13 @@ impl Vmm {
             //
             // NOTE: The pvclock page at DEFAULT_PVCLOCK_PAGE (GPA 0x1000) falls inside
             // the kernel ELF's `.zero` section (LOAD segment at GPA 0x0 with MemSiz
-            // 0x8000). The ELF loader zero-fills this range when `load_kernel()` runs
-            // above. Both `setup_pvclock()` (which causes KVM to populate the page)
-            // and the boot-time write below must therefore execute **after** the ELF
-            // has been loaded. This is the same pattern used by the microvm control
-            // registers at GPA 0x0–0x10 (credits, pause-requested, ramfs).
+            // 0x8000), which `load_kernel()` zero-fills by default. `setup_pvclock()`
+            // (which causes KVM to populate the page) and the boot-time write below must
+            // therefore run after kernel loading, alongside the microvm control registers
+            // at GPA 0x0–0x10 (credits, pause-requested, ramfs). (With the
+            // `nightly-performance-optimizations` feature the loader skips that zeroing and
+            // relies on the freshly allocated guest memory already being zero, but running
+            // after `load_kernel()` remains correct.)
             let pvclock_gpa: u64 = ::config::microvm::DEFAULT_PVCLOCK_PAGE as u64;
             vcpu.setup_pvclock(pvclock_gpa)?;
 
@@ -509,7 +576,21 @@ impl Vmm {
             trace!("pvclock: boot_time_ns={boot_time_ns}, page_gpa={pvclock_gpa:#010x}");
 
             #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
+
+            // Phase: EPT pre-population.
+            // Pre-populate host pages for the kernel and initrd regions so that KVM's EPT fault
+            // path only needs to install SLAT entries without host page faults.  This moves
+            // page-fault costs from guest execution time to setup time.
+            #[cfg(feature = "profile-time")]
+            let ept_populate_start: Instant = Instant::now();
+
+            vmem.populate_ept(&guest.ept_populate_ranges()?)?;
+
+            #[cfg(feature = "profile-time")]
+            #[allow(clippy::cast_possible_truncation)]
+            perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
 
             Arc::new(Mutex::new(guest))
         };
@@ -538,12 +619,14 @@ impl Vmm {
                 control_tx: args.control_tx,
                 kernel_filename: args.kernel_filename,
                 skip_next_snapshot: false,
+                snapshot_allowed,
             })),
             ikc_notifier,
             #[cfg(feature = "profile-time")]
             perf_timings,
             #[cfg(feature = "gdb")]
             gdb_port: args.gdb_port,
+            guest_profiler: None,
         })
     }
 
@@ -555,7 +638,83 @@ impl Vmm {
         })
     }
 
-    /// Install a signal handler on the vCPU thread.
+    ///
+    /// # Description
+    ///
+    /// Spawns a timer thread that periodically sends SIGUSR2 to the vCPU thread, interrupting
+    /// KVM_RUN so the profiler can capture guest register state for stack sampling.
+    ///
+    /// # Parameters
+    ///
+    /// - `stop`: Atomic flag used to signal the timer thread to stop.
+    /// - `vcpu_tid`: pthread ID of the vCPU thread to which SIGUSR2 will be sent.
+    ///
+    /// # Returns
+    ///
+    /// Returns a JoinHandle for the spawned timer thread.
+    ///
+    fn spawn_profiler_timer(
+        stop: Arc<AtomicBool>,
+        vcpu_tid: libc::pthread_t,
+    ) -> std::thread::JoinHandle<()> {
+        let freq_hz: u64 = std::env::var(PROFILER_FREQ_ENV)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_PROFILER_FREQ_HZ)
+            .clamp(MIN_PROFILER_FREQ_HZ, MAX_PROFILER_FREQ_HZ);
+        let period: std::time::Duration =
+            std::time::Duration::from_micros(MICROS_PER_SECOND / freq_hz);
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                std::thread::sleep(period);
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let ret: c_int = unsafe { libc::pthread_kill(vcpu_tid, PROFILER_SIGNAL) };
+                if ret != 0 {
+                    warn!("profiler: pthread_kill failed (errno={ret})");
+                }
+            }
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Captures a guest profiler sample by reading vCPU registers and walking the frame-pointer
+    /// chain through guest virtual memory.
+    ///
+    /// # Parameters
+    ///
+    /// - `profiler`: Shared vector of stack samples where the captured sample will be stored.
+    /// - `vmem`: Handle to the guest virtual memory used to walk the frame-pointer chain.
+    /// - `eip`: Instruction pointer of the guest at the time of the sample.
+    /// - `ebp`: Base pointer of the guest at the time of the sample.
+    /// - `cr3`: Page table base register of the guest at the time of the sample.
+    ///
+    fn capture_profiler_sample(
+        profiler: &std::sync::Arc<std::sync::Mutex<Vec<crate::guest_profiler::StackSample>>>,
+        vmem: &Arc<Mutex<VirtualMemory>>,
+        eip: u32,
+        ebp: u32,
+        cr3: u32,
+    ) {
+        let vmem_guard: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
+        crate::guest_profiler::GuestProfiler::capture_sample(
+            profiler,
+            vmem_guard.get_raw_ptr(),
+            vmem_guard.get_size(),
+            eip,
+            ebp,
+            cr3,
+        );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Install signal handlers on the vCPU thread.
+    ///
     fn install_signal_handler() {
         // SAFETY: we install a signal handler that is a no-op so this is safe.
         let ret: c_int = unsafe {
@@ -585,6 +744,34 @@ impl Vmm {
     ///
     /// # Description
     ///
+    /// Install the SIGUSR2 no-op handler for the profiler timer.
+    ///
+    /// sa_flags=0 (no SA_RESTART): we intentionally want SIGUSR2 to interrupt blocking syscalls
+    /// (KVM_RUN ioctl) with -EINTR so the run loop can read guest registers for sampling.
+    ///
+    fn install_profiler_signal_handler() {
+        let ret: c_int = unsafe {
+            let profiler_action: sigaction = sigaction {
+                sa_sigaction: profiler_signal_handler as *const () as usize,
+                sa_mask: {
+                    let mut set: libc::sigset_t = std::mem::zeroed();
+                    sigemptyset(&mut set);
+                    set
+                },
+                sa_flags: 0,
+                sa_restorer: None,
+            };
+            sigaction(PROFILER_SIGNAL, &profiler_action, std::ptr::null_mut())
+        };
+        if ret != 0 {
+            let errno: i32 = unsafe { *libc::__errno_location() };
+            error!("error installing profiler signal handler (errno={errno:?})");
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Runs the virtual machine.
     ///
     /// # Returns
@@ -598,8 +785,13 @@ impl Vmm {
         // Reset shutdown flag from any previous runs.
         SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
 
-        // Install a signal handler in the virtual processor's thread.
+        let profiling: bool = self.guest_profiler.is_some();
+
+        // Install signal handlers in the virtual processor's thread.
         Self::install_signal_handler();
+        if profiling {
+            Self::install_profiler_signal_handler();
+        }
 
         // When GDB server is enabled, delegate to the GDB event loop instead of the normal loop.
         #[cfg(feature = "gdb")]
@@ -620,6 +812,16 @@ impl Vmm {
         #[cfg(feature = "profile-time")]
         let loop_start: Instant = Instant::now();
 
+        // Guest profiler: start a timer thread that sends SIGUSR2 to
+        // interrupt KVM_RUN periodically for stack sampling.
+        let profiler_stop: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let profiler_thread: Option<std::thread::JoinHandle<()>> = if profiling {
+            let vcpu_tid: libc::pthread_t = unsafe { libc::pthread_self() };
+            Some(Self::spawn_profiler_timer(profiler_stop.clone(), vcpu_tid))
+        } else {
+            None
+        };
+
         let result = loop {
             // Check shutdown flag before entering KVM_RUN, and blocking indefinitely.
             if SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)) {
@@ -628,7 +830,7 @@ impl Vmm {
                 break Ok(exit_status);
             }
 
-            let exit_context: VirtualProcessorExitContext = {
+            let (exit_context, profile_regs) = {
                 let mut locked_vcpu: MutexGuard<'_, VirtualProcessor> = self.vcpu.blocking_lock();
                 // Exit if the vCPU is no longer online.
                 if !locked_vcpu.is_online() {
@@ -641,11 +843,35 @@ impl Vmm {
 
                 #[cfg(feature = "profile-time")]
                 {
+                    #![allow(clippy::cast_possible_truncation)]
                     guest_time_acc_us += run_start.elapsed().as_micros() as u64;
                 }
 
-                ctx
+                // Guest profiler: on Interrupted exits (from our SIGUSR2 timer), read guest
+                // registers for stack sampling.  Both get_regs and get_sregs must succeed for a
+                // valid sample.  Truncate 64-bit registers to 32-bit: the Nanvix guest runs in
+                // 32-bit protected mode, so only the low 32 bits are meaningful.
+                #[allow(clippy::cast_possible_truncation)]
+                let regs: Option<(u32, u32, u32)> = if self.guest_profiler.is_some()
+                    && matches!(ctx.reason_ref(), VirtualProcessorExitReasonRef::Interrupted)
+                {
+                    locked_vcpu.get_regs().ok().and_then(|r| {
+                        locked_vcpu
+                            .get_sregs()
+                            .ok()
+                            .map(|s| (r.rip as u32, r.rbp as u32, s.cr3 as u32))
+                    })
+                } else {
+                    None
+                };
+
+                (ctx, regs)
             };
+
+            // Guest profiler: capture sample after vcpu lock is released.
+            if let (Some(profiler), Some((eip, ebp, cr3))) = (&self.guest_profiler, profile_regs) {
+                Self::capture_profiler_sample(profiler, &self.vmem, eip, ebp, cr3);
+            }
 
             // Parse exit reason.
             match exit_context.reason_ref() {
@@ -660,7 +886,22 @@ impl Vmm {
                         if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
                             // Kernel finished booting; no-op on KVM backend.
                         } else if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
-                            Handle::current().block_on(self.handle_snapshot())?;
+                            // Guest requested a snapshot via the `snapshot` kernel option. This is
+                            // a one-shot "save and exit" flow: once the snapshot files are
+                            // durable on disk, shut the VM down with exit code 0 so the standalone
+                            // daemon returns to its caller instead of running the guest on (which
+                            // would otherwise block forever on stdin).
+                            //
+                            // `handle_snapshot()` returns `false` for the OUT that KVM re-executes
+                            // immediately after a restore (absorbed via `skip_next_snapshot`); in
+                            // that case keep running the restored guest.
+                            let took_snapshot: bool =
+                                Handle::current().block_on(self.handle_snapshot())?;
+                            if took_snapshot {
+                                let exit_status: u16 = 0;
+                                Handle::current().block_on(self.handle_shutdown(exit_status));
+                                break Ok(exit_status);
+                            }
                         } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
 
@@ -672,9 +913,22 @@ impl Vmm {
                     }
                 },
 
-                // The guest was halted or interrupted, this means we need to power-off.
+                // The guest was halted or interrupted.
+                // When the profiler is active, Interrupted exits are from our SIGUSR2 timer — just
+                // continue the loop (samples were already captured above). Without the profiler,
+                // Interrupted means the orchestrator requested shutdown via SIGUSR1.
                 VirtualProcessorExitReasonRef::Halt
                 | VirtualProcessorExitReasonRef::Interrupted => {
+                    if self.guest_profiler.is_some()
+                        && matches!(
+                            exit_context.reason_ref(),
+                            VirtualProcessorExitReasonRef::Interrupted
+                        )
+                        && !SHUTDOWN.with(|s| s.load(Ordering::SeqCst))
+                    {
+                        // Profiler-induced interrupt: continue running.
+                        continue;
+                    }
                     let exit_status: u16 = 0;
                     Handle::current().block_on(self.handle_shutdown(exit_status));
                     break Ok(exit_status);
@@ -709,9 +963,22 @@ impl Vmm {
             }
         };
 
+        // Stop profiler timer. Relaxed ordering is sufficient here because join() provides the
+        // necessary synchronization barrier, and a stray SIGUSR2 after the flag is set is harmless
+        // (the no-op handler runs, and the SHUTDOWN check prevents re-entering the loop). The timer
+        // thread is joined while still inside run() (the vCPU thread), so vcpu_tid remains valid
+        // until after join() completes.
+        profiler_stop.store(true, Ordering::Relaxed);
+        if let Some(t) = profiler_thread
+            && let Err(e) = t.join()
+        {
+            warn!("profiler timer thread panicked: {:?}", e);
+        }
+
         // Record guest vs exit-handling time breakdown.
         #[cfg(feature = "profile-time")]
         {
+            #[allow(clippy::cast_possible_truncation)]
             let loop_total_us: u64 = loop_start.elapsed().as_micros() as u64;
             self.perf_timings.set_guest_exec(guest_time_acc_us);
             self.perf_timings
@@ -757,6 +1024,28 @@ impl Vmm {
     ///
     pub fn ikc_notifier(&self) -> IkcNotifier {
         self.ikc_notifier.clone()
+    }
+
+    ///
+    /// #Description
+    ///
+    /// Enables guest stack profiling. Returns the `GuestProfiler` whose sample buffer is shared
+    /// with the run loop. The caller drains it after VM exit to produce folded stacks.
+    ///
+    /// On KVM, the run loop starts a timer thread that sends SIGUSR2 to interrupt KVM_RUN at the
+    /// configured frequency. On each Interrupted exit, guest registers (EIP/EBP/CR3) are read and a
+    /// frame-pointer walk captures the guest call stack.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `GuestProfiler` instance that can be used to collect guest stack samples.
+    ///
+    pub fn enable_guest_profiler(&mut self) -> crate::guest_profiler::GuestProfiler {
+        let guest_profiler = crate::guest_profiler::GuestProfiler::new(
+            crate::guest_profiler::DEFAULT_SAMPLE_CAPACITY,
+        );
+        self.guest_profiler = Some(guest_profiler.handle());
+        guest_profiler
     }
 
     ///
@@ -906,28 +1195,44 @@ impl Vmm {
     /// # Description
     ///
     /// Handles a guest-initiated snapshot request from the VMM run loop.
-    /// If the `skip_next_snapshot` flag is set (i.e., we are resuming from a restored snapshot),
-    /// the request is silently skipped and the flag is cleared.
+    ///
+    /// Background: after a restore, KVM re-executes the `out` instruction that originally
+    /// triggered the snapshot (its RIP was saved pointing at the OUT). `load_snapshot()` sets
+    /// `skip_next_snapshot = true` so that re-emitted OUT is swallowed here instead of producing
+    /// a second snapshot file.
     ///
     /// # Returns
     ///
-    /// Upon success, returns empty. Otherwise, returns an error.
+    /// On success, returns `Ok(true)` when a snapshot was actually written to disk (caller should
+    /// treat this as a "save and exit" event), and `Ok(false)` when the snapshot OUT was silently
+    /// absorbed via `skip_next_snapshot` (caller should continue running the restored guest).
+    /// Otherwise, returns an error.
     ///
-    async fn handle_snapshot(&self) -> Result<()> {
-        // Scope the lock to avoid deadlock: `create_snapshot` re-acquires `self.inner`.
+    async fn handle_snapshot(&self) -> Result<bool> {
+        // Locking: the lock is scoped tightly because `create_snapshot()` re-acquires
+        // `self.inner`. No concurrent snapshot requests can race because snapshot is triggered by
+        // a single vCPU VMEXIT processed sequentially on the VMM run loop.
         let kernel_filename: String = {
             let mut locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
             if locked_inner.skip_next_snapshot {
                 trace!("handle_snapshot(): skipping snapshot (restored from snapshot)");
                 locked_inner.skip_next_snapshot = false;
-                return Ok(());
+                return Ok(false);
+            }
+            if !locked_inner.snapshot_allowed {
+                error!("handle_snapshot(): snapshot refused (not enabled or already consumed)");
+                anyhow::bail!(
+                    "snapshot refused: not enabled via kernel option or already consumed"
+                );
             }
             locked_inner.kernel_filename.clone()
         };
         match self.create_snapshot(kernel_filename).await {
             Ok(()) => {
+                // Consume the one-shot permission only after a successful snapshot.
+                self.inner.lock().await.snapshot_allowed = false;
                 trace!("handle_snapshot(): snapshot created successfully");
-                Ok(())
+                Ok(true)
             },
             Err(error) => {
                 error!("handle_snapshot(): failed to create snapshot: {error:?}");
@@ -950,6 +1255,9 @@ impl Vmm {
     /// Upon success, returns empty. Otherwise, returns an error.
     ///
     pub async fn create_snapshot(&self, filepath: String) -> Result<()> {
+        #[cfg(feature = "profile-time")]
+        let snapshot_creation_start: Instant = Instant::now();
+
         let (vmem_filepath, kvm_filepath) = Self::make_snapshot_paths(&filepath);
 
         if let Err(e) = self.vmem.lock().await.save_snapshot(&vmem_filepath) {
@@ -976,6 +1284,12 @@ impl Vmm {
                     anyhow::bail!(reason)
                 }
                 trace!("wrote {} bytes to the snapshot file", buffer.len());
+                #[cfg(feature = "profile-time")]
+                {
+                    #![allow(clippy::cast_possible_truncation)]
+                    let elapsed_us: u64 = snapshot_creation_start.elapsed().as_micros() as u64;
+                    self.perf_timings.set_snapshot_creation(elapsed_us);
+                }
                 Ok(())
             },
             Err(e) => {
@@ -1026,16 +1340,6 @@ impl Vmm {
                     anyhow::bail!(reason)
                 },
             };
-
-        // Validate snapshot against host KVM capabilities before restoring.
-        {
-            let locked_inner: MutexGuard<'_, InteriorMicroVmHandle> = self.inner.lock().await;
-            if let Err(e) = kvm_snapshot.validate(&locked_inner.kvm) {
-                let reason: String = format!("decoded kvm snapshot is invalid (error={e:?})");
-                error!("load_snapshot(): {reason}");
-                anyhow::bail!(reason)
-            }
-        }
 
         // Load the snapshot.
         if let Err(e) = self

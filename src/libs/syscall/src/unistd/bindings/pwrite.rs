@@ -65,7 +65,7 @@ pub unsafe extern "C" fn pwrite(
 ) -> c_ssize_t {
     // Check if buffer is invalid.
     if buffer.is_null() {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pwrite(): invalid buffer (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
              offset={offset:?})"
         );
@@ -75,7 +75,7 @@ pub unsafe extern "C" fn pwrite(
 
     // Check if count is invalid.
     if count == 0 {
-        ::syslog::error!(
+        ::syslog::warn!(
             "pwrite(): invalid count (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
              offset={offset:?})"
         );
@@ -90,7 +90,7 @@ pub unsafe extern "C" fn pwrite(
     match unistd::pwrite(fd, buffer, offset) {
         Ok(bytes_written) => bytes_written as c_ssize_t,
         Err(error) => {
-            ::syslog::error!(
+            ::syslog::warn!(
                 "pwrite(): {error:?}, (fd={fd:?}, buffer={buffer:?}, count={count:?}, \
                  offset={offset:?})"
             );

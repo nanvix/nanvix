@@ -163,8 +163,8 @@ impl Benchmark {
             format!("{}/bin/nanvixd.elf", self.workspace_root.display()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
             NANVIXD_ADDRESS.to_string(),
-            ::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY.to_string(),
-            self.nanvixd_toolchain_bin_dir.clone(),
+            ::nanvixd::args::Args::OPT_CLH_BIN_PATH.to_string(),
+            self.nanvixd_clh_bin_path.clone(),
             ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
             self.nanvixd_tmp_dir.clone(),
         ];

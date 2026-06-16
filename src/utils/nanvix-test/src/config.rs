@@ -274,6 +274,7 @@ impl NanvixTestConfig {
 ///
 /// Configuration required to spawn a Nanvix Daemon instance.
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct RunnerConfig {
     /// Path to the Nanvix Daemon executable that should be launched.
     pub nanvixd_binary_path: String,
@@ -537,7 +538,6 @@ impl RunnerConfig {
     ///
     /// Returns a socket address string formatted as `addr:port`.
     ///
-    #[cfg(unix)]
     pub fn http_endpoint(&self) -> String {
         format!("{}:{}", self.ipv4_addr, self.port_num)
     }
@@ -576,6 +576,13 @@ pub struct TestCaseConfig {
     pub expected_exit_code: Option<i32>,
     /// Optional list of machine types on which this test should run.
     pub runs_on: Option<Vec<String>>,
+    /// Optional environment variables forwarded to the workload under test.
+    /// Formatted as space-separated `KEY=VALUE` pairs (e.g., `"FOO=bar BAZ=qux"`).
+    pub program_env: Option<String>,
+    /// Optional padding length used to generate a synthetic `program_args` string at runtime.
+    /// When set, the runner creates a repeated-character string of exactly this many bytes and
+    /// uses it as `program_args`. Mutually exclusive with `program_args`.
+    pub program_args_padding_len: Option<usize>,
 }
 
 impl TestCaseConfig {
@@ -608,6 +615,9 @@ impl TestCaseConfig {
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
         let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
         let runs_on_field: String = format!("{entry_prefix}.runs_on");
+        let program_env_field: String = format!("{entry_prefix}.program_env");
+        let program_args_padding_len_field: String =
+            format!("{entry_prefix}.program_args_padding_len");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -643,6 +653,12 @@ impl TestCaseConfig {
                 expected_exit_code_field.as_str(),
             )?,
             runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
+            program_env: read_optional_string(table, "program_env", program_env_field.as_str())?,
+            program_args_padding_len: read_optional_usize(
+                table,
+                "program_args_padding_len",
+                program_args_padding_len_field.as_str(),
+            )?,
         })
     }
 
@@ -687,6 +703,13 @@ impl TestCaseConfig {
             let reason: String = format!(
                 "tests[{index}] cannot set 'expect_empty_output=true' while also providing a \
                  non-empty expected_output"
+            );
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        if self.program_args.is_some() && self.program_args_padding_len.is_some() {
+            let reason: String = format!(
+                "tests[{index}] cannot set both 'program_args' and 'program_args_padding_len'"
             );
             return Err(::anyhow::anyhow!(reason));
         }
@@ -1423,6 +1446,42 @@ fn read_optional_i32(table: &Table, key: &str, field_name: &str) -> Result<Optio
 ///
 /// # Description
 ///
+/// Reads an optional non-negative integer from a TOML table and returns it as `usize`.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the integer.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(usize)` when the field exists and is a valid non-negative integer; otherwise
+/// returns `None`.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an integer, is negative, or overflows `usize`.
+///
+fn read_optional_usize(table: &Table, key: &str, field_name: &str) -> Result<Option<usize>> {
+    match table.get(key) {
+        Some(value) => {
+            let raw: u64 = parse_non_negative_integer(value, field_name)?;
+            match usize::try_from(raw) {
+                Ok(v) => Ok(Some(v)),
+                Err(_) => {
+                    let reason: String = format!("{field_name} exceeds usize range (value={raw})");
+                    Err(::anyhow::anyhow!(reason))
+                },
+            }
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
 /// Reads an optional array of strings from the TOML table.
 ///
 /// # Parameters
@@ -1495,13 +1554,7 @@ fn read_optional_non_empty_string(
     key: &str,
     field_name: &str,
 ) -> Result<Option<String>> {
-    Ok(read_optional_string(table, key, field_name)?.and_then(|value| {
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(value)
-        }
-    }))
+    Ok(read_optional_string(table, key, field_name)?.filter(|value| !value.trim().is_empty()))
 }
 
 ///
@@ -1808,6 +1861,8 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: Some(0),
             runs_on: None,
+            program_env: None,
+            program_args_padding_len: None,
         };
         config.validate(0)?;
         Ok(())
@@ -1827,6 +1882,8 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            program_env: None,
+            program_args_padding_len: None,
         };
         config.validate(0)?;
         Ok(())
@@ -1903,6 +1960,31 @@ mod tests {
         assert!(
             result.is_err(),
             "auto-generated name must fail when 'program' is present but invalid"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_both_program_args_and_padding_len() {
+        let config: TestCaseConfig = TestCaseConfig {
+            executor: "empty".to_string(),
+            name: "empty/mutual_exclusivity".to_string(),
+            iterations: 1,
+            program: None,
+            program_args: Some("explicit-args".to_string()),
+            input: None,
+            expected_output: None,
+            expect_empty_output: false,
+            extra_nanvixd_args: None,
+            expected_exit_code: None,
+            runs_on: None,
+            program_env: None,
+            program_args_padding_len: Some(100),
+        };
+        let result = config.validate(0);
+        assert!(
+            result.is_err(),
+            "validate() must reject configs with both 'program_args' and \
+             'program_args_padding_len'"
         );
     }
 }

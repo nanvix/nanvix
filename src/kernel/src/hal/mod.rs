@@ -33,6 +33,7 @@ use crate::hal::{
     },
 };
 use ::alloc::collections::linked_list::LinkedList;
+use ::bitmap::Bitmap;
 use ::core::{
     hint::unlikely,
     mem::MaybeUninit,
@@ -113,6 +114,11 @@ impl Hal {
     /// - `madt`: MADT information.
     /// - `mem_lower`: Lower memory size.
     ///
+    /// # Returns
+    ///
+    /// Upon success, the physical memory layout bitmap is returned.  Upon failure, an error is
+    /// returned instead.
+    ///
     /// # Panics
     ///
     /// This function panics if the hardware abstraction layer is already initialized.
@@ -123,7 +129,7 @@ impl Hal {
         ioaddresses: &mut IoMemoryAllocator,
         madt: &Option<MadtInfo>,
         mem_lower: Option<usize>,
-    ) -> Result<(), Error> {
+    ) -> Result<Bitmap, Error> {
         // Check if the hardware abstraction layer is already initialized.
         if unlikely(HAL_INIT.load(ORDER)) {
             panic!("hardware abstraction layer was already initialized");
@@ -140,6 +146,18 @@ impl Hal {
             madt,
             mem_lower,
         )?;
+
+        // Take ownership of the physical memory layout bitmap from the platform.
+        // This bitmap is consumed exactly once; a `None` here means it was already taken
+        // (i.e., double initialization), hence `ResourceBusy`.
+        let physical_memory_layout: Bitmap = match platform.physical_memory_layout.take() {
+            Some(bitmap) => bitmap,
+            None => {
+                let reason: &str = "physical memory layout is not available";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::ResourceBusy, reason));
+            },
+        };
 
         // Verify that all MMIO regions are registered in ioaddresses.
         if mmio_regions.len() != ioaddresses.len() {
@@ -181,7 +199,7 @@ impl Hal {
         unsafe { HAL.write(hal) };
         HAL_INIT.store(true, ORDER);
 
-        Ok(())
+        Ok(physical_memory_layout)
     }
 
     ///

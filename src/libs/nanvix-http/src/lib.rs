@@ -15,8 +15,7 @@ mod server;
 //==================================================================================================
 
 #[cfg(feature = "standalone")]
-pub use client::{
-    StandaloneConfig,
-    StandaloneState,
-};
+pub use ::nanvix_sandbox_config::StandaloneConfig;
+#[cfg(feature = "standalone")]
+pub use client::StandaloneState;
 pub use server::HttpServer;

@@ -24,14 +24,14 @@ use ::log::{
     trace,
     warn,
 };
-use ::std::{
-    convert::TryInto,
-    process::ExitStatus,
-};
 #[cfg(unix)]
 use ::std::os::unix::process::ExitStatusExt;
 #[cfg(windows)]
 use ::std::os::windows::process::ExitStatusExt;
+use ::std::{
+    convert::TryInto,
+    process::ExitStatus,
+};
 use ::sys::ipc::IkcFrame;
 use ::tokio::{
     runtime::Handle,
@@ -131,6 +131,7 @@ impl UserVm {
                         kernel_filename,
                         initrd_filename: Some(initrd_filename.clone()),
                         initrd_args,
+                        kernel_args: None,
                         ramfs_filename,
                         stderr: stderr_file,
                         vcpu_thread_stdout_tx,
@@ -143,6 +144,7 @@ impl UserVm {
                         gdb_port: None,
                         #[cfg(feature = "profile-time")]
                         perf_timings: ::uservm::perf::PerfTimings::new(),
+                        guest_profile_path: std::env::var("NANVIX_GUEST_PROFILE_PATH").ok(),
                     });
 
                 // Drain the VM's stdout channel. In standalone mode there is no system VM to

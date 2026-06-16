@@ -24,12 +24,17 @@ serde_cbor = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
 control-plane-api = { workspace = true }
-elf = { workspace = true }
+elf = { workspace = true, features = ["std"] }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
-hyperlight-host = { workspace = true, optional = true }
+hostfs-api = { workspace = true }
+hostfsd = { workspace = true }
+koptions = { workspace = true, features = ["std"] }
 log = { workspace = true }
 multibin = { workspace = true, features = ["std"] }
+multiimage = { workspace = true, features = ["std"] }
+nanvix-sandbox-config = { workspace = true }
+networkd = { workspace = true }
 profiler = { workspace = true, features = ["auto-calibrate"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"], optional = true }
@@ -53,12 +58,16 @@ windows = { workspace = true }
 [features]
 default = ["microvm"]
 gdb = ["microvm", "dep:gdbstub", "dep:gdbstub_arch"]
-hyperlight = ["dep:hyperlight-host", "config/hyperlight"]
 microvm = ["config/microvm"]
-whp = ["config/whp"]
+whp = ["microvm", "config/whp"]
 # Enables fine-grained time profiling.
 profile-time = ["dep:serde_json"]
 timestamp-messages = ["profiler/timestamp-messages"]
+# Enables nightly performance optimizations that trade defensive guarantees for
+# speed. Enabled automatically for release builds (RELEASE=yes). Currently this
+# skips zero-filling the BSS region of loaded ELF segments, relying on the VMM
+# backends allocating zero-filled guest physical memory.
+nightly-performance-optimizations = []
 
 [lints]
 workspace = true

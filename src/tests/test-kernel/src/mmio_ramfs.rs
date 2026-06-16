@@ -65,10 +65,10 @@ pub fn run() -> Result<(), Error> {
     let mut region_attached: bool = false;
 
     let mut result: Result<(), Error> = (|| {
-        pm::capctl(Capability::IoManagement, true)?;
+        pm::__kcall_capctl(Capability::IoManagement, true)?;
         cap_acquired = true;
 
-        match mm::mmio_alloc(RAMFS_MMIO_TAG) {
+        match mm::__kcall_mmio_alloc(RAMFS_MMIO_TAG) {
             Ok(()) => region_attached = true,
             Err(err) if err.code == ErrorCode::NoSuchEntry => {
                 let reason: &'static str =
@@ -79,7 +79,7 @@ pub fn run() -> Result<(), Error> {
             Err(err) => return Err(err),
         }
 
-        let info: MmioRegionInfo = mm::mmio_info(RAMFS_MMIO_TAG)?;
+        let info: MmioRegionInfo = mm::__kcall_mmio_info(RAMFS_MMIO_TAG)?;
         validate_info(&info)?;
         dump_ramfs_contents(&info)?;
 
@@ -87,7 +87,7 @@ pub fn run() -> Result<(), Error> {
     })();
 
     if region_attached {
-        if let Err(err) = mm::mmio_free(RAMFS_MMIO_TAG) {
+        if let Err(err) = mm::__kcall_mmio_free(RAMFS_MMIO_TAG) {
             ::syslog::error!("test-kernel: failed to free RAMFS region (error={:?})", err);
             if result.is_ok() {
                 result = Err(err);
@@ -96,7 +96,7 @@ pub fn run() -> Result<(), Error> {
     }
 
     if cap_acquired {
-        if let Err(err) = pm::capctl(Capability::IoManagement, false) {
+        if let Err(err) = pm::__kcall_capctl(Capability::IoManagement, false) {
             ::syslog::error!(
                 "test-kernel: failed to drop IoManagement capability (error={:?})",
                 err

@@ -56,7 +56,7 @@ use ::syslog::trace_libcall;
 pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
     // Check if directory stream is invalid.
     if dirp.is_null() {
-        ::syslog::error!("closedir(): invalid directory stream (dirp={dirp:?})");
+        ::syslog::warn!("closedir(): invalid directory stream (dirp={dirp:?})");
         *__errno_location() = ErrorCode::InvalidArgument.get();
         return -1;
     }
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn closedir(dirp: *mut DirectoryStream) -> c_int {
         Ok(()) => 0,
         Err(error) => {
             // We failed, but ownership of `dirp` is now dropped and memory will be freed.
-            ::syslog::error!("closedir(): {error:?} (dirp={dirp:?})");
+            ::syslog::warn!("closedir(): {error:?} (dirp={dirp:?})");
             *__errno_location() = error.code.get();
             -1
         },

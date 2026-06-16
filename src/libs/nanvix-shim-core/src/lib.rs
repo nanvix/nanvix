@@ -11,7 +11,7 @@
 //! Core abstractions for the Nanvix containerd shim.
 //!
 //! This crate defines the `ExecutionMode` trait — the primary extension point for
-//! supporting different Nanvix deployment modes (standalone, Hyperlight, distributed, etc.).
+//! supporting different Nanvix deployment modes (standalone, distributed, etc.).
 
 pub mod config;
 pub mod execution;

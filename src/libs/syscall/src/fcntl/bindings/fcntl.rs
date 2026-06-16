@@ -27,7 +27,7 @@ pub unsafe extern "C" fn fcntl(fd: c_int, cmd: c_int, args: ...) -> c_int {
     let cmd: FileControlRequest = match FileControlRequest::try_from((cmd, args)) {
         Ok(cmd) => cmd,
         Err(error) => {
-            ::syslog::error!("fcntl(): invalid command ({error:?}, fd={fd:?}, cmd={cmd:?})");
+            ::syslog::warn!("fcntl(): invalid command ({error:?}, fd={fd:?}, cmd={cmd:?})");
             *__errno_location() = error.code.get();
             return -1;
         },
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn fcntl(fd: c_int, cmd: c_int, args: ...) -> c_int {
     match file::fcntl(fd, &cmd) {
         Ok(ret) => ret,
         Err(error) => {
-            ::syslog::error!("fcntl(): failed ({error:?}, fd={fd:?}, cmd={cmd:?})");
+            ::syslog::warn!("fcntl(): failed ({error:?}, fd={fd:?}, cmd={cmd:?})");
             *__errno_location() = error.code.get();
             -1
         },

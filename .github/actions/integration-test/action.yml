@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 name: "Integration Test"
-description: "Run integration tests for microvm/hyperlight machine types"
+description: "Run integration tests for microvm machine type"
 
 inputs:
   build-type:
@@ -18,65 +18,62 @@ inputs:
 runs:
   using: "composite"
   steps:
-  # Smoke test that boots nanvixd and checks for the kernel magic string,
-  # verifying the multibin initrd (procd, testd, memd).
-  - name: "Smoke Test (${{ inputs.machine-type }})"
-    shell: bash
-    env:
-      RUST_LOG: debug
-    run: |
-      set -Eeuo pipefail
+    # In-kernel unit tests: build kernel with `test` feature, boot it, and verify
+    # tests pass by waiting for the magic string (tests run before the user binary).
+    - name: "In-Kernel Tests (${{ inputs.machine-type }})"
+      if: inputs.build-type == 'debug'
+      shell: bash
+      env:
+        RUST_LOG: debug
+      run: |
+        set -Eeuo pipefail
 
-      MAGIC_STRING="hello, world!"
-      TIMEOUT=120
+        ./z build -- run-kernel-tests \
+            "MACHINE=${{ inputs.machine-type }}" \
+            TARGET=x86 \
+            LOG_LEVEL=trace
 
-      # Build multibin image from pre-built artifacts.
-      ./bin/mkimage.elf -o nanvix.img \
-          "bin/procd.elf;procd" \
-          "bin/memd.elf;memd" \
-          "bin/testd.elf;testd"
+        echo "In-kernel tests passed."
 
-      if [[ "${{ inputs.build-type }}" == "release" ]]; then
-        # In release builds, CI sets LOG_LEVEL=error, which suppresses the
-        # debug-level magic string. Validate success by requiring nanvixd to
-        # exit cleanly before timeout.
-        if ! bash scripts/run-nanvixd.sh \
-              "${{ inputs.machine-type }}" nanvix.img "${TIMEOUT}"; then
-          echo "::error::Smoke test failed: nanvixd did not exit cleanly within ${TIMEOUT}s."
-          exit 1
+    # Smoke test that boots nanvixd and checks for the kernel magic string,
+    # verifying the multibin initrd (procd, testd, memd, vfsd).
+    - name: "Smoke Test (${{ inputs.machine-type }})"
+      shell: bash
+      env:
+        RUST_LOG: debug
+      run: |
+        set -Eeuo pipefail
+
+        TIMEOUT=120
+        RELEASE_FLAG=""
+        if [[ "${{ inputs.build-type }}" == "release" ]]; then
+          RELEASE_FLAG="--release"
         fi
-      else
-        # In debug builds, assert successful boot by waiting for kernel magic
-        # string in console output.
-        if ! bash scripts/run-nanvixd.sh \
-              "${{ inputs.machine-type }}" nanvix.img "${TIMEOUT}" \
-              --wait-for-string "${MAGIC_STRING}"; then
-          echo "::error::Smoke test failed: magic string '${MAGIC_STRING}' not found within ${TIMEOUT}s."
-          exit 1
-        fi
-      fi
 
-      echo "Smoke test passed."
+        ./z build ${RELEASE_FLAG} -- run-smoke-test \
+            "MACHINE=${{ inputs.machine-type }}" \
+            "DEPLOYMENT_MODE=${{ inputs.deployment-type }}" \
+            "TIMEOUT=${TIMEOUT}"
 
-  # Run test binary directly from downloaded artifacts.
-  - name: "Integration Test (${{ inputs.machine-type }})"
-    shell: bash
-    env:
-      RUST_LOG: info
-    run: |
-      set -Eeuo pipefail
+    # Run test binary directly from downloaded artifacts.
+    - name: "Integration Test (${{ inputs.machine-type }})"
+      shell: bash
+      env:
+        RUST_LOG: info
+      run: |
+        set -Eeuo pipefail
 
-      # Determine test config based on deployment type.
-      case "${{ inputs.deployment-type }}" in
-        standalone)     TEST_CONFIG="test/test-standalone.toml" ;;
-        single-process) TEST_CONFIG="test/test-single_process.toml" ;;
-        multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
-        l2)             TEST_CONFIG="test/test-l2.toml" ;;
-        *)
-          echo "::error::Unknown deployment type: ${{ inputs.deployment-type }}"
-          exit 1
-          ;;
-      esac
+        # Determine test config based on deployment type.
+        case "${{ inputs.deployment-type }}" in
+          standalone)     TEST_CONFIG="test/test-standalone.toml" ;;
+          single-process) TEST_CONFIG="test/test-single_process.toml" ;;
+          multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
+          l2)             TEST_CONFIG="test/test-l2.toml" ;;
+          *)
+            echo "::error::Unknown deployment type: ${{ inputs.deployment-type }}"
+            exit 1
+            ;;
+        esac
 
-      echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
-      ./bin/nanvix-test.elf "${TEST_CONFIG}"
+        echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
+        ./bin/nanvix-test.elf "${TEST_CONFIG}"

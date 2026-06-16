@@ -49,7 +49,7 @@ pub unsafe extern "C" fn pthread_mutex_init(
 ) -> c_int {
     // Check if `mutex` is not valid.
     if mutex.is_null() {
-        ::syslog::error!("pthread_mutex_init(): invalid mutex pointer");
+        ::syslog::warn!("pthread_mutex_init(): invalid mutex pointer");
         return ErrorCode::InvalidArgument.get();
     }
 
