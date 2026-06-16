@@ -6,118 +6,148 @@
 //==================================================================================================
 
 use crate::hal::mem::{
-    AccessPermission,
-    Address,
     FrameAddress,
-    PageAddress,
-    PageAligned,
-    PhysicalAddress,
+    PageTableAddress,
+    Table,
 };
-use ::arch::mem::paging::{
-    AccessedFlag,
-    CopyOnWriteFlag,
-    DirtyFlag,
-    FrameNumber,
-    PageCacheDisableFlag,
-    PageTableEntry,
-    PageTableEntryFlags,
-    PageWriteThroughFlag,
-    PresentFlag,
-    PteWord,
-    ReadWriteFlag,
-    UserSupervisorFlag,
+use ::arch::mem::{
+    paging::{
+        AccessedFlag,
+        DirtyFlag,
+        FrameNumber,
+        PageCacheDisableFlag,
+        PageTableEntry,
+        PageTableEntryFlags,
+        PageWriteThroughFlag,
+        PresentFlag,
+        ReadWriteFlag,
+        TableIndex,
+        UserSupervisorFlag,
+    },
+    PAGE_TABLE_LENGTH,
 };
-use ::core::ops::DerefMut;
 use ::sys::error::{
     Error,
     ErrorCode,
 };
 
 //==================================================================================================
+// Type Aliases
+//==================================================================================================
+
+//==================================================================================================
 // Structures
 //==================================================================================================
+
 ///
 /// # Description
 ///
-/// A type that represents a page table.
+/// A view over a hardware page table.
 ///
-pub struct PageTable<T: DerefMut<Target = [PteWord]>> {
+/// Wraps a [`Table<PageTableEntry>`] for typed entry access. Does not own the backing
+/// memory — the caller is responsible for keeping the underlying page alive.
+///
+pub struct PageTable {
     /// Number of pages mapped in the page table.
     nmapped: usize,
-    /// Entries.
-    entries: T,
+    /// Typed table view over the backing storage.
+    table: Table<PageTableEntry>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
-    pub fn new(entries: T) -> Self {
-        let mut page_table: Self = Self {
+impl PageTable {
+    ///
+    /// # Description
+    ///
+    /// Creates a page table view from a raw base address.
+    ///
+    /// # Safety
+    ///
+    /// `base` must be a valid, page-aligned, identity-mapped address backed by at least one
+    /// page of writable memory that outlives this `PageTable`.
+    ///
+    pub unsafe fn from_address(base: PageTableAddress) -> Self {
+        Self {
             nmapped: 0,
-            entries,
-        };
-        page_table.clean();
-        page_table
+            table: Table::from_address(base.into_raw_value()),
+        }
+    }
+
+    /// Zeroes all entries in this page table.
+    pub fn clean(&mut self) {
+        for i in 0..PAGE_TABLE_LENGTH {
+            let idx = TableIndex::try_from(i).expect("index within bounds");
+            // SAFETY: index is within bounds.
+            unsafe {
+                self.table.write(
+                    idx,
+                    PageTableEntry::new(
+                        PageTableEntryFlags::new(
+                            PresentFlag::NotPresent,
+                            ReadWriteFlag::ReadOnly,
+                            UserSupervisorFlag::Supervisor,
+                            PageWriteThroughFlag::NotWriteThrough,
+                            PageCacheDisableFlag::CacheDisabled,
+                            AccessedFlag::NotAccessed,
+                            DirtyFlag::NotDirty,
+                        ),
+                        FrameNumber::NULL,
+                    ),
+                )
+            };
+        }
+        self.nmapped = 0;
     }
 
     ///
     /// # Description
     ///
-    /// Creates a page table wrapper around existing (already-populated) storage.
+    /// Maps a single page table entry.
     ///
-    /// Unlike [`new`](Self::new), this does not zero the entries.
+    /// # Parameters
+    ///
+    /// - `pte_idx`: Index of the PTE to write.
+    /// - `frame`: Physical frame address to map.
+    /// - `supervisor`: Whether the page is supervisor-only.
+    /// - `writable`: Whether the page is writable.
+    /// - `writethrough`: Whether write-through caching is enabled.
+    /// - `cache_disabled`: Whether caching is disabled.
     ///
     /// # Returns
     ///
-    /// A new [`PageTable`] instance that wraps the provided storage.
+    /// `Ok(())` on success, or an error if the entry is already present.
     ///
-    /// Returns the number of pages mapped in the page table.
-    pub fn nmapped(&self) -> usize {
-        self.nmapped
-    }
-
-    /// Maps a physical address into a virtual address in the target page table.
-    pub fn map(
+    pub fn map_entry(
         &mut self,
-        vaddr: PageAddress,
-        paddr: FrameAddress,
+        pte_idx: TableIndex,
+        frame: FrameAddress,
         supervisor: bool,
+        writable: bool,
         writethrough: bool,
-        cache: bool,
-        access: AccessPermission,
+        cache_disabled: bool,
     ) -> Result<(), Error> {
-        // Obtain a cached copy of the page table entry.
-        let pte: PageTableEntry = match self.read_pte(vaddr) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!(
-                    "map(): {} (vaddr={:?}, paddr={:?}, supervisor={:?}, writethrough={:?}, \
-                     cache={:?}, access={:?})",
-                    reason, vaddr, paddr, supervisor, writethrough, cache, access
-                );
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
+        // SAFETY: pte_idx is assumed to be within bounds by the caller (PageDirectory).
+        let pte: PageTableEntry = unsafe {
+            self.table
+                .read(pte_idx)
+                .ok_or_else(|| Error::new(ErrorCode::BadAddress, "invalid page table entry"))?
         };
-
-        // Check if page table entry is busy.
         if pte.is_present() {
             let reason: &str = "page table entry is busy";
-            error!(
-                "map(): {} (vaddr={:?}, paddr={:?}, supervisor={:?}, writethrough={:?}, \
-                 cache={:?}, access={:?})",
-                reason, vaddr, paddr, supervisor, writethrough, cache, access
-            );
+            error!("map_entry(): {reason} (pte_idx={})", pte_idx.into_raw());
             return Err(Error::new(ErrorCode::ResourceBusy, reason));
         }
 
-        // Construct page table entry.
-        let pte: PageTableEntry = PageTableEntry::new(
+        let frame: FrameNumber =
+            FrameNumber::from_raw_value(frame.into_raw_value() / ::arch::mem::PAGE_SIZE)
+                .ok_or_else(|| Error::new(ErrorCode::BadAddress, "frame number out of range"))?;
+        let new_pte: PageTableEntry = PageTableEntry::new(
             PageTableEntryFlags::new(
                 PresentFlag::Present,
-                if access.is_writable() {
+                if writable {
                     ReadWriteFlag::ReadWrite
                 } else {
                     ReadWriteFlag::ReadOnly
@@ -132,20 +162,18 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
                 } else {
                     PageWriteThroughFlag::NotWriteThrough
                 },
-                if cache {
-                    PageCacheDisableFlag::CacheEnabled
-                } else {
+                if cache_disabled {
                     PageCacheDisableFlag::CacheDisabled
+                } else {
+                    PageCacheDisableFlag::CacheEnabled
                 },
                 AccessedFlag::NotAccessed,
                 DirtyFlag::NotDirty,
             ),
-            paddr.into_frame_number(),
+            frame,
         );
-
-        // Write page table entry.
-        self.write_pte(vaddr, pte);
-
+        // SAFETY: pte_idx is within bounds.
+        unsafe { self.table.write(pte_idx, new_pte) };
         self.nmapped += 1;
 
         Ok(())
@@ -154,392 +182,31 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     ///
     /// # Description
     ///
-    /// Unmaps a page address from the target page table.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address to unmap.
-    ///
-    /// # Return Values
-    ///
-    ///Upon success, the frame address that was associated with the given page address is returned
-    ///and the concerned page is unmapped from the target page table. Upon failure, an error is
-    ///returned instead.
-    ///
-    pub fn unmap(&mut self, page_address: PageAddress) -> Result<FrameAddress, Error> {
-        // Obtain a cached copy of the page table entry.
-        let pte: PageTableEntry = match self.read_pte(page_address) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!("{reason} (page_address={page_address:?})");
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
-        };
-
-        // Check if page is not present.
-        if !pte.is_present() {
-            let reason: &str = "page is not present";
-            error!("{reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::ResourceBusy, reason));
-        }
-
-        // Retrieve frame address.
-        let paddr: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
-
-        // Construct page table entry.
-        let pte: PageTableEntry = PageTableEntry::new(
-            PageTableEntryFlags::new(
-                PresentFlag::NotPresent,
-                ReadWriteFlag::ReadOnly,
-                UserSupervisorFlag::User,
-                PageWriteThroughFlag::NotWriteThrough,
-                PageCacheDisableFlag::CacheDisabled,
-                AccessedFlag::NotAccessed,
-                DirtyFlag::NotDirty,
-            ),
-            FrameNumber::NULL,
-        );
-
-        // Write page table entry.
-        self.write_pte(page_address, pte);
-
-        // Invalidate the TLB entry so the CPU does not use a stale mapping to the
-        // old frame if this virtual address is re-mapped to a different frame.
-        // SAFETY: called from kernel mode after modifying a PTE.
-        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
-
-        self.nmapped -= 1;
-
-        Ok(paddr)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Looks up a page address in the target page table.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address to lookup.
-    ///
-    /// # Return Values
-    ///
-    /// Upon success, the frame address associated with the target page is returned. Upon failure,
-    /// an error is returned instead.
-    ///
-    pub fn lookup(&self, page_address: PageAddress) -> Result<FrameAddress, Error> {
-        // Obtain a cached copy of the page table entry.
-        let pte: PageTableEntry = match self.read_pte(page_address) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!("{reason} (page_address={page_address:?})");
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
-        };
-
-        // Check if page is not present.
-        if !pte.is_present() {
-            let reason: &str = "page is not present";
-            error!("{reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-        }
-
-        // Retrieve frame address.
-        let paddr: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
-
-        Ok(paddr)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Checks whether a page is present in the target page table.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address to check.
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(true)` if the page is present.
-    /// - `Ok(false)` if the page is not present.
-    /// - `Err(_)` if the page table entry could not be read.
-    ///
-    pub fn is_page_present(&self, page_address: PageAddress) -> Result<bool, Error> {
-        match self.read_pte(page_address) {
-            Some(pte) => Ok(pte.is_present()),
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!("{reason} (page_address={page_address:?})");
-                Err(Error::new(ErrorCode::TryAgain, reason))
-            },
-        }
-    }
-
-    /// Changes access permissions on a page.
-    pub fn ctrl(
-        &mut self,
-        supervisor: bool,
-        page_address: PageAddress,
-        access: AccessPermission,
-    ) -> Result<(), Error> {
-        // Obtain a cached copy of the page table entry.
-        let mut pte: PageTableEntry = match self.read_pte(page_address) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!(
-                    "change_access_permissions(): {} (page_address={:?}, supervisor={:?}, \
-                     access={:?})",
-                    reason, page_address, supervisor, access
-                );
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
-        };
-
-        // Check if page is not present.
-        if !pte.is_present() {
-            let reason: &str = "page is not present";
-            error!(
-                "change_access_permissions(): {} (page_address={:?}, supervisor={:?}, access={:?})",
-                reason, page_address, supervisor, access
-            );
-            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-        }
-
-        // Modify page table entry.
-        if access.is_writable() {
-            pte.set_read_write(ReadWriteFlag::ReadWrite);
-        } else {
-            pte.set_read_write(ReadWriteFlag::ReadOnly);
-        }
-        if supervisor {
-            pte.set_user_supervisor(UserSupervisorFlag::Supervisor);
-        } else {
-            pte.set_user_supervisor(UserSupervisorFlag::User);
-        }
-
-        // Write page table entry.
-        self.write_pte(page_address, pte);
-
-        // Invalidate the TLB entry so the permission change takes effect immediately.
-        // SAFETY: called from kernel mode after modifying a PTE.
-        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Marks a present user page as copy-on-write: clears the writable bit and sets the AVL
-    /// copy-on-write bit.
-    ///
-    /// After this call, any user-mode write to the page faults with `P=1, W=1, U=1`,
-    /// which the in-kernel page-fault handler recognizes (via the AVL bit) as a
-    /// copy-on-write fault.
-    ///
-    /// The page must be currently writable. Pages that are already read-only must not
-    /// be marked copy-on-write: stamping the AVL copy-on-write bit on a genuinely
-    /// read-only mapping would cause a subsequent user-mode write to be silently
-    /// resolved as a copy-on-write fault instead of raising a protection fault.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address of the entry to mark.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
-    ///
-    pub fn mark_cow(&mut self, page_address: PageAddress) -> Result<(), Error> {
-        let mut pte: PageTableEntry = match self.read_pte(page_address) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!("mark_cow(): {reason} (page_address={page_address:?})");
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
-        };
-
-        if !pte.is_present() {
-            let reason: &str = "page is not present";
-            error!("mark_cow(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-        }
-
-        if !pte.flags().is_writable() {
-            let reason: &str = "page is already read-only";
-            error!("mark_cow(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        pte.set_read_write(ReadWriteFlag::ReadOnly);
-        pte.set_cow(CopyOnWriteFlag::CopyOnWrite);
-        self.write_pte(page_address, pte);
-
-        // Invalidate the TLB entry so the new copy-on-write permissions take effect immediately.
-        // SAFETY: called from kernel mode after modifying a PTE.
-        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Clears the copy-on-write mark on a present user page: clears the AVL copy-on-write
-    /// bit and restores the writable bit. Inverse of [`Self::mark_cow`].
-    ///
-    /// The PTE must currently be present and marked copy-on-write.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address of the entry to unmark.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
-    ///
-    pub fn unmark_cow(&mut self, page_address: PageAddress) -> Result<(), Error> {
-        let mut pte: PageTableEntry = match self.read_pte(page_address) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!("unmark_cow(): {reason} (page_address={page_address:?})");
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
-        };
-
-        if !pte.is_present() {
-            let reason: &str = "page is not present";
-            error!("unmark_cow(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-        }
-
-        if !pte.is_cow() {
-            let reason: &str = "page is not copy-on-write";
-            error!("unmark_cow(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        pte.set_cow(CopyOnWriteFlag::NotCopyOnWrite);
-        pte.set_read_write(ReadWriteFlag::ReadWrite);
-        self.write_pte(page_address, pte);
-
-        // SAFETY: called from kernel mode after modifying a PTE.
-        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
-
-        Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Resolves a copy-on-write mapping by repointing the PTE at `new_frame`,
-    /// clearing the AVL copy-on-write bit, and restoring the writable bit.
-    ///
-    /// The PTE must currently be present and marked copy-on-write.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address of the entry to resolve.
-    /// - `new_frame`: New physical frame to install in the PTE.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, the previous frame address (the one the PTE pointed at before
-    /// the swap) is returned, so the caller can release its reference. Upon failure,
-    /// an error is returned instead.
-    ///
-    pub fn replace_cow_frame(
-        &mut self,
-        page_address: PageAddress,
-        new_frame: FrameAddress,
-    ) -> Result<FrameAddress, Error> {
-        let pte: PageTableEntry = match self.read_pte(page_address) {
-            Some(pte) => pte,
-            None => {
-                let reason: &str = "failed to read page table entry";
-                error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
-                return Err(Error::new(ErrorCode::TryAgain, reason));
-            },
-        };
-
-        if !pte.is_present() {
-            let reason: &str = "page is not present";
-            error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
-        }
-
-        if !pte.is_cow() {
-            let reason: &str = "page is not copy-on-write";
-            error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        if pte.flags().is_writable() {
-            let reason: &str = "copy-on-write page is unexpectedly writable";
-            error!("replace_cow_frame(): {reason} (page_address={page_address:?})");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-
-        let old_frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
-
-        let mut new_flags: PageTableEntryFlags = pte.flags();
-        new_flags.set_read_write(ReadWriteFlag::ReadWrite);
-        new_flags.set_cow(CopyOnWriteFlag::NotCopyOnWrite);
-        let new_pte: PageTableEntry = PageTableEntry::new(new_flags, new_frame.into_frame_number());
-        self.write_pte(page_address, new_pte);
-
-        // SAFETY: called from kernel mode after modifying a PTE.
-        unsafe { ::arch::mem::paging::invlpg(page_address.into_raw_value()) };
-
-        Ok(old_frame)
-    }
-
-    ///
-    /// # Description
-    ///
     /// Bulk-fills page table entries for contiguous identity-mapped physical memory.
     ///
-    /// Each entry maps physical frame `base_frame + i` with the given PTE flags.
+    /// Each entry maps physical frame at `base_address + i * PAGE_SIZE` as a supervisor,
+    /// read-write, write-through, cache-disabled page.
     ///
     /// # Parameters
     ///
-    /// - `start_index`: First entry index to fill (0–1023).
+    /// - `start_index`: First entry index to fill.
     /// - `count`: Number of consecutive entries to fill.
     /// - `base_address`: Page-aligned physical address of the first frame.
-    /// - `pte_flags`: Strongly typed PTE flags.
+    /// - `supervisor`: Whether the pages are supervisor-only.
     /// - `skip_pte_verification`: If `true`, skip the check that all target entries are not
     ///   present.
     ///
     /// # Returns
     ///
-    /// Upon success, the number of frames mapped is returned and the page table entries are
-    /// filled. Upon failure, a tuple containing the number of frames that were successfully
-    /// mapped before the error and the error itself is returned.
-    ///
-    /// # Errors
-    ///
-    /// - `InvalidArgument` if `start_index + count` overflows or exceeds the table length.
-    /// - `InvalidArgument` if the present bit is not set in `pte_flags`.
-    /// - `InvalidArgument` if a frame number exceeds the valid range.
-    /// - `ResourceBusy` if any target entry is already present (unless `skip_pte_verification` is
-    ///   `true`).
-    ///
-    /// # Notes
-    ///
-    /// - Entries written before a mid-fill error are not rolled back.
+    /// Upon success, the number of frames mapped is returned. Upon failure, a tuple containing
+    /// the number of frames that were successfully mapped and the error is returned.
     ///
     pub fn fill(
         &mut self,
         start_index: usize,
         count: usize,
         base_address: FrameAddress,
-        pte_flags: PageTableEntryFlags,
+        supervisor: bool,
         skip_pte_verification: bool,
     ) -> Result<usize, (usize, Error)> {
         // Bounds check.
@@ -548,29 +215,26 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
             error!("fill(): {}", reason);
             (0, Error::new(ErrorCode::InvalidArgument, reason))
         })?;
-        if end > self.entries.len() {
+        if end > PAGE_TABLE_LENGTH {
             let reason: &str = "index out of bounds";
             error!(
-                "fill(): {} (start_index={}, count={}, entries_len={})",
-                reason,
-                start_index,
-                count,
-                self.entries.len()
+                "fill(): {} (start_index={}, count={}, max={})",
+                reason, start_index, count, PAGE_TABLE_LENGTH
             );
-            return Err((0, Error::new(ErrorCode::InvalidArgument, reason)));
-        }
-
-        // Validate that the present bit is set.
-        if !pte_flags.is_present() {
-            let reason: &str = "present bit not set in pte_flags";
-            error!("fill(): {}", reason);
             return Err((0, Error::new(ErrorCode::InvalidArgument, reason)));
         }
 
         // Verify that all target entries are not present.
         if !skip_pte_verification {
-            for entry in &self.entries[start_index..end] {
-                if PresentFlag::is_set(*entry) {
+            for i in start_index..end {
+                // SAFETY: index is within bounds (checked above).
+                let idx = TableIndex::try_from(i).map_err(|e| (0, Error::from(e)))?;
+                let pte: PageTableEntry = unsafe {
+                    self.table.read(idx).ok_or_else(|| {
+                        (0, Error::new(ErrorCode::BadAddress, "invalid page table entry"))
+                    })?
+                };
+                if pte.is_present() {
                     let reason: &str = "page table entry is busy";
                     error!("fill(): {}", reason);
                     return Err((0, Error::new(ErrorCode::ResourceBusy, reason)));
@@ -579,87 +243,37 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
         }
 
         // Build and write each page table entry.
-        let base_frame: FrameNumber = base_address.into_frame_number();
+        let base_pa: usize = base_address.into_raw_value();
         for i in 0..count {
-            let raw_frame: usize = base_frame.into_raw_value().checked_add(i).ok_or_else(|| {
-                let reason: &str = "frame number overflow";
-                error!("fill(): {}", reason);
-                (i, Error::new(ErrorCode::InvalidArgument, reason))
-            })?;
-            let frame: FrameNumber = FrameNumber::from_raw_value(raw_frame).ok_or_else(|| {
-                let reason: &str = "frame number out of range";
-                error!("fill(): {}", reason);
-                (i, Error::new(ErrorCode::InvalidArgument, reason))
-            })?;
-            let pte: PageTableEntry = PageTableEntry::new(pte_flags, frame);
-            self.entries[start_index + i] = pte.into_raw_value();
+            let pa: usize = base_pa + i * ::arch::mem::PAGE_SIZE;
+            let frame: FrameNumber = FrameNumber::from_raw_value(pa / ::arch::mem::PAGE_SIZE)
+                .ok_or_else(|| {
+                    let reason: &str = "frame number out of range";
+                    error!("fill(): {}", reason);
+                    (i, Error::new(ErrorCode::BadAddress, reason))
+                })?;
+            let new_pte: PageTableEntry = PageTableEntry::new(
+                PageTableEntryFlags::new(
+                    PresentFlag::Present,
+                    ReadWriteFlag::ReadWrite,
+                    if supervisor {
+                        UserSupervisorFlag::Supervisor
+                    } else {
+                        UserSupervisorFlag::User
+                    },
+                    PageWriteThroughFlag::WriteThrough,
+                    PageCacheDisableFlag::CacheDisabled,
+                    AccessedFlag::NotAccessed,
+                    DirtyFlag::NotDirty,
+                ),
+                frame,
+            );
+            // SAFETY: start_index + i is within bounds (checked above).
+            let idx = TableIndex::try_from(start_index + i).map_err(|e| (i, Error::from(e)))?;
+            unsafe { self.table.write(idx, new_pte) };
             self.nmapped += 1;
         }
 
         Ok(count)
-    }
-
-    fn clean(&mut self) {
-        for pte in self.entries.iter_mut() {
-            *pte = 0;
-        }
-    }
-
-    fn read_pte(&self, vaddr: PageAddress) -> Option<PageTableEntry> {
-        let pte_idx: usize = vaddr.get_pte_index();
-        let pte: Option<PageTableEntry> = PageTableEntry::from_raw_value(self.entries[pte_idx]);
-        pte
-    }
-
-    fn write_pte(&mut self, vaddr: PageAddress, pte: PageTableEntry) {
-        let pte_idx: usize = vaddr.get_pte_index();
-        self.entries[pte_idx] = pte.into_raw_value();
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Reads the page table entry at the given page address, if it is present.
-    ///
-    /// # Parameters
-    ///
-    /// - `page_address`: Page address of the entry to read.
-    ///
-    /// # Returns
-    ///
-    /// - `Some(pte)` if the entry is present.
-    /// - `None` if the entry is not present (or could not be decoded).
-    ///
-    pub fn read_pte_at(&self, page_address: PageAddress) -> Option<PageTableEntry> {
-        match self.read_pte(page_address) {
-            Some(pte) if pte.is_present() => Some(pte),
-            _ => None,
-        }
-    }
-
-    pub fn physical_address(&self) -> Result<FrameAddress, Error> {
-        let vaddr: usize = self.entries.as_ptr() as usize;
-        let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
-        Ok(FrameAddress::new(PageAligned::from_address(PhysicalAddress::from_raw_value(paddr)?)?))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Iterates over the present entries in the target page table.
-    ///
-    /// # Returns
-    ///
-    /// An iterator that yields, for each present entry, a tuple `(pte_index, pte)` where
-    /// `pte_index` is the index of the entry within the page table (0–1023 on x86) and
-    /// `pte` is the decoded [`PageTableEntry`].
-    ///
-    pub fn iter_present_ptes(&self) -> impl Iterator<Item = (usize, PageTableEntry)> + '_ {
-        self.entries.iter().enumerate().filter_map(
-            |(idx, raw)| match PageTableEntry::from_raw_value(*raw) {
-                Some(pte) if pte.is_present() => Some((idx, pte)),
-                _ => None,
-            },
-        )
     }
 }

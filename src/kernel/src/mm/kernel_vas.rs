@@ -7,18 +7,16 @@
 //! CR3 is loaded, and any virtual memory regions that lie outside physical memory (e.g., MMIO
 //! pages above `MEMORY_SIZE`) are explicitly mapped.
 
-use crate::hal::{
-    arch::x86::mem::mmu::page_table::PageTable,
-    mem::{
-        Address,
-        MemoryRegion,
-        MemoryRegionType,
-        PageAligned,
-        PageTableAddress,
-        PhysicalAddress,
-        TruncatedMemoryRegion,
-        VirtualAddress,
-    },
+use crate::hal::mem::{
+    Address,
+    FrameAddress,
+    MemoryRegion,
+    MemoryRegionType,
+    PageAligned,
+    PageTableAligned,
+    PhysicalAddress,
+    TruncatedMemoryRegion,
+    VirtualAddress,
 };
 use ::alloc::{
     collections::LinkedList,
@@ -125,13 +123,38 @@ pub fn init(
     // Build identity-mapped page tables and create the root address space.
     let (kernel_pages, kernel_page_tables): (
         LinkedList<KernelPage>,
-        LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-    ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
+        LinkedList<(PageTableAligned<VirtualAddress>, PageTableStorage)>,
+    ) = (LinkedList::new(), virt::init(virtual_memory_regions)?);
 
     let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables)?;
 
     #[cfg(feature = "test")]
     virt::test();
+
+    // Map MMIO regions (device frames) into the root kernel address space. PTs for
+    // `[0, MEMORY_SIZE)` are pre-installed with empty PTEs, so MMIO pages within that range
+    // have their PTEs filled without conflict.
+    for region in mmio_regions.iter() {
+        info!("mapping mmio: {:?}", region);
+        let mut raw_vaddr: usize = region.start().into_raw_value();
+        let end: usize = raw_vaddr + (region.size() - 1);
+
+        while raw_vaddr < end {
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            let mmio_addr: VirtualAddress = VirtualAddress::from_raw_value(raw_vaddr);
+            // SAFETY: MMIO addresses come from the validated boot memory map.
+            let phys_addr: PhysicalAddress =
+                unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
+            let frame: FrameAddress = FrameAddress::new(PageAligned::from_address(phys_addr)?);
+
+            vmem.map_mmio_page(frame, vaddr)?;
+
+            match raw_vaddr.checked_add(mem::PAGE_SIZE) {
+                Some(next) => raw_vaddr = next,
+                None => break,
+            };
+        }
+    }
 
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {

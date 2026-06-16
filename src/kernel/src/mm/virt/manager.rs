@@ -7,13 +7,13 @@
 
 use crate::{
     hal::{
-        arch::x86::mem::mmu::page_table::PageTable,
+        arch::x86::mem::mmu::PAGE_MAP_CLONE_PAGES,
         mem::{
             AccessPermission,
             Address,
             FrameAddress,
             PageAligned,
-            PageTableAddress,
+            PageTableAligned,
             VirtualAddress,
         },
     },
@@ -117,7 +117,7 @@ impl VirtMemoryManager {
     ///
     pub fn init(
         kernel_pages: LinkedList<KernelPage>,
-        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+        kernel_page_tables: LinkedList<(PageTableAligned<VirtualAddress>, PageTableStorage)>,
     ) -> Result<Vmem, Error> {
         // Check if the memory manager is already initialized.
         if unlikely(MEMORY_MANAGER_INIT.load(ORDER)) {
@@ -194,7 +194,7 @@ impl VirtMemoryManager {
     ///
     fn new(
         kernel_pages: LinkedList<KernelPage>,
-        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+        kernel_page_tables: LinkedList<(PageTableAligned<VirtualAddress>, PageTableStorage)>,
     ) -> Result<(Vmem, Self), Error> {
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
 
@@ -217,24 +217,21 @@ impl VirtMemoryManager {
     /// - `Err(_)` if the new virtual address space could not be created.
     ///
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
-        // Allocate a kernel page for the new page directory.
-        let pgdir_page: KernelPage = {
-            // The page directory initialization logic (PageDirectory::new/clean)
-            // will zero the page; no need to clear the frame here.
+        // Allocate the kernel pages required to back the new root paging hierarchy.
+        // On x86 this is a single page directory; on x86_64 it is PML4 + PDPT + PD.
+        let mut pages: LinkedList<KernelPage> = LinkedList::new();
+        for _ in 0..PAGE_MAP_CLONE_PAGES {
+            // The page map initialization logic zeroes each page; no need to clear here.
             // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
             // concurrent or re-entrant access to the physical memory manager is possible.
             let kframe: KernelFrame =
                 unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-            KernelPage::new(kframe)
-        };
+            pages.push_back(KernelPage::new(kframe));
+        }
 
-        let new_vmem: Vmem = Vmem::clone(vmem, pgdir_page)?;
+        let new_vmem: Vmem = Vmem::clone(vmem, pages)?;
 
-        trace!(
-            "new_vmem={:?}, old_vmem={:?}",
-            new_vmem.pgdir().physical_address(),
-            vmem.pgdir().physical_address()
-        );
+        trace!("new_vmem cr3={:?}, old_vmem cr3={:?}", new_vmem.cr3_value(), vmem.cr3_value());
 
         Ok(new_vmem)
     }

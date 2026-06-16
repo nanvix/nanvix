@@ -433,6 +433,7 @@ pub fn gva_to_gpa(gva: usize) -> usize {
 /// The physical address corresponding to the given virtual address.
 ///
 #[inline(always)]
+#[allow(dead_code)] // identity helper; callers re-wired during x86_64 bring-up
 pub fn virt_to_phys(vaddr: usize) -> usize {
     vaddr
 }
@@ -472,6 +473,7 @@ pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
 /// `true` if the entire region lies within physical memory, `false` otherwise.
 ///
 #[inline(always)]
+#[allow(dead_code)] // validation helper; not on the current boot path
 pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
     // Reject zero-length regions.
     if size == 0 {

@@ -284,7 +284,7 @@ impl ProcessManager {
         // gets dropped as soon as we exit this scope and underlying pages are released.
         let kernel_stack: KernelStack = KernelStack::new(mm)?;
 
-        let cr3: usize = vmem.pgdir().physical_address()?.into_raw_value();
+        let cr3: usize = vmem.cr3_value()?;
         let esp: usize = unsafe {
             hal::arch::forge_user_stack(
                 kernel_stack.top().into_raw_value() as *mut u8,
