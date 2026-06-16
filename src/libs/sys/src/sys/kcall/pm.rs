@@ -20,6 +20,7 @@ use crate::{
     pm::{
         Capability,
         ConditionAddress,
+        ExecvArgs,
         MutexAddress,
         ProcessIdentifier,
         ThreadCreateArgs,
@@ -439,6 +440,42 @@ pub fn __kcall_duplicate(args: &ThreadCreateArgs) -> Result<ProcessIdentifier, E
         Err(Error::new(ErrorCode::try_from(result)?, "failed to duplicate process"))
     } else {
         ProcessIdentifier::try_from(result)
+    }
+}
+
+//==================================================================================================
+// Execv
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Replaces the image of the calling process with a new program, following POSIX `execv()`
+/// semantics. The kernel performs no filesystem I/O: the caller must have already loaded the raw
+/// ELF image into its own address space, and `args` describes that image together with the
+/// argument and environment strings to install for the new image.
+///
+/// On success the calling process's address space and main thread are replaced and control
+/// transfers to the entry point of the new image, so this call does not return. It returns only
+/// when the image could not be replaced, in which case the calling process is left intact.
+///
+/// # Parameters
+///
+/// - `args`: Description of the ELF image to load and the argument and environment strings.
+///
+/// # Returns
+///
+/// This function returns only on failure, yielding the error reported by the kernel.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_execv(args: &ExecvArgs) -> Error {
+    let result: i64 = kcall1!(KcallNumber::Execv.into(), args as *const ExecvArgs as usize as u32);
+
+    // The kernel returns only on failure; a successful `execv()` replaces the image and never
+    // returns to this call site.
+    match ErrorCode::try_from(result) {
+        Ok(code) => Error::new(code, "failed to execv process"),
+        Err(error) => error,
     }
 }
 

@@ -202,6 +202,36 @@ pub fn unset(key: &str) {
 ///
 /// # Description
 ///
+/// Serializes the current environment as a vector of owned `KEY=VALUE` tokens.
+///
+/// This is intended for the `exec`-family wrappers that must inherit the caller's environment: the
+/// returned tokens can be borrowed as `&str` and handed to the kernel `execv` path, which expects
+/// space-separated `KEY=VALUE` entries.
+///
+/// Entries whose `KEY=VALUE` text is not valid UTF-8 are omitted, because the `execv` wire format
+/// (and the kernel) accept UTF-8 only; such an entry could not be conveyed to the new image
+/// regardless.
+///
+/// # Returns
+///
+/// A vector of `KEY=VALUE` strings, one per environment variable, in table order.
+///
+pub fn snapshot() -> Vec<String> {
+    let table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
+    let mut out: Vec<String> = Vec::with_capacity(table.len());
+    for entry in table.iter() {
+        // `raw` is a NUL-terminated "KEY=VALUE" C string; drop the trailing NUL before decoding.
+        let bytes: &[u8] = &entry.raw[..entry.raw.len().saturating_sub(1)];
+        if let Ok(token) = ::core::str::from_utf8(bytes) {
+            out.push(String::from(token));
+        }
+    }
+    out
+}
+
+///
+/// # Description
+///
 /// Registers a callback that is invoked after every successful `set()` that writes a new or
 /// updated value. Only one callback can be active at a time; a subsequent call replaces any
 /// previously registered callback.
@@ -347,6 +377,17 @@ mod test {
     fn test_unset_missing() {
         clear();
         unset("TEST_KEY_NEVER_SET");
+    }
+
+    /// Tests that `snapshot` serializes entries as `KEY=VALUE` tokens.
+    #[test]
+    fn test_snapshot() {
+        clear();
+        assert_eq!(set("SNAPSHOT_KEY_A", b"one", true), Ok(true));
+        assert_eq!(set("SNAPSHOT_KEY_B", b"two", true), Ok(true));
+        let snap: Vec<String> = snapshot();
+        assert!(snap.iter().any(|token| token == "SNAPSHOT_KEY_A=one"));
+        assert!(snap.iter().any(|token| token == "SNAPSHOT_KEY_B=two"));
     }
 
     /// Tests that a value containing '=' is stored and retrieved correctly.

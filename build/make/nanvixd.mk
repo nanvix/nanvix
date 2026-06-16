@@ -42,6 +42,18 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 		cp -f $(LIBRARIES_DIR)/libmul-pie.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
 	fi
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
+	# Build the ramfs image for the execv() test. It contains the execv target program (built as a
+	# guest binary, stripped at link time) at the filesystem root as "target", which execv-test
+	# opens and execs. Stripping keeps the on-disk image small.
+	@mkdir -p $(BINARIES_DIR)/execv-test-seed
+	@cp -f $(BINARIES_DIR)/execv-target.$(EXEC_FORMAT) $(BINARIES_DIR)/execv-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/execv-test.img $(BINARIES_DIR)/execv-test-seed/
+	# Build the ramfs image for the execv() big-binary test. It contains the large target program
+	# (inflated to MEMORY_SIZE/8) at the filesystem root as "target"; execv-test execs it via the
+	# same caller pointed at this image. This exercises execv() of a large binary with no size cap.
+	@mkdir -p $(BINARIES_DIR)/execv-big-test-seed
+	@cp -f $(BINARIES_DIR)/execv-big-target.$(EXEC_FORMAT) $(BINARIES_DIR)/execv-big-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/execv-big-test.img $(BINARIES_DIR)/execv-big-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).

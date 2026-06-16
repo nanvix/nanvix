@@ -166,43 +166,6 @@ pub unsafe extern "C" fn tcsetattr(
 ///
 /// # Description
 ///
-/// Replaces the current process image with a new process image specified by `file` and argument
-/// vector `argv`, searching the `PATH` environment variable to locate the executable if necessary.
-///
-/// # Parameters
-///
-/// - `file`: Null-terminated string naming the file to execute (may be a bare program name).
-/// - `argv`: Null-terminated array of argument strings passed to the new program. The first element
-///   conventionally is the program name.
-///
-/// # Returns
-///
-/// This function only returns on failure, in which case it returns `-1` and sets `errno`.
-///
-/// # Notes
-///
-/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
-/// A future implementation should perform path resolution, validate executable format, load the
-/// program image into memory, set up the user stack with the argument and environment vectors, and
-/// transfer control without returning.
-///
-/// # Safety
-///
-/// This function is unsafe because it dereferences raw pointers supplied by foreign callers. It is
-/// safe to call this function if `file` and `argv` (when non-null) point to valid, null-terminated
-/// C strings and a null-terminated vector, respectively.
-///
-#[unsafe(no_mangle)]
-#[trace_libcall]
-pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int {
-    ::syslog::debug!("execvp(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
-}
-
-///
-/// # Description
-///
 /// Resolves a pathname to an absolute, canonical form, eliminating symbolic links, `.` and `..`
 /// components.
 ///

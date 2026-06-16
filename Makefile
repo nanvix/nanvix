@@ -335,7 +335,7 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config
 ALL_GUEST_DAEMONS := memd procd vfsd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test
+ALL_GUEST_TESTS := testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target execv-big-target
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
@@ -878,13 +878,19 @@ image-clean:
 # Standalone tests that do NOT require daemons (run as bare .elf binaries).
 STANDALONE_NO_DAEMON_TESTS := test-kernel
 
+# Guest binaries that are bundled into a ramfs image rather than launched directly, so they must
+# not have a standalone .initrd of their own. The execv targets are loaded at runtime by
+# execv-test (the small target as `/target` in execv-test.img, the large target as `/target` in
+# execv-big-test.img).
+STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target
+
 # Standalone binaries that manage VFS locally and must NOT include vfsd in their
 # .initrd image (vfsd would claim the RAMFS MMIO region before the benchmark).
 STANDALONE_NO_VFS_BINARIES := vfs-bench-nostd
 
 # List of standalone test binaries that need multibinary images with daemons.
 # Each image bundles procd, memd, vfsd, and the test binary itself.
-STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_TESTS)) $(filter-out $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_BENCHMARKS)) $(ALL_GUEST_APPLICATIONS)
+STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDALONE_NO_VFS_BINARIES) $(STANDALONE_RAMFS_ONLY_BINARIES),$(ALL_GUEST_TESTS)) $(filter-out $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_BENCHMARKS)) $(ALL_GUEST_APPLICATIONS)
 
 .PHONY: standalone-images standalone-images-clean
 

@@ -194,6 +194,24 @@ expected_output = "ok"
 
 [[tests]]
 executor = "terminal"
+name = "execv-small"
+program = "./bin/execv-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/execv-test.img"
+expected_output = "ok"
+expected_exit_code = 0
+
+# execv() of a large binary (target inflated to MEMORY_SIZE/8). Reuses the same caller, pointed at
+# a ramfs whose `/target` is the large program, to exercise loading a big image with no size cap.
+[[tests]]
+executor = "terminal"
+name = "execv-big"
+program = "./bin/execv-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/execv-big-test.img"
+expected_output = "ok"
+expected_exit_code = 0
+
+[[tests]]
+executor = "terminal"
 program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
