@@ -176,7 +176,7 @@ pub fn do_faccessat<T>(
     trace!("faccessat(): tid={request:?}, request={tid:?}");
 
     let dirfd: c_int = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
         Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidArgument)]),
