@@ -11,8 +11,8 @@ use vstd::arithmetic::mul::lemma_mul_inequality;
 
 // The physical base address of a frame is its index shifted left by `FRAME_SHIFT`, which equals the
 // index multiplied by `FRAME_SIZE` and is `FRAME_SIZE`-aligned. The frame-index bound supplied by
-// `FrameNumber`'s type invariant (`raw <= MAX_ADDRESS / FRAME_SIZE - 1`) keeps the product within
-// `usize`, so the shift is overflow-free.
+// `FrameNumber`'s type invariant (`raw <= FrameNumber::spec_max() <= MAX_ADDRESS / FRAME_SIZE`)
+// keeps the product within `usize`, so the shift is overflow-free.
 pub proof fn lemma_frame_address(raw: usize)
     requires
         0 <= raw as int <= FrameNumber::spec_max(),
@@ -27,15 +27,19 @@ pub proof fn lemma_frame_address(raw: usize)
     lemma2_to64();
     assert(pow2(crate::mem::FRAME_SHIFT as nat) == crate::mem::FRAME_SIZE);
 
-    // The product fits in `usize`: `raw <= m / s - 1`, and `(m / s) * s <= m`.
+    // `spec_max()` is either `m / s` or `m / s - 1`, hence `<= m / s`.
+    assert(FrameNumber::spec_max() <= m / s);
+    assert(raw as int <= m / s);
+
+    // The product fits in `usize`: `raw <= m / s`, and `(m / s) * s <= m`.
     lemma_mod_bound(m, s);
     lemma_fundamental_div_mod(m, s);
-    lemma_mul_inequality(raw as int, m / s - 1, s);
+    lemma_mul_inequality(raw as int, m / s, s);
     assert(raw as int * s <= m) by (nonlinear_arith)
         requires
             s > 0,
             0 <= raw as int,
-            raw as int * s <= (m / s - 1) * s,
+            raw as int * s <= (m / s) * s,
             m == s * (m / s) + (m % s),
             0 <= m % s,
     {

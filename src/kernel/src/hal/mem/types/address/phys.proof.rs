@@ -1,4 +1,5 @@
 use vstd::arithmetic::div_mod::{
+    lemma_div_is_ordered,
     lemma_fundamental_div_mod,
     lemma_mod_bound,
 };
@@ -8,12 +9,14 @@ use vstd::arithmetic::power2::{
     lemma_pow2_strictly_increases,
 };
 use vstd::bits::lemma_usize_shr_is_div;
+use vstd::layout::unsigned_int_max_values;
 
 verus! {
 
 // A frame index scaled by the frame size stays within `usize`, so `from_number`'s base-address
-// multiply never overflows. This follows from `FrameNumber::MAX == MAX_ADDRESS / FRAME_SIZE - 1`,
-// hence `(MAX + 1) * FRAME_SIZE == MAX_ADDRESS <= usize::MAX`. Proven in the proving phase.
+// multiply never overflows. With the corrected `FrameNumber::MAX` this follows from
+// `FrameNumber::spec_max() <= MAX_ADDRESS / FRAME_SIZE`, hence `spec_max() * FRAME_SIZE <=
+// (MAX_ADDRESS / FRAME_SIZE) * FRAME_SIZE <= MAX_ADDRESS == usize::MAX`. Proven in the proving phase.
 pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
     requires
         spec_frame_raw_value(frame) <= spec_max_frame_number(),
@@ -24,29 +27,33 @@ pub proof fn lemma_from_number_no_overflow(frame: FrameNumber)
     let s: int = spec_page_size();
     let m: int = usize::MAX as int;
 
-    // `spec_page_size()` is `PAGE_SIZE == FRAME_SIZE` and
-    // `spec_max() == MAX_ADDRESS / FRAME_SIZE - 1`, with `MAX_ADDRESS == usize::MAX`.
     assert(s == mem::FRAME_SIZE as int);
-    assert(FrameNumber::spec_max() == (m / s - 1) as nat);
-    assert(raw <= m / s - 1);
+    assert(m == mem::MAX_ADDRESS as int);
+
+    // The corrected `spec_max()` is either `MAX_ADDRESS / FRAME_SIZE` or that minus one, so in
+    // either case `spec_max() <= m / s`. Only this `<=` direction is needed to rule out overflow.
+    assert(FrameNumber::spec_max() <= m / s);
+    assert(raw <= m / s);
 
     // `(m / s) * s <= m`, since `m == s * (m / s) + (m % s)` with `0 <= m % s`.
     lemma_mod_bound(m, s);
     lemma_fundamental_div_mod(m, s);
-    lemma_mul_inequality(raw, m / s - 1, s);
+    lemma_mul_inequality(raw, m / s, s);
     assert(raw * s <= m) by (nonlinear_arith)
         requires
             s > 0,
-            raw * s <= (m / s - 1) * s,
+            raw * s <= (m / s) * s,
             m == s * (m / s) + (m % s),
             0 <= m % s,
     {
     }
 }
 
-// Under `inv()`, shifting the raw address right by `FRAME_SHIFT` yields the frame index
-// `self@ / FRAME_SIZE`, which fits a `FrameNumber`. The shift-equals-divide step uses
-// `FRAME_SIZE == 2^FRAME_SHIFT`. Proven in the proving phase.
+// Shifting the raw address right by `FRAME_SHIFT` yields the frame index `self@ / FRAME_SIZE`,
+// which always fits a `FrameNumber`. The shift-equals-divide step uses `FRAME_SIZE == 2^FRAME_SHIFT`;
+// the bound uses only that the raw address is a `usize` (`raw_addr <= usize::MAX == MAX_ADDRESS`),
+// together with the corrected `FrameNumber::spec_max() == MAX_ADDRESS / FRAME_SIZE`. No `inv()` is
+// needed, which is exactly what makes `into_frame_number` total. Proven in the proving phase.
 pub proof fn lemma_frame_index(
     addr: PhysicalAddress,
     raw_addr: usize,
@@ -54,7 +61,6 @@ pub proof fn lemma_frame_index(
     frame_number: usize,
 )
     requires
-        addr.inv(),
         raw_addr as int == addr@,
         shift < 64,
         spec_page_size() == pow2(shift as nat),
@@ -87,7 +93,32 @@ pub proof fn lemma_frame_index(
     assert(frame_number as nat == raw_addr as nat / pow2(shift as nat));
     assert(frame_number as int == spec_frame_number(addr@));
 
-    // The frame index bound carries over from `addr.inv()`.
+    // The frame index is bounded by the maximum frame number. The raw address is a `usize`, so
+    // `raw_addr <= usize::MAX == MAX_ADDRESS`; dividing both sides by the (positive) page size and
+    // using `spec_max_frame_number() == MAX_ADDRESS / FRAME_SIZE` (the corrected formula, since
+    // `MAX_ADDRESS % FRAME_SIZE == FRAME_SIZE - 1` for a power-of-two frame size) gives the bound.
+    let s: int = spec_page_size();
+    let m: int = mem::MAX_ADDRESS as int;
+    assert(s == 4096);
+    assert(m == usize::MAX as int);
+    // `usize::MAX % 4096 == 4095` for any `usize` width (32 or 64): `usize::MAX == 2^BITS - 1` and
+    // `4096 == 2^12` divides `2^BITS`, so `MAX_ADDRESS` is the last byte of its frame and the
+    // corrected `spec_max()` selects the `MAX_ADDRESS / FRAME_SIZE` branch, equal to `m / s`.
+    unsigned_int_max_values();
+    assert(usize::BITS == 32 || usize::BITS == 64);
+    if usize::BITS == 32 {
+        assert(pow2(32) == 0x1_0000_0000) by (compute);
+        assert(m == 0xFFFF_FFFF);
+        assert((0xFFFF_FFFF as int) % 4096 == 4095) by (compute);
+    } else {
+        assert(pow2(64) == 0x1_0000_0000_0000_0000) by (compute);
+        assert(m == 0xFFFF_FFFF_FFFF_FFFF);
+        assert((0xFFFF_FFFF_FFFF_FFFF as int) % 4096 == 4095) by (compute);
+    }
+    assert(m % s == s - 1);
+    assert(spec_max_frame_number() == m / s);
+    assert(raw_addr as int <= m);
+    lemma_div_is_ordered(raw_addr as int, m, s);
     assert(frame_number as int <= spec_max_frame_number());
 }
 

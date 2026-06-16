@@ -155,11 +155,12 @@ impl PhysicalAddress {
         Self(VirtualAddress::new(addr))
     }
 
-    // Total projection (under `inv()`): identifies the frame containing the address,
-    // `self@ / FRAME_SIZE` (equivalently `self@ >> FRAME_SHIFT`). `inv()` underwrites the unwrap.
+    // Total projection: identifies the frame containing the address, `self@ / FRAME_SIZE`
+    // (equivalently `self@ >> FRAME_SHIFT`). This is total for *every* address: the raw value is a
+    // `usize`, so `self@ <= usize::MAX`, and with the corrected `FrameNumber::MAX` (the number of
+    // the frame containing `MAX_ADDRESS`) the shifted index never exceeds `FrameNumber::spec_max()`,
+    // so the unwrap cannot panic. No precondition is required.
     #[verus_spec(result =>
-        requires
-            self.inv(),
         ensures
             spec_frame_raw_value(result) == spec_frame_number(self@),
     )]
@@ -170,7 +171,8 @@ impl PhysicalAddress {
             vstd::arithmetic::power2::lemma2_to64();
             lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
         }
-        // Safety: the following unwrap is safe because a physical address has a valid frame number.
+        // The unwrap never panics: `frame_number == self@ / FRAME_SIZE <= FrameNumber::MAX` for
+        // every address in the space (see `lemma_frame_index`).
         FrameNumber::from_raw_value(frame_number).unwrap()
     }
 }

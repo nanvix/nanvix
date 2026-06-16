@@ -544,9 +544,7 @@ impl Inner {
             },
     )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
-        // aligned address; compute the index totally (downstream bounds checks reject oversized).
-        let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+        let frame_number: usize = frame.into_frame_number().into_raw_value();
         proof_decl! {
             let ghost g_old = self@;
             let ghost pre_sb = self.bitmap@.set_bits;
@@ -713,9 +711,7 @@ impl Inner {
             },
     )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
-        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
-        // aligned address; compute the index totally (downstream bounds checks reject oversized).
-        let frame_number: usize = frame.into_raw_value() / mem::FRAME_SIZE;
+        let frame_number: usize = frame.into_frame_number().into_raw_value();
         proof_decl! {
             let ghost g_old = self@;
             let ghost pre_sb = self.bitmap@.set_bits;
@@ -848,21 +844,19 @@ impl Inner {
             },
     )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
-        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
-        // aligned address; compute the index totally (downstream bounds checks reject oversized).
+        // `refcount` accepts an arbitrary `FrameAddress`: its contract requires only `self.inv()`,
+        // not `frame.inv()`. An unaligned address can never name a tracked frame (those are all
+        // page-aligned), so it must be rejected here before converting — the panic-free
+        // `into_frame_number()` below assumes the page alignment this entry point does not.
         let raw: usize = frame.into_raw_value();
-        let frame_number: usize = raw / mem::FRAME_SIZE;
         if raw % mem::FRAME_SIZE != 0 {
-            // VERUS BUG FIX: an unaligned address is never a tracked frame; reject it.
-            // `refcount` only requires `self.inv()` (not `frame.inv()`), so `frame@` need not
-            // be page-aligned — the previous code missed this input validation, making the
-            // `allocated_frames.contains(frame@)` postcondition unreachable for unaligned input.
             proof! { lemma_alloc_unaligned(self, frame@); }
             let reason: &str = "unaligned frame address";
             #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
+        let frame_number: usize = frame.into_frame_number().into_raw_value();
         proof! {
             let addr = frame@;
             let i = frame_number as int;
@@ -948,9 +942,7 @@ impl Inner {
             },
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
-        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
-        // aligned address; compute the index totally (bitmap.set rejects oversized indices).
-        let frame_number: usize = phys_addr.into_raw_value() / mem::FRAME_SIZE;
+        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         proof_decl! {
             let ghost g_old = self@;
             let ghost pre_sb = self.bitmap@.set_bits;
@@ -1020,9 +1012,7 @@ impl Inner {
             ),
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
-        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
-        // aligned address; compute the index totally (compared against num_bits below).
-        let frame_number: usize = phys_addr.into_raw_value() / mem::FRAME_SIZE;
+        let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         let nbits: usize = self.bitmap.number_of_bits();
         proof! {
             let addr = phys_addr@;
@@ -1082,9 +1072,7 @@ impl Inner {
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
-        // VERUS BUG FIX: avoid into_frame_number()'s panicking unwrap on the top-of-space
-        // aligned address; compute the index totally (loop checks reject oversized indices).
-        let start_frame_number: usize = region.start().into_raw_value() / mem::FRAME_SIZE;
+        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
         let nframes: usize = region.size() / mem::FRAME_SIZE;
         proof_decl! {
             let ghost g_old = self@;

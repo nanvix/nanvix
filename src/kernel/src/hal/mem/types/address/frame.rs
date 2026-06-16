@@ -136,13 +136,14 @@ impl FrameAddress {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from_number(frame_number))?))
     }
 
-    // Recovers the frame number of a frame address (`self@ / PAGE_SIZE`). Requires the address to
-    // be page-aligned and to have a representable frame number (so the underlying conversion does
-    // not overflow); the result is the exact inverse of `from_frame_number`.
+    // Recovers the frame number of a frame address (`self@ / PAGE_SIZE`). Requires only that the
+    // address is page-aligned (so the round-trip `from_number(into_frame_number(self)) == self`
+    // holds); representability is automatic because the underlying
+    // `PhysicalAddress::into_frame_number` is total. The result is the exact inverse of
+    // `from_frame_number`.
     #[verus_spec(result =>
         requires
             self.inv(),
-            spec_frame_number(self@) <= spec_max_frame_number(),
         ensures
             spec_frame_raw_value(result) == spec_frame_number(self@),
             spec_from_number(spec_frame_raw_value(result)) == self@,

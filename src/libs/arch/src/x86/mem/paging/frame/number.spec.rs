@@ -21,12 +21,22 @@ impl View for FrameNumber {
 
 impl FrameNumber {
     // Interpreted bound: the largest representable frame index, mirroring the exec constant
-    // `FrameNumber::MAX = MAX_ADDRESS / FRAME_SIZE - 1`. Defined (not `uninterp`) so the binding to
-    // `MAX` is discharged by verification rather than assumed. Realizes the kernel's
-    // `spec_max_frame_number()` (see `hal/mem/types/address/phys.spec.rs`). The `nat` result makes
-    // the bound non-negative for callers (e.g. constructing `FrameNumber::NULL`).
+    // `FrameNumber::MAX`. Defined (not `uninterp`) so the binding to `MAX` is discharged by
+    // verification rather than assumed. Realizes the kernel's `spec_max_frame_number()` (see
+    // `hal/mem/types/address/phys.spec.rs`). The `nat` result makes the bound non-negative for
+    // callers (e.g. constructing `FrameNumber::NULL`).
+    //
+    // The formula is the number of the highest frame fully contained in `[0, MAX_ADDRESS]`, i.e.
+    // `(MAX_ADDRESS + 1) / FRAME_SIZE - 1` written to avoid `usize` overflow. It must stay byte-for-
+    // byte identical to `FrameNumber::MAX` so `from_raw_value`'s exec/spec equivalence is discharged.
     pub open spec fn spec_max() -> nat {
-        (mem::MAX_ADDRESS / mem::FRAME_SIZE - 1) as nat
+        let max_addr: int = mem::MAX_ADDRESS as int;
+        let frame_size: int = mem::FRAME_SIZE as int;
+        (if max_addr % frame_size == frame_size - 1 {
+            max_addr / frame_size
+        } else {
+            max_addr / frame_size - 1
+        }) as nat
     }
 
     // Every constructible `FrameNumber` is bounded by `MAX`. Enforced as a type invariant so the
