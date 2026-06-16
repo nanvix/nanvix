@@ -175,7 +175,7 @@ pub fn do_openat<T>(
         Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
     let flags: LibcFileOpenFlags = match LibcFileOpenFlags::try_from_nanvix_flags(flags) {
         Ok(flags) => flags,
         Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
@@ -245,7 +245,7 @@ pub fn do_unlinkat<T>(
         Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
     let flags: libc::c_int = if flags == AT_REMOVEDIR {
         libc::AT_REMOVEDIR
     } else {
@@ -315,8 +315,8 @@ pub fn do_renameat<T>(
         Err(_) => return Ok(vec![crate::build_error(tid, ErrorCode::InvalidMessage)]),
     };
 
-    let olddirfd: LibcAtFlags = LibcAtFlags::from(olddirfd);
-    let newdirfd: LibcAtFlags = LibcAtFlags::from(newdirfd);
+    let olddirfd: LibcAtFlags = LibcAtFlags::from_dirfd(olddirfd);
+    let newdirfd: LibcAtFlags = LibcAtFlags::from_dirfd(newdirfd);
 
     debug!(
         "libc::renameat(): olddirfd={:?}, oldpath={oldpath:?}, newdirfd={:?}, newpath={newpath:?}",
@@ -376,7 +376,7 @@ pub fn do_fstat_at<T>(
     trace!("fstatat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
     let flag: libc::c_int = if request.flag & AT_SYMLINK_NOFOLLOW != 0 {
         libc::AT_SYMLINK_NOFOLLOW
     } else {
@@ -680,7 +680,7 @@ pub fn do_symlinkat<T>(
     };
 
     let newdirfd: i32 = request.dirfd;
-    let newdirfd: LibcAtFlags = LibcAtFlags::from(newdirfd);
+    let newdirfd: LibcAtFlags = LibcAtFlags::from_dirfd(newdirfd);
 
     let linkpath: CString = match CString::new(request.linkpath.as_str()) {
         Ok(linkpath) => linkpath,
@@ -738,7 +738,7 @@ pub fn do_readlinkat<T>(
     trace!("readlinkat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
@@ -812,7 +812,7 @@ pub fn do_mkdirat<T>(
     trace!("mkdirat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
 
     let pathname: CString = match CString::new(request.pathname.as_str()) {
         Ok(pathname) => pathname,
@@ -874,7 +874,7 @@ pub fn do_utimensat<T>(
     trace!("utimensat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
@@ -1257,7 +1257,7 @@ pub fn do_fchownat<T>(
     trace!("fchownat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
@@ -1355,7 +1355,7 @@ pub fn do_fchmodat<T>(
     trace!("fchmodat(): tid={tid:?}, request={request:?}");
 
     let dirfd: i32 = request.dirfd;
-    let dirfd: LibcAtFlags = LibcAtFlags::from(dirfd);
+    let dirfd: LibcAtFlags = LibcAtFlags::from_dirfd(dirfd);
 
     let path: CString = match CString::new(request.path.as_str()) {
         Ok(path) => path,
@@ -1820,6 +1820,24 @@ impl LibcAtFlags {
 
         LibcAtFlags(libc_flags)
     }
+
+    /// Translates a guest `dirfd` argument of an `*at()` system call into a host
+    /// `dirfd`.
+    ///
+    /// Unlike [`LibcAtFlags::from`], which maps individual `*at()` flag
+    /// constants by exact value, this only maps the `AT_FDCWD` sentinel onto its
+    /// host counterpart and forwards any real file descriptor verbatim. Routing
+    /// a `dirfd` through [`LibcAtFlags::from`] would corrupt small descriptor
+    /// values (e.g. `1` and `2`) that collide with the numeric values of
+    /// `AT_EACCESS` and `AT_SYMLINK_NOFOLLOW`.
+    pub fn from_dirfd(dirfd: ffi::c_int) -> LibcAtFlags {
+        let libc_dirfd: libc::c_int = match dirfd {
+            AT_FDCWD => libc::AT_FDCWD,
+            dirfd => dirfd,
+        };
+
+        LibcAtFlags(libc_dirfd)
+    }
 }
 
 pub struct LibcFileAdvice(libc::c_int);
@@ -2135,5 +2153,52 @@ unsafe fn handle_fchmodat<T>(
         SyscallAction::Forward(syscall_fn) => unsafe {
             syscall_fn(&syscall_table.state, dirfd, pathname, mode, flags)
         },
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        LibcAtFlags,
+        AT_EACCESS,
+        AT_FDCWD,
+        AT_SYMLINK_NOFOLLOW,
+    };
+
+    /// Verifies that `from_dirfd()` maps the `AT_FDCWD` sentinel onto its host
+    /// counterpart.
+    #[test]
+    fn from_dirfd_maps_at_fdcwd() {
+        assert_eq!(LibcAtFlags::from_dirfd(AT_FDCWD).inner(), libc::AT_FDCWD);
+    }
+
+    /// Verifies that `from_dirfd()` forwards real descriptors verbatim, including
+    /// the small values `1` and `2` that collide with the numeric values of
+    /// `AT_EACCESS` and `AT_SYMLINK_NOFOLLOW`.
+    #[test]
+    fn from_dirfd_forwards_real_descriptors_verbatim() {
+        for dirfd in [AT_EACCESS, AT_SYMLINK_NOFOLLOW, 0, 3, 42, 1024] {
+            assert_eq!(LibcAtFlags::from_dirfd(dirfd).inner(), dirfd);
+        }
+    }
+
+    /// Guards the bug being fixed: routing a `dirfd` through the flag translator
+    /// `from()` corrupts the small descriptor values `1` and `2`, whereas
+    /// `from_dirfd()` preserves them.
+    #[test]
+    fn from_dirfd_does_not_corrupt_small_descriptors() {
+        // `from()` rewrites the guest `AT_EACCESS`/`AT_SYMLINK_NOFOLLOW` values
+        // (`1`/`2`) into the host `*at()` flag constants, corrupting any real
+        // `dirfd` that happens to use those descriptor numbers.
+        assert_eq!(LibcAtFlags::from(AT_EACCESS).inner(), libc::AT_EACCESS);
+        assert_eq!(LibcAtFlags::from(AT_SYMLINK_NOFOLLOW).inner(), libc::AT_SYMLINK_NOFOLLOW);
+
+        // `from_dirfd()` instead preserves the descriptor values verbatim.
+        assert_eq!(LibcAtFlags::from_dirfd(AT_EACCESS).inner(), AT_EACCESS);
+        assert_eq!(LibcAtFlags::from_dirfd(AT_SYMLINK_NOFOLLOW).inner(), AT_SYMLINK_NOFOLLOW);
     }
 }
