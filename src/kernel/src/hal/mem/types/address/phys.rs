@@ -98,7 +98,9 @@ impl PhysicalAddress {
     pub fn into_frame_number(self) -> FrameNumber {
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
-        // Safety: the following unwrap is safe because a physical address has a valid frame number.
+        // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
+        // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
+        // every address in the space.
         FrameNumber::from_raw_value(frame_number).unwrap()
     }
 
